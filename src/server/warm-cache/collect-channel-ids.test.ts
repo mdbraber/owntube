@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   collectRecentHistoryChannelIds,
+  collectSubscriptionChannelIds,
   collectWarmChannelIds,
 } from "./collect-channel-ids";
 
@@ -40,19 +41,46 @@ describe("collectRecentHistoryChannelIds", () => {
   });
 });
 
+describe("collectSubscriptionChannelIds", () => {
+  it("caps channels and prefers most recently subscribed", () => {
+    const rows = [
+      { channelId: "UC_new", subscribedAt: 300 },
+      { channelId: "UC_mid", subscribedAt: 150 },
+      { channelId: "UC_new", subscribedAt: 200 },
+      { channelId: "UC_old", subscribedAt: 100 },
+    ];
+
+    const db = {
+      select: () => ({
+        from: () => ({
+          orderBy: () => ({
+            all: () => rows,
+          }),
+        }),
+      }),
+    };
+
+    expect(collectSubscriptionChannelIds(db as never, 2)).toEqual([
+      "UC_new",
+      "UC_mid",
+    ]);
+  });
+});
+
 describe("collectWarmChannelIds", () => {
   it("deduplicates subscriptions before history channels", () => {
-    const subscriptionIds = ["UC_sub_a", "UC_sub_b"];
+    const subscriptionRows = [
+      { channelId: "UC_sub_a", subscribedAt: 200 },
+      { channelId: "UC_sub_b", subscribedAt: 100 },
+    ];
     const historyIds = ["UC_sub_b", "UC_hist"];
 
     const db = {
-      selectDistinct: () => ({
-        from: () => ({
-          all: () => subscriptionIds.map((channelId) => ({ channelId })),
-        }),
-      }),
       select: () => ({
         from: () => ({
+          orderBy: () => ({
+            all: () => subscriptionRows,
+          }),
           where: () => ({
             orderBy: () => ({
               limit: () => ({
@@ -68,10 +96,11 @@ describe("collectWarmChannelIds", () => {
       }),
     };
 
-    expect(collectWarmChannelIds(db as never, 8)).toEqual([
-      "UC_sub_a",
-      "UC_sub_b",
-      "UC_hist",
-    ]);
+    expect(
+      collectWarmChannelIds(db as never, {
+        subscriptionLimit: 8,
+        historyLimit: 8,
+      }),
+    ).toEqual(["UC_sub_a", "UC_sub_b", "UC_hist"]);
   });
 });

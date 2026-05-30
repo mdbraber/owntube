@@ -20,6 +20,7 @@ import {
 import {
   collectWarmChannelIds,
   DEFAULT_WARM_HISTORY_CHANNELS,
+  DEFAULT_WARM_SUBSCRIPTION_CHANNELS,
 } from "../src/server/warm-cache/collect-channel-ids";
 
 const WARM_BATCH = 5;
@@ -35,6 +36,11 @@ const trendingLimit = Number.parseInt(
 const historyChannelLimit = Number.parseInt(
   process.env.OWNTUBE_WARM_HISTORY_CHANNELS ??
     String(DEFAULT_WARM_HISTORY_CHANNELS),
+  10,
+);
+const subscriptionChannelLimit = Number.parseInt(
+  process.env.OWNTUBE_WARM_SUBSCRIPTION_CHANNELS ??
+    String(DEFAULT_WARM_SUBSCRIPTION_CHANNELS),
   10,
 );
 
@@ -193,7 +199,15 @@ async function main(): Promise<void> {
       Number.isFinite(historyChannelLimit) && historyChannelLimit > 0
         ? Math.min(historyChannelLimit, 128)
         : DEFAULT_WARM_HISTORY_CHANNELS;
-    const channelIds = collectWarmChannelIds(db, safeHistoryLimit);
+    const safeSubscriptionLimit =
+      Number.isFinite(subscriptionChannelLimit) &&
+      subscriptionChannelLimit > 0
+        ? Math.min(subscriptionChannelLimit, 256)
+        : DEFAULT_WARM_SUBSCRIPTION_CHANNELS;
+    const channelIds = collectWarmChannelIds(db, {
+      subscriptionLimit: safeSubscriptionLimit,
+      historyLimit: safeHistoryLimit,
+    });
 
     if (channelIds.length === 0) {
       logLine("warm-cache: no subscription or history channels to warm");

@@ -3,14 +3,39 @@ import type { AppDb } from "@/server/db/client";
 import { subscriptions, watchHistory } from "@/server/db/schema";
 
 export const DEFAULT_WARM_HISTORY_CHANNELS = 32;
+/** Cap subscription warms — large libraries would otherwise hammer upstream for hours. */
+export const DEFAULT_WARM_SUBSCRIPTION_CHANNELS = 64;
 
-/** Distinct subscription channel ids (all users). */
-export function collectSubscriptionChannelIds(db: AppDb): string[] {
+export type CollectWarmChannelIdsOptions = {
+  subscriptionLimit?: number;
+  historyLimit?: number;
+};
+
+/** Distinct subscription channel ids (all users), most recently subscribed first. */
+export function collectSubscriptionChannelIds(
+  db: AppDb,
+  maxChannels = DEFAULT_WARM_SUBSCRIPTION_CHANNELS,
+): string[] {
+  if (maxChannels <= 0) return [];
+
   const rows = db
-    .selectDistinct({ channelId: subscriptions.channelId })
+    .select({
+      channelId: subscriptions.channelId,
+      subscribedAt: subscriptions.subscribedAt,
+    })
     .from(subscriptions)
+    .orderBy(desc(subscriptions.subscribedAt))
     .all();
-  return rows.map((row) => row.channelId);
+
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const row of rows) {
+    if (seen.has(row.channelId)) continue;
+    seen.add(row.channelId);
+    out.push(row.channelId);
+    if (out.length >= maxChannels) break;
+  }
+  return out;
 }
 
 /**
@@ -45,15 +70,23 @@ export function collectRecentHistoryChannelIds(
   return out;
 }
 
-/** Subscriptions first, then recent history channels not already included. */
+/** Subscriptions first (recent), then recent history channels not already included. */
 export function collectWarmChannelIds(
   db: AppDb,
-  historyLimit = DEFAULT_WARM_HISTORY_CHANNELS,
+  options: CollectWarmChannelIdsOptions = {},
 ): string[] {
+  const subscriptionLimit =
+    options.subscriptionLimit ?? DEFAULT_WARM_SUBSCRIPTION_CHANNELS;
+  const historyLimit =
+    options.historyLimit ?? DEFAULT_WARM_HISTORY_CHANNELS;
+
   const seen = new Set<string>();
   const out: string[] = [];
 
-  for (const channelId of collectSubscriptionChannelIds(db)) {
+  for (const channelId of collectSubscriptionChannelIds(
+    db,
+    subscriptionLimit,
+  )) {
     if (seen.has(channelId)) continue;
     seen.add(channelId);
     out.push(channelId);

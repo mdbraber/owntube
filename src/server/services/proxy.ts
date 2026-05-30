@@ -2938,7 +2938,13 @@ export async function fetchShortsFeed(
   const limit = Math.min(40, input.limit ?? 20);
   const key = shortsFeedCacheKey({ ...input, region, limit });
   const fresh = readFreshShortsFeedCache(db, key);
-  if (fresh) return fresh;
+  // Shelf needs ~14 items; a thin cached page (e.g. from warm-cache) must not block refetch.
+  if (
+    fresh &&
+    (input.purpose !== "shelf" || fresh.videos.length >= limit)
+  ) {
+    return fresh;
+  }
 
   const inFlight = inFlightShortsFeed.get(key);
   if (inFlight) return inFlight;

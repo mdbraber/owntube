@@ -171,6 +171,7 @@ Environment variables (also in `.env.example`):
 | `OWNTUBE_WARM_CHANNEL_PAGES` | `true` | Warm channel video lists |
 | `OWNTUBE_WARM_SHORTS` | `true` | Warm home Shorts shelf |
 | `OWNTUBE_WARM_HISTORY_CHANNELS` | `32` | Max history channels to include |
+| `OWNTUBE_WARM_SUBSCRIPTION_CHANNELS` | `64` | Max subscribed channels to warm (recent first) |
 
 To disable the sidecar, stop or remove the `cache-warmer` service from your
 compose file, or run only the app: `docker compose up app`.
