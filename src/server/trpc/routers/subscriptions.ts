@@ -7,8 +7,13 @@ import {
   publishedSortKey,
 } from "@/lib/published-sort-key";
 import { normalizeYoutubeChannelId } from "@/lib/youtube-channel-id";
+import {
+  nowUnix,
+  readChannelMetaByIds,
+  refreshChannelMetaIfStale,
+} from "@/server/channel-meta/store";
 import type { AppDb } from "@/server/db/client";
-import { channelMeta, subscriptions, watchHistory } from "@/server/db/schema";
+import { subscriptions, watchHistory } from "@/server/db/schema";
 import { RateLimitExceededError } from "@/server/errors/rate-limit-exceeded";
 import { UpstreamUnavailableError } from "@/server/errors/upstream-unavailable";
 import {
@@ -35,9 +40,6 @@ const videoIdSchema = z.string().min(5).max(64);
 
 /** Avoid hundreds of parallel upstream calls (rate limit → names fall back to raw IDs). */
 const LIST_DETAILED_BATCH = 5;
-const LIST_DETAILED_RETRIES = 4;
-/** Reuse `channel_meta` without hitting upstream when recently refreshed. */
-const CHANNEL_META_TTL_SEC = 7 * 24 * 60 * 60;
 const SIDEBAR_SUBSCRIPTION_LIMIT_DEFAULT = 24;
 const SIDEBAR_SUBSCRIPTION_LIMIT_MAX = 50;
 
@@ -52,106 +54,19 @@ function sleepMs(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function isFreshChannelMeta(updatedAt: number, now = nowUnix()): boolean {
-  return now - updatedAt < CHANNEL_META_TTL_SEC;
-}
-
-function readChannelMetaByIds(
-  db: AppDb,
-  channelIds: string[],
-): Map<string, { channelName: string; avatarUrl: string | null }> {
-  const out = new Map<
-    string,
-    { channelName: string; avatarUrl: string | null }
-  >();
-  if (channelIds.length === 0) return out;
-  let rows: {
-    channelId: string;
-    channelName: string;
-    avatarUrl: string | null;
-  }[] = [];
-  try {
-    rows = db
-      .select({
-        channelId: channelMeta.channelId,
-        channelName: channelMeta.channelName,
-        avatarUrl: channelMeta.avatarUrl,
-      })
-      .from(channelMeta)
-      .where(inArray(channelMeta.channelId, channelIds))
-      .all();
-  } catch (error) {
-    if (isMissingChannelMetaTableError(error)) return out;
-    throw error;
-  }
-  for (const r of rows) {
-    const name = r.channelName?.trim();
-    if (!name) continue;
-    out.set(r.channelId, {
-      channelName: name,
-      avatarUrl: r.avatarUrl ?? null,
-    });
-  }
-  return out;
-}
-
 async function fetchSubscriptionChannelDetail(
   db: AppDb,
   channelId: string,
   subscribedAt: number,
   overrides: ProxySourceOverrides | undefined,
 ): Promise<SubscriptionChannelDetail> {
-  const cachedMeta = readChannelMetaRow(db, channelId);
-  if (cachedMeta && isFreshChannelMeta(cachedMeta.updatedAt)) {
-    return {
-      channelId,
-      subscribedAt,
-      channelName: cachedMeta.channelName,
-      avatarUrl: cachedMeta.avatarUrl,
-    };
-  }
-  const fallback = {
+  const meta = await refreshChannelMetaIfStale(db, channelId, overrides);
+  return {
     channelId,
     subscribedAt,
-    channelName: cachedMeta?.channelName ?? channelId,
-    avatarUrl: cachedMeta?.avatarUrl ?? null,
+    channelName: meta.channelName,
+    avatarUrl: meta.avatarUrl,
   };
-
-  for (let attempt = 0; attempt < LIST_DETAILED_RETRIES; attempt++) {
-    try {
-      const page = await fetchChannelPage(db, { channelId }, overrides);
-      const resolvedName =
-        page.name?.trim() || cachedMeta?.channelName || channelId;
-      const resolvedAvatar = page.avatarUrl ?? cachedMeta?.avatarUrl ?? null;
-      upsertChannelMetaRow(db, {
-        channelId,
-        channelName: resolvedName,
-        avatarUrl: resolvedAvatar,
-      });
-      return {
-        channelId,
-        subscribedAt,
-        channelName: resolvedName,
-        avatarUrl: resolvedAvatar,
-      };
-    } catch (e) {
-      if (
-        e instanceof RateLimitExceededError &&
-        attempt < LIST_DETAILED_RETRIES - 1
-      ) {
-        await sleepMs(350 * 2 ** attempt);
-        continue;
-      }
-      if (
-        e instanceof UpstreamUnavailableError ||
-        e instanceof RateLimitExceededError
-      ) {
-        return fallback;
-      }
-      throw e;
-    }
-  }
-  return fallback;
 }
 
 async function listDetailedChannelRows(
@@ -176,10 +91,6 @@ async function listDetailedChannelRows(
     out.push(...part);
   }
   return out;
-}
-
-function nowUnix(): number {
-  return Math.floor(Date.now() / 1000);
 }
 
 function markWatchedRows(
@@ -224,78 +135,6 @@ function markWatchedRows(
         createdAt: ts,
       })
       .run();
-  }
-}
-
-function isMissingChannelMetaTableError(error: unknown): boolean {
-  const msg = error instanceof Error ? error.message : String(error);
-  return msg.toLowerCase().includes("no such table: channel_meta");
-}
-
-function readChannelMetaRow(
-  db: AppDb,
-  channelId: string,
-): {
-  channelName: string;
-  avatarUrl: string | null;
-  updatedAt: number;
-} | null {
-  let row:
-    | {
-        channelName: string;
-        avatarUrl: string | null;
-        updatedAt: number;
-      }
-    | undefined;
-  try {
-    row = db
-      .select({
-        channelName: channelMeta.channelName,
-        avatarUrl: channelMeta.avatarUrl,
-        updatedAt: channelMeta.updatedAt,
-      })
-      .from(channelMeta)
-      .where(eq(channelMeta.channelId, channelId))
-      .limit(1)
-      .all()[0];
-  } catch (error) {
-    if (isMissingChannelMetaTableError(error)) return null;
-    throw error;
-  }
-  if (!row?.channelName) return null;
-  return {
-    channelName: row.channelName,
-    avatarUrl: row.avatarUrl ?? null,
-    updatedAt: row.updatedAt,
-  };
-}
-
-function upsertChannelMetaRow(
-  db: AppDb,
-  input: { channelId: string; channelName: string; avatarUrl: string | null },
-): void {
-  const channelName = input.channelName.trim();
-  if (!channelName) return;
-  try {
-    db.insert(channelMeta)
-      .values({
-        channelId: input.channelId,
-        channelName,
-        avatarUrl: input.avatarUrl,
-        updatedAt: nowUnix(),
-      })
-      .onConflictDoUpdate({
-        target: channelMeta.channelId,
-        set: {
-          channelName,
-          avatarUrl: input.avatarUrl,
-          updatedAt: nowUnix(),
-        },
-      })
-      .run();
-  } catch (error) {
-    if (isMissingChannelMetaTableError(error)) return;
-    throw error;
   }
 }
 
@@ -452,38 +291,7 @@ function enrichSubscriptionVideosWithChannelMeta(
   ];
   if (channelIds.length === 0) return videos;
 
-  let rows: {
-    channelId: string;
-    channelName: string;
-    avatarUrl: string | null;
-  }[] = [];
-  try {
-    rows = db
-      .select({
-        channelId: channelMeta.channelId,
-        channelName: channelMeta.channelName,
-        avatarUrl: channelMeta.avatarUrl,
-      })
-      .from(channelMeta)
-      .where(inArray(channelMeta.channelId, channelIds))
-      .all();
-  } catch (error) {
-    if (isMissingChannelMetaTableError(error)) return videos;
-    throw error;
-  }
-
-  const byId = new Map<
-    string,
-    { channelName: string; avatarUrl: string | null }
-  >();
-  for (const r of rows) {
-    const name = r.channelName?.trim();
-    if (!name) continue;
-    byId.set(r.channelId, {
-      channelName: name,
-      avatarUrl: r.avatarUrl ?? null,
-    });
-  }
+  const byId = readChannelMetaByIds(db, channelIds);
 
   return videos.map((v) => {
     const id = v.channelId;

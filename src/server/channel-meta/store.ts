@@ -1,0 +1,208 @@
+import { eq, inArray } from "drizzle-orm";
+import type { AppDb } from "@/server/db/client";
+import { channelMeta } from "@/server/db/schema";
+import { RateLimitExceededError } from "@/server/errors/rate-limit-exceeded";
+import { UpstreamUnavailableError } from "@/server/errors/upstream-unavailable";
+import {
+  fetchChannelPage,
+  type ProxySourceOverrides,
+} from "@/server/services/proxy";
+
+export const CHANNEL_META_TTL_SEC = 7 * 24 * 60 * 60;
+
+const LIST_DETAILED_RETRIES = 4;
+
+export function nowUnix(): number {
+  return Math.floor(Date.now() / 1000);
+}
+
+export function isFreshChannelMeta(
+  updatedAt: number,
+  now = nowUnix(),
+): boolean {
+  return now - updatedAt < CHANNEL_META_TTL_SEC;
+}
+
+function isMissingChannelMetaTableError(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error);
+  return msg.toLowerCase().includes("no such table: channel_meta");
+}
+
+export type ChannelMetaRow = {
+  channelName: string;
+  avatarUrl: string | null;
+  updatedAt: number;
+};
+
+export function readChannelMetaRow(
+  db: AppDb,
+  channelId: string,
+): ChannelMetaRow | null {
+  let row:
+    | {
+        channelName: string;
+        avatarUrl: string | null;
+        updatedAt: number;
+      }
+    | undefined;
+  try {
+    row = db
+      .select({
+        channelName: channelMeta.channelName,
+        avatarUrl: channelMeta.avatarUrl,
+        updatedAt: channelMeta.updatedAt,
+      })
+      .from(channelMeta)
+      .where(eq(channelMeta.channelId, channelId))
+      .limit(1)
+      .all()[0];
+  } catch (error) {
+    if (isMissingChannelMetaTableError(error)) return null;
+    throw error;
+  }
+  if (!row?.channelName) return null;
+  return {
+    channelName: row.channelName,
+    avatarUrl: row.avatarUrl ?? null,
+    updatedAt: row.updatedAt,
+  };
+}
+
+export function upsertChannelMetaRow(
+  db: AppDb,
+  input: { channelId: string; channelName: string; avatarUrl: string | null },
+): void {
+  const channelName = input.channelName.trim();
+  if (!channelName) return;
+  try {
+    db.insert(channelMeta)
+      .values({
+        channelId: input.channelId,
+        channelName,
+        avatarUrl: input.avatarUrl,
+        updatedAt: nowUnix(),
+      })
+      .onConflictDoUpdate({
+        target: channelMeta.channelId,
+        set: {
+          channelName,
+          avatarUrl: input.avatarUrl,
+          updatedAt: nowUnix(),
+        },
+      })
+      .run();
+  } catch (error) {
+    if (isMissingChannelMetaTableError(error)) return;
+    throw error;
+  }
+}
+
+export function readChannelMetaByIds(
+  db: AppDb,
+  channelIds: string[],
+): Map<string, { channelName: string; avatarUrl: string | null }> {
+  const out = new Map<
+    string,
+    { channelName: string; avatarUrl: string | null }
+  >();
+  if (channelIds.length === 0) return out;
+  let rows: {
+    channelId: string;
+    channelName: string;
+    avatarUrl: string | null;
+  }[] = [];
+  try {
+    rows = db
+      .select({
+        channelId: channelMeta.channelId,
+        channelName: channelMeta.channelName,
+        avatarUrl: channelMeta.avatarUrl,
+      })
+      .from(channelMeta)
+      .where(inArray(channelMeta.channelId, channelIds))
+      .all();
+  } catch (error) {
+    if (isMissingChannelMetaTableError(error)) return out;
+    throw error;
+  }
+  for (const r of rows) {
+    const name = r.channelName?.trim();
+    if (!name) continue;
+    out.set(r.channelId, {
+      channelName: name,
+      avatarUrl: r.avatarUrl ?? null,
+    });
+  }
+  return out;
+}
+
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export type RefreshedChannelMeta = {
+  channelId: string;
+  channelName: string;
+  avatarUrl: string | null;
+  refreshed: boolean;
+};
+
+/** Fetches upstream when `channel_meta` is stale or missing, then upserts. */
+export async function refreshChannelMetaIfStale(
+  db: AppDb,
+  channelId: string,
+  overrides?: ProxySourceOverrides,
+): Promise<RefreshedChannelMeta> {
+  const cachedMeta = readChannelMetaRow(db, channelId);
+  if (cachedMeta && isFreshChannelMeta(cachedMeta.updatedAt)) {
+    return {
+      channelId,
+      channelName: cachedMeta.channelName,
+      avatarUrl: cachedMeta.avatarUrl,
+      refreshed: false,
+    };
+  }
+
+  const fallback: RefreshedChannelMeta = {
+    channelId,
+    channelName: cachedMeta?.channelName ?? channelId,
+    avatarUrl: cachedMeta?.avatarUrl ?? null,
+    refreshed: false,
+  };
+
+  for (let attempt = 0; attempt < LIST_DETAILED_RETRIES; attempt++) {
+    try {
+      const page = await fetchChannelPage(db, { channelId }, overrides);
+      const resolvedName =
+        page.name?.trim() || cachedMeta?.channelName || channelId;
+      const resolvedAvatar = page.avatarUrl ?? cachedMeta?.avatarUrl ?? null;
+      upsertChannelMetaRow(db, {
+        channelId,
+        channelName: resolvedName,
+        avatarUrl: resolvedAvatar,
+      });
+      return {
+        channelId,
+        channelName: resolvedName,
+        avatarUrl: resolvedAvatar,
+        refreshed: true,
+      };
+    } catch (e) {
+      if (
+        e instanceof RateLimitExceededError &&
+        attempt < LIST_DETAILED_RETRIES - 1
+      ) {
+        await sleepMs(350 * 2 ** attempt);
+        continue;
+      }
+      if (
+        e instanceof UpstreamUnavailableError ||
+        e instanceof RateLimitExceededError
+      ) {
+        return fallback;
+      }
+      throw e;
+    }
+  }
+  return fallback;
+}

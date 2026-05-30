@@ -139,25 +139,51 @@ Both should return valid JSON (not HTML, not 403).
 
 ---
 
-## Home feed warm-up (Docker / cron)
+## Cache warmer (Docker)
 
-The first home page load after a cold start may wait on upstream trending. To
-keep the SQLite cache warm, run the warm-up script on a schedule (host cron or
-inside the container):
+`docker compose up` starts a **`cache-warmer`** sidecar that runs `pnpm warm:cache`
+every 20 minutes (configurable). It pre-fills SQLite with:
+
+- Regional **trending** (home feed)
+- **Shorts** shelf candidates
+- **Channel meta** (names + avatar URLs) for subscribed and recently watched channels
+- **Channel video pages** (first page) for the same channels
+
+The sidecar shares the `owntube-data` volume with the app and waits until the
+app healthcheck passes before the first run.
 
 ```bash
-# Every 20 minutes (host cron; adjust path and region)
-*/20 * * * * cd /path/to/OwnTube && OWNTUBE_WARM_REGION=US pnpm warm:feed >> /var/log/owntube-warm.log 2>&1
+# Follow warmer logs
+docker compose logs -f cache-warmer
+
+# One-shot warm (e.g. after deploy)
+docker compose exec app pnpm warm:cache
 ```
 
-Inside Docker (one-shot after deploy, or from host against the volume):
+Environment variables (also in `.env.example`):
+
+| Variable | Default | Role |
+|----------|---------|------|
+| `OWNTUBE_WARM_INTERVAL_SEC` | `1200` | Sidecar sleep between runs |
+| `OWNTUBE_WARM_REGION` | `US` | Trending / shorts region |
+| `OWNTUBE_WARM_LIMIT` | `48` | Trending video count |
+| `OWNTUBE_WARM_CHANNELS` | `true` | Refresh `channel_meta` |
+| `OWNTUBE_WARM_CHANNEL_PAGES` | `true` | Warm channel video lists |
+| `OWNTUBE_WARM_SHORTS` | `true` | Warm home Shorts shelf |
+| `OWNTUBE_WARM_HISTORY_CHANNELS` | `32` | Max history channels to include |
+
+To disable the sidecar, stop or remove the `cache-warmer` service from your
+compose file, or run only the app: `docker compose up app`.
+
+**Host cron (optional fallback)** — if you run OwnTube outside Docker or without
+the sidecar:
 
 ```bash
-docker compose exec app pnpm warm:feed
+# Every 20 minutes
+*/20 * * * * cd /path/to/OwnTube && OWNTUBE_WARM_REGION=US pnpm warm:cache >> /var/log/owntube-warm.log 2>&1
 ```
 
-Optional env: `OWNTUBE_WARM_REGION` (default `US`), `OWNTUBE_WARM_LIMIT` (default
-`48`), `DATABASE_PATH` (same as the app).
+`pnpm warm:feed` is an alias for `pnpm warm:cache`.
 
 ---
 

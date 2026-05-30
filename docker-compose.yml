@@ -20,5 +20,32 @@ services:
     volumes:
       - owntube-data:/app/data
 
+  cache-warmer:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      DATABASE_PATH: /app/data/owntube.db
+      PIPED_BASE_URL: ${PIPED_BASE_URL:-https://pipedapi.kavin.rocks}
+      INVIDIOUS_BASE_URL: ${INVIDIOUS_BASE_URL:-}
+      OWNTUBE_WARM_INTERVAL_SEC: ${OWNTUBE_WARM_INTERVAL_SEC:-1200}
+      OWNTUBE_WARM_REGION: ${OWNTUBE_WARM_REGION:-US}
+      OWNTUBE_WARM_LIMIT: ${OWNTUBE_WARM_LIMIT:-48}
+      OWNTUBE_WARM_CHANNELS: ${OWNTUBE_WARM_CHANNELS:-true}
+      OWNTUBE_WARM_CHANNEL_PAGES: ${OWNTUBE_WARM_CHANNEL_PAGES:-true}
+      OWNTUBE_WARM_SHORTS: ${OWNTUBE_WARM_SHORTS:-true}
+      OWNTUBE_WARM_HISTORY_CHANNELS: ${OWNTUBE_WARM_HISTORY_CHANNELS:-32}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      NEXT_TELEMETRY_DISABLED: "1"
+    volumes:
+      - owntube-data:/app/data
+    command: >
+      sh -c 'while true; do
+        pnpm warm:cache || true;
+        sleep $${OWNTUBE_WARM_INTERVAL_SEC:-1200};
+      done'
+
 volumes:
   owntube-data:

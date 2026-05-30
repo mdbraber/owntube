@@ -85,8 +85,15 @@ docker exec owntube printenv UPSTREAM_RATE_LIMIT_MAX_REQUESTS
 
 It should print `300` (or your chosen value), not be empty.
 
-- Warm the home feed cache after deploy (optional cron every 20 min):
+- The **`cache-warmer`** sidecar (included in `docker-compose.unraid.yml`) runs
+  `pnpm warm:cache` every 20 minutes after the app is healthy. Logs:
 
 ```bash
-docker exec owntube pnpm warm:feed
+docker logs -f owntube-cache-warmer
+```
+
+- One-shot warm after deploy:
+
+```bash
+docker exec owntube pnpm warm:cache
 ```
