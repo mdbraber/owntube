@@ -10,7 +10,7 @@ export default function RegisterPage() {
             Create account
           </h1>
           <p className="text-sm text-[hsl(var(--muted-foreground))]">
-            OwnTube stores your account only in your local SQLite database.
+            owntube stores your account only in your local SQLite database.
           </p>
         </header>
         <RegisterForm />

@@ -10,13 +10,14 @@ export function ShortsEmptyHint({ upstream, signedIn }: ShortsEmptyHintProps) {
   if (!upstream.anyConfigured) {
     return (
       <div className="space-y-2 text-xs text-white/60">
-        <p>
-          No Piped or Invidious instance is configured for this server.
-        </p>
+        <p>No Piped or Invidious instance is configured for this server.</p>
         {signedIn ? (
           <p>
             Add instance URLs in{" "}
-            <Link href="/settings" className="text-[hsl(var(--primary))] hover:underline">
+            <Link
+              href="/settings"
+              className="text-[hsl(var(--primary))] hover:underline"
+            >
               Settings
             </Link>{" "}
             (Video source instances), or ask your admin to set{" "}
@@ -56,23 +57,30 @@ export function ShortsEmptyHint({ upstream, signedIn }: ShortsEmptyHintProps) {
   return (
     <div className="space-y-2 text-xs text-white/60">
       <p>
-        {configured} {upstream.pipedConfigured && upstream.invidiousConfigured ? "are" : "is"}{" "}
+        {configured}{" "}
+        {upstream.pipedConfigured && upstream.invidiousConfigured
+          ? "are"
+          : "is"}{" "}
         configured, but no shorts were returned for your region.
       </p>
       {signedIn ? (
         <p>
           Shorts follow your <strong>trending region</strong> from{" "}
-          <Link href="/settings" className="text-[hsl(var(--primary))] hover:underline">
+          <Link
+            href="/settings"
+            className="text-[hsl(var(--primary))] hover:underline"
+          >
             Settings
           </Link>{" "}
-          (Home / trending region). Change it if you only see content from another
-          country. You can also use <strong>Check instances health</strong> there
-          to verify your Piped instance.
+          (Home / trending region). Change it if you only see content from
+          another country. You can also use{" "}
+          <strong>Check instances health</strong> there to verify your Piped
+          instance.
         </p>
       ) : (
         <p>
-          The server instances may be down or rate-limited. Sign in to check instance health in
-          Settings or try again later.
+          The server instances may be down or rate-limited. Sign in to check
+          instance health in Settings or try again later.
         </p>
       )}
     </div>

@@ -129,7 +129,10 @@ export function keepShortsDiscoveryCandidate(
       ? titleTfidfSimilarity(video.title, corpusTitles)
       : 0;
   if (signals.totalWatches < 14) {
-    return tag >= 0.028 || (video.channelId != null && signals.channelWeights.has(video.channelId));
+    return (
+      tag >= 0.028 ||
+      (video.channelId != null && signals.channelWeights.has(video.channelId))
+    );
   }
   return keepCandidateForPersonalizedFeed(
     video,

@@ -22,14 +22,14 @@ export async function UserNav() {
           variant="ghost"
           size="sm"
           asChild
-          className="h-9 rounded-[10px] px-3 font-medium text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
+          className="h-8 rounded-[10px] px-3 font-medium text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
         >
           <Link href="/login">Sign in</Link>
         </Button>
         <Button
           size="sm"
           asChild
-          className="h-9 rounded-[10px] px-3 font-semibold"
+          className="h-8 rounded-[10px] px-3 font-semibold"
         >
           <Link href="/register">Register</Link>
         </Button>
@@ -52,14 +52,14 @@ export async function UserNav() {
           type="submit"
           variant="ghost"
           size="sm"
-          className="h-9 rounded-[10px] px-2 text-xs font-medium text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
+          className="h-8 rounded-[10px] px-2 text-xs font-medium text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
         >
           Out
         </Button>
       </form>
       <Link
         href="/settings"
-        className="ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#ff3355] to-[#ff6633] text-sm font-bold text-white shadow-[0_4px_12px_rgba(255,51,85,0.3)] transition hover:brightness-110"
+        className="ml-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ot-brand-gradient text-sm font-bold text-white ot-brand-shadow transition hover:brightness-110"
         title={session.user?.email ?? "Account"}
         aria-label="Settings"
       >

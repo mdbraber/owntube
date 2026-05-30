@@ -19,9 +19,9 @@ describe("parseSubscriberCountText", () => {
 
 describe("pickChannelSubscriberCount", () => {
   it("reads numeric and text fields", () => {
-    expect(
-      pickChannelSubscriberCount({ subscriberCount: 42_000 }),
-    ).toBe(42_000);
+    expect(pickChannelSubscriberCount({ subscriberCount: 42_000 })).toBe(
+      42_000,
+    );
     expect(
       pickChannelSubscriberCount({ subCountText: "1.5M subscribers" }),
     ).toBe(1_500_000);

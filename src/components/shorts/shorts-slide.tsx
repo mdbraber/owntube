@@ -1,12 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, type ReactNode } from "react";
-import { WatchTracker } from "@/components/player/watch-tracker";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { VideoPlayer } from "@/components/player/video-player";
+import { WatchTracker } from "@/components/player/watch-tracker";
 import { ShortsVerticalActions } from "@/components/shorts/shorts-vertical-actions";
-import { buildVideoPlayerPayloadFromDetail } from "@/lib/watch-player-payload";
+import { VideoThumbnailImg } from "@/components/videos/video-thumbnail-img";
+import {
+  aspectRatioFromPixelDimensions,
+  inferShortAspectRatioFromDetail,
+} from "@/lib/short-video-aspect";
 import { cn } from "@/lib/utils";
+import { buildVideoPlayerPayloadFromDetail } from "@/lib/watch-player-payload";
 import type { UnifiedVideo } from "@/server/services/proxy.types";
 import { trpc } from "@/trpc/react";
 
@@ -18,20 +29,25 @@ type ShortsSlideProps = {
   onEnded: () => void;
 };
 
-/** Max width for a vertical short at full viewport height (9:16), without cropping. */
 const SHORT_FRAME_CLASS =
-  "relative h-full max-h-full aspect-[9/16] w-auto max-w-full min-w-[12rem]";
+  "relative h-full max-h-full w-auto max-w-full min-w-[12rem]";
 
-function SlidePoster({ thumbnailUrl }: { thumbnailUrl?: string }) {
+function SlidePoster({
+  thumbnailUrl,
+  videoId,
+}: {
+  thumbnailUrl?: string;
+  videoId: string;
+}) {
   if (!thumbnailUrl) {
     return <div className="h-full w-full bg-zinc-950" />;
   }
   return (
-    // biome-ignore lint/performance/noImgElement: paused neighbor slide poster
-    <img
-      src={thumbnailUrl}
-      alt=""
+    <VideoThumbnailImg
+      url={thumbnailUrl}
+      videoId={videoId}
       className="h-full w-full object-contain opacity-80"
+      loading="lazy"
     />
   );
 }
@@ -57,6 +73,18 @@ export function ShortsSlide({
     );
   }, [detailQuery.data]);
 
+  const [frameAspect, setFrameAspect] = useState(() =>
+    inferShortAspectRatioFromDetail(detailQuery.data),
+  );
+
+  useEffect(() => {
+    setFrameAspect(inferShortAspectRatioFromDetail(detailQuery.data));
+  }, [detailQuery.data]);
+
+  const onVideoIntrinsics = useCallback((width: number, height: number) => {
+    setFrameAspect(aspectRatioFromPixelDimensions(width, height));
+  }, []);
+
   useEffect(() => {
     if (!active || !detailQuery.data) return;
     try {
@@ -78,7 +106,9 @@ export function ShortsSlide({
 
   let body: ReactNode;
   if (!active) {
-    body = <SlidePoster thumbnailUrl={video.thumbnailUrl} />;
+    body = (
+      <SlidePoster thumbnailUrl={video.thumbnailUrl} videoId={video.videoId} />
+    );
   } else if (detailQuery.isError) {
     body = (
       <div className="flex h-full w-full flex-col items-center justify-center gap-2 px-6 text-center text-sm text-white/80">
@@ -95,11 +125,11 @@ export function ShortsSlide({
     body = (
       <div className="relative flex h-full w-full items-center justify-center">
         {video.thumbnailUrl ? (
-          // biome-ignore lint/performance/noImgElement: placeholder while stream loads
-          <img
-            src={video.thumbnailUrl}
-            alt=""
+          <VideoThumbnailImg
+            url={video.thumbnailUrl}
+            videoId={video.videoId}
             className="max-h-full max-w-full object-contain opacity-50"
+            loading="eager"
           />
         ) : null}
         <p className="absolute bottom-6 left-0 right-0 z-[1] text-center text-sm text-white/80">
@@ -134,6 +164,7 @@ export function ShortsSlide({
         durationSeconds={detailQuery.data?.durationSeconds}
         shortsMode
         onEnded={onEnded}
+        onVideoIntrinsics={onVideoIntrinsics}
       />
     );
   } else {
@@ -156,6 +187,7 @@ export function ShortsSlide({
             SHORT_FRAME_CLASS,
             "overflow-hidden rounded-xl bg-black shadow-2xl ring-1 ring-white/10",
           )}
+          style={{ aspectRatio: frameAspect }}
         >
           <div className="absolute inset-0">{body}</div>
 

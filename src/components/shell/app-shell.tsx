@@ -24,10 +24,7 @@ export function AppShell({ children, topbarRight, isLoggedIn }: AppShellProps) {
     pathname === "/shorts" || pathname.startsWith("/shorts?");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const close = useCallback(() => setSidebarOpen(false), []);
-  const toggleSidebar = useCallback(
-    () => setSidebarOpen((open) => !open),
-    [],
-  );
+  const toggleSidebar = useCallback(() => setSidebarOpen((open) => !open), []);
 
   useEffect(() => {
     setSidebarOpen(readDesktopSidebarDefault());

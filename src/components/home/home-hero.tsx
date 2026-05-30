@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ChannelAvatarCircle } from "@/components/videos/channel-avatar-circle";
+import { VideoThumbnailImg } from "@/components/videos/video-thumbnail-img";
 import { formatPublishedLabel, formatViews } from "@/lib/video-display";
 import type { UnifiedVideo } from "@/server/services/proxy.types";
 
@@ -16,11 +17,11 @@ export function HomeHero({ video }: HomeHeroProps) {
       className="group relative mb-7 block aspect-[21/8] max-h-[min(52vw,420px)] min-h-[200px] w-full overflow-hidden rounded-[20px] border border-[hsl(var(--border))] shadow-[0_30px_80px_rgba(0,0,0,0.35)] transition-transform hover:-translate-y-0.5 max-sm:aspect-[4/3] max-sm:max-h-none"
     >
       {video.thumbnailUrl ? (
-        // biome-ignore lint/performance/noImgElement: remote thumbnail
-        <img
-          src={video.thumbnailUrl}
-          alt=""
+        <VideoThumbnailImg
+          url={video.thumbnailUrl}
+          videoId={video.videoId}
           className="absolute inset-0 h-full w-full object-cover object-top transition duration-500 group-hover:scale-[1.02]"
+          loading="eager"
         />
       ) : (
         <div className="absolute inset-0 bg-[hsl(var(--muted))]" />
@@ -41,7 +42,7 @@ export function HomeHero({ video }: HomeHeroProps) {
           />
           Top pick for you
         </span>
-        <h2 className="mb-3 text-2xl font-extrabold leading-tight tracking-tight [text-shadow:0_2px_24px_rgba(0,0,0,0.6)] max-sm:text-xl sm:text-4xl sm:leading-[1.08]">
+        <h2 className="mb-1 text-2xl font-extrabold leading-tight tracking-tight [text-shadow:0_2px_24px_rgba(0,0,0,0.6)] max-sm:text-xl sm:text-4xl sm:leading-[1.08]">
           {video.title}
         </h2>
         <div className="mb-5 flex flex-wrap items-center gap-2.5 text-sm text-white/85">

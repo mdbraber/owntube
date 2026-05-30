@@ -106,6 +106,8 @@ export async function getShortsRecommendations(
     overrides?: ProxySourceOverrides;
     additionalExcludeVideoIds?: readonly string[];
     forcePoolRefresh?: boolean;
+    /** Limits channel tab fetches when building the pool (home shelf). */
+    maxChannels?: number;
   },
 ): Promise<ShortsRecommendationResult> {
   const region = opts.region ?? "US";
@@ -183,6 +185,7 @@ export async function getShortsRecommendations(
         signals,
         tasteDiscoveryQueries,
         blockedChannelIds: blocked,
+        maxChannels: opts.maxChannels,
       });
 
     const scoreContext: RecommendationScoreContext = {

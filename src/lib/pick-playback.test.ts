@@ -17,6 +17,21 @@ function base(over: Partial<VideoDetail>): VideoDetail {
 }
 
 describe("buildWatchPlayback", () => {
+  it("forces HLS for live streams even when progressive exists", () => {
+    const w = buildWatchPlayback(
+      base({
+        isLive: true,
+        hlsUrl: "https://h.example/live.m3u8",
+        videoSources: [{ url: "https://g.example/360.mp4", quality: "360p" }],
+      }),
+    );
+    expect(w).toEqual({
+      kind: "hls",
+      url: "https://h.example/live.m3u8",
+      onlyDashOrUnsupported: false,
+    });
+  });
+
   it("uses HLS when present", () => {
     const w = buildWatchPlayback(
       base({

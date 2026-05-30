@@ -4,6 +4,7 @@ import {
   streamLooksLikeOriginalAudio,
 } from "@/lib/audio-track-label";
 import { reorderVariantsForDefaultQuality } from "@/lib/default-playback-quality";
+import { isPipedHostedProgressiveUrl } from "@/lib/upstream-playback-catalog";
 import type { VideoDetail } from "@/server/services/proxy.types";
 
 type VideoStreamSource = VideoDetail["videoSources"][number];
@@ -309,6 +310,7 @@ function buildAllSplitVariants(
       ({ s }) =>
         keep(s) &&
         s.url &&
+        isPipedHostedProgressiveUrl(detail, s.url) &&
         streamIsVideoOnly(s) &&
         !isDashPath(s.url) &&
         !isHlsPath(s.url),
@@ -322,8 +324,7 @@ function buildAllSplitVariants(
 
   videoCandidates.sort((a, b) => {
     const byQ =
-      scoreQualityLabel(b.s.quality, b.i) -
-      scoreQualityLabel(a.s.quality, a.i);
+      scoreQualityLabel(b.s.quality, b.i) - scoreQualityLabel(a.s.quality, a.i);
     if (byQ !== 0) return byQ;
     return scoreNativeVideoCodec(b.s) - scoreNativeVideoCodec(a.s);
   });
@@ -361,6 +362,7 @@ function collectMuxed(
     .map((s, i) => {
       const u = s.url;
       if (!u || isDashPath(u) || isHlsPath(u)) return null;
+      if (!isPipedHostedProgressiveUrl(detail, u)) return null;
       if (s.videoOnly) return null;
       if (streamIsVideoOnly(s)) return null;
       if (!keep(s)) return null;
@@ -421,9 +423,7 @@ function dropMuxedWhenSplitMatchesResolution(
 }
 
 /** Start on the configured default rung (1080p by default). */
-function preferPlaybackDefault(
-  variants: PlayableVariant[],
-): PlayableVariant[] {
+function preferPlaybackDefault(variants: PlayableVariant[]): PlayableVariant[] {
   return reorderVariantsForDefaultQuality(variants);
 }
 
@@ -471,10 +471,30 @@ function hasUsableProgressiveVideoPane(detail: VideoDetail): boolean {
   });
 }
 
+function firstHlsUrlFromDetail(detail: VideoDetail): string | undefined {
+  if (detail.hlsUrl) return detail.hlsUrl;
+  for (const s of detail.videoSources) {
+    const u = s.url;
+    if (u && isHlsPath(u)) return u;
+  }
+  return undefined;
+}
+
 export function buildWatchPlayback(
   detail: VideoDetail,
   options?: { shorts?: boolean },
 ): WatchPlayback {
+  if (detail.isLive) {
+    const hls = firstHlsUrlFromDetail(detail);
+    if (hls) {
+      return { kind: "hls", url: hls, onlyDashOrUnsupported: false };
+    }
+    if (detail.dashUrl) {
+      return { kind: "none", onlyDashOrUnsupported: true };
+    }
+    return { kind: "none", onlyDashOrUnsupported: false };
+  }
+
   const isPipedLike = detail.sourceUsed === "piped";
 
   const buildMerged = (keep: (s: VideoStreamSource) => boolean) => {
@@ -534,7 +554,9 @@ export function buildWatchPlayback(
   // hls.js parses the manifest (often post-play), which made the quality menu
   // look stuck on 360p when opened before playback.
   if (isPipedLike && merged.length > 0) {
-    const variants = preferPlaybackDefault(buildFullQualitySelectorList(merged));
+    const variants = preferPlaybackDefault(
+      buildFullQualitySelectorList(merged),
+    );
     return {
       kind: "progressive",
       variants,
@@ -547,7 +569,9 @@ export function buildWatchPlayback(
   }
 
   if (merged.length > 0) {
-    const variants = preferPlaybackDefault(buildFullQualitySelectorList(merged));
+    const variants = preferPlaybackDefault(
+      buildFullQualitySelectorList(merged),
+    );
     return {
       kind: "progressive",
       variants,

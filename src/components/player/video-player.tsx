@@ -6,9 +6,12 @@ import {
   useMediaRemote,
   useMediaStore,
 } from "@vidstack/react";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
+  type RefObject,
   useCallback,
   useEffect,
   useMemo,
@@ -16,14 +19,36 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
 import type { MediaPlayerElement } from "vidstack";
+import { useWatchCinema } from "@/components/watch/watch-cinema-context";
+import {
+  mergeScrubPreview,
+  type ScrubFramePreview,
+  type ScrubPreviewConfig,
+  useScrubFramePreview,
+} from "@/hooks/use-scrub-frame-preview";
+import { HlsSameOriginBinder } from "@/components/player/hls-same-origin-binder";
+import { useLiveHlsPlayback } from "@/hooks/use-live-hls-playback";
+import { applyHlsSameOriginToVidstackProvider } from "@/lib/hls-same-origin";
+import type { MediaProvider } from "vidstack";
+import { useSponsorBlockAutoSkip } from "@/hooks/use-sponsorblock-auto-skip";
+import { useSponsorBlockSegments } from "@/hooks/use-sponsorblock-segments";
 import {
   audioTrackLanguageInfo,
   languageFirstAudioMenuLabel,
 } from "@/lib/audio-track-label";
-import { sourceFromUrl, isDirectProgressiveVideoUrl } from "@/lib/media-source-from-url";
+import {
+  DEFAULT_PLAYBACK_QUALITY,
+  type DefaultPlaybackQuality,
+  readDefaultPlaybackQuality,
+  variantIndexForDefaultQuality,
+} from "@/lib/default-playback-quality";
+import {
+  isDirectProgressiveVideoUrl,
+  sourceFromUrl,
+} from "@/lib/media-source-from-url";
+import { nextPlaybackVariantIndex } from "@/lib/playback-variant-fallback";
+import { alternateLiveUpstream } from "@/lib/upstream-playback-catalog";
 import {
   readPlayerMediaPrefs,
   writePlayerMediaPrefs,
@@ -34,27 +59,22 @@ import {
   playbackRateVolumeAttenuation,
   uiVolumeToGain,
 } from "@/lib/player-volume-gain";
+import {
+  categoryLabel,
+  type SponsorBlockSegment,
+  segmentAtTime,
+} from "@/lib/sponsorblock";
+import type { SponsorBlockPrefs } from "@/lib/sponsorblock-prefs";
 import { cn } from "@/lib/utils";
-import {
-  DEFAULT_PLAYBACK_QUALITY,
-  type DefaultPlaybackQuality,
-  readDefaultPlaybackQuality,
-  variantIndexForDefaultQuality,
-} from "@/lib/default-playback-quality";
-import { useWatchCinema } from "@/components/watch/watch-cinema-context";
 import { chapterIndexAt, type VideoChapter } from "@/lib/video-chapters";
+import { applyVideoThumbnailImgError } from "@/lib/video-thumbnail-url";
 import {
-  mergeScrubPreview,
-  useScrubFramePreview,
-  type ScrubFramePreview,
-  type ScrubPreviewConfig,
-} from "@/hooks/use-scrub-frame-preview";
-import type { VideoStoryboard } from "@/server/services/proxy.types";
-import { nextPlaybackVariantIndex } from "@/lib/playback-variant-fallback";
-import {
+  clearWatchMiniStateForOtherVideo,
   readWatchMiniEnabled,
+  type WatchMiniPayload,
   writeWatchMiniState,
 } from "@/lib/watch-mini-player-state";
+import type { VideoStoryboard } from "@/server/services/proxy.types";
 
 type ProxiedVariant =
   | { t: "muxed"; label: string; src: string }
@@ -87,7 +107,30 @@ type VideoPlayerProps = {
   shortsMode?: boolean;
   /** Called when playback reaches the end (Shorts auto-advance). */
   onEnded?: () => void;
+  /** Fired when the &lt;video&gt; element exposes intrinsic dimensions. */
+  onVideoIntrinsics?: (width: number, height: number) => void;
   defaultPlaybackQuality?: DefaultPlaybackQuality;
+  /** Persist playback snapshot for the in-app mini player (watch page, logged-in). */
+  persistMiniSnapshot?: boolean;
+  /** Resume quality rung when restoring from mini player state. */
+  initialQualityIndex?: number;
+  /** Volume / mute captured at handoff from watch (optional). */
+  restoredVolume?: number;
+  restoredMuted?: boolean;
+  /** Mini player: do not autoplay (user left watch while paused). */
+  miniStartPaused?: boolean;
+  /** Server-backed SponsorBlock prefs (watch page); falls back to localStorage. */
+  sponsorBlockPrefs?: SponsorBlockPrefs;
+  /** Active live HLS broadcast — live chrome, no SponsorBlock/scrub preview. */
+  isLive?: boolean;
+  /** Upstream that produced the current playback URL (live fallback). */
+  playbackSourceUsed?: "piped" | "invidious";
+};
+
+type SponsorBlockChromeProps = {
+  videoId: string;
+  sponsorSegments: SponsorBlockSegment[];
+  sponsorBlockPrefs: SponsorBlockPrefs;
 };
 
 function initialQualityIndexForPayload(
@@ -150,6 +193,27 @@ function playbackResumeStorageKey(): string {
   return `ot:playback-resume:${window.location.pathname}`;
 }
 
+function tryLiveUpstreamFallback(
+  currentSource: "piped" | "invidious",
+  videoId: string,
+): boolean {
+  if (typeof window === "undefined") return false;
+  const alternate = alternateLiveUpstream(currentSource);
+  if (!alternate) return false;
+  try {
+    const storageKey = `ot:live-upstream-fallback:${videoId}`;
+    if (window.sessionStorage.getItem(storageKey)) return false;
+    window.sessionStorage.setItem(storageKey, alternate);
+    const nextUrl = new URL(window.location.href);
+    nextUrl.searchParams.set("upstream", alternate);
+    nextUrl.searchParams.delete("_pr");
+    window.location.assign(nextUrl.toString());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function tryOneShotPlaybackRecovery(
   recoveryKey: string,
   videoId?: string,
@@ -200,7 +264,31 @@ const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] as const;
 const PLAYER_FILL =
   "h-full w-full max-h-none max-w-none !rounded-none !border-0 !shadow-none !ring-0 [&_video]:h-full [&_video]:w-full [&_video]:object-contain" as const;
 
+const SHORTS_SHELL_POINTER =
+  "pointer-events-none absolute inset-0 h-full w-full [&_[data-controls]]:pointer-events-auto [&_[data-tap-surface]]:pointer-events-auto [&_video]:pointer-events-none" as const;
+
+function useReportVideoIntrinsics(
+  videoRef: RefObject<HTMLVideoElement | null>,
+  onVideoIntrinsics?: (width: number, height: number) => void,
+) {
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !onVideoIntrinsics) return;
+    const report = () => {
+      if (video.videoWidth > 0 && video.videoHeight > 0) {
+        onVideoIntrinsics(video.videoWidth, video.videoHeight);
+      }
+    };
+    video.addEventListener("loadedmetadata", report);
+    report();
+    return () => video.removeEventListener("loadedmetadata", report);
+  }, [videoRef, onVideoIntrinsics]);
+}
+
 const CHAPTER_GAP_PX = 3 as const;
+
+/** Seconds behind the live edge before showing "Go to live". */
+const LIVE_EDGE_SECONDS = 15;
 
 function formatClock(seconds: number) {
   if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
@@ -698,10 +786,14 @@ function useNativeAdapter(opts: {
     muted,
     playbackRate: v?.playbackRate ?? 1,
     play: () => {
+      const v = videoRef.current;
+      const a = audioRef.current;
+      if (!muted && v && !a) {
+        applyVideoElementVolume({ muted: false, volumeUi: externalVolume });
+      }
       // Start both elements in the same call stack so the user gesture also
       // unlocks the companion <audio> on browsers that gate autoplay per element.
-      void videoRef.current?.play().catch(() => {});
-      const a = audioRef.current;
+      void v?.play().catch(() => {});
       if (a) {
         syncCompanionVolume();
         void a.play().catch(() => {});
@@ -716,6 +808,9 @@ function useNativeAdapter(opts: {
       if (!el) return;
       const a = audioRef.current;
       if (el.paused) {
+        if (!muted && !a) {
+          applyVideoElementVolume({ muted: false, volumeUi: externalVolume });
+        }
         void el.play().catch(() => {});
         if (a) {
           syncCompanionVolume();
@@ -1398,10 +1493,12 @@ function ScrubPreviewVisual({
   return (
     <div className="relative aspect-video w-[7.5rem] shrink-0 overflow-hidden rounded-md bg-zinc-950 shadow-lg ring-1 ring-white/20">
       {scrubPreview.poster ? (
+        // biome-ignore lint/performance/noImgElement: scrub preview still
         <img
           src={scrubPreview.poster}
           alt=""
           className="absolute inset-0 h-full w-full object-cover"
+          onError={(e) => applyVideoThumbnailImgError(e.currentTarget)}
         />
       ) : null}
       {scrubPreview.streamSrc && !previewVideoFailed ? (
@@ -1533,6 +1630,7 @@ function ProgressBar({
   duration,
   buffered,
   chapters,
+  sponsorSegments = [],
   scrubPreview,
   onScrub,
   onScrubEnd,
@@ -1541,15 +1639,17 @@ function ProgressBar({
   duration: number;
   buffered: number;
   chapters: VideoChapter[];
+  sponsorSegments?: SponsorBlockSegment[];
   scrubPreview?: ScrubPreviewConfig | null;
   onScrub: (t: number) => void;
   onScrubEnd: (t: number) => void;
 }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState<number | null>(null);
-  const [hoverAnchor, setHoverAnchor] = useState<{ x: number; y: number } | null>(
-    null,
-  );
+  const [hoverAnchor, setHoverAnchor] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
   const [dragging, setDragging] = useState(false);
   const draggingRef = useRef(false);
 
@@ -1638,6 +1738,13 @@ function ProgressBar({
     hoverChapterIndex >= 0
       ? (chapters[hoverChapterIndex]?.title ?? null)
       : null;
+  const hoverSponsorSegment =
+    hover !== null && sponsorSegments.length > 0
+      ? segmentAtTime(sponsorSegments, hover)
+      : null;
+  const hoverSponsorLabel = hoverSponsorSegment
+    ? categoryLabel(hoverSponsorSegment.category)
+    : null;
 
   return (
     <div
@@ -1707,7 +1814,7 @@ function ProgressBar({
                 style={{ width: `${localBuffered}%` }}
               />
               <div
-                className="absolute inset-y-0 left-0 bg-[hsl(var(--primary))]"
+                className="absolute inset-y-0 left-0 ot-brand-gradient"
                 style={{ width: `${localProgress}%` }}
               />
             </div>
@@ -1725,12 +1832,29 @@ function ProgressBar({
               style={{ width: `${pct(buffered)}%` }}
             />
             <div
-              className="absolute inset-y-0 left-0 rounded-full bg-[hsl(var(--primary))]"
+              className="absolute inset-y-0 left-0 rounded-full ot-brand-gradient"
               style={{ width: `${pct(current)}%` }}
             />
           </div>
         </>
       )}
+      {sponsorSegments.length > 0 && duration > 0
+        ? sponsorSegments.map((seg) => {
+            const left = pct(seg.startSeconds);
+            const width = pct(seg.endSeconds - seg.startSeconds);
+            return (
+              <div
+                key={`sb-${seg.uuid}`}
+                className="pointer-events-none absolute top-1/2 h-1.5 -translate-y-1/2 rounded-sm bg-[hsl(var(--primary))]/55 ring-1 ring-[hsl(var(--primary))]/30"
+                style={{
+                  left: `${left}%`,
+                  width: `${Math.max(width, 0.35)}%`,
+                }}
+                aria-hidden
+              />
+            );
+          })
+        : null}
       {hover !== null && hoverAnchor && typeof document !== "undefined"
         ? createPortal(
             <div
@@ -1748,6 +1872,11 @@ function ProgressBar({
                   scrubPreview={scrubPreview}
                 />
               ) : null}
+              {hoverSponsorLabel ? (
+                <span className="max-w-[16rem] truncate rounded-md bg-[hsl(var(--primary))]/90 px-2 py-0.5 text-[11px] font-medium text-white shadow ring-1 ring-white/10">
+                  {hoverSponsorLabel}
+                </span>
+              ) : null}
               {hoverChapterTitle ? (
                 <span className="max-w-[16rem] truncate rounded-md bg-black/85 px-2 py-0.5 text-[11px] font-medium text-white shadow ring-1 ring-white/10">
                   {hoverChapterTitle}
@@ -1761,7 +1890,7 @@ function ProgressBar({
           )
         : null}
       <div
-        className="pointer-events-none absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[hsl(var(--primary))] opacity-0 shadow ring-2 ring-black/40 transition-opacity group-hover/scrub:opacity-100"
+        className="pointer-events-none absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full ot-brand-gradient opacity-0 shadow ring-2 ring-black/40 transition-opacity group-hover/scrub:opacity-100"
         style={{ left: `${pct(current)}%` }}
         aria-hidden
       />
@@ -2057,9 +2186,7 @@ function ShortsQualityPicker({
                   type="button"
                   role="option"
                   aria-selected={
-                    it.idx === -1
-                      ? quality.auto
-                      : !quality.auto && it.selected
+                    it.idx === -1 ? quality.auto : !quality.auto && it.selected
                   }
                   onClick={() => {
                     quality.remote.changeQuality(it.idx);
@@ -2095,7 +2222,7 @@ function ShortsQualityPicker({
 
 /* ------------------------------- Chrome --------------------------------- */
 
-type ChromeProps = {
+type ChromeProps = SponsorBlockChromeProps & {
   adapter: PlayerAdapter;
   shellRef: React.RefObject<HTMLDivElement | null>;
   title: string;
@@ -2116,6 +2243,8 @@ type ChromeProps = {
   onPlayNext: () => void;
   miniMode?: boolean;
   shortsMode?: boolean;
+  miniStartPaused?: boolean;
+  isLive?: boolean;
 };
 
 function PlayerChrome({
@@ -2123,6 +2252,9 @@ function PlayerChrome({
   shellRef,
   title,
   chapters,
+  videoId,
+  sponsorSegments,
+  sponsorBlockPrefs,
   quality,
   audio,
   settingsOpen,
@@ -2139,6 +2271,8 @@ function PlayerChrome({
   onPlayNext,
   miniMode = false,
   shortsMode = false,
+  miniStartPaused = false,
+  isLive = false,
 }: ChromeProps) {
   const [hydrated, setHydrated] = useState(false);
   const { active: fsActive, toggle: toggleFs } = useFullscreenShell(shellRef);
@@ -2153,15 +2287,24 @@ function PlayerChrome({
   } | null>(null);
   const prevPausedRef = useRef<boolean | null>(null);
   const miniAutoplayTriedRef = useRef(false);
+  const miniShouldAutoplay = miniMode && !miniStartPaused;
   /** True while long-press 2× is active: hides chrome, shows a small ×2 hint. */
   const [hold2xUi, setHold2xUi] = useState(false);
+
+  useSponsorBlockAutoSkip({
+    adapter,
+    segments: sponsorSegments,
+    prefs: sponsorBlockPrefs,
+    isScrubbing: scrub !== null,
+    videoId,
+  });
 
   useEffect(() => {
     setHydrated(true);
   }, []);
 
   useEffect(() => {
-    if (!miniMode || shortsMode) return;
+    if (!miniShouldAutoplay || shortsMode) return;
     if (miniAutoplayTriedRef.current) return;
     if (!adapter.canPlay || !adapter.paused) return;
     miniAutoplayTriedRef.current = true;
@@ -2169,7 +2312,13 @@ function PlayerChrome({
       if (adapter.paused) adapter.play();
     }, 0);
     return () => window.clearTimeout(id);
-  }, [adapter.canPlay, adapter.paused, adapter.play, miniMode, shortsMode]);
+  }, [
+    adapter.canPlay,
+    adapter.paused,
+    adapter.play,
+    miniShouldAutoplay,
+    shortsMode,
+  ]);
 
   useEffect(() => {
     const prev = prevPausedRef.current;
@@ -2470,13 +2619,21 @@ function PlayerChrome({
       setShortsQualityOpen(false);
       return;
     }
-    if (miniMode) return;
     adapter.togglePaused();
   };
 
   const level = adapter.muted ? 0 : adapter.volume;
   const levelUi = hydrated ? level : 1;
   const seekPos = scrub ?? adapter.currentTime;
+  const duration = adapter.duration;
+  const liveClockOnly =
+    isLive && (!Number.isFinite(duration) || duration <= 0);
+  const liveWithDvr =
+    isLive &&
+    Number.isFinite(duration) &&
+    duration > LIVE_EDGE_SECONDS;
+  const behindLiveEdge =
+    liveWithDvr && seekPos < duration - LIVE_EDGE_SECONDS;
   const chromeShown = (shortsMode || visible) && !hold2xUi;
   const currentChapterTitle =
     chapters.length > 1
@@ -2488,6 +2645,7 @@ function PlayerChrome({
       {/* Click / dblclick surface (above outlet, below controls) */}
       <button
         type="button"
+        data-tap-surface
         aria-label={adapter.paused ? "Play" : "Pause"}
         onClick={onSurfaceClick}
         onPointerDown={onSurfacePointerDown}
@@ -2495,10 +2653,7 @@ function PlayerChrome({
         onPointerCancel={onSurfacePointerUp}
         onPointerLeave={onSurfacePointerLeave}
         onDoubleClick={shortsMode ? undefined : () => void toggleFs()}
-        className={cn(
-          "absolute inset-0 z-10 cursor-pointer bg-transparent",
-          shortsMode && "pointer-events-none",
-        )}
+        className="absolute inset-0 z-10 cursor-pointer bg-transparent"
       />
 
       {/* Buffering spinner */}
@@ -2616,6 +2771,7 @@ function PlayerChrome({
               duration={adapter.duration}
               buffered={adapter.bufferedEnd}
               chapters={chapters}
+              sponsorSegments={sponsorSegments}
               scrubPreview={scrubPreview ?? null}
               onScrub={(t) => {
                 setScrub(t);
@@ -2627,217 +2783,245 @@ function PlayerChrome({
               }}
             />
             <div className="mt-1 flex items-center gap-1.5 text-white sm:gap-2">
-            <button
-              type="button"
-              onClick={() => adapter.togglePaused()}
-              className="flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-white/15"
-              aria-label={adapter.paused ? "Play" : "Pause"}
-            >
-              {adapter.paused ? (
-                <PlayIcon className="h-6 w-6 pl-0.5" />
-              ) : (
-                <PauseIcon className="h-6 w-6" />
-              )}
-            </button>
-
-            <fieldset
-              className="flex items-center border-0 p-0"
-              onMouseEnter={() => setShowVolPanel(true)}
-              onMouseLeave={() => setShowVolPanel(false)}
-              onFocus={() => setShowVolPanel(true)}
-              onBlur={() => setShowVolPanel(false)}
-            >
-              <legend className="sr-only">Volume</legend>
               <button
                 type="button"
-                onClick={() => adapter.toggleMuted()}
+                onClick={() => adapter.togglePaused()}
                 className="flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-white/15"
-                aria-label={adapter.muted ? "Unmute" : "Mute"}
+                aria-label={adapter.paused ? "Play" : "Pause"}
               >
-                {levelUi < 0.01 ? (
-                  <MuteIcon className="h-6 w-6" />
-                ) : levelUi < 0.5 ? (
-                  <VolLowIcon className="h-6 w-6" />
+                {adapter.paused ? (
+                  <PlayIcon className="h-6 w-6 pl-0.5" />
                 ) : (
-                  <VolHighIcon className="h-6 w-6" />
+                  <PauseIcon className="h-6 w-6" />
                 )}
               </button>
-              <div
-                className={cn(
-                  "ml-0.5 overflow-hidden transition-[width,opacity] duration-200 ease-out",
-                  showVolPanel ? "w-[6.75rem] opacity-100" : "w-0 opacity-0",
-                )}
-              >
-                <VolumeSlider
-                  value={levelUi}
-                  onChange={(v) => adapter.setVolume(v)}
-                />
-              </div>
-            </fieldset>
 
-            <span className="ml-1 flex min-w-0 items-center gap-2 text-xs text-white/90">
-              <span className="font-mono tabular-nums">
-                {formatClock(seekPos)} / {formatClock(adapter.duration)}
+              <fieldset
+                className="flex items-center border-0 p-0"
+                onMouseEnter={() => setShowVolPanel(true)}
+                onMouseLeave={() => setShowVolPanel(false)}
+                onFocus={() => setShowVolPanel(true)}
+                onBlur={() => setShowVolPanel(false)}
+              >
+                <legend className="sr-only">Volume</legend>
+                <button
+                  type="button"
+                  onClick={() => adapter.toggleMuted()}
+                  className="flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-white/15"
+                  aria-label={adapter.muted ? "Unmute" : "Mute"}
+                >
+                  {levelUi < 0.01 ? (
+                    <MuteIcon className="h-6 w-6" />
+                  ) : levelUi < 0.5 ? (
+                    <VolLowIcon className="h-6 w-6" />
+                  ) : (
+                    <VolHighIcon className="h-6 w-6" />
+                  )}
+                </button>
+                <div
+                  className={cn(
+                    "ml-0.5 overflow-hidden transition-[width,opacity] duration-200 ease-out",
+                    showVolPanel ? "w-[6.75rem] opacity-100" : "w-0 opacity-0",
+                  )}
+                >
+                  <VolumeSlider
+                    value={levelUi}
+                    onChange={(v) => adapter.setVolume(v)}
+                  />
+                </div>
+              </fieldset>
+
+              <span className="ml-1 flex min-w-0 items-center gap-2 text-xs text-white/90">
+                <span className="flex items-center gap-1.5 font-mono tabular-nums">
+                  {liveClockOnly ? (
+                    <>
+                      <span>{formatClock(seekPos)}</span>
+                      <span className="rounded bg-[hsl(var(--primary))] px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-white">
+                        LIVE
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span>
+                        {formatClock(seekPos)} / {formatClock(duration)}
+                      </span>
+                      {isLive ? (
+                        <span className="rounded bg-[hsl(var(--primary))] px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-white">
+                          LIVE
+                        </span>
+                      ) : null}
+                    </>
+                  )}
+                </span>
+                {currentChapterTitle ? (
+                  <>
+                    <span aria-hidden className="text-white/40">
+                      ·
+                    </span>
+                    <span
+                      className="line-clamp-1 max-w-[14rem] truncate text-white/90 sm:max-w-[22rem]"
+                      title={currentChapterTitle}
+                    >
+                      {currentChapterTitle}
+                    </span>
+                  </>
+                ) : null}
               </span>
-              {currentChapterTitle ? (
+
+              {behindLiveEdge ? (
+                <button
+                  type="button"
+                  onClick={() => adapter.seek(duration)}
+                  className="rounded-md bg-[hsl(var(--primary))] px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-white transition hover:opacity-90"
+                >
+                  Go to live
+                </button>
+              ) : null}
+
+              <span className="ml-auto" />
+
+              {miniMode ? (
+                <span className="rounded bg-black/35 px-2 py-0.5 text-[10px] uppercase tracking-wide text-white/80">
+                  Mini
+                </span>
+              ) : null}
+
+              {nextUp && !miniMode && !shortsMode ? (
                 <>
-                  <span aria-hidden className="text-white/40">
-                    ·
-                  </span>
-                  <span
-                    className="line-clamp-1 max-w-[14rem] truncate text-white/90 sm:max-w-[22rem]"
-                    title={currentChapterTitle}
+                  <button
+                    type="button"
+                    onClick={onToggleAutoplayNext}
+                    className={cn(
+                      "rounded-md px-2 py-1 text-[11px] font-medium tracking-wide transition",
+                      autoplayNext
+                        ? "ot-brand-gradient text-white"
+                        : "bg-white/10 text-white/90 hover:bg-white/15",
+                    )}
+                    aria-pressed={autoplayNext}
+                    title="Autoplay next"
                   >
-                    {currentChapterTitle}
-                  </span>
+                    Autoplay
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onPlayNext}
+                    className="flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-white/15"
+                    aria-label="Play next video"
+                    title={nextUp.title}
+                  >
+                    <NextIcon className="h-5 w-5" />
+                  </button>
                 </>
               ) : null}
-            </span>
 
-            <span className="ml-auto" />
+              {queue.length > 0 && !miniMode && !shortsMode ? (
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setQueueOpen((v) => !v)}
+                    className={cn(
+                      "rounded-md px-2 py-1 text-[11px] font-medium tracking-wide transition",
+                      queueOpen
+                        ? "bg-white/20 text-white"
+                        : "bg-white/10 text-white/90 hover:bg-white/15",
+                    )}
+                    aria-expanded={queueOpen}
+                  >
+                    Queue ({queue.length})
+                  </button>
+                  {queueOpen ? (
+                    <div className="absolute bottom-11 right-0 z-50 w-72 max-w-[80vw] rounded-lg border border-white/10 bg-zinc-950/95 p-2 shadow-xl backdrop-blur">
+                      <p className="px-2 pb-1 text-[11px] uppercase tracking-wide text-zinc-400">
+                        Up next
+                      </p>
+                      <ul className="max-h-64 overflow-auto">
+                        {queue.map((item, idx) => (
+                          <li key={`${item.href}-${idx}`}>
+                            <Link
+                              href={item.href}
+                              className="line-clamp-2 block rounded-md px-2 py-1.5 text-xs text-zinc-100 hover:bg-white/10"
+                              onClick={() => setQueueOpen(false)}
+                            >
+                              {idx + 1}. {item.title}
+                            </Link>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
 
-            {miniMode ? (
-              <span className="rounded bg-black/35 px-2 py-0.5 text-[10px] uppercase tracking-wide text-white/80">
-                Mini
-              </span>
-            ) : null}
+              {!miniMode && !shortsMode ? (
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => onSettingsOpenChange(!settingsOpen)}
+                    className={cn(
+                      "flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-white/15",
+                      settingsOpen ? "bg-white/15" : "",
+                    )}
+                    aria-label="Settings"
+                    aria-expanded={settingsOpen}
+                  >
+                    <GearIcon className="h-5 w-5" />
+                  </button>
+                </div>
+              ) : null}
 
-            {nextUp && !miniMode && !shortsMode ? (
-              <>
+              {!miniMode && !shortsMode ? (
                 <button
                   type="button"
-                  onClick={onToggleAutoplayNext}
-                  className={cn(
-                    "rounded-md px-2 py-1 text-[11px] font-medium tracking-wide transition",
-                    autoplayNext
-                      ? "bg-[hsl(var(--primary))] text-white"
-                      : "bg-white/10 text-white/90 hover:bg-white/15",
-                  )}
-                  aria-pressed={autoplayNext}
-                  title="Autoplay next"
-                >
-                  Autoplay
-                </button>
-                <button
-                  type="button"
-                  onClick={onPlayNext}
-                  className="flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-white/15"
-                  aria-label="Play next video"
-                  title={nextUp.title}
-                >
-                  <NextIcon className="h-5 w-5" />
-                </button>
-              </>
-            ) : null}
-
-            {queue.length > 0 && !miniMode && !shortsMode ? (
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setQueueOpen((v) => !v)}
-                  className={cn(
-                    "rounded-md px-2 py-1 text-[11px] font-medium tracking-wide transition",
-                    queueOpen
-                      ? "bg-white/20 text-white"
-                      : "bg-white/10 text-white/90 hover:bg-white/15",
-                  )}
-                  aria-expanded={queueOpen}
-                >
-                  Queue ({queue.length})
-                </button>
-                {queueOpen ? (
-                  <div className="absolute bottom-11 right-0 z-50 w-72 max-w-[80vw] rounded-lg border border-white/10 bg-zinc-950/95 p-2 shadow-xl backdrop-blur">
-                    <p className="px-2 pb-1 text-[11px] uppercase tracking-wide text-zinc-400">
-                      Up next
-                    </p>
-                    <ul className="max-h-64 overflow-auto">
-                      {queue.map((item, idx) => (
-                        <li key={`${item.href}-${idx}`}>
-                          <Link
-                            href={item.href}
-                            className="line-clamp-2 block rounded-md px-2 py-1.5 text-xs text-zinc-100 hover:bg-white/10"
-                            onClick={() => setQueueOpen(false)}
-                          >
-                            {idx + 1}. {item.title}
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-
-            {!miniMode && !shortsMode ? (
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => onSettingsOpenChange(!settingsOpen)}
+                  onClick={() => onToggleCinema()}
                   className={cn(
                     "flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-white/15",
-                    settingsOpen ? "bg-white/15" : "",
+                    cinemaMode ? "bg-white/15 text-white" : "",
                   )}
-                  aria-label="Settings"
-                  aria-expanded={settingsOpen}
+                  aria-label={
+                    cinemaMode ? "Exit cinema mode" : "Enter cinema mode"
+                  }
+                  aria-pressed={cinemaMode}
+                  title="Cinema (C)"
                 >
-                  <GearIcon className="h-5 w-5" />
+                  <CinemaIcon className="h-5 w-5" />
                 </button>
-              </div>
-            ) : null}
+              ) : null}
 
-            {!miniMode && !shortsMode ? (
-              <button
-                type="button"
-                onClick={() => onToggleCinema()}
-                className={cn(
-                  "flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-white/15",
-                  cinemaMode ? "bg-white/15 text-white" : "",
-                )}
-                aria-label={
-                  cinemaMode ? "Exit cinema mode" : "Enter cinema mode"
-                }
-                aria-pressed={cinemaMode}
-                title="Cinema (C)"
-              >
-                <CinemaIcon className="h-5 w-5" />
-              </button>
-            ) : null}
+              {!miniMode && !shortsMode ? (
+                <button
+                  type="button"
+                  onClick={() => void toggleFs()}
+                  className="flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-white/15"
+                  aria-label={fsActive ? "Exit fullscreen" : "Enter fullscreen"}
+                >
+                  {fsActive ? (
+                    <FsExitIcon className="h-6 w-6" />
+                  ) : (
+                    <FsEnterIcon className="h-6 w-6" />
+                  )}
+                </button>
+              ) : null}
 
-            {!miniMode && !shortsMode ? (
-              <button
-                type="button"
-                onClick={() => void toggleFs()}
-                className="flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-white/15"
-                aria-label={fsActive ? "Exit fullscreen" : "Enter fullscreen"}
-              >
-                {fsActive ? (
-                  <FsExitIcon className="h-6 w-6" />
-                ) : (
-                  <FsEnterIcon className="h-6 w-6" />
-                )}
-              </button>
-            ) : null}
-
-            {adapter.canPictureInPicture ? (
-              <button
-                type="button"
-                onClick={() => adapter.togglePictureInPicture()}
-                className={cn(
-                  "flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-white/15",
-                  adapter.pictureInPicture ? "bg-white/15" : "",
-                )}
-                aria-label={
-                  adapter.pictureInPicture
-                    ? "Exit picture in picture"
-                    : "Enter picture in picture"
-                }
-              >
-                <PipIcon className="h-5 w-5" />
-              </button>
-            ) : null}
+              {adapter.canPictureInPicture ? (
+                <button
+                  type="button"
+                  onClick={() => adapter.togglePictureInPicture()}
+                  className={cn(
+                    "flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-white/15",
+                    adapter.pictureInPicture ? "bg-white/15" : "",
+                  )}
+                  aria-label={
+                    adapter.pictureInPicture
+                      ? "Exit picture in picture"
+                      : "Enter picture in picture"
+                  }
+                >
+                  <PipIcon className="h-5 w-5" />
+                </button>
+              ) : null}
+            </div>
           </div>
         </div>
-      </div>
       )}
 
       {settingsOpen && !shortsMode ? (
@@ -2871,7 +3055,7 @@ function PlayerChrome({
 
 /* ------------------------- Vidstack player block ------------------------- */
 
-type VidstackBlockProps = {
+type VidstackBlockProps = SponsorBlockChromeProps & {
   src: string;
   title: string;
   poster?: string;
@@ -2895,6 +3079,10 @@ type VidstackBlockProps = {
   onPlayNext: () => void;
   miniMode?: boolean;
   shortsMode?: boolean;
+  miniStartPaused?: boolean;
+  restoredVolume?: number;
+  onVideoIntrinsics?: (width: number, height: number) => void;
+  isLive?: boolean;
 };
 
 /**
@@ -2913,6 +3101,9 @@ function VidstackPlayerChrome({
   settingsOpen,
   onSettingsOpenChange,
   chapters,
+  videoId,
+  sponsorSegments,
+  sponsorBlockPrefs,
   startAtSeconds,
   cinemaMode,
   onExitCinema,
@@ -2925,6 +3116,9 @@ function VidstackPlayerChrome({
   onPlayNext,
   miniMode = false,
   shortsMode = false,
+  miniStartPaused = false,
+  restoredVolume,
+  isLive = false,
 }: VidstackBlockProps & {
   playerRef: React.RefObject<MediaPlayerElement | null>;
   shellRef: React.RefObject<HTMLDivElement | null>;
@@ -2941,6 +3135,10 @@ function VidstackPlayerChrome({
   const hlsAudio = useHlsAudioModel(playerRef);
   const initialSeekAppliedRef = useRef(false);
   const initialMediaPrefsAppliedRef = useRef(false);
+  const miniAutoplayDoneRef = useRef(false);
+  const miniShouldAutoplay = miniMode && !miniStartPaused;
+
+  useMiniPlayerMediaBootstrap(adapter, miniMode, shortsMode, restoredVolume);
 
   useEffect(() => {
     initialSeekAppliedRef.current = false;
@@ -2964,13 +3162,29 @@ function VidstackPlayerChrome({
   }, [adapter.canPlay, remote, startAtSeconds]);
 
   useEffect(() => {
-    if (!shortsMode && !miniMode) return;
+    if (shortsMode) {
+      if (!adapter.canPlay || !adapter.paused) return;
+      const id = window.setTimeout(() => {
+        if (adapter.paused) remote.play();
+      }, 0);
+      return () => window.clearTimeout(id);
+    }
+    if (!miniShouldAutoplay) return;
+    if (miniAutoplayDoneRef.current) return;
     if (!adapter.canPlay || !adapter.paused) return;
+    miniAutoplayDoneRef.current = true;
     const id = window.setTimeout(() => {
       if (adapter.paused) remote.play();
     }, 0);
     return () => window.clearTimeout(id);
-  }, [adapter.canPlay, adapter.paused, remote, miniMode, shortsMode, reactKey]);
+  }, [
+    adapter.canPlay,
+    adapter.paused,
+    miniShouldAutoplay,
+    remote,
+    shortsMode,
+    reactKey,
+  ]);
 
   useEffect(() => {
     if (!persistStore.canPlay) return;
@@ -3002,6 +3216,10 @@ function VidstackPlayerChrome({
       }, 0);
       return () => window.clearTimeout(id);
     }
+    if (miniMode) {
+      initialMediaPrefsAppliedRef.current = true;
+      return;
+    }
     const vol =
       typeof mediaPrefs.volume === "number" &&
       Number.isFinite(mediaPrefs.volume)
@@ -3030,6 +3248,9 @@ function VidstackPlayerChrome({
       shellRef={shellRef}
       title={title}
       chapters={chapters}
+      videoId={videoId}
+      sponsorSegments={sponsorSegments}
+      sponsorBlockPrefs={sponsorBlockPrefs}
       quality={quality}
       audio={hlsAudio}
       settingsOpen={settingsOpen}
@@ -3038,7 +3259,9 @@ function VidstackPlayerChrome({
       onExitCinema={onExitCinema}
       onToggleCinema={onToggleCinema}
       scrubPreview={
-        scrubPreview ?? { streamSrc: src, ...(poster ? { poster } : {}) }
+        isLive
+          ? null
+          : (scrubPreview ?? { streamSrc: src, ...(poster ? { poster } : {}) })
       }
       nextUp={nextUp}
       queue={queue}
@@ -3047,11 +3270,17 @@ function VidstackPlayerChrome({
       onPlayNext={onPlayNext}
       miniMode={miniMode}
       shortsMode={shortsMode}
+      miniStartPaused={miniStartPaused}
+      isLive={isLive}
     />
   );
 }
 
 function VidstackBlock(props: VidstackBlockProps) {
+  if (props.isLive) {
+    return <LiveHlsDirectBlock {...props} />;
+  }
+
   const {
     src,
     title,
@@ -3062,7 +3291,9 @@ function VidstackBlock(props: VidstackBlockProps) {
     cinemaMode,
     shortsMode = false,
     miniMode = false,
+    miniStartPaused = false,
   } = props;
+  const miniShouldAutoplay = miniMode && !miniStartPaused;
   const playerRef = useRef<MediaPlayerElement | null>(null);
   const shellRef = useRef<HTMLDivElement>(null);
   const [chromeReady, setChromeReady] = useState(false);
@@ -3078,6 +3309,23 @@ function VidstackBlock(props: VidstackBlockProps) {
     return () => cancelAnimationFrame(id);
   }, [reactKey]);
 
+  const onVideoIntrinsics = props.onVideoIntrinsics;
+  useEffect(() => {
+    if (!onVideoIntrinsics) return;
+    const player = playerRef.current;
+    if (!player) return;
+    const video = player.querySelector("video");
+    if (!video) return;
+    const report = () => {
+      if (video.videoWidth > 0 && video.videoHeight > 0) {
+        onVideoIntrinsics(video.videoWidth, video.videoHeight);
+      }
+    };
+    video.addEventListener("loadedmetadata", report);
+    report();
+    return () => video.removeEventListener("loadedmetadata", report);
+  }, [onVideoIntrinsics, reactKey]);
+
   return (
     <div
       ref={shellRef}
@@ -3085,7 +3333,7 @@ function VidstackBlock(props: VidstackBlockProps) {
       className={cn(
         "group/player relative overflow-hidden bg-black focus:outline-none",
         shortsMode
-          ? "pointer-events-none absolute inset-0 h-full w-full [&_[data-controls]]:pointer-events-auto [&_video]:pointer-events-none"
+          ? SHORTS_SHELL_POINTER
           : cinemaMode
             ? "aspect-video w-full max-h-[min(88vh,92dvh)] rounded-lg shadow-xl ring-1 ring-white/10"
             : "aspect-video w-full",
@@ -3099,10 +3347,15 @@ function VidstackBlock(props: VidstackBlockProps) {
         poster={poster}
         controls={false}
         load="eager"
-        preferNativeHLS={shortsMode}
+        preferNativeHLS={false}
         playsInline
-        autoPlay={shortsMode || miniMode}
+        autoPlay={shortsMode || miniShouldAutoplay}
         muted={shortsMode}
+        onProviderChange={(event) =>
+          applyHlsSameOriginToVidstackProvider(
+            (event as CustomEvent<MediaProvider | null>).detail,
+          )
+        }
         onError={emitPlaybackError}
         onEnded={onEnded}
         className={cn(
@@ -3112,6 +3365,7 @@ function VidstackBlock(props: VidstackBlockProps) {
             : PLAYER_FILL,
         )}
       >
+        <HlsSameOriginBinder />
         <MediaOutlet />
       </MediaPlayer>
       {chromeReady ? (
@@ -3125,13 +3379,152 @@ function VidstackBlock(props: VidstackBlockProps) {
   );
 }
 
+/* --------------------------- Live HLS (hls.js) block --------------------------- */
+
+/**
+ * Live streams on Firefox may use native `<video>` HLS when Vidstack's MSE check
+ * fails, which skips our segment proxy. Force hls.js with same-origin loaders.
+ */
+function LiveHlsDirectBlock({
+  src,
+  poster,
+  title,
+  reactKey,
+  settingsOpen,
+  onSettingsOpenChange,
+  chapters,
+  videoId,
+  sponsorSegments,
+  sponsorBlockPrefs,
+  cinemaMode,
+  onExitCinema,
+  onToggleCinema,
+  onPlaybackError,
+  onEnded,
+  nextUp,
+  queue,
+  autoplayNext,
+  onToggleAutoplayNext,
+  onPlayNext,
+  restoredVolume,
+  onVideoIntrinsics,
+}: VidstackBlockProps) {
+  const shellRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [volume, setVolume] = useState(() => readPlayerMediaPrefs().volume);
+
+  const emitPlaybackError = useCallback(() => {
+    if (!onPlaybackError) return;
+    window.setTimeout(() => onPlaybackError(), 0);
+  }, [onPlaybackError]);
+
+  useLiveHlsPlayback(videoRef, src, reactKey, emitPlaybackError);
+
+  const adapter = useNativeAdapter({
+    videoRef,
+    audioRef,
+    externalVolume: volume,
+    setExternalVolume: setVolume,
+  });
+
+  useReportVideoIntrinsics(videoRef, onVideoIntrinsics);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => writePlayerVolumeOnly(volume), 200);
+    return () => window.clearTimeout(t);
+  }, [volume]);
+
+  useEffect(() => {
+    if (typeof restoredVolume !== "number" || !Number.isFinite(restoredVolume)) {
+      return;
+    }
+    setVolume(restoredVolume);
+  }, [restoredVolume]);
+
+  useEffect(() => {
+    if (!adapter.canPlay || adapter.paused) return;
+    void adapter.play();
+  }, [adapter.canPlay, adapter.paused, reactKey]);
+
+  return (
+    <div
+      ref={shellRef}
+      tabIndex={-1}
+      className={cn(
+        "group/player relative overflow-hidden bg-black focus:outline-none",
+        cinemaMode
+          ? "aspect-video w-full max-h-[min(88vh,92dvh)] rounded-lg shadow-xl ring-1 ring-white/10"
+          : "aspect-video w-full",
+      )}
+    >
+      <video
+        key={reactKey}
+        ref={videoRef}
+        poster={poster}
+        playsInline
+        preload="auto"
+        onError={emitPlaybackError}
+        onEnded={onEnded}
+        className="absolute inset-0 h-full w-full object-contain"
+      />
+      <PlayerChrome
+        adapter={adapter}
+        shellRef={shellRef}
+        title={title}
+        chapters={chapters}
+        videoId={videoId}
+        sponsorSegments={sponsorSegments}
+        sponsorBlockPrefs={sponsorBlockPrefs}
+        quality={{ kind: "none" }}
+        audio={{ kind: "none" }}
+        settingsOpen={settingsOpen}
+        onSettingsOpenChange={onSettingsOpenChange}
+        cinemaMode={cinemaMode}
+        onExitCinema={onExitCinema}
+        onToggleCinema={onToggleCinema}
+        scrubPreview={null}
+        nextUp={nextUp}
+        queue={queue}
+        autoplayNext={autoplayNext}
+        onToggleAutoplayNext={onToggleAutoplayNext}
+        onPlayNext={onPlayNext}
+        isLive
+      />
+    </div>
+  );
+}
+
 /* --------------------------- Native muxed block -------------------------- */
 
-/** Muted autoplay for Shorts on native <video> (muxed + split). */
+/** Once when mini player is ready: volume + mute from user prefs (via adapter, not video.muted). */
+function useMiniPlayerMediaBootstrap(
+  adapter: PlayerAdapter,
+  miniMode: boolean,
+  shortsMode: boolean,
+  restoredVolume?: number,
+) {
+  const appliedRef = useRef(false);
+  useEffect(() => {
+    if (!miniMode || shortsMode) return;
+    if (!adapter.canPlay || appliedRef.current) return;
+    appliedRef.current = true;
+    const prefs = readPlayerMediaPrefs();
+    const vol =
+      typeof restoredVolume === "number" && Number.isFinite(restoredVolume)
+        ? restoredVolume
+        : prefs.volume;
+    adapter.setVolume(vol);
+    if (prefs.muted !== adapter.muted) adapter.toggleMuted();
+  }, [adapter, adapter.canPlay, miniMode, restoredVolume, shortsMode]);
+}
+
+/** Autoplay for Shorts / mini on native <video> (muxed + split). */
 function useShortsNativeAutoplay(
   videoRef: React.RefObject<HTMLVideoElement | null>,
   enabled: boolean,
   streamKey: string,
+  muteForAutoplayPolicy = false,
 ) {
   useEffect(() => {
     if (!enabled) return;
@@ -3140,6 +3533,7 @@ function useShortsNativeAutoplay(
 
     const tryPlay = () => {
       if (!el.paused) return;
+      if (muteForAutoplayPolicy) el.muted = true;
       void el.play().catch(() => {
         /* autoplay policy */
       });
@@ -3152,7 +3546,7 @@ function useShortsNativeAutoplay(
       el.removeEventListener("loadeddata", tryPlay);
       el.removeEventListener("canplay", tryPlay);
     };
-  }, [enabled, streamKey, videoRef]);
+  }, [enabled, muteForAutoplayPolicy, streamKey, videoRef]);
 }
 
 function NativeMuxedBlock({
@@ -3167,6 +3561,9 @@ function NativeMuxedBlock({
   settingsOpen,
   onSettingsOpenChange,
   chapters,
+  videoId,
+  sponsorSegments,
+  sponsorBlockPrefs,
   startAtSeconds,
   cinemaMode,
   onExitCinema,
@@ -3180,8 +3577,13 @@ function NativeMuxedBlock({
   onPlayNext,
   miniMode = false,
   shortsMode = false,
+  miniStartPaused = false,
+  restoredVolume,
+  restoredMuted,
   scrubPreview,
-}: {
+  onVideoIntrinsics,
+  isLive = false,
+}: SponsorBlockChromeProps & {
   src: string;
   poster?: string;
   title: string;
@@ -3206,12 +3608,18 @@ function NativeMuxedBlock({
   onPlayNext: () => void;
   miniMode?: boolean;
   shortsMode?: boolean;
+  miniStartPaused?: boolean;
+  restoredVolume?: number;
+  restoredMuted?: boolean;
   scrubPreview?: ScrubPreviewConfig | null;
+  onVideoIntrinsics?: (width: number, height: number) => void;
+  isLive?: boolean;
 }) {
   const shellRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const initialSeekAppliedRef = useRef(false);
+  const miniShouldAutoplay = miniMode && !miniStartPaused;
   const emitPlaybackError = useCallback(() => {
     if (!onPlaybackError) return;
     window.setTimeout(() => onPlaybackError(), 0);
@@ -3228,7 +3636,15 @@ function NativeMuxedBlock({
     setExternalVolume: setVolume,
   });
 
-  useShortsNativeAutoplay(videoRef, shortsMode, reactKey);
+  useReportVideoIntrinsics(videoRef, onVideoIntrinsics);
+
+  useShortsNativeAutoplay(
+    videoRef,
+    shortsMode || miniShouldAutoplay,
+    reactKey,
+    miniShouldAutoplay,
+  );
+  useMiniPlayerMediaBootstrap(adapter, miniMode, shortsMode, restoredVolume);
 
   useEffect(() => {
     if (initialSeekAppliedRef.current) return;
@@ -3259,7 +3675,7 @@ function NativeMuxedBlock({
       className={cn(
         "group/player relative overflow-hidden bg-black focus:outline-none",
         shortsMode
-          ? "pointer-events-none absolute inset-0 h-full w-full [&_[data-controls]]:pointer-events-auto [&_video]:pointer-events-none"
+          ? SHORTS_SHELL_POINTER
           : cinemaMode
             ? "aspect-video w-full max-h-[min(88vh,92dvh)] rounded-lg shadow-xl ring-1 ring-white/10"
             : "aspect-video w-full",
@@ -3272,8 +3688,8 @@ function NativeMuxedBlock({
         poster={poster}
         playsInline
         preload="auto"
-        autoPlay={shortsMode || miniMode}
-        muted={shortsMode || miniMode}
+        autoPlay={shortsMode || miniShouldAutoplay}
+        muted={shortsMode}
         onError={emitPlaybackError}
         onEnded={onEnded}
         className={cn(
@@ -3287,6 +3703,9 @@ function NativeMuxedBlock({
         shellRef={shellRef}
         title={title}
         chapters={chapters}
+        videoId={videoId}
+        sponsorSegments={sponsorSegments}
+        sponsorBlockPrefs={sponsorBlockPrefs}
         quality={quality}
         audio={{ kind: "none" }}
         settingsOpen={settingsOpen}
@@ -3295,7 +3714,9 @@ function NativeMuxedBlock({
         onExitCinema={onExitCinema}
         onToggleCinema={onToggleCinema}
         scrubPreview={
-          scrubPreview ?? { streamSrc: src, ...(poster ? { poster } : {}) }
+          isLive
+            ? null
+            : (scrubPreview ?? { streamSrc: src, ...(poster ? { poster } : {}) })
         }
         nextUp={nextUp}
         queue={queue}
@@ -3304,6 +3725,8 @@ function NativeMuxedBlock({
         onPlayNext={onPlayNext}
         miniMode={miniMode}
         shortsMode={shortsMode}
+        miniStartPaused={miniStartPaused}
+        isLive={isLive}
       />
     </div>
   );
@@ -3324,6 +3747,9 @@ function SplitBlock({
   settingsOpen,
   onSettingsOpenChange,
   chapters,
+  videoId,
+  sponsorSegments,
+  sponsorBlockPrefs,
   startAtSeconds,
   cinemaMode,
   onExitCinema,
@@ -3337,8 +3763,13 @@ function SplitBlock({
   onPlayNext,
   miniMode = false,
   shortsMode = false,
+  miniStartPaused = false,
+  restoredVolume,
+  restoredMuted,
   scrubPreview,
-}: {
+  onVideoIntrinsics,
+  isLive = false,
+}: SponsorBlockChromeProps & {
   video: string;
   audioTracks: { label: string; src: string }[];
   /** Initial / reset index for the language picker (original when known). */
@@ -3365,11 +3796,17 @@ function SplitBlock({
   onPlayNext: () => void;
   miniMode?: boolean;
   shortsMode?: boolean;
+  miniStartPaused?: boolean;
+  restoredVolume?: number;
+  restoredMuted?: boolean;
   scrubPreview?: ScrubPreviewConfig | null;
+  onVideoIntrinsics?: (width: number, height: number) => void;
+  isLive?: boolean;
 }) {
   const shellRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const miniShouldAutoplay = miniMode && !miniStartPaused;
   const safeDefaultIdx = Math.min(
     Math.max(0, defaultAudioIndex),
     Math.max(0, audioTracks.length - 1),
@@ -3594,6 +4031,8 @@ function SplitBlock({
     setExternalVolume: setVolume,
   });
 
+  useReportVideoIntrinsics(videoRef, onVideoIntrinsics);
+
   useEffect(() => {
     if (initialSeekAppliedRef.current) return;
     if (!adapter.canPlay) return;
@@ -3608,7 +4047,13 @@ function SplitBlock({
     initialSeekAppliedRef.current = true;
   }, [adapter, startAtSeconds]);
 
-  useShortsNativeAutoplay(videoRef, shortsMode, video);
+  useShortsNativeAutoplay(
+    videoRef,
+    shortsMode || miniShouldAutoplay,
+    video,
+    miniShouldAutoplay,
+  );
+  useMiniPlayerMediaBootstrap(adapter, miniMode, shortsMode, restoredVolume);
 
   useEffect(() => {
     const a = audioRef.current;
@@ -3675,7 +4120,7 @@ function SplitBlock({
       className={cn(
         "group/player relative overflow-hidden bg-black focus:outline-none",
         shortsMode
-          ? "pointer-events-none h-full w-full [&_[data-controls]]:pointer-events-auto [&_video]:pointer-events-none"
+          ? SHORTS_SHELL_POINTER
           : cinemaMode
             ? "aspect-video w-full max-h-[min(88vh,92dvh)] rounded-lg shadow-xl ring-1 ring-white/10"
             : "aspect-video w-full",
@@ -3691,10 +4136,7 @@ function SplitBlock({
         autoPlay={shortsMode}
         onError={emitPlaybackError}
         onEnded={onEnded}
-        className={cn(
-          "absolute inset-0 h-full w-full",
-          "object-contain",
-        )}
+        className={cn("absolute inset-0 h-full w-full", "object-contain")}
       />
       {/* biome-ignore lint/a11y/useMediaCaption: companion audio, no VTT */}
       <audio
@@ -3710,6 +4152,9 @@ function SplitBlock({
         shellRef={shellRef}
         title={title}
         chapters={chapters}
+        videoId={videoId}
+        sponsorSegments={sponsorSegments}
+        sponsorBlockPrefs={sponsorBlockPrefs}
         quality={quality}
         audio={audioModel}
         settingsOpen={settingsOpen}
@@ -3718,10 +4163,12 @@ function SplitBlock({
         onExitCinema={onExitCinema}
         onToggleCinema={onToggleCinema}
         scrubPreview={
-          scrubPreview ?? {
-            streamSrc: video,
-            ...(poster ? { poster } : {}),
-          }
+          isLive
+            ? null
+            : (scrubPreview ?? {
+                streamSrc: video,
+                ...(poster ? { poster } : {}),
+              })
         }
         nextUp={nextUp}
         queue={queue}
@@ -3730,6 +4177,8 @@ function SplitBlock({
         onPlayNext={onPlayNext}
         miniMode={miniMode}
         shortsMode={shortsMode}
+        miniStartPaused={miniStartPaused}
+        isLive={isLive}
       />
     </div>
   );
@@ -3750,29 +4199,64 @@ export function VideoPlayer({
   miniMode = false,
   shortsMode = false,
   onEnded: onEndedExternal,
+  onVideoIntrinsics,
   defaultPlaybackQuality: defaultPlaybackQualityProp,
+  persistMiniSnapshot = false,
+  initialQualityIndex: initialQualityIndexProp,
+  restoredVolume,
+  restoredMuted,
+  miniStartPaused = false,
+  sponsorBlockPrefs: sponsorBlockPrefsProp,
+  isLive = false,
+  playbackSourceUsed,
 }: VideoPlayerProps) {
+  const playerMediaRootRef = useRef<HTMLDivElement>(null);
   const scrubFrames = useScrubFramePreview({
     videoId,
-    durationSeconds,
-    storyboard,
-    scrubPreviewStreamSrc,
+    durationSeconds: isLive ? undefined : durationSeconds,
+    storyboard: isLive ? undefined : storyboard,
+    scrubPreviewStreamSrc: isLive ? undefined : scrubPreviewStreamSrc,
   });
   const buildScrubPreview = useCallback(
-    (streamSrc: string): ScrubPreviewConfig =>
-      mergeScrubPreview(
+    (streamSrc: string): ScrubPreviewConfig | null => {
+      if (isLive) return null;
+      return mergeScrubPreview(
         scrubPreviewStreamSrc ?? streamSrc,
         poster,
         scrubFrames.primeFrames,
         scrubFrames.frameAt,
-      ),
+      );
+    },
     [
+      isLive,
       scrubPreviewStreamSrc,
       poster,
       scrubFrames.primeFrames,
       scrubFrames.frameAt,
     ],
   );
+  const { segments: sponsorSegments, prefs: sponsorBlockPrefs } =
+    useSponsorBlockSegments({
+      videoId,
+      durationSeconds,
+      enabled: !shortsMode && !isLive,
+      prefs: sponsorBlockPrefsProp,
+    });
+  const sponsorChromeProps: SponsorBlockChromeProps = shortsMode
+    ? {
+        videoId,
+        sponsorSegments: [],
+        sponsorBlockPrefs: {
+          enabled: false,
+          autoSkip: false,
+          categories: [],
+        },
+      }
+    : {
+        videoId,
+        sponsorSegments,
+        sponsorBlockPrefs,
+      };
   const pathname = usePathname();
   const router = useRouter();
   const watchCinema = useWatchCinema();
@@ -3799,9 +4283,19 @@ export function VideoPlayer({
     (typeof window === "undefined"
       ? DEFAULT_PLAYBACK_QUALITY
       : readDefaultPlaybackQuality());
-  const [qualityIndex, setQualityIndex] = useState(() =>
-    initialQualityIndexForPayload(effectivePayload, resolvedDefaultQuality),
-  );
+  const [qualityIndex, setQualityIndex] = useState(() => {
+    if (
+      typeof initialQualityIndexProp === "number" &&
+      Number.isFinite(initialQualityIndexProp) &&
+      initialQualityIndexProp >= 0
+    ) {
+      return Math.floor(initialQualityIndexProp);
+    }
+    return initialQualityIndexForPayload(
+      effectivePayload,
+      resolvedDefaultQuality,
+    );
+  });
   const variantFallbackAttemptsRef = useRef(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const progressiveQualityMenu = useMemo(
@@ -3811,9 +4305,12 @@ export function VideoPlayer({
   const [resumeSeekSeconds, setResumeSeekSeconds] = useState<
     number | undefined
   >(undefined);
-  const [splitVolume, setSplitVolume] = useState(
-    () => readPlayerMediaPrefs().volume,
-  );
+  const [splitVolume, setSplitVolume] = useState(() => {
+    if (typeof restoredVolume === "number" && Number.isFinite(restoredVolume)) {
+      return Math.min(1, Math.max(0, restoredVolume));
+    }
+    return readPlayerMediaPrefs().volume;
+  });
   const [queue, setQueue] = useState<WatchQueueItem[]>([]);
   const [autoplayNext, setAutoplayNext] = useState(true);
   const [nextCountdown, setNextCountdown] = useState<number | null>(null);
@@ -3896,14 +4393,24 @@ export function VideoPlayer({
   );
 
   useEffect(() => {
-    const pref =
-      defaultPlaybackQualityProp ??
-      readDefaultPlaybackQuality();
+    if (
+      miniMode &&
+      typeof initialQualityIndexProp === "number" &&
+      Number.isFinite(initialQualityIndexProp)
+    ) {
+      return;
+    }
+    const pref = defaultPlaybackQualityProp ?? readDefaultPlaybackQuality();
     setQualityIndex(initialQualityIndexForPayload(effectivePayload, pref));
     setResumeSeekSeconds(undefined);
     setSettingsOpen(false);
     variantFallbackAttemptsRef.current = 0;
-  }, [effectivePayload, defaultPlaybackQualityProp]);
+  }, [
+    effectivePayload,
+    defaultPlaybackQualityProp,
+    initialQualityIndexProp,
+    miniMode,
+  ]);
 
   useEffect(() => {
     if (!progressiveMobileSafe || progressiveMobileSafe.length === 0) return;
@@ -3929,28 +4436,16 @@ export function VideoPlayer({
 
   const effectiveStartAt =
     typeof resumeSeekSeconds === "number" ? resumeSeekSeconds : startAtSeconds;
-  const miniPayload: VideoPlayerPayload | null =
-    active.kind === "hls"
-      ? { mode: "hls", src: active.src }
-      : active.kind === "variant"
-        ? active.v.t === "muxed"
-          ? { mode: "progressive", variants: [active.v] }
-          : {
-              mode: "progressive",
-              variants: [
-                {
-                  t: "split",
-                  label: active.v.label,
-                  video: active.v.video,
-                  audio: active.v.audio,
-                  audioTracks: active.v.audioTracks,
-                  defaultAudioIndex: active.v.defaultAudioIndex,
-                },
-              ],
-            }
-        : null;
 
   const handlePlaybackError = useCallback(() => {
+    if (
+      isLive &&
+      playbackSourceUsed &&
+      tryLiveUpstreamFallback(playbackSourceUsed, videoId)
+    ) {
+      return;
+    }
+
     if (
       effectivePayload.mode === "progressive" &&
       progressiveMobileSafe &&
@@ -3967,11 +4462,9 @@ export function VideoPlayer({
         );
         if (nextIdx !== null) {
           variantFallbackAttemptsRef.current += 1;
-          const media = document.querySelector("video");
+          const media = playerMediaRootRef.current?.querySelector("video");
           const currentTime =
-            media && Number.isFinite(media.currentTime)
-              ? media.currentTime
-              : 0;
+            media && Number.isFinite(media.currentTime) ? media.currentTime : 0;
           setQualityWithResume(
             nextIdx,
             currentTime > 0 ? currentTime : undefined,
@@ -3999,6 +4492,8 @@ export function VideoPlayer({
   }, [
     active,
     effectivePayload.mode,
+    isLive,
+    playbackSourceUsed,
     progressiveMobileSafe,
     qualityIndex,
     setQualityWithResume,
@@ -4020,40 +4515,87 @@ export function VideoPlayer({
     setNextCountdown(3);
   }, [shortsMode, onEndedExternal, nextUp, autoplayNext]);
 
+  const snapshotPayloadForMini = useMemo((): WatchMiniPayload | null => {
+    if (effectivePayload.mode === "hls") {
+      return { mode: "hls", src: effectivePayload.src };
+    }
+    if (
+      effectivePayload.mode === "progressive" &&
+      effectivePayload.variants.length > 0
+    ) {
+      return {
+        mode: "progressive",
+        variants: effectivePayload.variants,
+      };
+    }
+    return null;
+  }, [effectivePayload]);
+
+  useEffect(() => {
+    if (!persistMiniSnapshot) return;
+    clearWatchMiniStateForOtherVideo(videoId);
+  }, [persistMiniSnapshot, videoId]);
+
   useEffect(() => {
     if (!pathname.startsWith("/watch/")) return;
+    if (!persistMiniSnapshot) return;
     if (!readWatchMiniEnabled(true)) return;
-    if (!miniPayload) return;
+    if (!snapshotPayloadForMini) return;
 
-    const media = document.querySelector("video");
+    const getWatchVideo = () =>
+      playerMediaRootRef.current?.querySelector(
+        "video",
+      ) as HTMLVideoElement | null;
+
     const saveSnapshot = (target: HTMLVideoElement | null) => {
-      const media = target;
-      if (!media) return;
-      const currentTime =
-        Number.isFinite(media.currentTime) && media.currentTime > 0
-          ? media.currentTime
-          : 0;
+      if (!target) return;
+      const currentTime = Number.isFinite(target.currentTime)
+        ? Math.max(0, target.currentTime)
+        : 0;
+      const prefs = readPlayerMediaPrefs();
       writeWatchMiniState({
         videoId,
         title,
         poster,
-        payload: miniPayload,
+        payload: snapshotPayloadForMini,
         currentTime,
+        qualityIndex,
+        volume: prefs.volume,
+        muted: prefs.muted,
+        paused: target.paused,
       });
     };
 
-    // Keep mini-state warm while watching so navigation doesn't miss it.
     const onTimeUpdate = () => {
-      if (!media || media.paused) return;
-      saveSnapshot(media);
+      saveSnapshot(getWatchVideo());
     };
+    const onPause = () => {
+      saveSnapshot(getWatchVideo());
+    };
+    const onPageHide = () => {
+      saveSnapshot(getWatchVideo());
+    };
+
+    const media = getWatchVideo();
     media?.addEventListener("timeupdate", onTimeUpdate);
+    media?.addEventListener("pause", onPause);
+    window.addEventListener("pagehide", onPageHide);
 
     return () => {
       media?.removeEventListener("timeupdate", onTimeUpdate);
-      saveSnapshot(media);
+      media?.removeEventListener("pause", onPause);
+      window.removeEventListener("pagehide", onPageHide);
+      saveSnapshot(getWatchVideo());
     };
-  }, [pathname, miniPayload, poster, title, videoId]);
+  }, [
+    pathname,
+    persistMiniSnapshot,
+    poster,
+    qualityIndex,
+    snapshotPayloadForMini,
+    title,
+    videoId,
+  ]);
 
   if (active.kind === "empty") return null;
   if (active.kind === "hls" && !active.src) return null;
@@ -4071,6 +4613,7 @@ export function VideoPlayer({
       )}
     >
       <div
+        ref={playerMediaRootRef}
         className={cn(
           "relative w-full",
           shortsMode ? "h-full min-h-0" : undefined,
@@ -4078,9 +4621,10 @@ export function VideoPlayer({
       >
         {active.kind === "hls" ? (
           <VidstackBlock
+            {...sponsorChromeProps}
             reactKey={active.src}
             src={active.src}
-            scrubPreview={buildScrubPreview(active.src)}
+            scrubPreview={buildScrubPreview(active.src) ?? undefined}
             title={title}
             poster={displayPoster}
             progressiveQualityMenu={progressiveQualityMenu}
@@ -4101,14 +4645,19 @@ export function VideoPlayer({
             onPlayNext={playNextNow}
             miniMode={miniMode}
             shortsMode={shortsMode}
+            miniStartPaused={miniStartPaused}
+            restoredVolume={restoredVolume}
+            onVideoIntrinsics={onVideoIntrinsics}
+            isLive={isLive}
           />
         ) : null}
         {active.kind === "variant" && active.v.t === "muxed" ? (
           isDirectProgressiveVideoUrl(active.v.src) || shortsMode ? (
             <NativeMuxedBlock
+              {...sponsorChromeProps}
               reactKey={active.v.src}
               src={active.v.src}
-              scrubPreview={buildScrubPreview(active.v.src)}
+              scrubPreview={buildScrubPreview(active.v.src) ?? undefined}
               title={title}
               poster={displayPoster}
               volume={splitVolume}
@@ -4131,12 +4680,18 @@ export function VideoPlayer({
               onPlayNext={playNextNow}
               miniMode={miniMode}
               shortsMode={shortsMode}
+              miniStartPaused={miniStartPaused}
+              restoredVolume={restoredVolume}
+              restoredMuted={restoredMuted}
+              onVideoIntrinsics={onVideoIntrinsics}
+              isLive={isLive}
             />
           ) : (
             <VidstackBlock
+              {...sponsorChromeProps}
               reactKey={active.v.src}
               src={active.v.src}
-              scrubPreview={buildScrubPreview(active.v.src)}
+              scrubPreview={buildScrubPreview(active.v.src) ?? undefined}
               title={title}
               poster={displayPoster}
               progressiveQualityMenu={progressiveQualityMenu}
@@ -4157,14 +4712,19 @@ export function VideoPlayer({
               onPlayNext={playNextNow}
               miniMode={miniMode}
               shortsMode={shortsMode}
+              miniStartPaused={miniStartPaused}
+              restoredVolume={restoredVolume}
+              onVideoIntrinsics={onVideoIntrinsics}
+              isLive={isLive}
             />
           )
         ) : null}
         {active.kind === "variant" && active.v.t === "split" ? (
           <SplitBlock
+            {...sponsorChromeProps}
             key={active.v.video}
             video={active.v.video}
-            scrubPreview={buildScrubPreview(active.v.video)}
+            scrubPreview={buildScrubPreview(active.v.video) ?? undefined}
             audioTracks={active.v.audioTracks}
             defaultAudioIndex={active.v.defaultAudioIndex}
             poster={displayPoster}
@@ -4189,6 +4749,11 @@ export function VideoPlayer({
             onPlayNext={playNextNow}
             miniMode={miniMode}
             shortsMode={shortsMode}
+            miniStartPaused={miniStartPaused}
+            restoredVolume={restoredVolume}
+            restoredMuted={restoredMuted}
+            onVideoIntrinsics={onVideoIntrinsics}
+            isLive={isLive}
           />
         ) : null}
       </div>

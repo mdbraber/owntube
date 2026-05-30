@@ -1,20 +1,20 @@
 {
-  "name": "OwnTube",
-  "short_name": "OwnTube",
+  "name": "owntube",
+  "short_name": "owntube",
   "description": "Privacy-first self-hosted video frontend",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#111111",
-  "theme_color": "#d92727",
+  "theme_color": "#f23662",
   "icons": [
     {
-      "src": "/logo.png?v=6",
+      "src": "/logo-dark-192.png?v=9",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/logo.png?v=6",
+      "src": "/logo-dark-512.png?v=9",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"

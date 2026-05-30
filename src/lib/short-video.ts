@@ -10,9 +10,7 @@ export const DISCOVERY_SHORT_MAX_DURATION_SECONDS = 90;
 export function hasKnownPositiveDuration(
   seconds: number | undefined,
 ): seconds is number {
-  return (
-    typeof seconds === "number" && Number.isFinite(seconds) && seconds > 0
-  );
+  return typeof seconds === "number" && Number.isFinite(seconds) && seconds > 0;
 }
 
 function titleHasShortsTag(title: string): boolean {
@@ -20,6 +18,7 @@ function titleHasShortsTag(title: string): boolean {
 }
 
 export function isStrictShortVideo(video: UnifiedVideo): boolean {
+  if (video.isLive || video.isUpcoming) return false;
   const d = video.durationSeconds;
   if (hasKnownPositiveDuration(d)) {
     return d <= MAX_SHORT_DURATION_SECONDS;
@@ -58,6 +57,7 @@ export function invidiousItemIsStrictShort(item: unknown): boolean {
 }
 
 export function isDiscoveryShortVideo(video: UnifiedVideo): boolean {
+  if (video.isLive || video.isUpcoming) return false;
   if (isStrictShortVideo(video)) return true;
   const d = video.durationSeconds;
   if (hasKnownPositiveDuration(d)) {

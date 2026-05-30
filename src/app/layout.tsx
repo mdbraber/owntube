@@ -4,8 +4,10 @@ import type { ReactNode } from "react";
 import { Providers } from "@/app/providers";
 import { UserNav } from "@/components/auth/user-nav";
 import { SwRegister } from "@/components/pwa/sw-register";
+import { FaviconInitScript } from "@/components/settings/favicon-init-script";
 import { AppShell } from "@/components/shell/app-shell";
 import { UiScale } from "@/components/shell/ui-scale";
+import { FAVICON_VERSION } from "@/lib/favicon";
 import { auth } from "@/server/auth";
 import "./globals.css";
 
@@ -20,17 +22,21 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "OwnTube",
+  title: {
+    default: "owntube",
+    template: "%s · owntube",
+  },
   description: "Self-hosted video front-end with Piped / Invidious",
   manifest: "/manifest.webmanifest",
   icons: {
-    icon: [
-      { url: "/favicon.ico?v=6", sizes: "any" },
-      { url: "/logo.png?v=6", type: "image/png", sizes: "32x32" },
-      { url: "/logo.png?v=6", type: "image/png", sizes: "192x192" },
+    icon: [{ url: `/favicon-dark.ico?v=${FAVICON_VERSION}`, sizes: "any" }],
+    apple: [
+      {
+        url: `/logo-dark.png?v=${FAVICON_VERSION}`,
+        type: "image/png",
+        sizes: "180x180",
+      },
     ],
-    shortcut: [{ url: "/favicon.ico?v=6" }],
-    apple: [{ url: "/logo.png?v=6", type: "image/png", sizes: "180x180" }],
   },
 };
 
@@ -43,7 +49,10 @@ export default async function RootLayout({
   const isLoggedIn = Boolean(session?.user?.id);
 
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <FaviconInitScript />
+      </head>
       <body
         className={`${inter.variable} ${jetbrainsMono.variable} font-sans antialiased`}
       >

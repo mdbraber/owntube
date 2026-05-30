@@ -25,9 +25,7 @@ function heightFromQualityLabel(label: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function streamHeightPx(
-  s: VideoDetail["videoSources"][number],
-): number | null {
+function streamHeightPx(s: VideoDetail["videoSources"][number]): number | null {
   if (typeof s.height === "number" && s.height > 0) return s.height;
   if (s.quality) return heightFromQualityLabel(s.quality);
   return null;

@@ -26,7 +26,9 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   return (
     <main className="ot-page flex min-h-0 flex-1 flex-col gap-6 pt-1">
       <Suspense
-        fallback={<p className="text-[hsl(var(--muted-foreground))]">Loading…</p>}
+        fallback={
+          <p className="text-[hsl(var(--muted-foreground))]">Loading…</p>
+        }
       >
         <SearchResults query={q} sort={sort} />
       </Suspense>

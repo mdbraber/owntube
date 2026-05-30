@@ -2,8 +2,9 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { THEME_STORAGE_KEY, type ThemeMode } from "@/lib/theme-appearance";
 
-export type ThemeMode = "system" | "light" | "dark";
+export type { ThemeMode };
 
 type ThemeState = {
   theme: ThemeMode;
@@ -17,7 +18,7 @@ export const useThemeStore = create<ThemeState>()(
       setTheme: (theme) => set({ theme }),
     }),
     {
-      name: "owntube-theme",
+      name: THEME_STORAGE_KEY,
     },
   ),
 );

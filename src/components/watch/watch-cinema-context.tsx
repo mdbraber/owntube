@@ -25,10 +25,7 @@ export function WatchCinemaProvider({
   initialCinemaMode?: boolean;
 }) {
   const [cinemaMode, setCinemaMode] = useState(initialCinemaMode);
-  const value = useMemo(
-    () => ({ cinemaMode, setCinemaMode }),
-    [cinemaMode],
-  );
+  const value = useMemo(() => ({ cinemaMode, setCinemaMode }), [cinemaMode]);
   return (
     <WatchCinemaContext.Provider value={value}>
       {children}

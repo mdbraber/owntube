@@ -1,13 +1,13 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { VideoPlayer } from "@/components/player/video-player";
 import { Button } from "@/components/ui/button";
 import {
   readWatchMiniEnabled,
   readWatchMiniState,
+  type WatchMiniState,
   writeWatchMiniState,
 } from "@/lib/watch-mini-player-state";
 
@@ -15,9 +15,28 @@ type WatchMiniPlayerProps = {
   isLoggedIn: boolean;
 };
 
+function persistMiniPlayback(
+  videoId: string,
+  video: HTMLVideoElement,
+  getBase: () => WatchMiniState | null,
+) {
+  const base = getBase();
+  if (!base || base.videoId !== videoId) return;
+  writeWatchMiniState(
+    {
+      ...base,
+      currentTime: video.currentTime,
+      paused: video.paused,
+    },
+    false,
+  );
+}
+
 export function WatchMiniPlayer({ isLoggedIn }: WatchMiniPlayerProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const wrapRef = useRef<HTMLDivElement | null>(null);
+  const stateRef = useRef<WatchMiniState | null>(null);
   const [state, setState] = useState(() => readWatchMiniState());
   const [enabled, setEnabled] = useState(() => readWatchMiniEnabled(true));
   const hidden =
@@ -26,6 +45,8 @@ export function WatchMiniPlayer({ isLoggedIn }: WatchMiniPlayerProps) {
     pathname.startsWith("/watch/") ||
     pathname === "/shorts" ||
     pathname.startsWith("/shorts?");
+
+  stateRef.current = state;
 
   useEffect(() => {
     const load = () => {
@@ -44,45 +65,61 @@ export function WatchMiniPlayer({ isLoggedIn }: WatchMiniPlayerProps) {
     };
   }, []);
 
+  const activeVideoId = state?.videoId;
+  const miniStartPaused = state?.paused ?? false;
+
   useEffect(() => {
-    if (!state || hidden) return;
+    if (!activeVideoId || hidden) return;
     const v = wrapRef.current?.querySelector(
       "video",
     ) as HTMLVideoElement | null;
     if (!v) return;
-    const onTime = () => {
-      if (!state) return;
-      writeWatchMiniState(
-        {
-          ...state,
-          currentTime: v.currentTime,
-        },
-        false,
-      );
+    const videoId = activeVideoId;
+    const sync = () => {
+      persistMiniPlayback(videoId, v, () => stateRef.current);
     };
     const onEnded = () => writeWatchMiniState(null);
-    v.addEventListener("timeupdate", onTime);
+    v.addEventListener("timeupdate", sync);
+    v.addEventListener("pause", sync);
+    v.addEventListener("play", sync);
     v.addEventListener("ended", onEnded);
     return () => {
-      v.removeEventListener("timeupdate", onTime);
+      v.removeEventListener("timeupdate", sync);
+      v.removeEventListener("pause", sync);
+      v.removeEventListener("play", sync);
       v.removeEventListener("ended", onEnded);
     };
-  }, [state, hidden]);
+  }, [activeVideoId, hidden]);
+
+  const handleReopen = useCallback(() => {
+    if (!state) return;
+    const href = `/watch/${encodeURIComponent(state.videoId)}?t=${Math.floor(state.currentTime || 0)}`;
+    writeWatchMiniState(null);
+    router.push(href);
+  }, [router, state]);
 
   if (!state || hidden) return null;
 
-  const watchHref = `/watch/${encodeURIComponent(state.videoId)}?t=${Math.floor(state.currentTime || 0)}`;
-
   return (
-    <aside className="fixed bottom-3 right-3 z-50 w-[min(420px,94vw)] overflow-hidden rounded-xl border border-[hsl(var(--border))] bg-black shadow-2xl">
-      <div ref={wrapRef} className="relative w-full">
+    <aside
+      className="fixed z-50 w-[min(420px,94vw)] overflow-hidden rounded-xl border border-[hsl(var(--border))] bg-black shadow-2xl"
+      style={{
+        bottom: "max(0.75rem, env(safe-area-inset-bottom))",
+        right: "max(0.75rem, env(safe-area-inset-right))",
+      }}
+    >
+      <div ref={wrapRef} className="relative aspect-video w-full bg-black">
         <VideoPlayer
-          key={state.videoId}
+          key={`${state.videoId}:${miniStartPaused ? "p" : "r"}`}
           videoId={state.videoId}
           payload={state.payload}
           title={state.title}
           poster={state.poster}
           startAtSeconds={Math.floor(state.currentTime || 0)}
+          initialQualityIndex={state.qualityIndex}
+          restoredVolume={state.volume}
+          restoredMuted={state.muted}
+          miniStartPaused={miniStartPaused}
           miniMode
         />
       </div>
@@ -90,9 +127,14 @@ export function WatchMiniPlayer({ isLoggedIn }: WatchMiniPlayerProps) {
         <p className="line-clamp-1 text-xs text-[hsl(var(--foreground))]">
           {state.title}
         </p>
-        <div className="flex items-center gap-2">
-          <Button asChild size="sm" variant="outline">
-            <Link href={watchHref}>Reopen</Link>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={handleReopen}
+          >
+            Reopen
           </Button>
           <Button
             type="button"

@@ -11,52 +11,60 @@
   --muted-foreground: 0 0% 40%;
   --accent: 0 0% 94%;
   --accent-foreground: 0 0% 9%;
-  --primary: 350 90% 58%;
+  --brand: 350 90% 58%;
+  --primary: var(--brand);
   --primary-foreground: 0 0% 100%;
   --secondary: 0 0% 94%;
   --secondary-foreground: 0 0% 9%;
   --border: 0 0% 88%;
-  --ring: 350 90% 58%;
-  --radius: 0.5rem;
+  --ring: var(--brand);
+  --radius: 0.625rem;
+  --radius-shell: 0.625rem;
+  --radius-card: 0.875rem;
   --sidebar: 0 0% 96%;
+  --surface-border: 0 0% 0% / 0.1;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not(.light) {
-    --background: 0 0% 4%;
+    --background: 240 5% 4%;
     --foreground: 0 0% 96%;
-    --card: 0 0% 7%;
+    --card: 240 4% 7%;
     --card-foreground: 0 0% 96%;
-    --muted: 0 0% 12%;
+    --muted: 240 4% 12%;
     --muted-foreground: 0 0% 64%;
-    --accent: 0 0% 12%;
+    --accent: 240 4% 12%;
     --accent-foreground: 0 0% 96%;
-    --primary: 350 90% 58%;
+    --brand: 350 90% 58%;
+    --primary: var(--brand);
     --primary-foreground: 0 0% 100%;
-    --secondary: 0 0% 12%;
+    --secondary: 240 4% 12%;
     --secondary-foreground: 0 0% 96%;
-    --border: 0 0% 14%;
-    --ring: 350 90% 58%;
-    --sidebar: 0 0% 5%;
+    --border: 240 3% 14%;
+    --ring: var(--brand);
+    --sidebar: 240 5% 5%;
+    --surface-border: 0 0% 100% / 0.12;
   }
 }
 
 :root.dark {
-  --background: 0 0% 4%;
+  --background: 240 5% 4%;
   --foreground: 0 0% 96%;
-  --card: 0 0% 7%;
+  --card: 240 4% 7%;
   --card-foreground: 0 0% 96%;
-  --muted: 0 0% 12%;
+  --muted: 240 4% 12%;
   --muted-foreground: 0 0% 64%;
-  --accent: 0 0% 12%;
+  --accent: 240 4% 12%;
   --accent-foreground: 0 0% 96%;
-  --primary: 350 90% 58%;
+  --brand: 350 90% 58%;
+  --primary: var(--brand);
   --primary-foreground: 0 0% 100%;
-  --secondary: 0 0% 12%;
+  --secondary: 240 4% 12%;
   --secondary-foreground: 0 0% 96%;
-  --border: 0 0% 14%;
-  --ring: 350 90% 58%;
-  --sidebar: 0 0% 5%;
+  --border: 240 3% 14%;
+  --ring: var(--brand);
+  --sidebar: 240 5% 5%;
+  --surface-border: 0 0% 100% / 0.12;
 }
 
 :root.light {
@@ -68,13 +76,15 @@
   --muted-foreground: 0 0% 40%;
   --accent: 0 0% 94%;
   --accent-foreground: 0 0% 9%;
-  --primary: 350 90% 58%;
+  --brand: 350 90% 58%;
+  --primary: var(--brand);
   --primary-foreground: 0 0% 100%;
   --secondary: 0 0% 94%;
   --secondary-foreground: 0 0% 9%;
   --border: 0 0% 88%;
-  --ring: 350 90% 58%;
+  --ring: var(--brand);
   --sidebar: 0 0% 96%;
+  --surface-border: 0 0% 0% / 0.1;
 }
 
 @theme inline {
@@ -85,8 +95,71 @@
 }
 
 ::selection {
-  background: hsl(350 90% 58%);
+  background: hsl(var(--brand));
   color: #fff;
+}
+
+.ot-brand-gradient {
+  background: hsl(var(--primary));
+}
+
+.ot-brand-gradient-text {
+  color: hsl(var(--primary));
+}
+
+.ot-brand-shadow {
+  box-shadow: 0 4px 12px hsl(var(--brand) / 0.3);
+}
+
+.ot-shell-nav-link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  border-radius: var(--radius-shell);
+  padding: 0.625rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
+  color: hsl(var(--foreground));
+}
+
+.ot-shell-nav-link:hover {
+  background: hsl(var(--accent));
+}
+
+.ot-shell-nav-link--active {
+  background: hsl(var(--primary) / 0.12);
+  font-weight: 600;
+  color: hsl(var(--primary));
+}
+
+.ot-shell-nav-link--active .ot-shell-nav-label::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -0.125rem;
+  height: 2px;
+  border-radius: 9999px;
+  background: hsl(var(--foreground));
+}
+
+.ot-shell-nav-label {
+  position: relative;
+}
+
+.ot-surface-card {
+  border-radius: var(--radius-card);
+  border: 1px solid hsl(var(--surface-border));
+  background: hsl(var(--card));
+}
+
+.ot-mono-data {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 body {
@@ -152,28 +225,38 @@ body {
  */
 .ot-video-grid {
   display: grid;
+  align-items: start;
   grid-template-columns: repeat(
-    auto-fill,
-    minmax(min(100%, clamp(240px, 17vw, 360px)), 1fr)
-  );
+      auto-fill,
+      minmax(min(100%, clamp(240px, 17vw, 360px)), 1fr)
+    );
   column-gap: 18px;
   row-gap: 1.5rem;
 }
 
 .ot-video-grid--large {
   grid-template-columns: repeat(
-    auto-fill,
-    minmax(min(100%, clamp(280px, 22vw, 480px)), 1fr)
-  );
+      auto-fill,
+      minmax(min(100%, clamp(280px, 22vw, 480px)), 1fr)
+    );
   column-gap: 1.75rem;
   row-gap: 2rem;
 }
 
+/* Titles: clamp to 2 lines without reserving empty line space in flex/grid cards. */
+.ot-video-card-title {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  min-height: 0;
+}
+
 .ot-video-grid--short {
   grid-template-columns: repeat(
-    auto-fill,
-    minmax(min(100%, clamp(140px, 12vw, 210px)), 1fr)
-  );
+      auto-fill,
+      minmax(min(100%, clamp(140px, 12vw, 210px)), 1fr)
+    );
   column-gap: 0.75rem;
   row-gap: 1.5rem;
   justify-items: center;

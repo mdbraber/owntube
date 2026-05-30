@@ -45,5 +45,4 @@ export const authRouter = router({
         .get();
       return created;
     }),
-
 });

@@ -1,9 +1,6 @@
 "use client";
 
-import {
-  applyVideoThumbnailImgError,
-  preferHighResVideoThumbnailUrl,
-} from "@/lib/video-thumbnail-url";
+import { VideoThumbnailImg } from "@/components/videos/video-thumbnail-img";
 
 type VideoCardThumbnailImgProps = {
   url?: string;
@@ -16,16 +13,7 @@ export function VideoCardThumbnailImg({
   videoId,
   className,
 }: VideoCardThumbnailImgProps) {
-  const src = preferHighResVideoThumbnailUrl(url, videoId);
-  if (!src) return null;
   return (
-    // biome-ignore lint/performance/noImgElement: third-party instance thumbnails
-    <img
-      src={src}
-      alt=""
-      className={className}
-      loading="lazy"
-      onError={(e) => applyVideoThumbnailImgError(e.currentTarget)}
-    />
+    <VideoThumbnailImg url={url} videoId={videoId} className={className} />
   );
 }

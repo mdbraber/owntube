@@ -1,6 +1,11 @@
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { defaultPlaybackQualitySchema } from "@/lib/default-playback-quality";
+import {
+  DEFAULT_SPONSORBLOCK_CATEGORIES,
+  normalizeSponsorBlockCategories,
+  sponsorBlockCategorySchema,
+} from "@/lib/sponsorblock";
 import type { AppDb } from "@/server/db/client";
 import { userProfile } from "@/server/db/schema";
 import type { ProxySourceOverrides } from "@/server/services/proxy";
@@ -34,6 +39,14 @@ export const appSettingsSchema = z.object({
     .array(z.string().min(1).max(128))
     .max(200)
     .default([]),
+  /** Show SponsorBlock segment markers on the watch player timeline. */
+  sponsorBlockEnabled: z.boolean().default(true),
+  /** Automatically skip SponsorBlock segments during playback. */
+  sponsorBlockAutoSkip: z.boolean().default(true),
+  /** SponsorBlock segment categories to fetch and apply. */
+  sponsorBlockCategories: z
+    .array(sponsorBlockCategorySchema)
+    .default(DEFAULT_SPONSORBLOCK_CATEGORIES),
 });
 
 export type AppSettings = z.infer<typeof appSettingsSchema>;
@@ -56,6 +69,9 @@ const defaultSettings: AppSettings = {
   enableMiniPlayer: true,
   defaultPlaybackQuality: "1080p",
   blockedRecommendationChannels: [],
+  sponsorBlockEnabled: true,
+  sponsorBlockAutoSkip: true,
+  sponsorBlockCategories: DEFAULT_SPONSORBLOCK_CATEGORIES,
 };
 
 function nowUnix(): number {
@@ -134,11 +150,16 @@ export function upsertUserSettings(
           patch.blockedRecommendationChannels,
         ) ?? [])
       : previous.blockedRecommendationChannels;
+  const nextSponsorBlockCategories =
+    patch.sponsorBlockCategories !== undefined
+      ? normalizeSponsorBlockCategories(patch.sponsorBlockCategories)
+      : previous.sponsorBlockCategories;
   const merged: AppSettings = {
     ...previous,
     ...patch,
     tasteKeywords: nextKeywords,
     blockedRecommendationChannels: nextBlockedChannels,
+    sponsorBlockCategories: nextSponsorBlockCategories,
     pipedBaseUrl: normalizeUrlLike(patch.pipedBaseUrl ?? previous.pipedBaseUrl),
     invidiousBaseUrl: normalizeUrlLike(
       patch.invidiousBaseUrl ?? previous.invidiousBaseUrl,

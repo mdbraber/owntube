@@ -2,8 +2,8 @@
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
 import type { VideoCardActionsView } from "@/components/videos/use-video-card-actions";
+import { cn } from "@/lib/utils";
 
 function menuItemClass(active = false) {
   return cn(
@@ -53,7 +53,10 @@ export function VideoCardActionsPlaylistPanel({
         <div>
           <button
             type="button"
-            className={cn(menuItemClass(), "text-[hsl(var(--muted-foreground))]")}
+            className={cn(
+              menuItemClass(),
+              "text-[hsl(var(--muted-foreground))]",
+            )}
             onClick={() => setView("main")}
           >
             ‹ Retour
@@ -103,7 +106,10 @@ export function VideoCardActionsPlaylistPanel({
         <div className="space-y-2 p-2">
           <button
             type="button"
-            className={cn(menuItemClass(), "text-[hsl(var(--muted-foreground))]")}
+            className={cn(
+              menuItemClass(),
+              "text-[hsl(var(--muted-foreground))]",
+            )}
             onClick={() => setView("playlist")}
           >
             ‹ Retour

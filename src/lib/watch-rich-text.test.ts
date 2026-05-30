@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  parseRichText,
-  youtubeTimestampFromUrl,
-} from "@/lib/watch-rich-text";
+import { parseRichText, youtubeTimestampFromUrl } from "@/lib/watch-rich-text";
 
 describe("youtubeTimestampFromUrl", () => {
   it("reads t= seconds from watch URLs", () => {

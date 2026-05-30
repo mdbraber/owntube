@@ -56,10 +56,7 @@ export function ChannelVideosSection({
   );
 
   const videos = useMemo(
-    () =>
-      mergeVideosNewestFirst(
-        query.data?.pages.map((p) => p.videos) ?? [],
-      ),
+    () => mergeVideosNewestFirst(query.data?.pages.map((p) => p.videos) ?? []),
     [query.data?.pages],
   );
 

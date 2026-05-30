@@ -9,7 +9,9 @@ export const defaultPlaybackQualitySchema = z.enum([
   "best",
 ]);
 
-export type DefaultPlaybackQuality = z.infer<typeof defaultPlaybackQualitySchema>;
+export type DefaultPlaybackQuality = z.infer<
+  typeof defaultPlaybackQualitySchema
+>;
 
 export const DEFAULT_PLAYBACK_QUALITY: DefaultPlaybackQuality = "1080p";
 
@@ -87,7 +89,9 @@ export function variantIndexForDefaultQuality(
           ? 480
           : 360;
 
-  const exact = variants.findIndex((v) => heightFromQualityLabel(v.label) === target);
+  const exact = variants.findIndex(
+    (v) => heightFromQualityLabel(v.label) === target,
+  );
   if (exact >= 0) return exact;
 
   if (preference === "360p") {
@@ -104,7 +108,10 @@ export function variantIndexForDefaultQuality(
 /** Move the preferred default variant to the front of the list (Piped watch page). */
 export function reorderVariantsForDefaultQuality<
   T extends { label: string; t?: string },
->(variants: T[], preference: DefaultPlaybackQuality = DEFAULT_PLAYBACK_QUALITY): T[] {
+>(
+  variants: T[],
+  preference: DefaultPlaybackQuality = DEFAULT_PLAYBACK_QUALITY,
+): T[] {
   if (variants.length <= 1) return variants;
   const idx = variantIndexForDefaultQuality(variants, preference);
   if (idx <= 0) return variants;

@@ -1,7 +1,5 @@
 /** Values that mean “do not use this upstream” in `.env` or user settings. */
-export function isUpstreamDisabled(
-  value: string | undefined | null,
-): boolean {
+export function isUpstreamDisabled(value: string | undefined | null): boolean {
   const v = value?.trim().toLowerCase() ?? "";
   if (!v) return false;
   return (

@@ -8,7 +8,11 @@ type WatchRichTextProps = {
   className?: string;
 };
 
-export function WatchRichText({ videoId, text, className }: WatchRichTextProps) {
+export function WatchRichText({
+  videoId,
+  text,
+  className,
+}: WatchRichTextProps) {
   const parts = useMemo(
     () => compactRichTextParts(parseRichText(text)),
     [text],

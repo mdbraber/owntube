@@ -4,7 +4,9 @@
  * URLs — they must not all be tagged as HLS or the player parses MP4 bytes
  * as an m3u8 playlist and never starts.
  */
-function typeForYtHopInner(inner: URL): "application/x-mpegurl" | "video/mp4" | "video/webm" {
+function typeForYtHopInner(
+  inner: URL,
+): "application/x-mpegurl" | "video/mp4" | "video/webm" {
   const path = inner.pathname.toLowerCase();
   const href = inner.href.toLowerCase();
   const isHlsLike =
@@ -48,7 +50,9 @@ export function sourceFromUrl(url: string): {
   const l = url.toLowerCase();
   if (
     l.includes(".m3u8") ||
-    l.includes("/manifest/hls/") ||
+    l.includes("/manifest/hls") ||
+    l.includes("hls_variant") ||
+    l.includes("hls_playlist") ||
     l.includes("playlist.m3u8")
   ) {
     return { src: url, type: "application/x-mpegurl" };

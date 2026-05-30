@@ -13,7 +13,7 @@ export default async function PlaylistsPage() {
     <main className="ot-page max-w-5xl space-y-8">
       <PageHeader
         title="Playlists"
-        subtitle="Local playlists stored in your OwnTube database."
+        subtitle="Local playlists stored in your owntube database."
       />
       <PlaylistsPanel />
     </main>

@@ -80,7 +80,12 @@ export function VideoCardMarkWatchedButton({
         title="Like"
         aria-label={liked ? "Liked" : "Like"}
       >
-        <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4" aria-hidden>
+        <svg
+          viewBox="0 0 24 24"
+          fill="currentColor"
+          className="h-4 w-4"
+          aria-hidden
+        >
           <path d="M9 21h8a2 2 0 0 0 2-1.6l1-5A2 2 0 0 0 18 12h-5l.7-3.3A2 2 0 0 0 11.8 6L9 9v12ZM4 10h3v11H4z" />
         </svg>
       </Button>
@@ -120,7 +125,12 @@ export function VideoCardMarkWatchedButton({
         title="Dislike"
         aria-label={disliked ? "Disliked" : "Dislike"}
       >
-        <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4" aria-hidden>
+        <svg
+          viewBox="0 0 24 24"
+          fill="currentColor"
+          className="h-4 w-4"
+          aria-hidden
+        >
           <path d="M15 3H7a2 2 0 0 0-2 1.6l-1 5A2 2 0 0 0 6 12h5l-.7 3.3A2 2 0 0 0 12.2 18L15 15V3Zm5 1h-3v11h3z" />
         </svg>
       </Button>

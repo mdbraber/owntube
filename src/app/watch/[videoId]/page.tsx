@@ -1,17 +1,20 @@
+import type { Metadata } from "next";
 import { unstable_noStore as noStore } from "next/cache";
 import { headers } from "next/headers";
 import Link from "next/link";
 import { ChannelSubscribeButton } from "@/components/channel/channel-subscribe-button";
 import { InteractionButtons } from "@/components/player/interaction-buttons";
-import { VideoPlayer } from "@/components/player/video-player";
 import { WatchTracker } from "@/components/player/watch-tracker";
-import { WatchCinemaProvider } from "@/components/watch/watch-cinema-context";
-import { WatchPageGrid } from "@/components/watch/watch-page-grid";
 import { ChannelAvatarCircle } from "@/components/videos/channel-avatar-circle";
+import { VideoCardCompact } from "@/components/videos/video-card";
 import { WatchChaptersSection } from "@/components/watch/watch-chapters-section";
+import { WatchCinemaProvider } from "@/components/watch/watch-cinema-context";
 import { WatchCommentsSection } from "@/components/watch/watch-comments-section";
 import { WatchDescription } from "@/components/watch/watch-description";
-import { VideoCardCompact } from "@/components/videos/video-card";
+import { WatchPageGrid } from "@/components/watch/watch-page-grid";
+import { WatchUpcomingLive } from "@/components/watch/watch-upcoming-live";
+import { WatchVideoPlayer } from "@/components/watch/watch-video-player";
+import { stripRestrictedListVideos } from "@/lib/feed-exclude-restricted";
 import {
   getAppOriginFromRequestHeaders,
   toProxiedOrDirectPlayback,
@@ -20,23 +23,28 @@ import {
 } from "@/lib/invidious-proxy";
 import { buildWatchPlayback } from "@/lib/pick-playback";
 import { scrubPreviewStreamFromDetail } from "@/lib/scrub-preview-stream";
-import { stripRestrictedListVideos } from "@/lib/feed-exclude-restricted";
+import { sponsorBlockPrefsFromAppSettings } from "@/lib/sponsorblock-prefs";
+import { shouldPreferInvidiousOverPiped } from "@/lib/upstream-playback-catalog";
+import { parseChaptersFromDescription } from "@/lib/video-chapters";
 import {
   formatPublishedLabel,
   formatSubscribersLabel,
   formatViews,
 } from "@/lib/video-display";
-import { parseChaptersFromDescription } from "@/lib/video-chapters";
 import { auth } from "@/server/auth";
 import { getDb } from "@/server/db/client";
+import { UpstreamLiveUpcomingError } from "@/server/errors/upstream-live-upcoming";
 import { getRecommendations } from "@/server/recommendation/engine";
 import {
   fetchRelatedVideos,
   fetchTrendingVideos,
   fetchVideoDetail,
 } from "@/server/services/proxy";
-import type { UnifiedVideo } from "@/server/services/proxy.types";
-import { videoDetailInputSchema } from "@/server/services/proxy.types";
+import type { UnifiedVideo, VideoDetail } from "@/server/services/proxy.types";
+import {
+  upstreamPlaybackSourceSchema,
+  videoDetailInputSchema,
+} from "@/server/services/proxy.types";
 import {
   getUserProxyOverrides,
   getUserSettings,
@@ -45,10 +53,30 @@ import {
 
 type WatchPageProps = {
   params: Promise<{ videoId: string }>;
-  searchParams: Promise<{ t?: string | string[] }>;
+  searchParams: Promise<{ t?: string | string[]; upstream?: string | string[] }>;
 };
 
-export default async function WatchPage({ params, searchParams }: WatchPageProps) {
+export async function generateMetadata({
+  params,
+}: WatchPageProps): Promise<Metadata> {
+  const { videoId } = await params;
+  const input = videoDetailInputSchema.parse({ videoId });
+  const db = getDb();
+  try {
+    const detail = await fetchVideoDetail(db, input);
+    return { title: detail.title };
+  } catch (error) {
+    if (error instanceof UpstreamLiveUpcomingError) {
+      return { title: "Upcoming live stream" };
+    }
+    return { title: "Video" };
+  }
+}
+
+export default async function WatchPage({
+  params,
+  searchParams,
+}: WatchPageProps) {
   noStore();
   const { videoId } = await params;
   const sp = await searchParams;
@@ -56,7 +84,23 @@ export default async function WatchPage({ params, searchParams }: WatchPageProps
   const startAtSeconds = /^\d+$/.test(rawT)
     ? Number.parseInt(rawT, 10)
     : undefined;
-  const input = videoDetailInputSchema.parse({ videoId });
+  const rawUpstream =
+    typeof sp.upstream === "string"
+      ? sp.upstream.trim()
+      : Array.isArray(sp.upstream)
+        ? sp.upstream[0]?.trim()
+        : "";
+  const preferUpstreamParsed =
+    rawUpstream.length > 0
+      ? upstreamPlaybackSourceSchema.safeParse(rawUpstream)
+      : null;
+  const preferUpstream = preferUpstreamParsed?.success
+    ? preferUpstreamParsed.data
+    : undefined;
+  const input = videoDetailInputSchema.parse({
+    videoId,
+    ...(preferUpstream ? { preferUpstream } : {}),
+  });
   const db = getDb();
   const session = await auth();
   const userId = session?.user?.id ? Number.parseInt(session.user.id, 10) : NaN;
@@ -73,14 +117,31 @@ export default async function WatchPage({ params, searchParams }: WatchPageProps
     Number.isFinite(userId) && userId > 0 ? getUserSettings(db, userId) : null;
   const feedRegion =
     Number.isFinite(userId) && userId > 0
-      ? normalizeTrendingRegionStored(getUserSettings(db, userId).trendingRegion)
+      ? normalizeTrendingRegionStored(
+          getUserSettings(db, userId).trendingRegion,
+        )
       : "US";
-  const detail = await fetchVideoDetail(db, input, overrides, {
-    bypassDetailCache: true,
-  });
-  const relatedResult = await fetchRelatedVideos(db, input, 24, overrides).catch(
-    () => null,
-  );
+  let detail: VideoDetail | null = null;
+  let upcomingLive: UpstreamLiveUpcomingError | null = null;
+  try {
+    detail = await fetchVideoDetail(db, input, overrides, {
+      bypassDetailCache: true,
+      preferUpstream,
+    });
+  } catch (error) {
+    if (error instanceof UpstreamLiveUpcomingError) {
+      upcomingLive = error;
+    } else {
+      throw error;
+    }
+  }
+
+  const isUpcoming = upcomingLive !== null || detail?.isUpcoming === true;
+  const isLive = !isUpcoming && detail?.isLive === true;
+
+  const relatedResult = detail
+    ? await fetchRelatedVideos(db, input, 24, overrides).catch(() => null)
+    : null;
 
   const applyRestrictedFilter = (videos: UnifiedVideo[]) =>
     userSettings?.hideRestrictedVideos === false
@@ -89,7 +150,7 @@ export default async function WatchPage({ params, searchParams }: WatchPageProps
 
   const relatedMerged = new Map<string, UnifiedVideo>();
   for (const v of [
-    ...(detail.relatedVideos ?? []),
+    ...(detail?.relatedVideos ?? []),
     ...(relatedResult?.videos ?? []),
   ]) {
     if (v.videoId !== videoId) relatedMerged.set(v.videoId, v);
@@ -110,77 +171,131 @@ export default async function WatchPage({ params, searchParams }: WatchPageProps
             overrides,
           })
         ).videos
-      : (await fetchTrendingVideos(db, { region: feedRegion, limit: 28 }, overrides))
-          .videos;
+      : (
+          await fetchTrendingVideos(
+            db,
+            { region: feedRegion, limit: 28 },
+            overrides,
+          )
+        ).videos;
     sidebarVideos = applyRestrictedFilter(feedVideosRaw)
       .filter((v) => v.videoId !== videoId)
       .slice(0, 20);
     sidebarFromFeedFallback = sidebarVideos.length > 0;
   }
-  const rawPlayback = buildWatchPlayback(detail);
+  const rawPlayback = detail ? buildWatchPlayback(detail) : null;
+  const pipedQualityLimited =
+    detail !== null &&
+    detail.sourceUsed === "piped" &&
+    shouldPreferInvidiousOverPiped(detail);
   const onlyDashOrUnsupported =
-    rawPlayback.kind === "none" && rawPlayback.onlyDashOrUnsupported;
+    rawPlayback !== null &&
+    rawPlayback.kind === "none" &&
+    rawPlayback.onlyDashOrUnsupported;
   const videoPayload =
-    rawPlayback.kind === "hls"
-      ? {
-          mode: "hls" as const,
-          src: toProxiedOrDirectPlayback(
-            rawPlayback.url,
-            appOrigin,
-            requestHost,
-            detail,
-          ),
-        }
-      : rawPlayback.kind === "progressive"
+    detail && rawPlayback
+      ? rawPlayback.kind === "hls"
         ? {
-            mode: "progressive" as const,
-            variants: toProxiedOrDirectVariants(
-              rawPlayback.variants,
+            mode: "hls" as const,
+            src: toProxiedOrDirectPlayback(
+              rawPlayback.url,
               appOrigin,
               requestHost,
               detail,
             ),
           }
-        : null;
-  const poster = toProxiedOrDirectPoster(
-    detail.thumbnailUrl,
-    appOrigin,
-    requestHost,
-    detail,
-  );
+        : rawPlayback.kind === "progressive"
+          ? {
+              mode: "progressive" as const,
+              variants: toProxiedOrDirectVariants(
+                rawPlayback.variants,
+                appOrigin,
+                requestHost,
+                detail,
+              ),
+            }
+          : null
+      : null;
+  const poster =
+    detail &&
+    toProxiedOrDirectPoster(
+      detail.thumbnailUrl,
+      appOrigin,
+      requestHost,
+      detail,
+    );
   const chapters = parseChaptersFromDescription(
-    detail.description,
-    detail.durationSeconds,
+    detail?.description,
+    detail?.durationSeconds,
   );
   const publishedLabel = formatPublishedLabel(
-    detail.publishedText,
-    detail.publishedAt,
+    detail?.publishedText,
+    detail?.publishedAt,
   );
-  const viewsLabel = formatViews(detail.viewCount);
-  const channelLabel = detail.channelName ?? "Unknown channel";
-  const subscribersLabel = formatSubscribersLabel(detail.channelSubscriberCount);
+  const viewsLabel = formatViews(detail?.viewCount);
+  const channelLabel = detail?.channelName ?? "Unknown channel";
+  const subscribersLabel = formatSubscribersLabel(
+    detail?.channelSubscriberCount,
+  );
   const scrubPreviewStreamSrc =
-    scrubPreviewStreamFromDetail(detail, appOrigin, requestHost) ?? undefined;
+    detail && !isLive
+      ? (scrubPreviewStreamFromDetail(detail, appOrigin, requestHost) ??
+        undefined)
+      : undefined;
+  const pageTitle = detail?.title ?? "Live stream";
+  const upcomingMessage =
+    upcomingLive?.message ??
+    "This live stream has not started yet. Check back when it goes live.";
 
   return (
-    <WatchCinemaProvider initialCinemaMode={Boolean(userSettings?.defaultCinemaMode)}>
+    <WatchCinemaProvider
+      initialCinemaMode={Boolean(userSettings?.defaultCinemaMode)}
+    >
       <WatchPageGrid
         primary={
           <>
-            {videoPayload ? (
-              <VideoPlayer
+            {pipedQualityLimited ? (
+              <p className="mb-3 rounded-[var(--radius-card)] border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-4 py-3 text-sm text-[hsl(var(--muted-foreground))]">
+                This video is only available in 360p from your Piped instance
+                (no HD streams in the API response). Enable{" "}
+                <code className="ot-mono-data text-xs">INVIDIOUS_BASE_URL</code>{" "}
+                as a fallback in Settings or fix your Piped extractor so{" "}
+                <code className="ot-mono-data text-xs">audioStreams</code> and
+                HD <code className="ot-mono-data text-xs">videoStreams</code>{" "}
+                are returned.
+              </p>
+            ) : null}
+            {isUpcoming ? (
+              <WatchUpcomingLive
+                title={pageTitle}
+                message={upcomingMessage}
+                premiereTimestamp={upcomingLive?.premiereTimestamp}
+                publishedText={detail?.publishedText}
+              />
+            ) : videoPayload && detail ? (
+              <WatchVideoPlayer
                 key={detail.videoId}
+                isAuthed={isAuthed}
                 videoId={detail.videoId}
                 payload={videoPayload}
                 title={detail.title}
-                poster={poster}
+                poster={poster ?? undefined}
                 chapters={chapters}
                 startAtSeconds={startAtSeconds}
+                isLive={isLive}
+                playbackSourceUsed={
+                  detail.sourceUsed === "cache" ? undefined : detail.sourceUsed
+                }
                 defaultPlaybackQuality={
                   userSettings?.defaultPlaybackQuality ?? "1080p"
                 }
+                sponsorBlockPrefs={
+                  userSettings && !isLive
+                    ? sponsorBlockPrefsFromAppSettings(userSettings)
+                    : undefined
+                }
                 durationSeconds={detail.durationSeconds}
-                storyboard={detail.storyboard}
+                storyboard={isLive ? undefined : detail.storyboard}
                 scrubPreviewStreamSrc={scrubPreviewStreamSrc}
               />
             ) : (
@@ -199,17 +314,26 @@ export default async function WatchPage({ params, searchParams }: WatchPageProps
             )}
 
             <div className="space-y-3">
-              <h1 className="text-2xl font-extrabold tracking-tight text-[hsl(var(--foreground))] sm:text-3xl">
-                {detail.title}
-              </h1>
-              <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                {viewsLabel ?? null}
-                {viewsLabel && publishedLabel ? " · " : null}
-                {publishedLabel ?? null}
-              </p>
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[hsl(var(--border))] pb-4">
-                <div className="flex min-w-0 items-center gap-3">
-                  {detail.channelId ? (
+              <div className="space-y-1">
+                <h1 className="ot-video-card-title m-0 text-2xl font-extrabold leading-8 tracking-tight text-[hsl(var(--foreground))] sm:text-3xl sm:leading-9">
+                  {pageTitle}
+                </h1>
+                <p className="m-0 flex flex-wrap items-center gap-2 text-sm text-[hsl(var(--muted-foreground))]">
+                  {isLive ? (
+                    <span className="rounded-md bg-[hsl(var(--primary))] px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-white">
+                      LIVE
+                    </span>
+                  ) : null}
+                  <span>
+                    {viewsLabel ?? null}
+                    {viewsLabel && publishedLabel ? " · " : null}
+                    {publishedLabel ?? null}
+                  </span>
+                </p>
+              </div>
+              <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[hsl(var(--border))] pb-4">
+                <div className="flex min-w-0 items-start gap-3">
+                  {detail?.channelId ? (
                     <Link
                       href={`/channel/${encodeURIComponent(detail.channelId)}`}
                     >
@@ -221,13 +345,13 @@ export default async function WatchPage({ params, searchParams }: WatchPageProps
                     </Link>
                   ) : (
                     <ChannelAvatarCircle
-                      imageUrl={detail.channelAvatarUrl}
+                      imageUrl={detail?.channelAvatarUrl}
                       label={channelLabel}
                       size="md"
                     />
                   )}
                   <div className="min-w-0">
-                    {detail.channelId ? (
+                    {detail?.channelId ? (
                       <Link
                         href={`/channel/${encodeURIComponent(detail.channelId)}`}
                         className="line-clamp-1 text-sm font-semibold text-[hsl(var(--foreground))] hover:underline"
@@ -244,51 +368,60 @@ export default async function WatchPage({ params, searchParams }: WatchPageProps
                     </p>
                   </div>
                 </div>
-                {detail.channelId ? (
-                  <ChannelSubscribeButton
-                    channelId={detail.channelId}
-                    isAuthed={isAuthed}
-                  />
+                {detail?.channelId ? (
+                  <div className="shrink-0 self-center">
+                    <ChannelSubscribeButton
+                      channelId={detail.channelId}
+                      isAuthed={isAuthed}
+                    />
+                  </div>
                 ) : null}
               </div>
-              {detail.warning ? (
+              {detail?.warning ? (
                 <p className="text-sm text-amber-600">{detail.warning}</p>
               ) : null}
             </div>
 
-            <InteractionButtons
-              videoId={detail.videoId}
-              channelId={detail.channelId}
-              isAuthenticated={isAuthed}
-            />
-            {isAuthed ? (
+            {detail ? (
+              <InteractionButtons
+                videoId={detail.videoId}
+                channelId={detail.channelId}
+                isAuthenticated={isAuthed}
+              />
+            ) : null}
+            {isAuthed && detail && !isUpcoming ? (
               <WatchTracker
                 videoId={detail.videoId}
                 channelId={detail.channelId}
                 durationSeconds={detail.durationSeconds}
+                isLive={isLive}
               />
             ) : null}
 
-            <div className="space-y-3">
-              <h2 className="text-lg font-medium">Description</h2>
-              <WatchDescription
-                videoId={detail.videoId}
-                description={detail.description}
-              />
-            </div>
+            {detail ? (
+              <div className="space-y-3">
+                <h2 className="text-lg font-medium">Description</h2>
+                <WatchDescription
+                  videoId={detail.videoId}
+                  description={detail.description}
+                />
+              </div>
+            ) : null}
 
-            <WatchCommentsSection videoId={detail.videoId} />
+            {detail ? <WatchCommentsSection videoId={detail.videoId} /> : null}
           </>
         }
         sidebar={
           <>
-            <WatchChaptersSection
-              videoId={detail.videoId}
-              chapters={chapters}
-              durationSeconds={detail.durationSeconds}
-              storyboard={detail.storyboard}
-              scrubPreviewStreamSrc={scrubPreviewStreamSrc}
-            />
+            {detail && !isLive ? (
+              <WatchChaptersSection
+                videoId={detail.videoId}
+                chapters={chapters}
+                durationSeconds={detail.durationSeconds}
+                storyboard={detail.storyboard}
+                scrubPreviewStreamSrc={scrubPreviewStreamSrc}
+              />
+            ) : null}
             <h2 className="text-lg font-bold tracking-tight">
               {sidebarFromFeedFallback
                 ? "From your feed"
@@ -319,6 +452,8 @@ export default async function WatchPage({ params, searchParams }: WatchPageProps
                     channelAvatarUrl={video.channelAvatarUrl}
                     thumbnailUrl={video.thumbnailUrl}
                     durationSeconds={video.durationSeconds}
+                    isLive={video.isLive}
+                    isUpcoming={video.isUpcoming}
                     publishedText={video.publishedText}
                     showChannelAvatar={false}
                     size="large"

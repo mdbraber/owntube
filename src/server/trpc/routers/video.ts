@@ -24,7 +24,9 @@ export const videoRouter = router({
     .input(videoDetailInputSchema)
     .query(async ({ ctx, input }) => {
       const overrides = getUserProxyOverrides(ctx.db, ctx.userId);
-      return fetchVideoDetail(ctx.db, input, overrides);
+      return fetchVideoDetail(ctx.db, input, overrides, {
+        preferUpstream: input.preferUpstream,
+      });
     }),
   related: publicProcedure
     .input(videoDetailInputSchema)

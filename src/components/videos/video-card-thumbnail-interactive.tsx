@@ -3,15 +3,17 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { VideoCardDurationBadge } from "@/components/videos/video-card-duration-badge";
 import {
   type CardPreviewPlayback,
   cardPreviewPlaybackFromDetail,
 } from "@/lib/card-preview-playback";
+import { buildHlsSameOriginConfig } from "@/lib/hls-same-origin";
+import { cn } from "@/lib/utils";
 import {
   applyVideoThumbnailImgError,
   preferHighResVideoThumbnailUrl,
 } from "@/lib/video-thumbnail-url";
-import { cn } from "@/lib/utils";
 import { trpc } from "@/trpc/react";
 
 const DWELL_MS = 1000;
@@ -21,7 +23,11 @@ type VideoCardThumbnailInteractiveProps = {
   href: string;
   videoId: string;
   thumbnailUrl?: string;
-  durationLabel: string | null;
+  durationSeconds?: number;
+  isLive?: boolean;
+  isUpcoming?: boolean;
+  /** Skip hover preview (live streams use HLS). */
+  disableHoverPreview?: boolean;
   /** Outer card uses `group` for hover scale on the image */
   thumbClassName: string;
   imgClassName: string;
@@ -69,7 +75,10 @@ export function VideoCardThumbnailInteractive({
   href,
   videoId,
   thumbnailUrl,
-  durationLabel,
+  durationSeconds,
+  isLive,
+  isUpcoming,
+  disableHoverPreview = false,
   thumbClassName,
   imgClassName,
 }: VideoCardThumbnailInteractiveProps) {
@@ -101,7 +110,8 @@ export function VideoCardThumbnailInteractive({
     [thumbnailUrl, videoId],
   );
 
-  const queryEnabled = pointerInside && dwellOk && videoId.length >= 11;
+  const queryEnabled =
+    !disableHoverPreview && pointerInside && dwellOk && videoId.length >= 11;
 
   const detailQuery = trpc.video.detail.useQuery(
     { videoId },
@@ -235,6 +245,7 @@ export function VideoCardThumbnailInteractive({
           const hls = new Hls({
             maxBufferLength: 8,
             maxMaxBufferLength: 20,
+            ...buildHlsSameOriginConfig(),
           });
           hls.loadSource(playback.src);
           hls.attachMedia(v);
@@ -369,11 +380,12 @@ export function VideoCardThumbnailInteractive({
             </svg>
           </div>
         ) : null}
-        {durationLabel ? (
-          <span className="pointer-events-none absolute bottom-2 right-2 rounded-md border border-white/10 bg-black/85 px-2 py-0.5 font-mono text-[11px] font-semibold tabular-nums text-white backdrop-blur-sm">
-            {durationLabel}
-          </span>
-        ) : null}
+        <VideoCardDurationBadge
+          durationSeconds={durationSeconds}
+          isLive={isLive}
+          isUpcoming={isUpcoming}
+          className="bottom-2 right-2 px-2 py-0.5 text-[11px]"
+        />
       </Link>
       {/* biome-ignore lint/a11y/useMediaCaption: split preview companion */}
       <audio ref={audioRef} className="hidden" preload="none" />

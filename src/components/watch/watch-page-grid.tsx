@@ -31,7 +31,8 @@ export function WatchPageGrid({ primary, sidebar }: WatchPageGridProps) {
       <aside
         className={cn(
           "min-w-0 space-y-4",
-          cinemaMode && "border-t border-[hsl(var(--border))] pt-6 lg:border-t-0 lg:pt-0",
+          cinemaMode &&
+            "border-t border-[hsl(var(--border))] pt-6 lg:border-t-0 lg:pt-0",
         )}
       >
         {sidebar}

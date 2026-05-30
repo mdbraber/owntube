@@ -27,9 +27,7 @@ export function getUiFontScalePercent(
   screenWidth: number,
   devicePixelRatio: number,
 ): number {
-  if (
-    isOsDisplayScalingActive(screenWidth, innerWidth, devicePixelRatio)
-  ) {
+  if (isOsDisplayScalingActive(screenWidth, innerWidth, devicePixelRatio)) {
     return 100;
   }
 

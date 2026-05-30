@@ -1,18 +1,28 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { InstanceSourceHint } from "@/components/settings/instance-source-hint";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { writeWatchMiniEnabled } from "@/lib/watch-mini-player-state";
 import {
   DEFAULT_PLAYBACK_QUALITY_SELECT_OPTIONS,
   type DefaultPlaybackQuality,
   writeDefaultPlaybackQuality,
 } from "@/lib/default-playback-quality";
+import {
+  SPONSORBLOCK_ALL_CATEGORIES,
+  SPONSORBLOCK_CATEGORY_LABELS,
+  type SponsorBlockCategory,
+} from "@/lib/sponsorblock";
+import {
+  sponsorBlockPrefsFromAppSettings,
+  toggleSponsorBlockCategory,
+  writeSponsorBlockPrefs,
+} from "@/lib/sponsorblock-prefs";
 import { TRENDING_REGION_OPTIONS } from "@/lib/trending-regions";
-import { InstanceSourceHint } from "@/components/settings/instance-source-hint";
-import type { AppSettings } from "@/server/settings/profile";
+import { writeWatchMiniEnabled } from "@/lib/watch-mini-player-state";
 import type { InstanceSourceInfo } from "@/server/services/proxy";
+import type { AppSettings } from "@/server/settings/profile";
 import { type ThemeMode, useThemeStore } from "@/stores/theme-store";
 import { trpc } from "@/trpc/react";
 
@@ -52,9 +62,17 @@ export function SettingsPanel({
     initial.enableMiniPlayer ?? true,
   );
   const [defaultPlaybackQuality, setDefaultPlaybackQuality] =
-    useState<DefaultPlaybackQuality>(
-      initial.defaultPlaybackQuality ?? "1080p",
-    );
+    useState<DefaultPlaybackQuality>(initial.defaultPlaybackQuality ?? "1080p");
+  const initialSponsorPrefs = sponsorBlockPrefsFromAppSettings(initial);
+  const [sponsorBlockEnabled, setSponsorBlockEnabled] = useState(
+    initialSponsorPrefs.enabled,
+  );
+  const [sponsorBlockAutoSkip, setSponsorBlockAutoSkip] = useState(
+    initialSponsorPrefs.autoSkip,
+  );
+  const [sponsorBlockCategories, setSponsorBlockCategories] = useState(
+    initialSponsorPrefs.categories,
+  );
   const [importJson, setImportJson] = useState("");
   const [importModeReplace, setImportModeReplace] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
@@ -87,6 +105,14 @@ export function SettingsPanel({
     writeDefaultPlaybackQuality(q);
   }, [initial.defaultPlaybackQuality]);
 
+  useEffect(() => {
+    const prefs = sponsorBlockPrefsFromAppSettings(initial);
+    setSponsorBlockEnabled(prefs.enabled);
+    setSponsorBlockAutoSkip(prefs.autoSkip);
+    setSponsorBlockCategories(prefs.categories);
+    writeSponsorBlockPrefs(prefs);
+  }, [initial]);
+
   const updateMutation = trpc.settings.update.useMutation({
     onSuccess: async (data) => {
       setTheme(data.theme);
@@ -94,6 +120,7 @@ export function SettingsPanel({
       setTrendingRegion(data.trendingRegion ?? "US");
       writeWatchMiniEnabled(data.enableMiniPlayer ?? true);
       writeDefaultPlaybackQuality(data.defaultPlaybackQuality ?? "1080p");
+      writeSponsorBlockPrefs(sponsorBlockPrefsFromAppSettings(data));
       await utils.settings.get.invalidate();
       await utils.feed.home.invalidate();
       await utils.trending.list.invalidate();
@@ -164,7 +191,16 @@ export function SettingsPanel({
       defaultCinemaMode,
       enableMiniPlayer,
       defaultPlaybackQuality,
+      sponsorBlockEnabled,
+      sponsorBlockAutoSkip,
+      sponsorBlockCategories,
     });
+  }
+
+  function onSponsorCategoryToggle(category: SponsorBlockCategory) {
+    setSponsorBlockCategories((prev) =>
+      toggleSponsorBlockCategory(prev, category),
+    );
   }
 
   async function onExport() {
@@ -355,6 +391,56 @@ export function SettingsPanel({
             </p>
           </div>
         </div>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold">SponsorBlock</h2>
+        <p className="text-sm text-[hsl(var(--muted-foreground))]">
+          Community-submitted segments (sponsors, intros, outros) from{" "}
+          <a
+            href="https://sponsor.ajay.app"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[hsl(var(--primary))] hover:underline"
+          >
+            SponsorBlock
+          </a>
+          . Shown on the watch player timeline; optional auto-skip.
+        </p>
+        <div className="space-y-2">
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={sponsorBlockEnabled}
+              onChange={(e) => setSponsorBlockEnabled(e.currentTarget.checked)}
+            />
+            Enable SponsorBlock segments
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={sponsorBlockAutoSkip}
+              disabled={!sponsorBlockEnabled}
+              onChange={(e) => setSponsorBlockAutoSkip(e.currentTarget.checked)}
+            />
+            Auto-skip segments during playback
+          </label>
+        </div>
+        <fieldset className="space-y-2" disabled={!sponsorBlockEnabled}>
+          <legend className="text-sm font-medium">Categories</legend>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {SPONSORBLOCK_ALL_CATEGORIES.map((category) => (
+              <label key={category} className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={sponsorBlockCategories.includes(category)}
+                  onChange={() => onSponsorCategoryToggle(category)}
+                />
+                {SPONSORBLOCK_CATEGORY_LABELS[category]}
+              </label>
+            ))}
+          </div>
+        </fieldset>
       </section>
 
       <section className="space-y-3">

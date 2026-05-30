@@ -100,7 +100,12 @@ export function scrubFrameStyleAt(
   durationSeconds: number,
   storyboard?: VideoStoryboard,
 ): ScrubFrameStyle {
-  const url = scrubFrameUrlAt(videoId, timeSeconds, durationSeconds, storyboard);
+  const url = scrubFrameUrlAt(
+    videoId,
+    timeSeconds,
+    durationSeconds,
+    storyboard,
+  );
   if (storyboard) {
     return {
       url,

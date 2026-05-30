@@ -4,6 +4,10 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ShortsEmptyHint } from "@/components/shorts/shorts-empty-hint";
 import { ShortsSlide } from "@/components/shorts/shorts-slide";
+import {
+  readSeenShortIds,
+  recordSeenShortIds,
+} from "@/lib/shorts-seen-storage";
 import type { UpstreamAvailability } from "@/server/services/proxy";
 import type {
   ShortsFeedResult,
@@ -28,7 +32,11 @@ function filterExcludedVideos(
   return videos.filter((v) => !excluded.has(v.videoId));
 }
 
-function activeIndexFromScroll(scrollTop: number, slideHeight: number, maxIndex: number) {
+function activeIndexFromScroll(
+  scrollTop: number,
+  slideHeight: number,
+  maxIndex: number,
+) {
   if (slideHeight <= 0) return 0;
   return Math.min(maxIndex, Math.max(0, Math.round(scrollTop / slideHeight)));
 }
@@ -115,6 +123,30 @@ export function ShortsFeedClient({
     });
   }, []);
 
+  // Locally-persisted seen shorts: exclude them and drop them from the initial
+  // feed so a return visit does not re-scroll the same shorts.
+  useEffect(() => {
+    const localSeen = readSeenShortIds();
+    if (localSeen.length === 0) return;
+    const seenSet = new Set(localSeen);
+    for (const id of localSeen) recordedShortIdsRef.current.add(id);
+    setExcludedIds((prev) => {
+      const next = new Set(prev);
+      let changed = false;
+      for (const id of localSeen) {
+        if (!next.has(id)) {
+          next.add(id);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+    setItems((prev) => {
+      const filtered = prev.filter((v) => !seenSet.has(v.videoId));
+      return filtered.length === prev.length ? prev : filtered;
+    });
+  }, []);
+
   useEffect(() => {
     if (!seenIdsQuery.data?.length) return;
     setExcludedIds((prev) => {
@@ -150,15 +182,14 @@ export function ShortsFeedClient({
 
   const markShortSeen = useCallback(
     (video: UnifiedVideo) => {
-      if (!signedIn) return;
       const id = video.videoId;
-      if (
-        recordedShortIdsRef.current.has(id) ||
-        markShortSeenPendingRef.current.has(id)
-      ) {
-        return;
-      }
+      if (recordedShortIdsRef.current.has(id)) return;
+      recordedShortIdsRef.current.add(id);
       addExcludedId(id);
+      // Persist locally so returning to /shorts never re-proposes this short,
+      // even for anonymous viewers (the server only tracks signed-in users).
+      recordSeenShortIds([id]);
+      if (!signedIn || markShortSeenPendingRef.current.has(id)) return;
       markShortSeenPendingRef.current.add(id);
       markShortSeenMutation({
         videoId: id,
@@ -210,11 +241,21 @@ export function ShortsFeedClient({
     if (!feed.isSuccess) return;
     const merged = mergeFeedPages(feed.data.pages);
     const excluded = excludedIdsRef.current;
+    // recordedShortIdsRef holds locally-persisted seen ids synchronously (refs
+    // update before the excludedIds state re-render), so already-seen shorts are
+    // never re-added on mount.
+    const recorded = recordedShortIdsRef.current;
     setItems((prev) => {
       const seen = new Set(prev.map((v) => v.videoId));
       const added: UnifiedVideo[] = [];
       for (const v of merged) {
-        if (seen.has(v.videoId) || excluded.has(v.videoId)) continue;
+        if (
+          seen.has(v.videoId) ||
+          excluded.has(v.videoId) ||
+          recorded.has(v.videoId)
+        ) {
+          continue;
+        }
         seen.add(v.videoId);
         added.push(v);
       }
@@ -224,9 +265,7 @@ export function ShortsFeedClient({
   }, [feed.data, feed.isSuccess]);
 
   useEffect(() => {
-    setActiveIndex((prev) =>
-      Math.min(prev, Math.max(0, items.length - 1)),
-    );
+    setActiveIndex((prev) => Math.min(prev, Math.max(0, items.length - 1)));
   }, [items.length]);
 
   const loadMore = useCallback(() => {
@@ -361,8 +400,7 @@ export function ShortsFeedClient({
     void utils.video.detail.prefetch({ videoId: nextVideoId });
   }, [nextVideoId, utils.video.detail]);
 
-  const upstream =
-    feed.data?.pages[feed.data.pages.length - 1]?.upstream ??
+  const upstream = feed.data?.pages[feed.data.pages.length - 1]?.upstream ??
     initialUpstream ?? {
       pipedConfigured: false,
       invidiousConfigured: false,
@@ -371,15 +409,18 @@ export function ShortsFeedClient({
   const feedWarning =
     feed.data?.pages[feed.data.pages.length - 1]?.warning ?? undefined;
 
-  const scrollToIndex = useCallback((index: number) => {
-    const root = scrollRef.current;
-    if (!root || items.length === 0) return;
-    const slideHeight = root.clientHeight;
-    if (slideHeight <= 0) return;
-    const clamped = Math.min(items.length - 1, Math.max(0, index));
-    root.scrollTo({ top: clamped * slideHeight, behavior: "smooth" });
-    setActiveIndex(clamped);
-  }, [items.length]);
+  const scrollToIndex = useCallback(
+    (index: number) => {
+      const root = scrollRef.current;
+      if (!root || items.length === 0) return;
+      const slideHeight = root.clientHeight;
+      if (slideHeight <= 0) return;
+      const clamped = Math.min(items.length - 1, Math.max(0, index));
+      root.scrollTo({ top: clamped * slideHeight, behavior: "smooth" });
+      setActiveIndex(clamped);
+    },
+    [items.length],
+  );
 
   const advance = useCallback(() => {
     const next = activeIndex + 1;
@@ -503,7 +544,12 @@ export function ShortsFeedClient({
           onClick={goPrevious}
           className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur-sm transition hover:bg-white/25 disabled:opacity-30"
         >
-          <svg viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6" aria-hidden>
+          <svg
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            className="h-6 w-6"
+            aria-hidden
+          >
             <path d="M7.41 15.41 12 10.83l4.59 4.58L18 14l-6-6-6 6z" />
           </svg>
         </button>
@@ -513,7 +559,12 @@ export function ShortsFeedClient({
           onClick={advance}
           className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur-sm transition hover:bg-white/25"
         >
-          <svg viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6" aria-hidden>
+          <svg
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            className="h-6 w-6"
+            aria-hidden
+          >
             <path d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6z" />
           </svg>
         </button>

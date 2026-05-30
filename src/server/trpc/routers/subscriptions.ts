@@ -1,11 +1,11 @@
 import { and, desc, eq, inArray, or } from "drizzle-orm";
 import { z } from "zod";
+import { stripRestrictedListVideos } from "@/lib/feed-exclude-restricted";
 import {
   compareSubscriptionHeads,
   newerPublished,
   publishedSortKey,
 } from "@/lib/published-sort-key";
-import { stripRestrictedListVideos } from "@/lib/feed-exclude-restricted";
 import { normalizeYoutubeChannelId } from "@/lib/youtube-channel-id";
 import type { AppDb } from "@/server/db/client";
 import { channelMeta, subscriptions, watchHistory } from "@/server/db/schema";
@@ -19,7 +19,10 @@ import type {
   ChannelPageResult,
   UnifiedVideo,
 } from "@/server/services/proxy.types";
-import { getUserProxyOverrides, getUserSettings } from "@/server/settings/profile";
+import {
+  getUserProxyOverrides,
+  getUserSettings,
+} from "@/server/settings/profile";
 import { reconcileSubscriptionChannelIdsForUser } from "@/server/subscriptions/reconcile-channel-ids";
 import {
   protectedProcedure,
@@ -57,7 +60,10 @@ function readChannelMetaByIds(
   db: AppDb,
   channelIds: string[],
 ): Map<string, { channelName: string; avatarUrl: string | null }> {
-  const out = new Map<string, { channelName: string; avatarUrl: string | null }>();
+  const out = new Map<
+    string,
+    { channelName: string; avatarUrl: string | null }
+  >();
   if (channelIds.length === 0) return out;
   let rows: {
     channelId: string;
@@ -382,7 +388,7 @@ async function fetchRssEntriesFromChannel(
         title,
         channelId,
         channelName,
-        thumbnailUrl: `https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/maxresdefault.jpg`,
+        thumbnailUrl: `https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/hqdefault.jpg`,
         publishedAt,
         publishedText: publishedRaw?.trim(),
       });
@@ -473,7 +479,10 @@ function enrichSubscriptionVideosWithChannelMeta(
   for (const r of rows) {
     const name = r.channelName?.trim();
     if (!name) continue;
-    byId.set(r.channelId, { channelName: name, avatarUrl: r.avatarUrl ?? null });
+    byId.set(r.channelId, {
+      channelName: name,
+      avatarUrl: r.avatarUrl ?? null,
+    });
   }
 
   return videos.map((v) => {
@@ -481,7 +490,9 @@ function enrichSubscriptionVideosWithChannelMeta(
     if (!id) return v;
     const meta = byId.get(id);
     if (!meta) return v;
-    const channelName = v.channelName?.trim() ? v.channelName : meta.channelName;
+    const channelName = v.channelName?.trim()
+      ? v.channelName
+      : meta.channelName;
     const channelAvatarUrl = v.channelAvatarUrl ?? meta.avatarUrl ?? undefined;
     if (
       channelName === v.channelName &&
@@ -492,9 +503,7 @@ function enrichSubscriptionVideosWithChannelMeta(
     return {
       ...v,
       channelName,
-      ...(channelAvatarUrl !== undefined
-        ? { channelAvatarUrl }
-        : {}),
+      ...(channelAvatarUrl !== undefined ? { channelAvatarUrl } : {}),
     };
   });
 }

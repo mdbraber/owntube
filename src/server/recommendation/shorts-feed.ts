@@ -1,13 +1,13 @@
-import { shortsSearchQueriesForTaste } from "@/lib/shorts-discovery-queries";
 import { filterShortsFeedVideos } from "@/lib/short-video";
+import { shortsSearchQueriesForTaste } from "@/lib/shorts-discovery-queries";
 import type { AppDb } from "@/server/db/client";
 import { UpstreamUnavailableError } from "@/server/errors/upstream-unavailable";
 import {
   clearShortsRecommendationCacheForUser,
   getShortsRecommendations,
 } from "@/server/recommendation/shorts-recommendation-pool";
-import { collectUserSignals } from "@/server/recommendation/signals";
 import { loadShortSeenVideoIds } from "@/server/recommendation/shorts-seen";
+import { collectUserSignals } from "@/server/recommendation/signals";
 import { readCachedDetailTitlesForVideos } from "@/server/recommendation/taste-corpus";
 import { loadWatchedVideoIdsForRecommendations } from "@/server/recommendation/watched-videos";
 import {
@@ -24,6 +24,13 @@ import { getUserSettings } from "@/server/settings/profile";
 const SHORTS_PAGE_SIZE = 24;
 
 const SHORTS_DISCOVERY_FETCH_LIMIT = 36;
+
+const SHORTS_SHELF_MAX_LIMIT = 16;
+
+/** Channel Shorts tab fetches when building the home shelf pool (cold). */
+const SHORTS_SHELF_MAX_CHANNELS = 6;
+
+const SHORTS_SHELF_DISCOVERY_PAGES = 2;
 
 const MAX_EMPTY_REC_PAGE_SKIPS = 10;
 
@@ -65,7 +72,10 @@ export function buildShortsExclusionSet(
   return merged.size > 0 ? merged : null;
 }
 
-function mergeShortsLists(limit: number, ...lists: UnifiedVideo[][]): UnifiedVideo[] {
+function mergeShortsLists(
+  limit: number,
+  ...lists: UnifiedVideo[][]
+): UnifiedVideo[] {
   const seen = new Set<string>();
   const out: UnifiedVideo[] = [];
   for (const list of lists) {
@@ -124,7 +134,11 @@ async function resolvePersonalizedShortsPage(
   let hasMore = false;
   let coldStart = false;
 
-  for (let skip = 0; skip < MAX_EMPTY_REC_PAGE_SKIPS && videos.length < pageSize; skip++) {
+  for (
+    let skip = 0;
+    skip < MAX_EMPTY_REC_PAGE_SKIPS && videos.length < pageSize;
+    skip++
+  ) {
     const personalized = await getShortsRecommendations(db, userId, {
       page,
       pageSize,
@@ -135,7 +149,10 @@ async function resolvePersonalizedShortsPage(
     });
     coldStart = personalized.coldStart;
     hasMore = personalized.hasMore;
-    for (const video of filterUnwatchedShorts(personalized.videos, watchedEver)) {
+    for (const video of filterUnwatchedShorts(
+      personalized.videos,
+      watchedEver,
+    )) {
       if (videos.some((v) => v.videoId === video.videoId)) continue;
       videos.push(video);
       if (videos.length >= pageSize) break;
@@ -177,11 +194,7 @@ async function fetchUnwatchedGenericShorts(
   for (let attempt = 0; attempt < MAX_UNWATCHED_FETCH_ATTEMPTS; attempt++) {
     let page: ShortsFeedResult;
     try {
-      page = await fetchShortsFeed(
-        db,
-        { ...input, continuation },
-        overrides,
-      );
+      page = await fetchShortsFeed(db, { ...input, continuation }, overrides);
     } catch (e) {
       if (e instanceof UpstreamUnavailableError) {
         upstreamUnavailable = e;
@@ -235,11 +248,103 @@ async function fetchUnwatchedGenericShorts(
     continuation: continuation ?? undefined,
     sourceUsed,
     warning:
-      merged.length === 0
-        ? (warning ?? ALL_SHORTS_SEEN_WARNING)
-        : warning,
+      merged.length === 0 ? (warning ?? ALL_SHORTS_SEEN_WARNING) : warning,
     stale,
   };
+}
+
+/**
+ * Home Shorts shelf: at most one generic upstream fetch; personalized rows only
+ * when the shorts pool is already warm (e.g. after visiting `/shorts`).
+ */
+async function fetchShortsShelfFeed(
+  db: AppDb,
+  userId: number | null,
+  input: ShortsFeedInput,
+  overrides: ProxySourceOverrides | undefined,
+  region: string,
+  limit: number,
+): Promise<ShortsFeedResult> {
+  const watchedEver = buildShortsExclusionSet(
+    db,
+    userId,
+    input.excludeVideoIds,
+  );
+  let videos: UnifiedVideo[] = [];
+
+  if (userId) {
+    const personalized = await getShortsRecommendations(db, userId, {
+      page: 1,
+      pageSize: limit,
+      region,
+      overrides,
+      additionalExcludeVideoIds: input.excludeVideoIds,
+      maxChannels: SHORTS_SHELF_MAX_CHANNELS,
+    });
+    videos = filterUnwatchedShorts(
+      filterShortsFeedVideos(personalized.videos),
+      watchedEver,
+    );
+  }
+
+  if (videos.length >= limit) {
+    return {
+      videos: videos.slice(0, limit),
+      sourceUsed: "piped",
+    };
+  }
+
+  let sourceUsed: ShortsFeedResult["sourceUsed"] = "piped";
+  let warning: string | undefined;
+  let stale: boolean | undefined;
+  let continuation: string | undefined;
+
+  try {
+    for (
+      let pageIndex = 0;
+      pageIndex < SHORTS_SHELF_DISCOVERY_PAGES && videos.length < limit;
+      pageIndex++
+    ) {
+      const page = await fetchShortsFeed(
+        db,
+        {
+          region,
+          limit,
+          continuation,
+          purpose: "shelf",
+          excludeVideoIds: input.excludeVideoIds,
+        },
+        overrides,
+      );
+      sourceUsed = page.sourceUsed;
+      warning = page.warning;
+      stale = page.stale;
+      videos = mergeShortsLists(
+        limit,
+        videos,
+        filterUnwatchedShorts(filterShortsFeedVideos(page.videos), watchedEver),
+      );
+      if (videos.length >= limit) break;
+      if (!page.continuation) {
+        continuation = undefined;
+        break;
+      }
+      continuation = page.continuation;
+    }
+
+    return {
+      videos: videos.slice(0, limit),
+      continuation: undefined,
+      sourceUsed,
+      warning,
+      stale,
+    };
+  } catch (e) {
+    if (videos.length > 0) {
+      return { videos: videos.slice(0, limit), sourceUsed: "piped" };
+    }
+    throw e;
+  }
 }
 
 /**
@@ -253,8 +358,18 @@ export async function fetchShortsFeedForViewer(
   overrides?: ProxySourceOverrides,
 ): Promise<ShortsFeedResult> {
   const region = input.region.toUpperCase();
-  const limit = Math.min(40, input.limit ?? SHORTS_PAGE_SIZE);
-  const forcePoolRefresh = shortsContinuationForcesPoolRefresh(input.continuation);
+  const purpose = input.purpose ?? "feed";
+  const limit =
+    purpose === "shelf"
+      ? Math.min(SHORTS_SHELF_MAX_LIMIT, input.limit ?? SHORTS_SHELF_MAX_LIMIT)
+      : Math.min(40, input.limit ?? SHORTS_PAGE_SIZE);
+
+  if (purpose === "shelf") {
+    return fetchShortsShelfFeed(db, userId, input, overrides, region, limit);
+  }
+  const forcePoolRefresh = shortsContinuationForcesPoolRefresh(
+    input.continuation,
+  );
   const recPage = parseShortsRecPage(input.continuation);
   const watchedEver = buildShortsExclusionSet(
     db,
@@ -299,38 +414,39 @@ export async function fetchShortsFeedForViewer(
   let nextRecCursor = personalized.hasMore ? `rec:${page + 1}` : undefined;
 
   if (page === 1 && personalized.videos.length < limit) {
-    if (personalized.videos.length === 0) {
-      const upstream = await fetchUnwatchedGenericShorts(
-        db,
-        {
-          region,
-          limit: SHORTS_DISCOVERY_FETCH_LIMIT,
-          discoveryQueries: tasteDiscoveryQueries,
-        },
-        overrides,
-        watchedEver,
-        limit,
-      );
-      const videos = mergeShortsLists(limit, personalized.videos, upstream.videos);
-      const nextCursor =
-        videos.length > 0
-          ? (nextRecCursor ?? upstream.continuation ?? undefined)
-          : (upstream.continuation ?? nextRecCursor ?? undefined);
-      return {
-        videos,
-        continuation: nextCursor ?? undefined,
-        sourceUsed: upstream.sourceUsed,
-        warning:
-          videos.length === 0
-            ? (upstream.warning ?? ALL_SHORTS_SEEN_WARNING)
-            : upstream.warning,
-        stale: upstream.stale,
-      };
-    }
+    // Top up a thin personalized page with regional/taste discovery shorts so
+    // the caller gets close to `limit` items from varied channels, instead of
+    // returning the few channel-clustered personalized results on their own.
+    const upstream = await fetchUnwatchedGenericShorts(
+      db,
+      {
+        region,
+        limit: SHORTS_DISCOVERY_FETCH_LIMIT,
+        discoveryQueries: tasteDiscoveryQueries,
+      },
+      overrides,
+      watchedEver,
+      limit,
+    );
+    const videos = mergeShortsLists(
+      limit,
+      personalized.videos,
+      upstream.videos,
+    );
+    const nextCursor =
+      videos.length > 0
+        ? (nextRecCursor ?? upstream.continuation ?? undefined)
+        : (upstream.continuation ?? nextRecCursor ?? undefined);
     return {
-      videos: personalized.videos.slice(0, limit),
-      continuation: nextRecCursor,
-      sourceUsed: "piped",
+      videos,
+      continuation: nextCursor ?? undefined,
+      sourceUsed:
+        personalized.videos.length > 0 ? "piped" : upstream.sourceUsed,
+      warning:
+        videos.length === 0
+          ? (upstream.warning ?? ALL_SHORTS_SEEN_WARNING)
+          : upstream.warning,
+      stale: upstream.stale,
     };
   }
 
@@ -385,7 +501,8 @@ export async function fetchShortsFeedForViewer(
     return {
       videos,
       continuation:
-        upstream.continuation ?? (upstream.videos.length > 0 ? "rec:refresh" : undefined),
+        upstream.continuation ??
+        (upstream.videos.length > 0 ? "rec:refresh" : undefined),
       sourceUsed: upstream.sourceUsed,
       warning:
         videos.length === 0

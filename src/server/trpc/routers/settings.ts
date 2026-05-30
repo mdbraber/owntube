@@ -1,24 +1,25 @@
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { defaultPlaybackQualitySchema } from "@/lib/default-playback-quality";
+import { sponsorBlockCategorySchema } from "@/lib/sponsorblock";
 import {
   interactions,
   subscriptions,
   userProfile,
   watchHistory,
 } from "@/server/db/schema";
-import {
-  appSettingsSchema,
-  getUserProxyOverrides,
-  getUserSettings,
-  upsertUserSettings,
-} from "@/server/settings/profile";
 import { clearRecommendationCachesForUser } from "@/server/recommendation/engine";
 import {
   clearProxyCaches,
   getInstanceSourceInfo,
   resolveEffectiveProxyBases,
 } from "@/server/services/proxy";
+import {
+  appSettingsSchema,
+  getUserProxyOverrides,
+  getUserSettings,
+  upsertUserSettings,
+} from "@/server/settings/profile";
 import { protectedProcedure, router } from "@/server/trpc/init";
 
 const settingsPatchSchema = z.object({
@@ -30,6 +31,9 @@ const settingsPatchSchema = z.object({
   defaultCinemaMode: z.boolean().optional(),
   enableMiniPlayer: z.boolean().optional(),
   defaultPlaybackQuality: defaultPlaybackQualitySchema.optional(),
+  sponsorBlockEnabled: z.boolean().optional(),
+  sponsorBlockAutoSkip: z.boolean().optional(),
+  sponsorBlockCategories: z.array(sponsorBlockCategorySchema).optional(),
 });
 
 const healthCheckInputSchema = z.object({
@@ -105,10 +109,12 @@ export const settingsRouter = router({
         input?.invidiousBaseUrl !== undefined
           ? {
               pipedBaseUrl: input.pipedBaseUrl ?? current.pipedBaseUrl,
-              invidiousBaseUrl: input.invidiousBaseUrl ?? current.invidiousBaseUrl,
+              invidiousBaseUrl:
+                input.invidiousBaseUrl ?? current.invidiousBaseUrl,
             }
           : getUserProxyOverrides(ctx.db, ctx.userId);
-      const { pipedBase, invidiousBase } = resolveEffectiveProxyBases(overrides);
+      const { pipedBase, invidiousBase } =
+        resolveEffectiveProxyBases(overrides);
       const pipedOk = pipedBase
         ? await checkUrl(`${pipedBase}/trending?region=US`)
         : null;

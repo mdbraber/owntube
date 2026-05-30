@@ -1,15 +1,19 @@
 "use client";
 
 import Link from "next/link";
+import { BrandLogoIcon } from "@/components/shell/brand-logo-icon";
 
 type BrandLogoProps = {
   showText?: boolean;
+  /** Smaller mark for the shell topbar when the sidebar is collapsed. */
+  compact?: boolean;
   className?: string;
   onNavigate?: () => void;
 };
 
 export function BrandLogo({
   showText = true,
+  compact = false,
   className,
   onNavigate,
 }: BrandLogoProps) {
@@ -18,22 +22,17 @@ export function BrandLogo({
       href="/"
       onClick={onNavigate}
       className={`inline-flex items-center gap-2 rounded-lg outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--background))] ${className ?? ""}`}
-      aria-label="OwnTube home"
+      aria-label="owntube home"
     >
-      <span className="relative flex shrink-0 overflow-hidden rounded-md">
-        {/* biome-ignore lint/performance/noImgElement: static app logo from public */}
-        <img
-          src="/logo.png?v=6"
-          alt=""
-          width={36}
-          height={36}
-          className="h-9 w-9 object-contain"
-          aria-hidden
-        />
-      </span>
+      <BrandLogoIcon
+        size={compact ? 30 : 36}
+        className={compact ? "h-8 w-8" : "h-9 w-9"}
+      />
       {showText ? (
-        <span className="text-lg font-extrabold tracking-tight text-[hsl(var(--foreground))]">
-          OwnTube
+        <span
+          className={`font-extrabold tracking-tight text-[hsl(var(--foreground))] ${compact ? "text-base" : "text-lg"}`}
+        >
+          owntube
         </span>
       ) : null}
     </Link>

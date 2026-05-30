@@ -2,11 +2,11 @@ import Link from "next/link";
 import { AddToQueueButton } from "@/components/player/add-to-queue-button";
 import { ChannelAvatarCircle } from "@/components/videos/channel-avatar-circle";
 import { VideoCardActionsMenu } from "@/components/videos/video-card-actions-menu";
+import { VideoCardDurationBadge } from "@/components/videos/video-card-duration-badge";
 import { VideoCardMarkWatchedButton } from "@/components/videos/video-card-mark-watched-button";
 import { VideoCardThumbnailImg } from "@/components/videos/video-card-thumbnail-img";
 import { VideoCardThumbnailInteractive } from "@/components/videos/video-card-thumbnail-interactive";
 import {
-  formatDuration,
   formatPublishedAbsoluteLabel,
   formatPublishedDebugTitle,
   formatPublishedLabel,
@@ -24,6 +24,8 @@ type VideoCardProps = {
   channelAvatarUrl?: string;
   thumbnailUrl?: string;
   durationSeconds?: number;
+  isLive?: boolean;
+  isUpcoming?: boolean;
   viewCount?: number;
   /** Relative or textual publish date from upstream (`publishedText`). */
   publishedText?: string;
@@ -41,11 +43,12 @@ export function VideoCard({
   channelAvatarUrl,
   thumbnailUrl,
   durationSeconds,
+  isLive,
+  isUpcoming,
   viewCount,
   publishedText,
   publishedAt,
 }: VideoCardProps) {
-  const durationLabel = formatDuration(durationSeconds);
   const viewsLabel = formatViews(viewCount);
   const publishedLabel = formatPublishedLabel(publishedText, publishedAt);
   const publishedAbsoluteLabel = formatPublishedAbsoluteLabel(publishedAt);
@@ -61,14 +64,17 @@ export function VideoCard({
     "h-full w-full object-cover transition duration-500 ease-out group-hover:scale-[1.04]";
 
   return (
-    <article className="group flex h-full flex-col gap-3 text-left text-[hsl(var(--foreground))]">
+    <article className="group flex flex-col gap-3 text-left text-[hsl(var(--foreground))]">
       {videoId ? (
         <div className="relative">
           <VideoCardThumbnailInteractive
             href={href}
             videoId={videoId}
             thumbnailUrl={thumbnailUrl}
-            durationLabel={durationLabel}
+            durationSeconds={durationSeconds}
+            isLive={isLive}
+            isUpcoming={isUpcoming}
+            disableHoverPreview={isLive === true}
             thumbClassName={thumbShell}
             imgClassName={thumbImg}
           />
@@ -103,11 +109,12 @@ export function VideoCard({
                 <polygon points="6 4 20 12 6 20 6 4" />
               </svg>
             </div>
-            {durationLabel ? (
-              <span className="absolute bottom-2 right-2 rounded-md border border-white/10 bg-black/85 px-2 py-0.5 font-mono text-[11px] font-semibold tabular-nums text-white backdrop-blur-sm">
-                {durationLabel}
-              </span>
-            ) : null}
+            <VideoCardDurationBadge
+              durationSeconds={durationSeconds}
+              isLive={isLive}
+              isUpcoming={isUpcoming}
+              className="bottom-2 right-2 px-2 py-0.5 text-[11px]"
+            />
             <VideoCardMarkWatchedButton
               videoId={videoId}
               channelId={channelId}
@@ -116,7 +123,7 @@ export function VideoCard({
           </div>
         </Link>
       )}
-      <div className="flex gap-3">
+      <div className="flex items-start gap-3">
         {channelHref ? (
           <Link href={channelHref} className="mt-0.5 shrink-0">
             <ChannelAvatarCircle
@@ -132,10 +139,10 @@ export function VideoCard({
             size="md"
           />
         )}
-        <div className="min-w-0 flex-1">
-          <div className="mb-1 flex items-start gap-0.5">
-            <Link href={href} className="min-w-0 flex-1">
-              <h2 className="line-clamp-2 text-[15px] font-semibold leading-snug tracking-tight text-[hsl(var(--foreground))] transition group-hover:text-[hsl(var(--primary))]">
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <div className="relative min-w-0 pr-8">
+            <Link href={href} className="block min-w-0">
+              <h2 className="ot-video-card-title m-0 text-[15px] font-semibold leading-snug tracking-tight text-[hsl(var(--foreground))] transition group-hover:text-[hsl(var(--primary))]">
                 {title}
               </h2>
             </Link>
@@ -144,6 +151,7 @@ export function VideoCard({
                 videoId={videoId}
                 channelId={channelId}
                 channelName={channelName}
+                className="absolute -right-1 -top-1"
               />
             ) : null}
           </div>
@@ -198,11 +206,15 @@ type VideoCardShortProps = {
   channelAvatarUrl?: string;
   thumbnailUrl?: string;
   durationSeconds?: number;
+  isLive?: boolean;
+  isUpcoming?: boolean;
   viewCount?: number;
   publishedText?: string;
   publishedAt?: number;
   /** Show channel name under the title (e.g. search). Off on channel pages. */
   showChannelMeta?: boolean;
+  /** Full-width card for the home Shorts shelf (no 210px cap). */
+  layout?: "default" | "shelf";
 };
 
 export function VideoCardShort({
@@ -214,12 +226,14 @@ export function VideoCardShort({
   channelHref,
   thumbnailUrl,
   durationSeconds,
+  isLive,
+  isUpcoming,
   viewCount,
   publishedText,
   publishedAt,
   showChannelMeta = false,
+  layout = "default",
 }: VideoCardShortProps) {
-  const durationLabel = formatDuration(durationSeconds);
   const viewsLabel = formatViews(viewCount);
   const publishedLabel = formatPublishedLabel(publishedText, publishedAt);
   const publishedAbsoluteLabel = formatPublishedAbsoluteLabel(publishedAt);
@@ -229,11 +243,20 @@ export function VideoCardShort({
   );
   const channel = channelName ?? "Unknown channel";
 
+  const thumbShellClass =
+    layout === "shelf"
+      ? "relative w-full"
+      : "relative mx-auto w-full max-w-[210px]";
+  const titleClass =
+    layout === "shelf"
+      ? "ot-video-card-title m-0 text-sm font-semibold leading-snug tracking-tight transition group-hover:text-[hsl(var(--primary))]"
+      : "ot-video-card-title m-0 text-[13px] font-semibold leading-snug tracking-tight transition group-hover:text-[hsl(var(--primary))]";
+
   return (
     <article className="group flex flex-col gap-2 text-left text-[hsl(var(--foreground))]">
-      <div className="relative mx-auto w-full max-w-[210px]">
+      <div className={thumbShellClass}>
         <Link href={href} className="block">
-          <div className="relative aspect-[9/16] w-full overflow-hidden rounded-xl bg-[hsl(var(--muted))] shadow-none transition duration-300 group-hover:-translate-y-0.5 group-hover:shadow-[0_16px_32px_rgba(0,0,0,0.4)]">
+          <div className="relative aspect-[9/16] w-full overflow-hidden rounded-[var(--radius-card)] bg-[hsl(var(--muted))] shadow-none transition duration-300 group-hover:-translate-y-0.5 group-hover:shadow-[0_16px_32px_rgba(0,0,0,0.4)]">
             {thumbnailUrl ? (
               <VideoCardThumbnailImg
                 url={thumbnailUrl}
@@ -256,11 +279,12 @@ export function VideoCardShort({
                 <polygon points="6 4 20 12 6 20 6 4" />
               </svg>
             </div>
-            {durationLabel ? (
-              <span className="absolute bottom-1.5 right-1.5 rounded-md border border-white/10 bg-black/80 px-1.5 py-px font-mono text-[10px] font-semibold tabular-nums text-white backdrop-blur-sm">
-                {durationLabel}
-              </span>
-            ) : null}
+            <VideoCardDurationBadge
+              durationSeconds={durationSeconds}
+              isLive={isLive}
+              isUpcoming={isUpcoming}
+              className="bottom-1.5 right-1.5 px-1.5 py-px text-[10px]"
+            />
           </div>
         </Link>
         <VideoCardMarkWatchedButton
@@ -269,13 +293,19 @@ export function VideoCardShort({
           className="absolute left-1.5 top-1.5 z-20 flex items-center gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100 focus-within:opacity-100"
         />
       </div>
-      <div className="flex items-start gap-0.5 px-0.5">
-        <div className="min-w-0 flex-1">
-          <Link href={href}>
-            <p className="line-clamp-2 text-[13px] font-semibold leading-snug tracking-tight transition group-hover:text-[hsl(var(--primary))]">
-              {title}
-            </p>
+      <div className="px-0.5">
+        <div className="relative min-w-0 pr-8">
+          <Link href={href} className="block min-w-0">
+            <p className={titleClass}>{title}</p>
           </Link>
+          {videoId ? (
+            <VideoCardActionsMenu
+              videoId={videoId}
+              channelId={channelId}
+              channelName={channelName}
+              className="absolute -right-1 -top-1"
+            />
+          ) : null}
           {showChannelMeta ? (
             <p className="mt-0.5 line-clamp-1 text-[11px] text-[hsl(var(--muted-foreground))]">
               {channelHref ? (
@@ -291,7 +321,13 @@ export function VideoCardShort({
             </p>
           ) : null}
           {viewsLabel || publishedLabel ? (
-            <p className="mt-0.5 line-clamp-1 text-[11px] text-[hsl(var(--muted-foreground))]">
+            <p
+              className={
+                layout === "shelf"
+                  ? "mt-0.5 line-clamp-1 text-xs text-[hsl(var(--muted-foreground))]"
+                  : "mt-0.5 line-clamp-1 text-[11px] text-[hsl(var(--muted-foreground))]"
+              }
+            >
               {viewsLabel}
               {viewsLabel && publishedLabel ? (
                 <span className="mx-1 text-[hsl(var(--muted-foreground))]/60">
@@ -311,14 +347,6 @@ export function VideoCardShort({
             </p>
           ) : null}
         </div>
-        {videoId ? (
-          <VideoCardActionsMenu
-            videoId={videoId}
-            channelId={channelId}
-            channelName={channelName}
-            className="-mr-1 -mt-0.5"
-          />
-        ) : null}
       </div>
     </article>
   );
@@ -334,6 +362,8 @@ type VideoCardCompactProps = {
   channelAvatarUrl?: string;
   thumbnailUrl?: string;
   durationSeconds?: number;
+  isLive?: boolean;
+  isUpcoming?: boolean;
   publishedText?: string;
   publishedAt?: number;
   showChannelAvatar?: boolean;
@@ -351,13 +381,14 @@ export function VideoCardCompact({
   channelAvatarUrl,
   thumbnailUrl,
   durationSeconds,
+  isLive,
+  isUpcoming,
   publishedText,
   publishedAt,
   showChannelAvatar = true,
   size = "default",
   showAddToQueue = false,
 }: VideoCardCompactProps) {
-  const durationLabel = formatDuration(durationSeconds);
   const publishedLabel = formatPublishedLabel(publishedText, publishedAt);
   const publishedAbsoluteLabel = formatPublishedAbsoluteLabel(publishedAt);
   const publishedDebugTitle = formatPublishedDebugTitle(
@@ -369,13 +400,13 @@ export function VideoCardCompact({
     size === "large" ? "w-[9.5rem] sm:w-52" : "w-[7.25rem] sm:w-40";
   const titleClass =
     size === "large"
-      ? "line-clamp-2 text-[15px] font-semibold leading-snug tracking-tight transition group-hover:text-[hsl(var(--primary))]"
-      : "line-clamp-2 text-sm font-semibold leading-snug tracking-tight transition group-hover:text-[hsl(var(--primary))]";
+      ? "ot-video-card-title m-0 text-[15px] font-semibold leading-snug tracking-tight transition group-hover:text-[hsl(var(--primary))]"
+      : "ot-video-card-title m-0 text-sm font-semibold leading-snug tracking-tight transition group-hover:text-[hsl(var(--primary))]";
   const metaPadClass = showChannelAvatar ? "pl-8" : "pl-0";
 
   return (
     <article className="group rounded-xl p-2 transition hover:bg-[hsl(var(--muted)_/_0.45)]">
-      <div className="flex gap-3 text-left">
+      <div className="flex items-start gap-3 text-left">
         <Link href={href} className="block shrink-0">
           <div
             className={`relative aspect-video overflow-hidden rounded-xl bg-[hsl(var(--muted))] ${thumbSizeClass}`}
@@ -387,11 +418,12 @@ export function VideoCardCompact({
                 className="h-full w-full object-cover transition duration-500 ease-out group-hover:scale-105"
               />
             ) : null}
-            {durationLabel ? (
-              <span className="absolute bottom-1 right-1 rounded border border-white/10 bg-black/60 px-1 py-px font-mono text-[10px] tabular-nums text-white backdrop-blur-sm">
-                {durationLabel}
-              </span>
-            ) : null}
+            <VideoCardDurationBadge
+              durationSeconds={durationSeconds}
+              isLive={isLive}
+              isUpcoming={isUpcoming}
+              className="bottom-1 right-1 px-1 py-px text-[10px]"
+            />
             <VideoCardMarkWatchedButton
               videoId={videoId}
               channelId={channelId}
@@ -399,8 +431,14 @@ export function VideoCardCompact({
             />
           </div>
         </Link>
-        <div className="flex min-w-0 flex-1 flex-col gap-1 py-0.5 pr-1">
-          <div className="flex items-start gap-0.5">
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5 py-0.5 pr-1">
+          <div
+            className={
+              showChannelAvatar
+                ? "relative grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-0.5 pr-8"
+                : "relative min-w-0 pr-8"
+            }
+          >
             {showChannelAvatar ? (
               channelHref ? (
                 <Link href={channelHref} className="mt-0.5 shrink-0">
@@ -420,7 +458,7 @@ export function VideoCardCompact({
                 </span>
               )
             ) : null}
-            <Link href={href} className="min-w-0 flex-1">
+            <Link href={href} className="min-w-0">
               <p className={titleClass}>{title}</p>
             </Link>
             {videoId ? (
@@ -428,44 +466,44 @@ export function VideoCardCompact({
                 videoId={videoId}
                 channelId={channelId}
                 channelName={channelName}
-                className="-mr-1 -mt-0.5 shrink-0"
+                className="absolute -right-1 -top-1"
               />
             ) : null}
           </div>
-            <p
-              className={`line-clamp-2 text-xs text-[hsl(var(--muted-foreground))] ${metaPadClass}`}
-            >
-              {channelHref ? (
-                <Link
-                  href={channelHref}
-                  className="hover:text-[hsl(var(--foreground))] hover:underline"
+          <p
+            className={`line-clamp-2 text-xs text-[hsl(var(--muted-foreground))] ${metaPadClass}`}
+          >
+            {channelHref ? (
+              <Link
+                href={channelHref}
+                className="hover:text-[hsl(var(--foreground))] hover:underline"
+              >
+                {channel}
+              </Link>
+            ) : (
+              channel
+            )}
+            {publishedLabel ? (
+              <>
+                <span className="mx-1 text-[hsl(var(--muted-foreground))]/60">
+                  ·
+                </span>
+                <span
+                  className="tabular-nums"
+                  title={
+                    publishedDebugTitle ?? publishedAbsoluteLabel ?? undefined
+                  }
                 >
-                  {channel}
-                </Link>
-              ) : (
-                channel
-              )}
-              {publishedLabel ? (
-                <>
-                  <span className="mx-1 text-[hsl(var(--muted-foreground))]/60">
-                    ·
-                  </span>
-                  <span
-                    className="tabular-nums"
-                    title={
-                      publishedDebugTitle ?? publishedAbsoluteLabel ?? undefined
-                    }
-                  >
-                    {publishedLabel}
-                  </span>
-                </>
-              ) : null}
-            </p>
-            {showAddToQueue ? (
-              <div className={metaPadClass}>
-                <AddToQueueButton href={href} title={title} />
-              </div>
+                  {publishedLabel}
+                </span>
+              </>
             ) : null}
+          </p>
+          {showAddToQueue ? (
+            <div className={metaPadClass}>
+              <AddToQueueButton href={href} title={title} />
+            </div>
+          ) : null}
         </div>
       </div>
     </article>

@@ -211,8 +211,8 @@ export function WatchCommentsSection({ videoId }: WatchCommentsSectionProps) {
 
       {query.isError ? (
         <p className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted)_/_0.35)] px-4 py-6 text-center text-sm text-[hsl(var(--muted-foreground))]">
-          Could not load comments. Check your Piped or Invidious instance and try
-          again later.
+          Could not load comments. Check your Piped or Invidious instance and
+          try again later.
         </p>
       ) : null}
 

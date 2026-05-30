@@ -1,5 +1,7 @@
+import { BRAND_COLOR } from "@/lib/brand";
+
 const PALETTE = [
-  "linear-gradient(135deg, #ff3355, #ff6633)",
+  BRAND_COLOR,
   "linear-gradient(135deg, #5533ff, #a855f7)",
   "linear-gradient(135deg, #22c55e, #3355ff)",
   "linear-gradient(135deg, #eab308, #ff6633)",
@@ -55,7 +57,8 @@ export function resolveChannelAvatarUrl(imageUrl?: string): string | undefined {
         : window.location.protocol;
     const port = broken[1] ?? "";
     const path = broken[2] ?? "/";
-    const host = typeof window === "undefined" ? "127.0.0.1" : window.location.hostname;
+    const host =
+      typeof window === "undefined" ? "127.0.0.1" : window.location.hostname;
     return `${protocol}//${host}:${port}${path}`;
   }
 }

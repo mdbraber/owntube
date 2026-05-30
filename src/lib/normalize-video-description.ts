@@ -2,8 +2,7 @@ const BR_RE = /<br\s*\/?>/gi;
 const BLOCKED_BLOCK_END_RE = /<\/(?:p|div|li|motion\.p)>/gi;
 const ANCHOR_RE = /<a\b[^>]*\bhref=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
 const TAG_RE = /<[^>]+>/g;
-const CHAPTER_LABEL_RE =
-  /^\d{1,2}:[0-5]\d(?::[0-5]\d)?(?:\s*[-–—]\s*|\s+).+$/;
+const CHAPTER_LABEL_RE = /^\d{1,2}:[0-5]\d(?::[0-5]\d)?(?:\s*[-–—]\s*|\s+).+$/;
 const TIMESTAMP_ONLY_LABEL_RE = /^\d{1,2}:[0-5]\d(?::[0-5]\d)?$/;
 
 function decodeHtmlEntities(text: string): string {

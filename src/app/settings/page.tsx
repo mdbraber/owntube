@@ -35,8 +35,10 @@ export default async function SettingsPage() {
         <TakeoutImportPanel />
       </div>
 
-      <section className="space-y-3 rounded-[14px] border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-5 shadow-sm">
-        <h2 className="text-lg font-semibold tracking-tight">Recommendations</h2>
+      <section className="ot-surface-card space-y-3 p-5 shadow-sm">
+        <h2 className="text-lg font-semibold tracking-tight">
+          Recommendations
+        </h2>
         <p className="text-sm text-[hsl(var(--muted-foreground))]">
           Run the taste wizard to set interest keywords and rate sample videos.
           Likes, dislikes, and saves from the rest of the app also shape your

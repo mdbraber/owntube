@@ -93,8 +93,12 @@ function diversifiedRowToVideo(row: ScoredVideo): UnifiedVideo {
   return video;
 }
 
-function diversifiedToVideos(entry: RecommendationPoolCacheEntry): UnifiedVideo[] {
-  return stripRestrictedListVideos(entry.diversified.map(diversifiedRowToVideo));
+function diversifiedToVideos(
+  entry: RecommendationPoolCacheEntry,
+): UnifiedVideo[] {
+  return stripRestrictedListVideos(
+    entry.diversified.map(diversifiedRowToVideo),
+  );
 }
 
 function sliceRecommendationPool(

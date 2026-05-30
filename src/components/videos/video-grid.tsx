@@ -21,6 +21,8 @@ function videoCardProps(v: UnifiedVideo) {
     channelAvatarUrl: v.channelAvatarUrl,
     thumbnailUrl: v.thumbnailUrl,
     durationSeconds: v.durationSeconds,
+    isLive: v.isLive,
+    isUpcoming: v.isUpcoming,
     viewCount: v.viewCount,
     publishedText: v.publishedText,
     publishedAt: v.publishedAt,

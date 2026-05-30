@@ -2,7 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { HomeHero } from "@/components/home/home-hero";
+import { HomeShortsShelf } from "@/components/home/home-shorts-shelf";
 import { VideoGrid } from "@/components/videos/video-grid";
+import { useLargeVideoGridColumnCount } from "@/hooks/use-large-video-grid-column-count";
+import {
+  computeHomeShortsShelfLayout,
+  LARGE_VIDEO_GRID_COLUMN_GAP_PX,
+} from "@/lib/video-grid-columns";
 import type { UnifiedVideo } from "@/server/services/proxy.types";
 import { trpc } from "@/trpc/react";
 
@@ -21,6 +27,16 @@ const LOAD_MORE_SKELETON_KEYS = [
   "h",
   "i",
 ] as const;
+const SHORTS_SKELETON_SLOT_KEYS = [
+  "a",
+  "b",
+  "c",
+  "d",
+  "e",
+  "f",
+  "g",
+  "h",
+] as const;
 
 type HomeFeedClientProps = {
   region: string;
@@ -38,13 +54,52 @@ function dedupeVideos(videos: UnifiedVideo[]): UnifiedVideo[] {
   return out;
 }
 
+function HomeShortsShelfSkeletonInline({
+  slots,
+  shortWidthPx,
+}: {
+  slots: number;
+  shortWidthPx: number;
+}) {
+  return (
+    <div className="space-y-4" aria-hidden>
+      <div className="h-7 w-24 animate-pulse rounded bg-[hsl(var(--muted)_/_0.45)]" />
+      <ul
+        className="flex w-full list-none flex-nowrap"
+        style={{ gap: LARGE_VIDEO_GRID_COLUMN_GAP_PX }}
+      >
+        {SHORTS_SKELETON_SLOT_KEYS.slice(0, Math.max(1, slots)).map((k) => (
+          <li
+            key={`initial-shorts-skeleton-${k}`}
+            className="shrink-0"
+            style={{ width: shortWidthPx }}
+          >
+            <div className="aspect-[9/16] w-full animate-pulse rounded-xl bg-[hsl(var(--muted)_/_0.45)]" />
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export function HomeFeedClient({ region, isAuthed }: HomeFeedClientProps) {
+  const { measureRef, columnCount, columnWidthPx, containerWidthPx } =
+    useLargeVideoGridColumnCount();
+  const shortsShelfLayout = useMemo(
+    () =>
+      computeHomeShortsShelfLayout(
+        columnCount,
+        columnWidthPx,
+        containerWidthPx,
+      ),
+    [columnCount, columnWidthPx, containerWidthPx],
+  );
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const loadMoreInFlightRef = useRef(false);
   const sentinelWasVisibleRef = useRef(false);
-  const queryRef = useRef<ReturnType<typeof trpc.feed.home.useInfiniteQuery> | null>(
-    null,
-  );
+  const queryRef = useRef<ReturnType<
+    typeof trpc.feed.home.useInfiniteQuery
+  > | null>(null);
 
   const feed = trpc.feed.home.useInfiniteQuery(
     { region, pageSize: PAGE_SIZE },
@@ -57,9 +112,8 @@ export function HomeFeedClient({ region, isAuthed }: HomeFeedClientProps) {
         const merged = dedupeVideos(allPages.flatMap((p) => p.videos));
         const prevCount =
           allPages.length > 1
-            ? dedupeVideos(
-                allPages.slice(0, -1).flatMap((p) => p.videos),
-              ).length
+            ? dedupeVideos(allPages.slice(0, -1).flatMap((p) => p.videos))
+                .length
             : 0;
         if (merged.length <= prevCount) return undefined;
         if (allPages.length >= MAX_FEED_PAGES) return undefined;
@@ -79,7 +133,11 @@ export function HomeFeedClient({ region, isAuthed }: HomeFeedClientProps) {
 
   const tryLoadMore = useCallback(() => {
     const q = queryRef.current;
-    if (!q?.hasNextPage || q.isFetchingNextPage || loadMoreInFlightRef.current) {
+    if (
+      !q?.hasNextPage ||
+      q.isFetchingNextPage ||
+      loadMoreInFlightRef.current
+    ) {
       return;
     }
     loadMoreInFlightRef.current = true;
@@ -129,6 +187,11 @@ export function HomeFeedClient({ region, isAuthed }: HomeFeedClientProps) {
   const isInitialLoading = feed.isPending && merged.length === 0;
   const isLoadingMore = feed.isFetchingNextPage;
 
+  const excludeVideoIds = useMemo(() => merged.map((v) => v.videoId), [merged]);
+  const topCount = Math.min(gridVideos.length, 2 * columnCount);
+  const topVideos = gridVideos.slice(0, topCount);
+  const bottomVideos = gridVideos.slice(topCount);
+
   return (
     <section className="space-y-6">
       <div className="flex flex-col gap-3">
@@ -148,8 +211,26 @@ export function HomeFeedClient({ region, isAuthed }: HomeFeedClientProps) {
             </div>
           </div>
           <ul className="ot-video-grid ot-video-grid--large">
-            {LOAD_MORE_SKELETON_KEYS.slice(0, 6).map((k) => (
-              <li key={`initial-skeleton-${k}`} className="space-y-3">
+            {LOAD_MORE_SKELETON_KEYS.slice(0, 4).map((k) => (
+              <li key={`initial-skeleton-top-${k}`} className="space-y-3">
+                <div className="aspect-video w-full animate-pulse rounded-[14px] bg-[hsl(var(--muted)_/_0.45)]" />
+                <div className="flex gap-3">
+                  <div className="h-9 w-9 shrink-0 animate-pulse rounded-full bg-[hsl(var(--muted)_/_0.45)]" />
+                  <div className="min-w-0 flex-1 space-y-2 pt-1">
+                    <div className="h-3.5 w-11/12 animate-pulse rounded bg-[hsl(var(--muted)_/_0.45)]" />
+                    <div className="h-3.5 w-4/6 animate-pulse rounded bg-[hsl(var(--muted)_/_0.45)]" />
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+          <HomeShortsShelfSkeletonInline
+            slots={shortsShelfLayout.displayCount}
+            shortWidthPx={shortsShelfLayout.shortWidthPx}
+          />
+          <ul className="ot-video-grid ot-video-grid--large">
+            {LOAD_MORE_SKELETON_KEYS.slice(4, 6).map((k) => (
+              <li key={`initial-skeleton-bottom-${k}`} className="space-y-3">
                 <div className="aspect-video w-full animate-pulse rounded-[14px] bg-[hsl(var(--muted)_/_0.45)]" />
                 <div className="flex gap-3">
                   <div className="h-9 w-9 shrink-0 animate-pulse rounded-full bg-[hsl(var(--muted)_/_0.45)]" />
@@ -182,7 +263,26 @@ export function HomeFeedClient({ region, isAuthed }: HomeFeedClientProps) {
               {merged.length} video{merged.length === 1 ? "" : "s"}
             </span>
           </div>
-          <VideoGrid videos={gridVideos} size="large" />
+          <div className="space-y-6">
+            <ul
+              ref={measureRef}
+              aria-hidden
+              className="ot-video-grid ot-video-grid--large pointer-events-none invisible m-0 h-0 p-0"
+            />
+            {topVideos.length > 0 ? (
+              <VideoGrid videos={topVideos} size="large" />
+            ) : null}
+            <HomeShortsShelf
+              region={region}
+              columnCount={columnCount}
+              columnWidthPx={columnWidthPx}
+              containerWidthPx={containerWidthPx}
+              excludeVideoIds={excludeVideoIds}
+            />
+            {bottomVideos.length > 0 ? (
+              <VideoGrid videos={bottomVideos} size="large" />
+            ) : null}
+          </div>
         </>
       ) : first ? (
         <p className="text-sm text-[hsl(var(--muted-foreground))]">

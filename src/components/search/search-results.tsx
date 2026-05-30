@@ -36,10 +36,7 @@ function sortChannels(channels: NonNullable<SearchVideosResult["channels"]>) {
   return clone;
 }
 
-function searchHref(
-  query: string,
-  sort: SearchResultsProps["sort"],
-) {
+function searchHref(query: string, sort: SearchResultsProps["sort"]) {
   return `/search?q=${encodeURIComponent(query)}&sort=${sort}`;
 }
 
@@ -66,7 +63,10 @@ function buildDidYouMeanSuggestions(query: string): string[] {
       .slice(0, 4)
       .join(" "),
   );
-  return out.map((s) => s.replace(/\s+/g, " ").trim()).filter(Boolean).slice(0, 3);
+  return out
+    .map((s) => s.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .slice(0, 3);
 }
 
 export async function SearchResults({ query, sort }: SearchResultsProps) {
@@ -162,7 +162,9 @@ export async function SearchResults({ query, sort }: SearchResultsProps) {
           <p>No results found for "{query}".</p>
           <ul className="list-disc space-y-1 pl-5">
             <li>Try fewer words or broader terms.</li>
-            <li>Try a different sort mode like <strong>Relevance</strong>.</li>
+            <li>
+              Try a different sort mode like <strong>Relevance</strong>.
+            </li>
             <li>Check your Piped / Invidious instance health in Settings.</li>
           </ul>
           {didYouMean.length > 0 ? (
@@ -248,6 +250,8 @@ export async function SearchResults({ query, sort }: SearchResultsProps) {
                   channelAvatarUrl={v.channelAvatarUrl}
                   thumbnailUrl={v.thumbnailUrl}
                   durationSeconds={v.durationSeconds}
+                  isLive={v.isLive}
+                  isUpcoming={v.isUpcoming}
                   viewCount={v.viewCount}
                   publishedText={v.publishedText}
                   publishedAt={v.publishedAt}

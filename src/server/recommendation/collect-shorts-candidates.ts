@@ -86,6 +86,8 @@ export async function collectShortsCandidates(
     signals: UserSignals;
     tasteDiscoveryQueries?: string[];
     blockedChannelIds?: ReadonlySet<string>;
+    /** Caps channel Shorts tab fetches (home shelf uses a small budget). */
+    maxChannels?: number;
   },
 ): Promise<{
   tagged: ShortsVideoCandidate[];
@@ -93,20 +95,37 @@ export async function collectShortsCandidates(
   coldStart: boolean;
   needDiscoveryBlend: boolean;
 }> {
-  const { region, overrides, signals, tasteDiscoveryQueries, blockedChannelIds } =
-    args;
+  const {
+    region,
+    overrides,
+    signals,
+    tasteDiscoveryQueries,
+    blockedChannelIds,
+    maxChannels,
+  } = args;
   const nowSec = Math.floor(Date.now() / 1000);
   const coldStart = useColdStartBlend(signals.totalWatches);
   const tagged: ShortsVideoCandidate[] = [];
   const recentCoverageByChannel = new Map<string, number>();
 
-  const channels = orderedChannelsForShorts(db, userId, signals);
+  const channelCap = Math.min(
+    MAX_CHANNEL_SHORTS_FETCHES,
+    Math.max(1, maxChannels ?? MAX_CHANNEL_SHORTS_FETCHES),
+  );
+  const channels = orderedChannelsForShorts(db, userId, signals).slice(
+    0,
+    channelCap,
+  );
   for (let i = 0; i < channels.length; i += CHANNEL_FETCH_CONCURRENCY) {
     const batch = channels.slice(i, i + CHANNEL_FETCH_CONCURRENCY);
     const settled = await Promise.allSettled(
       batch.map(async (channelId) => {
         if (blockedChannelIds?.has(channelId)) {
-          return { channelId, channelAvatarUrl: undefined, shorts: [] as UnifiedVideo[] };
+          return {
+            channelId,
+            channelAvatarUrl: undefined,
+            shorts: [] as UnifiedVideo[],
+          };
         }
         const ch = await fetchChannelPage(
           db,
@@ -132,7 +151,9 @@ export async function collectShortsCandidates(
           source: `channel_shorts:${channelId}`,
         });
       }
-      const pageIds = shorts.map((v) => v.videoId).filter((id) => id.length > 0);
+      const pageIds = shorts
+        .map((v) => v.videoId)
+        .filter((id) => id.length > 0);
       if (pageIds.length > 0) {
         let hit = 0;
         for (const id of pageIds) {

@@ -216,9 +216,7 @@ export function useScrubFramePreview({
   const frameAt = useCallback(
     (timeSeconds: number): ScrubFramePreview | null => {
       if (storyboard) {
-        return (
-          generated.frameAt(timeSeconds) ?? storyboardFrameAt(timeSeconds)
-        );
+        return generated.frameAt(timeSeconds) ?? storyboardFrameAt(timeSeconds);
       }
       return generated.frameAt(timeSeconds);
     },

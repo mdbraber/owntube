@@ -84,12 +84,9 @@ export function shouldUseInvidiousProxyForUrl(
 /** Hostnames that must be fetched same-origin (YouTube HLS / segments). */
 export function isYoutubeFamilyHostname(hostname: string): boolean {
   const h = hostname.toLowerCase();
-  if (h === "www.youtube.com" || h === "youtube.com" || h === "m.youtube.com") {
-    return true;
-  }
-  if (h === "googlevideo.com" || h.endsWith(".googlevideo.com")) {
-    return true;
-  }
+  if (h === "youtu.be") return true;
+  if (h === "youtube.com" || h.endsWith(".youtube.com")) return true;
+  if (h === "googlevideo.com" || h.endsWith(".googlevideo.com")) return true;
   return false;
 }
 
@@ -112,17 +109,118 @@ export function rewriteYouTubeUrlsInM3u8(
   body: string,
   appOrigin: string,
 ): string {
-  const abs = /https?:\/\/[^\s"'#]+/g;
+  const abs = /https?:\/\/[^\s"'#<>\]]+/g;
   return body.replace(abs, (match) => {
     if (isOwnTubeYtHopUrl(match, appOrigin)) return match;
     try {
       const u = new URL(match);
       if (!isYoutubeFamilyHostname(u.hostname)) return match;
-      return `${appOrigin}/yt-hls?url=${encodeURIComponent(match)}`;
+      return toYouTubeHopProxyUrl(match, appOrigin);
     } catch {
       return match;
     }
   });
+}
+
+function isOwnTubeInvidiousHopUrl(absoluteUrl: string, appOrigin: string): boolean {
+  try {
+    const u = new URL(absoluteUrl);
+    const app = new URL(appOrigin);
+    return u.origin === app.origin && u.pathname.startsWith("/invidious/");
+  } catch {
+    return false;
+  }
+}
+
+function resolvePlaylistMediaReference(
+  raw: string,
+  manifestBase: URL,
+): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  try {
+    if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+      return trimmed;
+    }
+    return new URL(trimmed, manifestBase).toString();
+  } catch {
+    return null;
+  }
+}
+
+function proxyResolvedPlaylistUrl(
+  absoluteUrl: string,
+  appOrigin: string,
+  invidiousBase: string,
+): string {
+  if (isOwnTubeYtHopUrl(absoluteUrl, appOrigin)) return absoluteUrl;
+  if (isOwnTubeInvidiousHopUrl(absoluteUrl, appOrigin)) return absoluteUrl;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(absoluteUrl);
+  } catch {
+    return absoluteUrl;
+  }
+
+  if (isYoutubeFamilyHostname(parsed.hostname)) {
+    return toYouTubeHopProxyUrl(absoluteUrl, appOrigin);
+  }
+
+  const inv = invidiousBase?.trim() ?? "";
+  if (inv) {
+    try {
+      const invOrigin = new URL(inv).origin;
+      if (parsed.origin === invOrigin) {
+        return toInvidiousProxyUrl(absoluteUrl, appOrigin);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  return absoluteUrl;
+}
+
+/**
+ * Resolve relative HLS media lines and URI="…" tags against the upstream
+ * manifest URL, then rewrite to same-origin `/yt-hls` or `/invidious` hops.
+ */
+export function rewriteHlsPlaylistMediaUrls(
+  body: string,
+  appOrigin: string,
+  manifestUrl: string,
+  invidiousBase = "",
+): string {
+  let manifestBase: URL;
+  try {
+    manifestBase = new URL(manifestUrl);
+  } catch {
+    return body;
+  }
+
+  const lines = body.split(/\r?\n/);
+  const out: string[] = [];
+
+  for (const line of lines) {
+    let next = line.replace(/URI="([^"]+)"/gi, (_match, uri: string) => {
+      const resolved = resolvePlaylistMediaReference(uri, manifestBase);
+      if (!resolved) return `URI="${uri}"`;
+      return `URI="${proxyResolvedPlaylistUrl(resolved, appOrigin, invidiousBase)}"`;
+    });
+
+    const trimmed = next.trim();
+    if (trimmed && !trimmed.startsWith("#")) {
+      const resolved = resolvePlaylistMediaReference(trimmed, manifestBase);
+      if (resolved) {
+        next = proxyResolvedPlaylistUrl(resolved, appOrigin, invidiousBase);
+      }
+    }
+
+    out.push(next);
+  }
+
+  return out.join("\n");
 }
 
 export function rewriteM3u8ForOwnTubeProxy(
@@ -163,9 +261,14 @@ export function rewriteM3u8AllProxies(
   appOrigin: string,
   requestHost: string,
   invidiousBase?: string,
+  /** Upstream manifest URL (required to resolve relative segment paths). */
+  manifestUrl?: string,
 ): string {
   const inv = (invidiousBase ?? invidiousBaseUrl()).trim();
   let t = rewriteM3u8ForOwnTubeProxy(body, appOrigin, requestHost, inv);
+  if (manifestUrl) {
+    t = rewriteHlsPlaylistMediaUrls(t, appOrigin, manifestUrl, inv);
+  }
   t = rewriteYouTubeUrlsInM3u8(t, appOrigin);
   return t;
 }
@@ -188,6 +291,28 @@ function shouldUseYouTubeHopProxyForUrl(mediaUrl: string): boolean {
   }
 }
 
+function isInvidiousHlsManifestUrl(mediaUrl: string): boolean {
+  try {
+    const path = new URL(mediaUrl).pathname.toLowerCase();
+    return path.includes("/api/manifest/hls");
+  } catch {
+    return mediaUrl.toLowerCase().includes("/api/manifest/hls");
+  }
+}
+
+/** Ask Invidious to proxy googlevideo segments (`local=true`) instead of raw YouTube URLs. */
+export function withInvidiousLocalHlsParam(mediaUrl: string): string {
+  if (!isInvidiousHlsManifestUrl(mediaUrl)) return mediaUrl;
+  try {
+    const u = new URL(mediaUrl);
+    if (u.searchParams.get("local") === "true") return mediaUrl;
+    u.searchParams.set("local", "true");
+    return u.toString();
+  } catch {
+    return mediaUrl;
+  }
+}
+
 export function toProxiedOrDirectPlayback(
   rawPlayback: string,
   appOrigin: string,
@@ -195,8 +320,15 @@ export function toProxiedOrDirectPlayback(
   detail: VideoDetail,
 ): string {
   if (!rawPlayback) return rawPlayback;
-  if (shouldUseInvidiousProxyForUrl(detail, rawPlayback)) {
-    return toInvidiousProxyUrl(rawPlayback, appOrigin);
+  let playback = rawPlayback;
+  if (
+    detail.sourceUsed === "invidious" &&
+    isInvidiousHlsManifestUrl(rawPlayback)
+  ) {
+    playback = withInvidiousLocalHlsParam(playback);
+  }
+  if (shouldUseInvidiousProxyForUrl(detail, playback)) {
+    return toInvidiousProxyUrl(playback, appOrigin);
   }
   if (shouldUseYouTubeHopProxyForUrl(rawPlayback)) {
     return toYouTubeHopProxyUrl(rawPlayback, appOrigin);

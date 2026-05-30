@@ -30,4 +30,10 @@ describe("sourceFromUrl", () => {
       "http://localhost:3000/invidious/api/manifest/hls_playlist/expire/1/id/x/playlist/index.m3u8";
     expect(sourceFromUrl(u).type).toBe("application/x-mpegurl");
   });
+
+  it("detects Invidious hls_variant master URLs as HLS", () => {
+    const u =
+      "http://localhost:3000/invidious/api/manifest/hls_variant/expire/1/id/x/file/index.m3u8";
+    expect(sourceFromUrl(u).type).toBe("application/x-mpegurl");
+  });
 });

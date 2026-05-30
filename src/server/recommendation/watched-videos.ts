@@ -11,9 +11,7 @@ export function loadWatchedVideoIdsForRecommendations(
   const watchedRows = db
     .select({ videoId: watchHistory.videoId })
     .from(watchHistory)
-    .where(
-      and(eq(watchHistory.userId, userId), eq(watchHistory.isDeleted, 0)),
-    )
+    .where(and(eq(watchHistory.userId, userId), eq(watchHistory.isDeleted, 0)))
     .limit(10_000)
     .all();
   const watchedEver = new Set(watchedRows.map((r) => r.videoId));

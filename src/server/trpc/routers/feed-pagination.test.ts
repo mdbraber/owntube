@@ -20,9 +20,9 @@ function v(id: string): UnifiedVideo {
 
 describe("home feed pagination", () => {
   it("resolveHomeFeedSkip uses cursor offset", () => {
-    expect(
-      resolveHomeFeedSkip({ cursor: 24, page: 1, pageSize: 24 }, 24),
-    ).toBe(24);
+    expect(resolveHomeFeedSkip({ cursor: 24, page: 1, pageSize: 24 }, 24)).toBe(
+      24,
+    );
     expect(resolveHomeFeedSkip({ page: 2, pageSize: 24 }, 24)).toBe(24);
     expect(resolveHomeFeedSkip(undefined, 24)).toBe(0);
   });

@@ -20,6 +20,10 @@
 # production
 /build
 
+# local planning / Cursor IDE config
+TODO.md
+.cursor/
+
 # misc
 .DS_Store
 *.pem

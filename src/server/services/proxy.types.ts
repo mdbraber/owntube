@@ -23,6 +23,10 @@ export const unifiedVideoSchema = z.object({
   publishedText: z.string().optional(),
   /** Unix seconds when known from upstream (Invidious `published`, Piped `uploaded`, …). */
   publishedAt: z.number().optional(),
+  /** Active live broadcast (Piped `livestream`, Invidious `liveNow`). */
+  isLive: z.boolean().optional(),
+  /** Scheduled premiere not started yet (Invidious `isUpcoming`). */
+  isUpcoming: z.boolean().optional(),
 });
 
 export type UnifiedVideo = z.infer<typeof unifiedVideoSchema>;
@@ -55,8 +59,16 @@ export const cachedSearchPayloadSchema = z.object({
 
 export type SearchVideosResult = z.infer<typeof searchVideosResultSchema>;
 
+export const upstreamPlaybackSourceSchema = z.enum(["piped", "invidious"]);
+
+export type UpstreamPlaybackSource = z.infer<
+  typeof upstreamPlaybackSourceSchema
+>;
+
 export const videoDetailInputSchema = z.object({
   videoId: z.string().min(11).max(20),
+  /** Force live playback catalog from this upstream when both are configured. */
+  preferUpstream: upstreamPlaybackSourceSchema.optional(),
 });
 
 export type VideoDetailInput = z.infer<typeof videoDetailInputSchema>;
@@ -112,6 +124,8 @@ export const videoDetailSchema = z.object({
   publishedText: z.string().optional(),
   /** Unix seconds when known from upstream (Invidious `published`, Piped `uploadDate`, …). */
   publishedAt: z.number().optional(),
+  isLive: z.boolean().optional(),
+  isUpcoming: z.boolean().optional(),
   hlsUrl: z.string().url().optional(),
   dashUrl: z.string().url().optional(),
   audioSources: z.array(streamSourceSchema),
@@ -196,9 +210,15 @@ export const trendingVideosResultSchema = z.object({
 
 export type TrendingVideosResult = z.infer<typeof trendingVideosResultSchema>;
 
+export const shortsFeedPurposeSchema = z.enum(["feed", "shelf"]);
+
+export type ShortsFeedPurpose = z.infer<typeof shortsFeedPurposeSchema>;
+
 export const shortsFeedInputSchema = z.object({
   region: z.string().length(2).default("US"),
   limit: z.number().int().min(1).max(40).optional(),
+  /** `shelf` = home teaser: one upstream page max, no pool rebuild on cache miss. */
+  purpose: shortsFeedPurposeSchema.optional(),
   continuation: z.string().max(4096).optional(),
   /** Session scroll-past ids from the client (merged with watch history on the server). */
   excludeVideoIds: z.array(z.string().min(5).max(64)).max(200).optional(),

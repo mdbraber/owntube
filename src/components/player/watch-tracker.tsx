@@ -7,6 +7,8 @@ type WatchTrackerProps = {
   videoId: string;
   channelId?: string;
   durationSeconds?: number;
+  /** Use session elapsed time instead of VOD duration (live streams). */
+  isLive?: boolean;
   /** Called after the final watch event is persisted (e.g. leave slide / unmount). */
   onWatched?: (videoId: string) => void;
 };
@@ -15,6 +17,7 @@ export function WatchTracker({
   videoId,
   channelId = "unknown",
   durationSeconds = 0,
+  isLive = false,
   onWatched,
 }: WatchTrackerProps) {
   const { mutate } = trpc.history.upsertEvent.useMutation();
@@ -23,9 +26,27 @@ export function WatchTracker({
   mutateRef.current = mutate;
   const onWatchedRef = useRef(onWatched);
   onWatchedRef.current = onWatched;
+  const sessionStartRef = useRef(Date.now());
 
   useEffect(() => {
+    sessionStartRef.current = Date.now();
     const m = mutateRef.current;
+    const watchedSeconds = () => {
+      if (isLive) {
+        return Math.max(
+          0,
+          Math.floor((Date.now() - sessionStartRef.current) / 1000),
+        );
+      }
+      return durationSeconds;
+    };
+    const partialWatched = () => {
+      if (isLive) {
+        return Math.max(10, watchedSeconds());
+      }
+      return Math.max(10, Math.floor(durationSeconds / 4));
+    };
+
     m({
       videoId,
       channelId,
@@ -36,7 +57,7 @@ export function WatchTracker({
       m({
         videoId,
         channelId,
-        durationWatched: Math.max(10, Math.floor(durationSeconds / 4)),
+        durationWatched: partialWatched(),
         completed: false,
       });
     }, 20_000);
@@ -46,7 +67,7 @@ export function WatchTracker({
         {
           videoId,
           channelId,
-          durationWatched: durationSeconds,
+          durationWatched: watchedSeconds(),
           completed: true,
         },
         {
@@ -54,7 +75,7 @@ export function WatchTracker({
         },
       );
     };
-  }, [channelId, durationSeconds, videoId]);
+  }, [channelId, durationSeconds, isLive, videoId]);
 
   return null;
 }

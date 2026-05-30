@@ -201,11 +201,7 @@ export const feedRouter = router({
             : personalized,
           tailPool,
         );
-        const { videos, hasMore } = sliceHomeFeedStream(
-          stream,
-          skip,
-          pageSize,
-        );
+        const { videos, hasMore } = sliceHomeFeedStream(stream, skip, pageSize);
         return {
           kind: "personalized" as const,
           videos,

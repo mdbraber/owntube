@@ -61,7 +61,9 @@ describe("searchVideos", () => {
     expect(r.channels).toHaveLength(1);
     expect(r.channels?.[0]?.channelId).toBe("UCuAXFkgsw1L7xaCfnd5JJOw");
     expect(r.channels?.[0]?.name).toBe("Rick Astley");
-    expect(r.channels?.[0]?.avatarUrl).toBe("https://piped.test/avatars/rick.jpg");
+    expect(r.channels?.[0]?.avatarUrl).toBe(
+      "https://piped.test/avatars/rick.jpg",
+    );
     expect(r.channels?.[0]?.subscriberCount).toBe(4_200_000);
     sqlite.close();
   });
@@ -94,9 +96,9 @@ describe("searchVideos", () => {
 
     const r = await searchVideos(db, { q: "mix", limit: 20 });
     expect(r.videos).toHaveLength(20);
-    expect(r.channels?.some((c) => c.channelId === "UCchannelAfterVideos")).toBe(
-      true,
-    );
+    expect(
+      r.channels?.some((c) => c.channelId === "UCchannelAfterVideos"),
+    ).toBe(true);
     sqlite.close();
   });
 
@@ -387,6 +389,109 @@ describe("searchVideos", () => {
     const detail = await fetchVideoDetail(db, { videoId: "dQw4w9WgXcQ" });
     expect(detail.sourceUsed).toBe("piped");
     expect(detail.hlsUrl).toContain(".m3u8");
+    sqlite.close();
+  });
+
+  it("maps Piped livestream with isLive and no zero duration", async () => {
+    const { db, sqlite } = createTestDb();
+    process.env.PIPED_BASE_URL = "https://piped.test";
+    delete process.env.INVIDIOUS_BASE_URL;
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          videoId: "jfKfPfyJRdk",
+          title: "Lofi Girl",
+          livestream: true,
+          duration: 0,
+          hls: "https://media.example.com/live.m3u8",
+          audioStreams: [],
+          videoStreams: [
+            { url: "https://media.example.com/video.mp4", quality: "360p" },
+          ],
+        }),
+      ),
+    );
+    const detail = await fetchVideoDetail(db, { videoId: "jfKfPfyJRdk" });
+    expect(detail.isLive).toBe(true);
+    expect(detail.durationSeconds).toBeUndefined();
+    expect(detail.hlsUrl).toContain(".m3u8");
+    sqlite.close();
+  });
+
+  it("maps Invidious liveNow on video detail", async () => {
+    const { db, sqlite } = createTestDb();
+    process.env.PIPED_BASE_URL = "disabled";
+    process.env.INVIDIOUS_BASE_URL = "http://127.0.0.1:3001";
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          videoId: "jfKfPfyJRdk",
+          title: "Live stream",
+          liveNow: true,
+          lengthSeconds: 0,
+          hlsUrl: "http://127.0.0.1:3001/api/manifest/hls/playlist/jfKfPfyJRdk",
+          adaptiveFormats: [],
+          formatStreams: [],
+        }),
+      ),
+    );
+    const detail = await fetchVideoDetail(db, { videoId: "jfKfPfyJRdk" });
+    expect(detail.isLive).toBe(true);
+    expect(detail.durationSeconds).toBeUndefined();
+    sqlite.close();
+  });
+
+  it("throws UpstreamLiveUpcomingError for scheduled Invidious premiere", async () => {
+    const { db, sqlite } = createTestDb();
+    process.env.PIPED_BASE_URL = "disabled";
+    process.env.INVIDIOUS_BASE_URL = "http://127.0.0.1:3001";
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          error: "This live event will begin in 56 minutes.",
+        }),
+        { status: 500 },
+      ),
+    );
+    const { UpstreamLiveUpcomingError } = await import(
+      "@/server/errors/upstream-live-upcoming"
+    );
+    await expect(
+      fetchVideoDetail(db, { videoId: "upcomingLiveId1" }),
+    ).rejects.toBeInstanceOf(UpstreamLiveUpcomingError);
+    sqlite.close();
+  });
+
+  it("maps liveNow on Invidious search items", async () => {
+    const { db, sqlite } = createTestDb();
+    process.env.PIPED_BASE_URL = "disabled";
+    process.env.INVIDIOUS_BASE_URL = "http://127.0.0.1:3001";
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify([
+          {
+            type: "video",
+            videoId: "liveVid12345",
+            title: "24/7 Stream",
+            author: "Channel",
+            authorId: "UCx",
+            liveNow: true,
+            lengthSeconds: 0,
+            videoThumbnails: [
+              {
+                quality: "medium",
+                url: "/vi/liveVid12345/mqdefault.jpg",
+                width: 320,
+                height: 180,
+              },
+            ],
+          },
+        ]),
+      ),
+    );
+    const result = await searchVideos(db, { q: "lofi live", limit: 5 });
+    expect(result.videos[0]?.isLive).toBe(true);
+    expect(result.videos[0]?.durationSeconds).toBeUndefined();
     sqlite.close();
   });
 
@@ -1165,7 +1270,9 @@ describe("fetchVideoComments", () => {
       videoId: "cHocYnA_JVY",
       sortBy: "top",
     });
-    expect(r.comments[0]?.text).toContain('href="https://www.youtube.com/watch?v=cHocYnA_JVY&amp;t=102"');
+    expect(r.comments[0]?.text).toContain(
+      'href="https://www.youtube.com/watch?v=cHocYnA_JVY&amp;t=102"',
+    );
     expect(r.comments[0]?.text).toContain("1:42");
     sqlite.close();
   });
@@ -1212,7 +1319,9 @@ describe("fetchVideoComments", () => {
     });
     expect(r.sourceUsed).toBe("invidious");
     expect(r.comments[0]?.author).toBe("Bob");
-    expect(r.comments[0]?.authorAvatarUrl).toBe("https://inv.test/ggpht/avatar");
+    expect(r.comments[0]?.authorAvatarUrl).toBe(
+      "https://inv.test/ggpht/avatar",
+    );
     sqlite.close();
   });
 

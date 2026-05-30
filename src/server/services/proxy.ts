@@ -1,24 +1,23 @@
 import { createHash } from "node:crypto";
 import { and, desc, eq, gt } from "drizzle-orm";
+import { pickChannelSubscriberCount } from "@/lib/channel-subscriber-count";
 import {
   stripRestrictedListVideos,
   titleSuggestsMembersOnlyOrSubscriberOnly,
 } from "@/lib/feed-exclude-restricted";
 import { invidiousPortCollidesWithNextApp } from "@/lib/invidious-port-collision";
 import {
-  isUpstreamDisabled,
-  normalizeUpstreamBaseUrl,
-} from "@/lib/upstream-base-url";
+  normalizeDurationForLive,
+  pickLiveFlagsFromUpstream,
+} from "@/lib/live-video";
 import { logger } from "@/lib/logger";
-import { pickChannelSubscriberCount } from "@/lib/channel-subscriber-count";
-import { pipedRelatedListItems } from "@/lib/piped-related-items";
 import { normalizePipedDescription } from "@/lib/normalize-video-description";
+import { pipedRelatedListItems } from "@/lib/piped-related-items";
 import {
   coercePublishedSecondsFromUpstream,
   parseRelativePublishedToUnix,
   sortVideosNewestFirst,
 } from "@/lib/published-sort-key";
-import { preferHighResVideoThumbnailUrl } from "@/lib/video-thumbnail-url";
 import {
   filterShortsFeedVideos,
   invidiousItemIsDiscoveryShort,
@@ -32,9 +31,21 @@ import {
   SHORTS_DISCOVERY_FALLBACK_QUERIES,
   shortsSearchQueriesForRegion,
 } from "@/lib/shorts-discovery-queries";
+import {
+  isUpstreamDisabled,
+  normalizeUpstreamBaseUrl,
+} from "@/lib/upstream-base-url";
+import {
+  pickLivePlaybackDetail,
+  pickRicherPlaybackDetail,
+  playbackCatalogMaxHeightPx,
+  shouldPreferInvidiousOverPiped,
+} from "@/lib/upstream-playback-catalog";
+import { preferHighResVideoThumbnailUrl } from "@/lib/video-thumbnail-url";
 import type { AppDb } from "@/server/db/client";
 import { videoCache } from "@/server/db/schema";
 import { RateLimitExceededError } from "@/server/errors/rate-limit-exceeded";
+import { parseInvidiousUpcomingFromFetchMessage } from "@/server/errors/upstream-live-upcoming";
 import { UpstreamUnavailableError } from "@/server/errors/upstream-unavailable";
 import {
   type ChannelPageInput,
@@ -48,24 +59,24 @@ import {
   relatedVideosResultSchema,
   type SearchVideosInput,
   type SearchVideosResult,
-  searchVideosResultSchema,
   type ShortsFeedInput,
   type ShortsFeedResult,
+  searchVideosResultSchema,
   shortsFeedResultSchema,
   type TrendingInput,
   type TrendingVideosResult,
   trendingVideosResultSchema,
   type UnifiedChannel,
   type UnifiedComment,
-  unifiedCommentSchema,
   type UnifiedVideo,
+  unifiedCommentSchema,
   unifiedVideoSchema,
   type VideoCommentsInput,
   type VideoCommentsResult,
-  videoCommentsResultSchema,
   type VideoDetail,
   type VideoDetailInput,
   type VideoStoryboard,
+  videoCommentsResultSchema,
   videoDetailSchema,
 } from "@/server/services/proxy.types";
 import { acquireUpstreamSlot } from "@/server/services/rate-limiter";
@@ -74,6 +85,8 @@ import { upstreamGetText } from "@/server/services/upstream-get";
 const CACHE_TTL_SEC = 6 * 60 * 60;
 /** Channel “videos” lists change often; long TTL hid fresh uploads from recommendations. */
 const CHANNEL_PAGE_CACHE_TTL_SEC = 10 * 60;
+/** Home Shorts shelf discovery — fresher than the default 6h shorts cache. */
+const SHORTS_SHELF_CACHE_TTL_SEC = 10 * 60;
 /** Invidious/Piped HLS and DASH URLs expire quickly; long TTL serves dead 404 manifests. */
 const STREAMS_DETAIL_CACHE_TTL_SEC = 3 * 60;
 const FETCH_TIMEOUT_MS = 20_000;
@@ -124,7 +137,21 @@ function recordUpstreamFailure(
   errors.push(`${label}:${msg}`);
 }
 
-function throwIfUpstreamFailed(errors: string[], fallbackMessage: string): never {
+function rethrowIfInvidiousUpcoming(error: unknown, videoId: string): void {
+  if (!(error instanceof Error)) return;
+  const upcoming = parseInvidiousUpcomingFromFetchMessage(
+    error.message,
+    videoId,
+  );
+  if (upcoming) throw upcoming;
+}
+
+export { UpstreamLiveUpcomingError } from "@/server/errors/upstream-live-upcoming";
+
+function throwIfUpstreamFailed(
+  errors: string[],
+  fallbackMessage: string,
+): never {
   if (
     errors.length > 0 &&
     errors.every((entry) => entry.endsWith(`:${UPSTREAM_RATE_LIMIT_NOTE}`))
@@ -286,7 +313,10 @@ export function getInstanceSourceInfo(profile?: {
   return {
     piped: {
       envRaw: pipedEnvRaw,
-      envUrl: pipedEnvRaw && !isUpstreamDisabled(pipedEnvRaw) ? readEnvPipedUrl() : null,
+      envUrl:
+        pipedEnvRaw && !isUpstreamDisabled(pipedEnvRaw)
+          ? readEnvPipedUrl()
+          : null,
       envDisabled: Boolean(pipedEnvRaw && isUpstreamDisabled(pipedEnvRaw)),
       profileOverride: profilePiped,
       effectiveUrl: pipedBase || null,
@@ -294,7 +324,9 @@ export function getInstanceSourceInfo(profile?: {
     invidious: {
       envRaw: invEnvRaw,
       envUrl:
-        invEnvRaw && !isUpstreamDisabled(invEnvRaw) ? readEnvInvidiousUrl() : null,
+        invEnvRaw && !isUpstreamDisabled(invEnvRaw)
+          ? readEnvInvidiousUrl()
+          : null,
       envDisabled: Boolean(invEnvRaw && isUpstreamDisabled(invEnvRaw)),
       profileOverride: profileInv,
       effectiveUrl: invidiousBase || null,
@@ -302,7 +334,7 @@ export function getInstanceSourceInfo(profile?: {
   };
 }
 
-function resolveProxyBases(overrides?: ProxySourceOverrides): {
+export function resolveProxyBases(overrides?: ProxySourceOverrides): {
   pipedBase: string;
   invidiousBase: string;
 } {
@@ -366,6 +398,7 @@ function shortsFeedCacheKey(input: ShortsFeedInput): string {
         kind: "shorts",
         region: input.region,
         limit: input.limit ?? 20,
+        purpose: input.purpose ?? "feed",
         c: input.continuation ?? null,
         dq: input.discoveryQueries ?? null,
       }),
@@ -591,7 +624,8 @@ function mapPipedItem(raw: unknown, pipedBase = ""): UnifiedVideo | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
   const t = typeof o.type === "string" ? o.type.toLowerCase() : "";
-  if (t && t !== "stream" && t !== "video") return null;
+  if (t && t !== "stream" && t !== "video" && t !== "livestream") return null;
+  const { isLive, isUpcoming } = pickLiveFlagsFromUpstream(o);
   const url = typeof o.url === "string" ? o.url : "";
   const title = typeof o.title === "string" ? o.title : "";
   const videoId = extractVideoIdFromUrl(url);
@@ -599,12 +633,13 @@ function mapPipedItem(raw: unknown, pipedBase = ""): UnifiedVideo | null {
   if (isUpstreamMembersOrPaidOnly(o)) return null;
   if (titleSuggestsMembersOnlyOrSubscriberOnly(title)) return null;
   const thumbnail = typeof o.thumbnail === "string" ? o.thumbnail : undefined;
-  const duration =
+  const rawDuration =
     typeof o.duration === "number" &&
     Number.isFinite(o.duration) &&
     o.duration > 0
       ? o.duration
       : undefined;
+  const durationSeconds = normalizeDurationForLive(rawDuration, isLive);
   const viewCount = pickViewCount(o);
   const publishedText =
     typeof o.uploadedDate === "string" ? o.uploadedDate : undefined;
@@ -634,10 +669,12 @@ function mapPipedItem(raw: unknown, pipedBase = ""): UnifiedVideo | null {
     channelName,
     channelAvatarUrl,
     thumbnailUrl: preferHighResVideoThumbnailUrl(thumbnail, videoId),
-    durationSeconds: duration,
+    durationSeconds,
     viewCount,
     publishedText,
     publishedAt: reconciledPublishedAt,
+    isLive: isLive || undefined,
+    isUpcoming: isUpcoming || undefined,
   });
   if (!parsed.success) return null;
   return parsed.data;
@@ -774,12 +811,7 @@ function pickInvidiousStoryboard(
       typeof b.storyboardCount === "number" && b.storyboardCount > 0
         ? Math.floor(b.storyboardCount)
         : 1;
-    if (
-      thumbWidth <= 0 ||
-      thumbHeight <= 0 ||
-      count <= 0 ||
-      intervalMs <= 0
-    ) {
+    if (thumbWidth <= 0 || thumbHeight <= 0 || count <= 0 || intervalMs <= 0) {
       continue;
     }
     const candidate: VideoStoryboard = {
@@ -807,9 +839,14 @@ async function tryFetchInvidiousStoryboard(
 ): Promise<VideoStoryboard | undefined> {
   try {
     acquireUpstreamSlot();
-    const json = await fetchJson(buildInvidiousVideosUrl(invidiousBase, videoId));
+    const json = await fetchJson(
+      buildInvidiousVideosUrl(invidiousBase, videoId),
+    );
     if (!json || typeof json !== "object") return undefined;
-    return pickInvidiousStoryboard(json as Record<string, unknown>, invidiousBase);
+    return pickInvidiousStoryboard(
+      json as Record<string, unknown>,
+      invidiousBase,
+    );
   } catch {
     return undefined;
   }
@@ -819,7 +856,14 @@ function mapInvidiousItem(raw: unknown, baseUrl = ""): UnifiedVideo | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
   const itemType = typeof o.type === "string" ? o.type : "";
-  if (itemType !== "video" && itemType !== "shortVideo") return null;
+  if (
+    itemType !== "video" &&
+    itemType !== "shortVideo" &&
+    itemType !== "livestream"
+  ) {
+    return null;
+  }
+  const { isLive, isUpcoming } = pickLiveFlagsFromUpstream(o);
   const videoId = typeof o.videoId === "string" ? o.videoId : "";
   const title = typeof o.title === "string" ? o.title : "";
   if (!videoId || !title) return null;
@@ -829,10 +873,11 @@ function mapInvidiousItem(raw: unknown, baseUrl = ""): UnifiedVideo | null {
     resolveInvidiousThumbnail(o.videoThumbnails, baseUrl),
     videoId,
   );
-  const durationSeconds =
+  const rawDuration =
     typeof o.lengthSeconds === "number" && Number.isFinite(o.lengthSeconds)
       ? o.lengthSeconds
       : undefined;
+  const durationSeconds = normalizeDurationForLive(rawDuration, isLive);
   const viewCount = pickViewCount(o);
   const publishedText =
     typeof o.publishedText === "string" ? o.publishedText : undefined;
@@ -862,6 +907,8 @@ function mapInvidiousItem(raw: unknown, baseUrl = ""): UnifiedVideo | null {
     viewCount,
     publishedText,
     publishedAt: reconciledPublishedAt,
+    isLive: isLive || undefined,
+    isUpcoming: isUpcoming || undefined,
   });
   if (!parsed.success) return null;
   return parsed.data;
@@ -1045,9 +1092,13 @@ function readStaleSearchCache(
 
 function cacheTtlSecForKind(
   kind: "search" | "streams" | "related" | "trending" | "shorts" | "channel",
+  options?: { shortsPurpose?: "feed" | "shelf" },
 ): number {
   if (kind === "streams") return STREAMS_DETAIL_CACHE_TTL_SEC;
   if (kind === "channel") return CHANNEL_PAGE_CACHE_TTL_SEC;
+  if (kind === "shorts" && options?.shortsPurpose === "shelf") {
+    return SHORTS_SHELF_CACHE_TTL_SEC;
+  }
   return CACHE_TTL_SEC;
 }
 
@@ -1058,9 +1109,10 @@ function writeCache(
   source: "piped" | "invidious",
   payload: unknown,
   kind: "search" | "streams" | "related" | "trending" | "shorts" | "channel",
+  options?: { shortsPurpose?: "feed" | "shelf" },
 ): void {
   const t = nowUnix();
-  const ttl = cacheTtlSecForKind(kind);
+  const ttl = cacheTtlSecForKind(kind, options);
   const row = {
     cacheKey: key,
     source,
@@ -1186,7 +1238,11 @@ export async function searchVideos(
       if (channels.length === 0 && !parsedInput.continuation) {
         try {
           acquireUpstreamSlot();
-          const channelUrl = buildPipedSearchUrl(pipedBase, parsedInput, "channels");
+          const channelUrl = buildPipedSearchUrl(
+            pipedBase,
+            parsedInput,
+            "channels",
+          );
           const channelJson = await fetchJson(channelUrl);
           const channelOnly = parsePipedSearch(channelJson, limit, pipedBase);
           if (channelOnly.channels.length > 0) {
@@ -1404,11 +1460,12 @@ function mimeVideoTypeWithoutAudioCodecs(mime: string | undefined): boolean {
 }
 
 /** Piped exposes `codec` separately; merge into mime for playback heuristics. */
-function pipedStreamMimeType(stream: Record<string, unknown>): string | undefined {
+function pipedStreamMimeType(
+  stream: Record<string, unknown>,
+): string | undefined {
   const base =
     typeof stream.mimeType === "string" ? stream.mimeType.trim() : "";
-  const codec =
-    typeof stream.codec === "string" ? stream.codec.trim() : "";
+  const codec = typeof stream.codec === "string" ? stream.codec.trim() : "";
   if (!base) return codec ? `video/mp4; codecs="${codec}"` : undefined;
   if (!codec || base.includes("codecs=")) return base;
   return `${base}; codecs="${codec}"`;
@@ -1505,6 +1562,13 @@ function mapPipedStream(
         ? o.uploadDate
         : toUnixText(o.uploaded);
 
+  const { isLive, isUpcoming } = pickLiveFlagsFromUpstream(o);
+  const rawDurationSeconds =
+    typeof o.duration === "number" && Number.isFinite(o.duration)
+      ? Math.floor(o.duration)
+      : undefined;
+  const durationSeconds = normalizeDurationForLive(rawDurationSeconds, isLive);
+
   const detail = {
     videoId,
     title,
@@ -1535,13 +1599,12 @@ function mapPipedStream(
         : pickVideoThumbnail(o.thumbnails, videoId),
       videoId,
     ),
-    durationSeconds:
-      typeof o.duration === "number" && Number.isFinite(o.duration)
-        ? Math.floor(o.duration)
-        : undefined,
+    durationSeconds,
     viewCount: pickViewCount(o),
     publishedText,
     publishedAt,
+    isLive: isLive || undefined,
+    isUpcoming: isUpcoming || undefined,
     hlsUrl:
       typeof o.hls === "string" && o.hls.trim().length > 0 ? o.hls : undefined,
     dashUrl:
@@ -1729,6 +1792,13 @@ function mapInvidiousVideo(data: unknown, baseUrl = ""): VideoDetail | null {
     publishedText,
   );
 
+  const { isLive, isUpcoming } = pickLiveFlagsFromUpstream(o);
+  const rawDurationSeconds =
+    typeof o.lengthSeconds === "number" && Number.isFinite(o.lengthSeconds)
+      ? Math.floor(o.lengthSeconds)
+      : undefined;
+  const durationSeconds = normalizeDurationForLive(rawDurationSeconds, isLive);
+
   const detail = {
     videoId,
     title,
@@ -1739,13 +1809,12 @@ function mapInvidiousVideo(data: unknown, baseUrl = ""): VideoDetail | null {
     channelSubscriberCount: pickChannelSubscriberCount(o),
     storyboard: pickInvidiousStoryboard(o, baseUrl),
     thumbnailUrl: resolveInvidiousThumbnail(o.videoThumbnails, baseUrl),
-    durationSeconds:
-      typeof o.lengthSeconds === "number" && Number.isFinite(o.lengthSeconds)
-        ? Math.floor(o.lengthSeconds)
-        : undefined,
+    durationSeconds,
     viewCount: pickViewCount(o),
     publishedText,
     publishedAt: reconciledPublishedAt,
+    isLive: isLive || undefined,
+    isUpcoming: isUpcoming || undefined,
     hlsUrl: hlsResolved,
     dashUrl: dashResolved,
     audioSources: audioFromAdaptive,
@@ -1880,6 +1949,8 @@ export type FetchVideoDetailOptions = {
    * return a new `hlsUrl` and adaptive URLs (signed links go 404 quickly).
    */
   bypassDetailCache?: boolean;
+  /** Prefer this upstream for live HLS when both Piped and Invidious are set. */
+  preferUpstream?: VideoDetailInput["preferUpstream"];
 };
 
 export type FetchChannelPageOptions = {
@@ -1903,32 +1974,79 @@ export async function fetchVideoDetail(
   const errors: string[] = [];
 
   let resolved: VideoDetail | null = null;
+  let pipedResolved: VideoDetail | null = null;
+  let invidiousResolved: VideoDetail | null = null;
+  const preferUpstream = opts?.preferUpstream ?? input.preferUpstream;
+
+  const fetchInvidiousDetail = async (): Promise<VideoDetail | null> => {
+    if (!invidiousBase) return null;
+    if (invidiousPortCollidesWithNextApp(invidiousBase)) {
+      errors.push(
+        "invidious:INVIDIOUS_BASE_URL port conflicts with Next.js PORT (server would call itself).",
+      );
+      return null;
+    }
+    try {
+      acquireUpstreamSlot();
+      const json = await fetchJson(
+        buildInvidiousVideosUrl(invidiousBase, input.videoId),
+      );
+      return mapInvidiousVideo(json, invidiousBase);
+    } catch (error) {
+      rethrowIfInvidiousUpcoming(error, input.videoId);
+      recordUpstreamFailure(error, "invidious", errors);
+      return null;
+    }
+  };
+
   if (pipedBase) {
     try {
       acquireUpstreamSlot();
       const json = await fetchJson(
         buildPipedStreamsUrl(pipedBase, input.videoId),
       );
-      resolved = mapPipedStream(json, pipedBase, input.videoId);
+      pipedResolved = mapPipedStream(json, pipedBase, input.videoId);
+      resolved = pipedResolved;
     } catch (error) {
       recordUpstreamFailure(error, "piped", errors);
     }
   }
+
+  const liveFromPiped = pipedResolved?.isLive === true;
+  const shouldConsultInvidiousForLive =
+    liveFromPiped || preferUpstream === "invidious";
+
   if (!resolved && invidiousBase) {
-    if (invidiousPortCollidesWithNextApp(invidiousBase)) {
-      errors.push(
-        "invidious:INVIDIOUS_BASE_URL port conflicts with Next.js PORT (server would call itself).",
+    invidiousResolved = await fetchInvidiousDetail();
+    resolved = invidiousResolved;
+  } else if (shouldConsultInvidiousForLive && invidiousBase) {
+    invidiousResolved = await fetchInvidiousDetail();
+    if (pipedResolved?.isLive || invidiousResolved?.isLive) {
+      resolved = pickLivePlaybackDetail(
+        pipedResolved,
+        invidiousResolved,
+        preferUpstream,
       );
-    } else {
-      try {
-        acquireUpstreamSlot();
-        const json = await fetchJson(
-          buildInvidiousVideosUrl(invidiousBase, input.videoId),
-        );
-        resolved = mapInvidiousVideo(json, invidiousBase);
-      } catch (error) {
-        recordUpstreamFailure(error, "invidious", errors);
+    }
+  } else if (
+    pipedResolved &&
+    invidiousBase &&
+    shouldPreferInvidiousOverPiped(pipedResolved)
+  ) {
+    invidiousResolved = await fetchInvidiousDetail();
+    if (invidiousResolved) {
+      const picked = pickRicherPlaybackDetail(
+        pipedResolved,
+        invidiousResolved,
+      );
+      if (picked.sourceUsed === "invidious") {
+        logger.info("upstream.prefer_invidious_over_piped", {
+          videoId: input.videoId,
+          pipedMaxHeight: playbackCatalogMaxHeightPx(pipedResolved),
+          invidiousMaxHeight: playbackCatalogMaxHeightPx(invidiousResolved),
+        });
       }
+      resolved = picked;
     }
   }
 
@@ -2255,8 +2373,7 @@ function mapPipedComment(
   const o = raw as Record<string, unknown>;
   const commentId = typeof o.commentId === "string" ? o.commentId.trim() : "";
   const author = typeof o.author === "string" ? o.author.trim() : "";
-  const text =
-    typeof o.commentText === "string" ? o.commentText.trim() : "";
+  const text = typeof o.commentText === "string" ? o.commentText.trim() : "";
   if (!commentId || !author || !text) return null;
   const commentorUrl =
     typeof o.commentorUrl === "string" ? o.commentorUrl : undefined;
@@ -2803,7 +2920,10 @@ export async function fetchShortsFeed(
           if (!tasteDiscovery) {
             try {
               acquireUpstreamSlot();
-              const trendingUrl = buildInvidiousTrendingUrl(invidiousBase, region);
+              const trendingUrl = buildInvidiousTrendingUrl(
+                invidiousBase,
+                region,
+              );
               const trendingJson = await fetchJson(trendingUrl, {
                 emptyBodyAs: [],
               });
@@ -2827,7 +2947,11 @@ export async function fetchShortsFeed(
                 "video",
               );
               const json = await fetchJson(searchUrl, { emptyBodyAs: [] });
-              const found = parseInvidiousShortsList(json, limit, invidiousBase);
+              const found = parseInvidiousShortsList(
+                json,
+                limit,
+                invidiousBase,
+              );
               if (mergeDiscoveryShortVideos(limit, seen, videos, found)) break;
             } catch (e) {
               recordUpstreamFailure(e, "invidious", errors);
@@ -2984,8 +3108,7 @@ export async function fetchShortsFeed(
 
     const continuation = input.continuation ?? "";
     const pipedContinuation =
-      continuation === "piped:search" ||
-      continuation.startsWith("piped:");
+      continuation === "piped:search" || continuation.startsWith("piped:");
     const invidiousContinuation =
       continuation.startsWith("inv:page:") || continuation === "";
 
@@ -3039,6 +3162,7 @@ export async function fetchShortsFeed(
           sourceUsed: liveUpstreamSource(out.sourceUsed),
         },
         "shorts",
+        { shortsPurpose: input.purpose ?? "feed" },
       );
     }
     return out;
@@ -3219,7 +3343,10 @@ function videosFromPipedListItems(
   return videos;
 }
 
-function extractXmlTagContent(block: string, tagName: string): string | undefined {
+function extractXmlTagContent(
+  block: string,
+  tagName: string,
+): string | undefined {
   const re = new RegExp(
     `<${tagName}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${tagName}>`,
     "i",
@@ -3240,10 +3367,7 @@ function extractXmlAttr(
   tagName: string,
   attr: string,
 ): string | undefined {
-  const re = new RegExp(
-    `<${tagName}[^>]*\\s${attr}=["']([^"']+)["']`,
-    "i",
-  );
+  const re = new RegExp(`<${tagName}[^>]*\\s${attr}=["']([^"']+)["']`, "i");
   return re.exec(block)?.[1];
 }
 
@@ -3373,7 +3497,9 @@ async function tryPipedChannelVideoFallbacks(
         if (!data) continue;
         try {
           acquireUpstreamSlot();
-          const json = await fetchJson(buildPipedChannelTabsUrl(pipedBase, data));
+          const json = await fetchJson(
+            buildPipedChannelTabsUrl(pipedBase, data),
+          );
           push(
             videosFromPipedListItems(
               pipedListItemsFromPayload(json),
@@ -3419,7 +3545,12 @@ async function tryInvidiousChannelVideoFallbacks(
     );
     if (ok && text.trim()) {
       push(
-        parseInvidiousChannelRssFeed(text, channelId, invidiousBase, channelName),
+        parseInvidiousChannelRssFeed(
+          text,
+          channelId,
+          invidiousBase,
+          channelName,
+        ),
       );
     }
   } catch (e) {
@@ -3741,11 +3872,7 @@ async function fetchInvidiousChannelShortsPage(
 ): Promise<ChannelPageResult | null> {
   if (continuation) {
     const json = await fetchJson(
-      buildInvidiousChannelShortsUrl(
-        invidiousBase,
-        channelId,
-        continuation,
-      ),
+      buildInvidiousChannelShortsUrl(invidiousBase, channelId, continuation),
     );
     return parseInvidiousChannelVideosContinuation(
       json,
@@ -3769,7 +3896,10 @@ async function fetchInvidiousChannelShortsPage(
         : undefined;
   const description =
     typeof m.description === "string" ? m.description : undefined;
-  const avatarUrl = resolveInvidiousThumbnail(m.authorThumbnails, invidiousBase);
+  const avatarUrl = resolveInvidiousThumbnail(
+    m.authorThumbnails,
+    invidiousBase,
+  );
   const bannerUrl = resolveInvidiousThumbnail(m.authorBanners, invidiousBase);
   let subscriberCount: number | undefined;
   if (typeof m.subCount === "number" && Number.isFinite(m.subCount)) {

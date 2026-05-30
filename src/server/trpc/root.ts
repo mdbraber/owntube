@@ -6,8 +6,9 @@ import { historyRouter } from "@/server/trpc/routers/history";
 import { interactionsRouter } from "@/server/trpc/routers/interactions";
 import { playlistsRouter } from "@/server/trpc/routers/playlists";
 import { searchRouter } from "@/server/trpc/routers/search";
-import { shortsRouter } from "@/server/trpc/routers/shorts";
 import { settingsRouter } from "@/server/trpc/routers/settings";
+import { shortsRouter } from "@/server/trpc/routers/shorts";
+import { sponsorblockRouter } from "@/server/trpc/routers/sponsorblock";
 import { statsRouter } from "@/server/trpc/routers/stats";
 import { subscriptionsRouter } from "@/server/trpc/routers/subscriptions";
 import { takeoutRouter } from "@/server/trpc/routers/takeout";
@@ -25,6 +26,7 @@ export const appRouter = router({
   search: searchRouter,
   shorts: shortsRouter,
   settings: settingsRouter,
+  sponsorblock: sponsorblockRouter,
   stats: statsRouter,
   subscriptions: subscriptionsRouter,
   takeout: takeoutRouter,

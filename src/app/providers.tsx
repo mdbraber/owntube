@@ -4,6 +4,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink } from "@trpc/client";
 import { useState } from "react";
 import superjson from "superjson";
+import { FaviconSync } from "@/components/settings/favicon-sync";
+import { MiniPlayerSync } from "@/components/settings/mini-player-sync";
+import { SponsorBlockSync } from "@/components/settings/sponsorblock-sync";
 import { ThemeSync } from "@/components/settings/theme-sync";
 import { trpc } from "@/trpc/react";
 
@@ -43,6 +46,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <trpc.Provider client={trpcClient} queryClient={queryClient}>
       <QueryClientProvider client={queryClient}>
         <ThemeSync />
+        <FaviconSync />
+        <MiniPlayerSync />
+        <SponsorBlockSync />
         {children}
       </QueryClientProvider>
     </trpc.Provider>

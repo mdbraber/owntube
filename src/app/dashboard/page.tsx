@@ -49,14 +49,13 @@ export default async function DashboardPage() {
             ["Dislikes", stats.dislikes.toLocaleString()],
           ] as const
         ).map(([label, value]) => (
-          <article
-            key={label}
-            className="rounded-[14px] border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-5 shadow-sm"
-          >
+          <article key={label} className="ot-surface-card p-5 shadow-sm">
             <p className="text-sm text-[hsl(var(--muted-foreground))]">
               {label}
             </p>
-            <p className="mt-1 text-2xl font-bold tracking-tight">{value}</p>
+            <p className="mt-1 ot-mono-data text-2xl font-bold tracking-tight">
+              {value}
+            </p>
           </article>
         ))}
       </section>
@@ -70,10 +69,7 @@ export default async function DashboardPage() {
         ) : (
           <ul className="space-y-2">
             {stats.topChannels.map((row) => (
-              <li
-                key={row.channelId}
-                className="rounded-[14px] border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4"
-              >
+              <li key={row.channelId} className="ot-surface-card p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <Link
                     href={`/channel/${encodeURIComponent(row.channelId)}`}

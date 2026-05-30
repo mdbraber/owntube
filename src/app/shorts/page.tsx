@@ -1,4 +1,5 @@
 import { ShortsFeedClient } from "@/components/shorts/shorts-feed-client";
+import { prepareShortsFeedVideos } from "@/lib/shorts-feed-presentation";
 import { auth } from "@/server/auth";
 import { getDb } from "@/server/db/client";
 import {
@@ -41,8 +42,7 @@ export default async function ShortsPage({ searchParams }: ShortsPageProps) {
   const initialUpstream = describeUpstreamAvailability(overrides);
 
   let initialFeed: ShortsFeedResult | null = null;
-  const viewerId =
-    Number.isFinite(userId) && userId > 0 ? userId : null;
+  const viewerId = Number.isFinite(userId) && userId > 0 ? userId : null;
   const exclusionSet =
     viewerId != null ? buildShortsExclusionSet(db, viewerId) : null;
   const initialWatchedVideoIds = exclusionSet ? [...exclusionSet] : [];
@@ -60,13 +60,12 @@ export default async function ShortsPage({ searchParams }: ShortsPageProps) {
       },
       overrides,
     );
-    if (initialFeed && exclusionSet && exclusionSet.size > 0) {
-      initialFeed = {
-        ...initialFeed,
-        videos: initialFeed.videos.filter(
-          (v) => !exclusionSet.has(v.videoId),
-        ),
-      };
+    if (initialFeed) {
+      let videos = prepareShortsFeedVideos(initialFeed.videos, 24);
+      if (exclusionSet && exclusionSet.size > 0) {
+        videos = videos.filter((v) => !exclusionSet.has(v.videoId));
+      }
+      initialFeed = { ...initialFeed, videos };
     }
   } catch {
     initialFeed = null;

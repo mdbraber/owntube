@@ -8,7 +8,7 @@ export default function LoginPage() {
         <header className="space-y-2">
           <h1 className="text-3xl font-extrabold tracking-tight">Sign in</h1>
           <p className="text-sm text-[hsl(var(--muted-foreground))]">
-            Use your OwnTube account to keep history and interactions private.
+            Use your owntube account to keep history and interactions private.
           </p>
         </header>
         <LoginForm />

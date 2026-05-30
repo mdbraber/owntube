@@ -236,10 +236,7 @@ export function pickNewestVideoPerChannel(
   options?: PickNewestPerChannelOptions,
 ): UnifiedVideo[] {
   const nowSec = options?.nowSec ?? Math.floor(Date.now() / 1000);
-  const maxPerChannel = Math.max(
-    1,
-    Math.min(36, options?.maxPerChannel ?? 10),
-  );
+  const maxPerChannel = Math.max(1, Math.min(36, options?.maxPerChannel ?? 10));
   const byChannel = new Map<string, UnifiedVideo[]>();
   const withoutChannel: UnifiedVideo[] = [];
   for (const v of videos) {

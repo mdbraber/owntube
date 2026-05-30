@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { VideoThumbnailImg } from "@/components/videos/video-thumbnail-img";
 import { trpc } from "@/trpc/react";
 
 type HistoryItem = {
@@ -108,10 +109,9 @@ export function HistoryList({ initialItems }: HistoryListProps) {
               >
                 <div className="relative aspect-video w-44 overflow-hidden rounded-lg bg-[hsl(var(--muted))]">
                   {item.thumbnailUrl ? (
-                    // biome-ignore lint/performance/noImgElement: third-party thumbnails
-                    <img
-                      src={item.thumbnailUrl}
-                      alt=""
+                    <VideoThumbnailImg
+                      url={item.thumbnailUrl}
+                      videoId={item.videoId}
                       className="h-full w-full object-cover"
                       loading="lazy"
                     />

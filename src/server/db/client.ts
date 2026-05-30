@@ -14,7 +14,12 @@ const require = createRequire(path.join(process.cwd(), "package.json"));
 /** Turbopack can break `bindings`’ `__dirname`; load the `.node` from the real package root. */
 function betterSqliteNativePath(): string {
   const pkg = require.resolve("better-sqlite3/package.json");
-  const addon = path.join(path.dirname(pkg), "build", "Release", "better_sqlite3.node");
+  const addon = path.join(
+    path.dirname(pkg),
+    "build",
+    "Release",
+    "better_sqlite3.node",
+  );
   if (!fs.existsSync(addon)) {
     throw new Error(
       `better-sqlite3 native addon not found at ${addon}. From project root, run: pnpm install`,
@@ -26,7 +31,9 @@ function betterSqliteNativePath(): string {
 function createDb() {
   const dbPath = process.env.DATABASE_PATH ?? defaultPath;
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
-  const sqlite = new Database(dbPath, { nativeBinding: betterSqliteNativePath() });
+  const sqlite = new Database(dbPath, {
+    nativeBinding: betterSqliteNativePath(),
+  });
   sqlite.pragma("journal_mode = WAL");
   sqlite.pragma("foreign_keys = ON");
   runSqlMigrations(

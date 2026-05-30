@@ -63,7 +63,9 @@ export async function GET(
 ) {
   const inv = invidiousUpstreamBase();
   if (!inv) {
-    return new Response("INVIDIOUS_BASE_URL is not configured", { status: 503 });
+    return new Response("INVIDIOUS_BASE_URL is not configured", {
+      status: 503,
+    });
   }
 
   const { path: segs } = await context.params;
@@ -98,7 +100,14 @@ export async function GET(
 
   if (isM3U8) {
     const text = await r.text();
-    const out = rewriteM3u8AllProxies(text, appOrigin, requestHost, inv);
+    const manifestUrl = new URL(subpath + search, `${inv}/`).toString();
+    const out = rewriteM3u8AllProxies(
+      text,
+      appOrigin,
+      requestHost,
+      inv,
+      manifestUrl,
+    );
     return new Response(out, {
       status: r.status,
       headers: {

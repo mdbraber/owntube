@@ -80,7 +80,11 @@ describe("filterShortsFeedVideos", () => {
 
   it("drops unknown-duration search hits without a #shorts tag", () => {
     const videos = filterShortsFeedVideos([
-      { videoId: "b", title: "clip sans hashtag", durationSeconds: -1 } as UnifiedVideo,
+      {
+        videoId: "b",
+        title: "clip sans hashtag",
+        durationSeconds: -1,
+      } as UnifiedVideo,
     ]);
     expect(videos).toHaveLength(0);
   });

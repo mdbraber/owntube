@@ -84,9 +84,10 @@ export function recurringTokensFromDislikedTitles(
   return out;
 }
 
-export function sessionDislikeBlocks(
-  dislikes: readonly SessionDislike[],
-): { blockedChannels: Set<string>; blockedTokens: Set<string> } {
+export function sessionDislikeBlocks(dislikes: readonly SessionDislike[]): {
+  blockedChannels: Set<string>;
+  blockedTokens: Set<string>;
+} {
   const blockedChannels = new Set<string>();
   for (const d of dislikes) {
     if (d.channelId && d.channelId.length > 0) {

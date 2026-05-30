@@ -3,9 +3,9 @@ import { normalizePipedDescription } from "./normalize-video-description";
 
 describe("normalizePipedDescription", () => {
   it("converts br tags to newlines", () => {
-    expect(normalizePipedDescription("Line one<br>Line two<br/>Line three")).toBe(
-      "Line one\nLine two\nLine three",
-    );
+    expect(
+      normalizePipedDescription("Line one<br>Line two<br/>Line three"),
+    ).toBe("Line one\nLine two\nLine three");
   });
 
   it("extracts href from anchor tags", () => {

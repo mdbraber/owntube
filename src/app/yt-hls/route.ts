@@ -81,7 +81,13 @@ export async function GET(request: Request) {
 
   if (isM3U8) {
     const text = await r.text();
-    const out = rewriteM3u8AllProxies(text, appOrigin, requestHost);
+    const out = rewriteM3u8AllProxies(
+      text,
+      appOrigin,
+      requestHost,
+      undefined,
+      target.toString(),
+    );
     return new Response(out, {
       status: r.status,
       headers: {

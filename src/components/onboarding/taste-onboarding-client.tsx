@@ -5,11 +5,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { TRENDING_REGION_OPTIONS } from "@/lib/trending-regions";
+import { VideoThumbnailImg } from "@/components/videos/video-thumbnail-img";
 import {
   filterVideosBySessionDislikes,
   type SessionDislike,
 } from "@/lib/taste-deck-filter";
+import { TRENDING_REGION_OPTIONS } from "@/lib/trending-regions";
 import type { UnifiedVideo } from "@/server/services/proxy.types";
 import { trpc } from "@/trpc/react";
 
@@ -684,11 +685,11 @@ export function TasteOnboardingClient() {
             <article className="overflow-hidden rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-sm">
               <div className="relative aspect-video w-full bg-black">
                 {current.thumbnailUrl ? (
-                  // biome-ignore lint/performance/noImgElement: arbitrary upstream thumbnail hosts
-                  <img
-                    src={current.thumbnailUrl}
-                    alt=""
+                  <VideoThumbnailImg
+                    url={current.thumbnailUrl}
+                    videoId={current.videoId}
                     className="absolute inset-0 h-full w-full object-cover"
+                    loading="eager"
                   />
                 ) : null}
                 <div

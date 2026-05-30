@@ -4,10 +4,34 @@ test.describe("P0 smoke", () => {
   test("home shows entry to search", async ({ page }) => {
     await page.goto("/");
     await expect(
-      page.getByRole("heading", { level: 1, name: "OwnTube" }),
+      page.getByRole("link", { name: "owntube home" }),
     ).toBeVisible();
     await expect(
       page.getByRole("link", { name: "Search videos" }),
+    ).toBeVisible();
+  });
+
+  test("home may show shorts shelf when upstream has shorts", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await expect(
+      page.getByRole("link", { name: "owntube home" }),
+    ).toBeVisible();
+    const shortsHeading = page.getByRole("heading", {
+      level: 2,
+      name: "Shorts",
+    });
+    const visible = await shortsHeading
+      .waitFor({ state: "visible", timeout: 45_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (!visible) return;
+    await expect(
+      page.getByRole("link", { name: "See all" }).filter({ hasText: /^See all$/ }),
+    ).toBeVisible();
+    await expect(
+      page.locator('a[href^="/shorts?v="]').first(),
     ).toBeVisible();
   });
 
