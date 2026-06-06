@@ -179,7 +179,7 @@ export function ShortsVerticalActions({
       </RailButton>
 
       <RailButton
-        label={actions.liked ? "Aimé" : "J'aime"}
+        label={actions.liked ? "Liked" : "Like"}
         active={actions.liked}
         disabled={actions.pending}
         onClick={() => void actions.toggleLike()}
@@ -188,7 +188,7 @@ export function ShortsVerticalActions({
       </RailButton>
 
       <RailButton
-        label="Pas aimé"
+        label={actions.disliked ? "Disliked" : "Dislike"}
         active={actions.disliked}
         disabled={actions.pending}
         onClick={() => void actions.toggleDislike()}
@@ -198,7 +198,7 @@ export function ShortsVerticalActions({
 
       {channelId ? (
         <RailButton
-          label="Masquer"
+          label="Hide"
           active={actions.channelBlocked}
           disabled={actions.pending || actions.channelBlocked}
           onClick={() => void actions.blockRecommendationChannel()}
