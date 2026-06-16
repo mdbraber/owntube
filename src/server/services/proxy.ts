@@ -17,11 +17,6 @@ import {
   SHORTS_DISCOVERY_FALLBACK_QUERIES,
   shortsSearchQueriesForRegion,
 } from "@/lib/shorts-discovery-queries";
-import { isUpstreamDisabled } from "@/lib/upstream-base-url";
-import {
-  normalizePreferredUpstreamInstance,
-  normalizeUpstreamInstanceList,
-} from "@/lib/upstream-instances";
 import {
   pickLivePlaybackDetail,
   pickRicherPlaybackDetail,
@@ -31,6 +26,23 @@ import {
 import { preferHighResVideoThumbnailUrl } from "@/lib/video-thumbnail-url";
 import type { AppDb } from "@/server/db/client";
 import { videoCache } from "@/server/db/schema";
+import {
+  type ProxySourceOverrides,
+  resolveProxyBaseCandidates,
+} from "@/server/services/proxy/config";
+
+export {
+  describeUpstreamAvailability,
+  getInstanceSourceInfo,
+  type InstanceSourceInfo,
+  type InstanceSourceRow,
+  type ProxySourceOverrides,
+  resolveEffectiveProxyBases,
+  resolveProxyBaseCandidates,
+  resolveProxyBases,
+  type UpstreamAvailability,
+} from "@/server/services/proxy/config";
+
 import {
   channelCacheKey,
   detailCacheKey,
@@ -47,6 +59,7 @@ import {
   rethrowIfInvidiousUpcoming,
   throwIfUpstreamFailed,
 } from "@/server/services/proxy/errors";
+import { FETCH_TIMEOUT_MS, fetchJson } from "@/server/services/proxy/http";
 import {
   mapInvidiousChannelItem,
   mapInvidiousItem,
@@ -64,7 +77,6 @@ import {
   channelIdFromPath,
   liveUpstreamSource,
   normalizeBaseUrl,
-  normalizeInvidiousOutboundBase,
   pickInvidiousStoryboard,
   resolveInvidiousAbsoluteMediaUrl,
   resolveInvidiousThumbnail,
@@ -103,15 +115,7 @@ import {
 } from "@/server/services/proxy.types";
 import { acquireUpstreamSlot } from "@/server/services/rate-limiter";
 import { upstreamGetText } from "@/server/services/upstream-get";
-import {
-  orderUpstreamCandidates,
-  recordUpstreamFailure as recordInstanceFailure,
-  recordUpstreamSuccess,
-  type UpstreamHealthSnapshot,
-  upstreamHealthSnapshot,
-} from "@/server/services/upstream-health";
 
-const FETCH_TIMEOUT_MS = 20_000;
 const inFlightTrending = new Map<string, Promise<TrendingVideosResult>>();
 const inFlightShortsFeed = new Map<string, Promise<ShortsFeedResult>>();
 const inFlightChannel = new Map<string, Promise<ChannelPageResult>>();
@@ -124,227 +128,8 @@ export function clearProxyCaches(db: AppDb): { clearedRows: number } {
   return { clearedRows: Number(res.changes ?? 0) };
 }
 
-export type ProxySourceOverrides = {
-  pipedBaseUrl?: string | null;
-  invidiousBaseUrl?: string | null;
-  pipedBaseUrls?: string[] | null;
-  invidiousBaseUrls?: string[] | null;
-  preferredPipedBaseUrl?: string | null;
-  preferredInvidiousBaseUrl?: string | null;
-};
-
-/** Cache rows store the real upstream name (`piped` / `invidious`), never `"cache"`. */
 export { UpstreamAgeRestrictedError } from "@/server/errors/upstream-age-restricted";
 export { UpstreamLiveUpcomingError } from "@/server/errors/upstream-live-upcoming";
-
-export type UpstreamAvailability = {
-  pipedConfigured: boolean;
-  invidiousConfigured: boolean;
-  anyConfigured: boolean;
-};
-
-export function describeUpstreamAvailability(
-  overrides?: ProxySourceOverrides,
-): UpstreamAvailability {
-  const { pipedBases, invidiousBases } = resolveProxyBaseCandidates(overrides);
-  return {
-    pipedConfigured: pipedBases.length > 0,
-    invidiousConfigured: invidiousBases.length > 0,
-    anyConfigured: pipedBases.length > 0 || invidiousBases.length > 0,
-  };
-}
-
-/** Resolved Piped/Invidious bases (env + per-user overrides). */
-export function resolveEffectiveProxyBases(overrides?: ProxySourceOverrides): {
-  pipedBase: string;
-  invidiousBase: string;
-} {
-  return resolveProxyBases(overrides);
-}
-
-export type InstanceSourceRow = {
-  /** Raw `PIPED_BASE_URL` / `INVIDIOUS_BASE_URL` value from the server environment. */
-  envRaw: string | null;
-  envUrl: string | null;
-  envDisabled: boolean;
-  /** Per-account URL saved in Settings (empty = not overriding). */
-  profileOverride: string | null;
-  /** URL OwnTube actually uses for this upstream. */
-  effectiveUrl: string | null;
-  urls: string[];
-  preferredUrl: string | null;
-  health: UpstreamHealthSnapshot[];
-};
-
-export type InstanceSourceInfo = {
-  piped: InstanceSourceRow;
-  invidious: InstanceSourceRow;
-};
-
-function readEnvPipedRaw(): string | null {
-  const raw = process.env.PIPED_BASE_URL?.trim();
-  return raw || null;
-}
-
-function readEnvInvidiousRaw(): string | null {
-  const raw = process.env.INVIDIOUS_BASE_URL?.trim();
-  return raw || null;
-}
-
-function readEnvPipedUrl(): string | null {
-  return readEnvPipedUrls()[0] ?? null;
-}
-
-function readEnvInvidiousUrl(): string | null {
-  return readEnvInvidiousUrls()[0] ?? null;
-}
-
-function splitConfiguredUrls(raw: string | null): string[] {
-  if (!raw || isUpstreamDisabled(raw)) return [];
-  return raw
-    .split(/[\s,]+/)
-    .map((part) => part.trim())
-    .filter(Boolean);
-}
-
-function readEnvPipedUrls(): string[] {
-  return normalizeUpstreamInstanceList(splitConfiguredUrls(readEnvPipedRaw()));
-}
-
-function readEnvInvidiousUrls(): string[] {
-  return normalizeUpstreamInstanceList(
-    splitConfiguredUrls(readEnvInvidiousRaw()),
-  ).map(normalizeInvidiousOutboundBase);
-}
-
-/** Server env + optional profile overrides — for Settings display. */
-export function getInstanceSourceInfo(profile?: {
-  pipedBaseUrl?: string;
-  invidiousBaseUrl?: string;
-  pipedBaseUrls?: string[];
-  invidiousBaseUrls?: string[];
-  preferredPipedBaseUrl?: string;
-  preferredInvidiousBaseUrl?: string;
-}): InstanceSourceInfo {
-  const profilePipedUrls = normalizeUpstreamInstanceList([
-    ...(profile?.pipedBaseUrls ?? []),
-    ...(profile?.pipedBaseUrl ? [profile.pipedBaseUrl] : []),
-  ]);
-  const profileInvUrls = normalizeUpstreamInstanceList([
-    ...(profile?.invidiousBaseUrls ?? []),
-    ...(profile?.invidiousBaseUrl ? [profile.invidiousBaseUrl] : []),
-  ]).map(normalizeInvidiousOutboundBase);
-  const overrides =
-    profilePipedUrls.length > 0 || profileInvUrls.length > 0
-      ? {
-          pipedBaseUrls: profilePipedUrls,
-          invidiousBaseUrls: profileInvUrls,
-          preferredPipedBaseUrl: profile?.preferredPipedBaseUrl,
-          preferredInvidiousBaseUrl: profile?.preferredInvidiousBaseUrl,
-        }
-      : undefined;
-  const {
-    pipedBases,
-    invidiousBases,
-    preferredPipedBase,
-    preferredInvidiousBase,
-  } = resolveProxyBaseCandidates(overrides);
-
-  const pipedEnvRaw = readEnvPipedRaw();
-  const invEnvRaw = readEnvInvidiousRaw();
-
-  return {
-    piped: {
-      envRaw: pipedEnvRaw,
-      envUrl:
-        pipedEnvRaw && !isUpstreamDisabled(pipedEnvRaw)
-          ? readEnvPipedUrl()
-          : null,
-      envDisabled: Boolean(pipedEnvRaw && isUpstreamDisabled(pipedEnvRaw)),
-      profileOverride:
-        profilePipedUrls.length > 0 ? profilePipedUrls.join(", ") : null,
-      effectiveUrl: pipedBases[0] ?? null,
-      urls: pipedBases,
-      preferredUrl: preferredPipedBase ?? null,
-      health: pipedBases.map((url) => upstreamHealthSnapshot("piped", url)),
-    },
-    invidious: {
-      envRaw: invEnvRaw,
-      envUrl:
-        invEnvRaw && !isUpstreamDisabled(invEnvRaw)
-          ? readEnvInvidiousUrl()
-          : null,
-      envDisabled: Boolean(invEnvRaw && isUpstreamDisabled(invEnvRaw)),
-      profileOverride:
-        profileInvUrls.length > 0 ? profileInvUrls.join(", ") : null,
-      effectiveUrl: invidiousBases[0] ?? null,
-      urls: invidiousBases,
-      preferredUrl: preferredInvidiousBase ?? null,
-      health: invidiousBases.map((url) =>
-        upstreamHealthSnapshot("invidious", url),
-      ),
-    },
-  };
-}
-
-export function resolveProxyBaseCandidates(overrides?: ProxySourceOverrides): {
-  pipedBases: string[];
-  invidiousBases: string[];
-  preferredPipedBase?: string;
-  preferredInvidiousBase?: string;
-} {
-  const rawPiped =
-    overrides?.pipedBaseUrls && overrides.pipedBaseUrls.length > 0
-      ? overrides.pipedBaseUrls
-      : overrides?.pipedBaseUrl !== undefined
-        ? [overrides.pipedBaseUrl ?? ""]
-        : readEnvPipedUrls();
-  const rawInvidious =
-    overrides?.invidiousBaseUrls && overrides.invidiousBaseUrls.length > 0
-      ? overrides.invidiousBaseUrls
-      : overrides?.invidiousBaseUrl !== undefined
-        ? [overrides.invidiousBaseUrl ?? ""]
-        : readEnvInvidiousUrls();
-
-  const pipedBases = normalizeUpstreamInstanceList(rawPiped);
-  const invidiousBases = normalizeUpstreamInstanceList(rawInvidious).map(
-    normalizeInvidiousOutboundBase,
-  );
-  const preferredPipedBase = normalizePreferredUpstreamInstance(
-    overrides?.preferredPipedBaseUrl ?? undefined,
-    pipedBases,
-  );
-  const preferredInvidiousBase = normalizePreferredUpstreamInstance(
-    overrides?.preferredInvidiousBaseUrl ?? undefined,
-    invidiousBases,
-  );
-
-  return {
-    pipedBases: orderUpstreamCandidates(
-      "piped",
-      pipedBases,
-      preferredPipedBase,
-    ),
-    invidiousBases: orderUpstreamCandidates(
-      "invidious",
-      invidiousBases,
-      preferredInvidiousBase,
-    ),
-    preferredPipedBase,
-    preferredInvidiousBase,
-  };
-}
-
-export function resolveProxyBases(overrides?: ProxySourceOverrides): {
-  pipedBase: string;
-  invidiousBase: string;
-} {
-  const { pipedBases, invidiousBases } = resolveProxyBaseCandidates(overrides);
-  return {
-    pipedBase: pipedBases[0] ?? "",
-    invidiousBase: invidiousBases[0] ?? "",
-  };
-}
 
 function resolveShortsDiscoveryQueries(
   input: ShortsFeedInput,
@@ -377,77 +162,6 @@ async function tryFetchInvidiousStoryboard(
     );
   } catch {
     return undefined;
-  }
-}
-
-type FetchJsonOptions = {
-  /**
-   * Some upstreams (notably Invidious `/api/v1/videos/{id}/related`) return 2xx with a
-   * completely empty body instead of `[]` when there are no related items.
-   */
-  emptyBodyAs?: unknown;
-  source?: "piped" | "invidious";
-  baseUrl?: string;
-};
-
-async function fetchJson(
-  url: string,
-  options?: FetchJsonOptions,
-): Promise<unknown> {
-  const startedAt = Date.now();
-  try {
-    const { status, ok, text } = await upstreamGetText(url, FETCH_TIMEOUT_MS);
-    const trimmed = text.trim();
-    if (!ok) {
-      const hint = trimmed.slice(0, 240);
-      throw new Error(
-        hint ? `HTTP ${status}: ${hint}` : `HTTP ${status} (empty body)`,
-      );
-    }
-    if (!trimmed) {
-      if (options?.emptyBodyAs !== undefined) {
-        if (options.source && options.baseUrl) {
-          recordUpstreamSuccess(
-            options.source,
-            options.baseUrl,
-            Date.now() - startedAt,
-          );
-        }
-        return options.emptyBodyAs;
-      }
-      throw new Error(
-        `HTTP ${status} with empty body (expected JSON from upstream)`,
-      );
-    }
-    try {
-      const parsed = JSON.parse(trimmed) as unknown;
-      if (options?.source && options.baseUrl) {
-        recordUpstreamSuccess(
-          options.source,
-          options.baseUrl,
-          Date.now() - startedAt,
-        );
-      }
-      return parsed;
-    } catch (e) {
-      const isHtml = trimmed.startsWith("<");
-      const msg = e instanceof Error ? e.message : String(e);
-      throw new Error(
-        isHtml
-          ? `Invalid JSON (upstream returned HTML — base URL may be the web UI, not the API; use the Piped backend URL or set PIPED_BASE_URL=disabled): ${msg}; start: ${trimmed.slice(0, 120)}`
-          : `Invalid JSON: ${msg}; start: ${trimmed.slice(0, 120)}`,
-      );
-    }
-  } catch (error) {
-    if (options?.source && options.baseUrl) {
-      recordInstanceFailure(
-        options.source,
-        options.baseUrl,
-        error,
-        Date.now() - startedAt,
-      );
-    }
-    throw error;
   }
 }
 
