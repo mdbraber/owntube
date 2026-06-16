@@ -66,6 +66,7 @@ import {
 } from "@/server/services/proxy/search";
 
 export { searchVideos };
+export { fetchVideoComments } from "@/server/services/proxy/comments";
 
 import {
   mapInvidiousItem,
@@ -79,7 +80,6 @@ import {
   pipedRootItems,
 } from "@/server/services/proxy/mappers/piped";
 import {
-  channelIdFromPath,
   liveUpstreamSource,
   normalizeBaseUrl,
   pickInvidiousStoryboard,
@@ -101,16 +101,11 @@ import {
   type TrendingInput,
   type TrendingVideosResult,
   trendingVideosResultSchema,
-  type UnifiedComment,
   type UnifiedVideo,
-  unifiedCommentSchema,
   unifiedVideoSchema,
-  type VideoCommentsInput,
-  type VideoCommentsResult,
   type VideoDetail,
   type VideoDetailInput,
   type VideoStoryboard,
-  videoCommentsResultSchema,
   videoDetailSchema,
 } from "@/server/services/proxy.types";
 import { acquireUpstreamSlot } from "@/server/services/rate-limiter";
@@ -677,255 +672,6 @@ export async function fetchRelatedVideos(
 /* -------------------------------------------------------------------------- */
 /* Comments                                                                   */
 /* -------------------------------------------------------------------------- */
-
-function buildPipedCommentsUrl(base: string, videoId: string): string {
-  return new URL(
-    `/comments/${encodeURIComponent(videoId)}`,
-    `${normalizeBaseUrl(base)}/`,
-  ).toString();
-}
-
-function buildPipedCommentsNextUrl(
-  base: string,
-  videoId: string,
-  nextpage: string,
-): string {
-  const u = new URL(
-    `/nextpage/comments/${encodeURIComponent(videoId)}`,
-    `${normalizeBaseUrl(base)}/`,
-  );
-  u.searchParams.set("nextpage", nextpage);
-  return u.toString();
-}
-
-function buildInvidiousCommentsUrl(
-  base: string,
-  videoId: string,
-  sortBy: "top" | "new",
-  continuation?: string,
-): string {
-  const u = new URL(
-    `/api/v1/comments/${encodeURIComponent(videoId)}`,
-    `${normalizeBaseUrl(base)}/`,
-  );
-  u.searchParams.set("sort_by", sortBy);
-  u.searchParams.set("source", "youtube");
-  if (continuation) u.searchParams.set("continuation", continuation);
-  return u.toString();
-}
-
-function mapPipedComment(
-  raw: unknown,
-  pipedBase: string,
-): UnifiedComment | null {
-  if (!raw || typeof raw !== "object") return null;
-  const o = raw as Record<string, unknown>;
-  const commentId = typeof o.commentId === "string" ? o.commentId.trim() : "";
-  const author = typeof o.author === "string" ? o.author.trim() : "";
-  const text = typeof o.commentText === "string" ? o.commentText.trim() : "";
-  if (!commentId || !author || !text) return null;
-  const commentorUrl =
-    typeof o.commentorUrl === "string" ? o.commentorUrl : undefined;
-  const thumb = typeof o.thumbnail === "string" ? o.thumbnail : undefined;
-  const likeCount =
-    typeof o.likeCount === "number" && Number.isFinite(o.likeCount)
-      ? Math.max(0, Math.floor(o.likeCount))
-      : undefined;
-  const parsed = unifiedCommentSchema.safeParse({
-    commentId,
-    author,
-    authorId: channelIdFromPath(commentorUrl),
-    text,
-    publishedText:
-      typeof o.commentedTime === "string" ? o.commentedTime : undefined,
-    authorAvatarUrl: resolveInvidiousAbsoluteMediaUrl(thumb, pipedBase),
-    likeCount,
-    isPinned: o.pinned === true,
-    isHearted: o.hearted === true,
-    isVerified: o.verified === true,
-  });
-  if (!parsed.success) return null;
-  return parsed.data;
-}
-
-function mapPipedComments(
-  data: unknown,
-  pipedBase: string,
-  videoId: string,
-): VideoCommentsResult | null {
-  if (!data || typeof data !== "object") return null;
-  const o = data as Record<string, unknown>;
-  const comments: UnifiedComment[] = [];
-  if (Array.isArray(o.comments)) {
-    for (const raw of o.comments) {
-      const mapped = mapPipedComment(raw, pipedBase);
-      if (mapped) comments.push(mapped);
-    }
-  }
-  const nextpage =
-    typeof o.nextpage === "string" && o.nextpage.trim().length > 0
-      ? o.nextpage.trim()
-      : null;
-  const parsed = videoCommentsResultSchema.safeParse({
-    videoId,
-    comments,
-    disabled: o.disabled === true,
-    continuation: nextpage,
-    sourceUsed: "piped",
-  });
-  if (!parsed.success) return null;
-  return parsed.data;
-}
-
-function mapInvidiousComment(
-  raw: unknown,
-  invidiousBase: string,
-): UnifiedComment | null {
-  if (!raw || typeof raw !== "object") return null;
-  const o = raw as Record<string, unknown>;
-  const commentId = typeof o.commentId === "string" ? o.commentId.trim() : "";
-  const author = typeof o.author === "string" ? o.author.trim() : "";
-  const contentHtml =
-    typeof o.contentHtml === "string" ? o.contentHtml.trim() : "";
-  const content = typeof o.content === "string" ? o.content.trim() : "";
-  const text = contentHtml || content;
-  if (!commentId || !author || !text) return null;
-  const authorId =
-    typeof o.authorId === "string" && o.authorId.trim().length > 0
-      ? o.authorId.trim()
-      : channelIdFromPath(
-          typeof o.authorUrl === "string" ? o.authorUrl : undefined,
-        );
-  const likeCount =
-    typeof o.likeCount === "number" && Number.isFinite(o.likeCount)
-      ? Math.max(0, Math.floor(o.likeCount))
-      : undefined;
-  const replies =
-    o.replies && typeof o.replies === "object"
-      ? (o.replies as Record<string, unknown>)
-      : undefined;
-  const replyCount =
-    replies &&
-    typeof replies.replyCount === "number" &&
-    Number.isFinite(replies.replyCount)
-      ? Math.max(0, Math.floor(replies.replyCount))
-      : undefined;
-  const parsed = unifiedCommentSchema.safeParse({
-    commentId,
-    author,
-    authorId,
-    text,
-    publishedText:
-      typeof o.publishedText === "string" ? o.publishedText : undefined,
-    authorAvatarUrl: resolveInvidiousThumbnail(
-      o.authorThumbnails,
-      invidiousBase,
-    ),
-    likeCount,
-    isPinned: o.isPinned === true,
-    isHearted: Boolean(o.creatorHeart),
-    replyCount,
-  });
-  if (!parsed.success) return null;
-  return parsed.data;
-}
-
-function mapInvidiousComments(
-  data: unknown,
-  invidiousBase: string,
-  videoId: string,
-): VideoCommentsResult | null {
-  if (!data || typeof data !== "object") return null;
-  const o = data as Record<string, unknown>;
-  const comments: UnifiedComment[] = [];
-  if (Array.isArray(o.comments)) {
-    for (const raw of o.comments) {
-      const mapped = mapInvidiousComment(raw, invidiousBase);
-      if (mapped) comments.push(mapped);
-    }
-  }
-  const continuation =
-    typeof o.continuation === "string" && o.continuation.trim().length > 0
-      ? o.continuation.trim()
-      : null;
-  const commentCount =
-    typeof o.commentCount === "number" && Number.isFinite(o.commentCount)
-      ? Math.max(0, Math.floor(o.commentCount))
-      : undefined;
-  const parsed = videoCommentsResultSchema.safeParse({
-    videoId:
-      typeof o.videoId === "string" && o.videoId.trim().length > 0
-        ? o.videoId.trim()
-        : videoId,
-    comments,
-    continuation,
-    commentCount,
-    sourceUsed: "invidious",
-  });
-  if (!parsed.success) return null;
-  return parsed.data;
-}
-
-export async function fetchVideoComments(
-  _db: AppDb,
-  input: VideoCommentsInput,
-  overrides?: ProxySourceOverrides,
-): Promise<VideoCommentsResult> {
-  const { pipedBases, invidiousBases } = resolveProxyBaseCandidates(overrides);
-  const errors: string[] = [];
-  const continuation = input.continuation?.trim() || undefined;
-
-  let resolved: VideoCommentsResult | null = null;
-  if (input.sortBy === "top") {
-    for (const pipedBase of pipedBases) {
-      try {
-        acquireUpstreamSlot();
-        const url = continuation
-          ? buildPipedCommentsNextUrl(pipedBase, input.videoId, continuation)
-          : buildPipedCommentsUrl(pipedBase, input.videoId);
-        const json = await fetchJson(url, {
-          source: "piped",
-          baseUrl: pipedBase,
-        });
-        resolved = mapPipedComments(json, pipedBase, input.videoId);
-        break;
-      } catch (error) {
-        recordUpstreamFailure(error, "piped", errors, pipedBase);
-      }
-    }
-  }
-  if (!resolved) {
-    for (const invidiousBase of invidiousBases) {
-      if (invidiousPortCollidesWithNextApp(invidiousBase)) {
-        errors.push(
-          "invidious:INVIDIOUS_BASE_URL port conflicts with Next.js PORT (server would call itself).",
-        );
-        continue;
-      }
-      try {
-        acquireUpstreamSlot();
-        const json = await fetchJson(
-          buildInvidiousCommentsUrl(
-            invidiousBase,
-            input.videoId,
-            input.sortBy,
-            continuation,
-          ),
-          { source: "invidious", baseUrl: invidiousBase },
-        );
-        resolved = mapInvidiousComments(json, invidiousBase, input.videoId);
-        break;
-      } catch (error) {
-        recordUpstreamFailure(error, "invidious", errors, invidiousBase);
-      }
-    }
-  }
-
-  if (!resolved) {
-    throwIfUpstreamFailed(errors, "comments unavailable");
-  }
-  return resolved;
-}
 
 /* -------------------------------------------------------------------------- */
 /* Trending                                                                   */
