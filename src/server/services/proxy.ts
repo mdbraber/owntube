@@ -1,4 +1,3 @@
-import { stripRestrictedListVideos } from "@/lib/feed-exclude-restricted";
 import { invidiousPortCollidesWithNextApp } from "@/lib/invidious-port-collision";
 import { mergeActiveLiveVideosFirst } from "@/lib/live-video";
 import { logger } from "@/lib/logger";
@@ -50,7 +49,6 @@ import {
   readLatestCacheRow,
   relatedCacheKey,
   shortsFeedCacheKey,
-  trendingCacheKey,
   writeCache,
 } from "@/server/services/proxy/cache";
 import {
@@ -67,6 +65,14 @@ import {
 
 export { searchVideos };
 export { fetchVideoComments } from "@/server/services/proxy/comments";
+
+import {
+  buildInvidiousTrendingUrl,
+  buildPipedTrendingUrl,
+  clearTrendingInFlight,
+} from "@/server/services/proxy/trending";
+
+export { fetchTrendingVideos } from "@/server/services/proxy/trending";
 
 import {
   mapInvidiousItem,
@@ -91,16 +97,12 @@ import {
   type ChannelPageResult,
   cachedChannelPayloadSchema,
   cachedShortsFeedPayloadSchema,
-  cachedTrendingPayloadSchema,
   channelPageResultSchema,
   type RelatedVideosResult,
   relatedVideosResultSchema,
   type ShortsFeedInput,
   type ShortsFeedResult,
   shortsFeedResultSchema,
-  type TrendingInput,
-  type TrendingVideosResult,
-  trendingVideosResultSchema,
   type UnifiedVideo,
   unifiedVideoSchema,
   type VideoDetail,
@@ -111,12 +113,11 @@ import {
 import { acquireUpstreamSlot } from "@/server/services/rate-limiter";
 import { upstreamGetText } from "@/server/services/upstream-get";
 
-const inFlightTrending = new Map<string, Promise<TrendingVideosResult>>();
 const inFlightShortsFeed = new Map<string, Promise<ShortsFeedResult>>();
 const inFlightChannel = new Map<string, Promise<ChannelPageResult>>();
 
 export function clearProxyCaches(db: AppDb): { clearedRows: number } {
-  inFlightTrending.clear();
+  clearTrendingInFlight();
   inFlightShortsFeed.clear();
   inFlightChannel.clear();
   const res = db.delete(videoCache).run();
@@ -677,23 +678,6 @@ export async function fetchRelatedVideos(
 /* Trending                                                                   */
 /* -------------------------------------------------------------------------- */
 
-function readFreshTrendingCache(
-  db: AppDb,
-  key: string,
-): TrendingVideosResult | null {
-  const row = readFreshCacheRow(db, key);
-  if (!row) return null;
-  const raw = JSON.parse(row.payloadJson) as unknown;
-  const parsed = cachedTrendingPayloadSchema.safeParse(raw);
-  if (!parsed.success) return null;
-  logger.info("video_cache.hit", { cacheKey: key, kind: row.kind });
-  return {
-    videos: stripRestrictedListVideos(parsed.data.videos),
-    sourceUsed: "cache",
-    stale: false,
-  };
-}
-
 function readFreshShortsFeedCache(
   db: AppDb,
   key: string,
@@ -729,172 +713,6 @@ function readStaleShortsFeedCache(
     stale: true,
     warning: "Upstream unavailable, serving stale cache.",
   };
-}
-
-function readStaleTrendingCache(
-  db: AppDb,
-  key: string,
-): TrendingVideosResult | null {
-  const row = readLatestCacheRow(db, key);
-  if (!row) return null;
-  const raw = JSON.parse(row.payloadJson) as unknown;
-  const parsed = cachedTrendingPayloadSchema.safeParse(raw);
-  if (!parsed.success) return null;
-  logger.warn("video_cache.stale_hit", { cacheKey: key, kind: row.kind });
-  return {
-    videos: stripRestrictedListVideos(parsed.data.videos),
-    sourceUsed: "cache",
-    stale: true,
-    warning: "Upstream unavailable, serving stale cache.",
-  };
-}
-
-function buildPipedTrendingUrl(
-  base: string,
-  region: string,
-  category?: string,
-): string {
-  const u = new URL("/trending", `${normalizeBaseUrl(base)}/`);
-  u.searchParams.set("region", region.toUpperCase());
-  if (category) u.searchParams.set("type", category);
-  return u.toString();
-}
-
-function buildInvidiousTrendingUrl(
-  base: string,
-  region: string,
-  category?: string,
-): string {
-  const u = new URL("/api/v1/trending", `${normalizeBaseUrl(base)}/`);
-  u.searchParams.set("region", region.toUpperCase());
-  if (category) u.searchParams.set("type", category);
-  return u.toString();
-}
-
-function parsePipedTrending(
-  data: unknown,
-  limit: number,
-  pipedBase: string,
-): UnifiedVideo[] {
-  const items = Array.isArray(data) ? data : pipedRootItems(data);
-  const videos: UnifiedVideo[] = [];
-  for (const item of items) {
-    const m = mapPipedItem(item, pipedBase);
-    if (m) videos.push(m);
-    if (videos.length >= limit) break;
-  }
-  return videos;
-}
-
-function parseInvidiousTrending(
-  data: unknown,
-  limit: number,
-  invidiousBase: string,
-): UnifiedVideo[] {
-  if (!Array.isArray(data)) return [];
-  const videos: UnifiedVideo[] = [];
-  for (const item of data) {
-    const m = mapInvidiousItem(item, invidiousBase);
-    if (m) videos.push(m);
-    if (videos.length >= limit) break;
-  }
-  return videos;
-}
-
-export async function fetchTrendingVideos(
-  db: AppDb,
-  input: TrendingInput,
-  overrides?: ProxySourceOverrides,
-): Promise<TrendingVideosResult> {
-  const region = input.region.toUpperCase();
-  const limit = Math.min(200, input.limit ?? 40);
-  const key = trendingCacheKey({ region, limit, category: input.category });
-  const fresh = readFreshTrendingCache(db, key);
-  if (fresh) return fresh;
-  const inFlight = inFlightTrending.get(key);
-  if (inFlight) return inFlight;
-
-  const task = (async (): Promise<TrendingVideosResult> => {
-    const { pipedBases, invidiousBases } =
-      resolveProxyBaseCandidates(overrides);
-    const errors: string[] = [];
-
-    let resolved: TrendingVideosResult | null = null;
-
-    for (const pipedBase of pipedBases) {
-      try {
-        acquireUpstreamSlot();
-        const json = await fetchJson(
-          buildPipedTrendingUrl(pipedBase, region, input.category),
-          { emptyBodyAs: [], source: "piped", baseUrl: pipedBase },
-        );
-        const videos = parsePipedTrending(json, limit, pipedBase);
-        if (videos.length > 0) {
-          resolved = trendingVideosResultSchema.parse({
-            videos,
-            sourceUsed: "piped",
-          });
-        }
-      } catch (e) {
-        recordUpstreamFailure(e, "piped", errors, pipedBase);
-      }
-      if (resolved && resolved.videos.length > 0) break;
-    }
-
-    if (
-      (!resolved || resolved.videos.length === 0) &&
-      invidiousBases.length > 0
-    ) {
-      for (const invidiousBase of invidiousBases) {
-        if (invidiousPortCollidesWithNextApp(invidiousBase)) {
-          errors.push("invidious:port collision with Next.js");
-          continue;
-        } else {
-          try {
-            acquireUpstreamSlot();
-            const json = await fetchJson(
-              buildInvidiousTrendingUrl(invidiousBase, region, input.category),
-              { emptyBodyAs: [], source: "invidious", baseUrl: invidiousBase },
-            );
-            const videos = parseInvidiousTrending(json, limit, invidiousBase);
-            if (videos.length > 0) {
-              resolved = trendingVideosResultSchema.parse({
-                videos,
-                sourceUsed: "invidious",
-              });
-            }
-          } catch (e) {
-            recordUpstreamFailure(e, "invidious", errors, invidiousBase);
-          }
-        }
-        if (resolved && resolved.videos.length > 0) break;
-      }
-    }
-
-    if (!resolved || resolved.videos.length === 0) {
-      const stale = readStaleTrendingCache(db, key);
-      if (stale) return stale;
-      throwIfUpstreamFailed(errors, "trending unavailable");
-    }
-
-    const cleaned = stripRestrictedListVideos(resolved.videos);
-    const out: TrendingVideosResult = {
-      ...resolved,
-      videos: cleaned,
-    };
-    const store = {
-      videos: out.videos,
-      sourceUsed: liveUpstreamSource(out.sourceUsed),
-    };
-    writeCache(db, key, store.sourceUsed, store, "trending");
-    return out;
-  })();
-  inFlightTrending.set(key, task);
-  try {
-    return await task;
-  } finally {
-    inFlightTrending.delete(key);
-  }
 }
 
 /** Piped search queries are regionalized via {@link shortsSearchQueriesForRegion}. */
