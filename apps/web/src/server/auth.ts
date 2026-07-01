@@ -1,10 +1,7 @@
-import bcrypt from "bcrypt";
-import { eq } from "drizzle-orm";
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { z } from "zod";
-import { getDb } from "@/server/db/client";
-import { users } from "@/server/db/schema";
+import { verifyCredentials } from "@/server/credentials";
 
 const credentialsSchema = z.object({
   email: z.string().email(),
@@ -23,19 +20,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       authorize: async (rawCredentials) => {
         const parsed = credentialsSchema.safeParse(rawCredentials);
         if (!parsed.success) return null;
-        const db = getDb();
-        const user = db
-          .select()
-          .from(users)
-          .where(eq(users.email, parsed.data.email.toLowerCase()))
-          .limit(1)
-          .all()[0];
-        if (!user) return null;
-        const isValid = await bcrypt.compare(
+        const user = await verifyCredentials(
+          parsed.data.email,
           parsed.data.password,
-          user.passwordHash,
         );
-        if (!isValid) return null;
+        if (!user) return null;
         return { id: String(user.id), email: user.email };
       },
     }),

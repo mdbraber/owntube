@@ -1,10 +1,14 @@
-node_modules
-.next
+**/node_modules
+**/.next
 .git
-data/*.db
-coverage
-test-results
-playwright-report
-.env
-.env.*
-!.env.example
+apps/web/data/*.db
+apps/web/data/*.db-*
+**/coverage
+**/test-results
+**/playwright-report
+**/.env
+**/.env.*
+!**/.env.example
+# TV client is not part of the web image
+apps/tv
+packages

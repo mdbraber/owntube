@@ -39,7 +39,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Typecheck
-        run: pnpm typecheck
+        run: pnpm --filter web typecheck
 
       - name: Lint (Biome)
         # Soft fail for now: surfaces issues in the run summary without
@@ -50,11 +50,11 @@ jobs:
 
       - name: Apply migrations
         run: |
-          mkdir -p data
-          pnpm run db:migrate
+          mkdir -p apps/web/data
+          pnpm --filter web db:migrate
 
       - name: Unit tests (Vitest)
-        run: pnpm test
+        run: pnpm --filter web test
 
       - name: Build
-        run: pnpm build
+        run: pnpm --filter web build

@@ -1,0 +1,8 @@
+packages:
+  - apps/web
+  - packages/*
+  # apps/tv is intentionally NOT part of the shared install yet: Expo SDK 52
+  # pulls React 18 / @types/react 18, which conflicts with the web app's
+  # React 19 and breaks its typecheck when the store is shared. The TV app is
+  # installed on its own (cd apps/tv && pnpm install) once its Android toolchain
+  # is set up. Re-include it here behind a React-types resolution strategy.

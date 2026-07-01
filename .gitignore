@@ -1,7 +1,7 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
 # dependencies
-/node_modules
+node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -11,14 +11,14 @@
 !.yarn/versions
 
 # testing
-/coverage
+/apps/web/coverage
 
 # next.js
-/.next/
-/out/
+/apps/web/.next/
+/apps/web/out/
 
 # production
-/build
+/apps/web/build
 
 # separate design mockup repo (has its own .git)
 owntube-charte-graphique/
@@ -26,6 +26,7 @@ owntube-charte-graphique/
 # local planning / AI tooling config
 TODO.md
 REFACTOR-PLAN.md
+TV-PLAN.md
 .cursor/
 .claude/
 .agents/
@@ -61,15 +62,15 @@ yarn-error.log*
 *.tsbuildinfo
 
 # local database
-data/*.db
-data/*.db-*
+apps/web/data/*.db
+apps/web/data/*.db-*
 
 # recommendation debug NDJSON (OWNTUBE_DEBUG_RECOMMENDATIONS)
 /logs/
 
 # playwright
-/test-results/
-/playwright-report/
+/apps/web/test-results/
+/apps/web/playwright-report/
 
 # personal data (Google Takeout exports, never commit)
 /youtube-takeout/

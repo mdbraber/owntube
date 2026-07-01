@@ -22,10 +22,14 @@ It's a solo side-project. Code is meant to stay maintainable by one person, so t
 - [corepack](https://nodejs.org/api/corepack.html) (ships with Node) for pnpm
 - A reachable Piped or Invidious instance — public or self-hosted (see [docs/SELF-HOSTING.md](docs/SELF-HOSTING.md))
 
+This is a pnpm workspace: the web app lives in `apps/web/` and the (work-in-progress) TV client in
+`apps/tv/`. Self-hosting only ever needs `apps/web/`; the Docker image never contains TV code. The
+root scripts below delegate to the web app via `pnpm --filter web`.
+
 ## Quick start
 
 ```bash
-cp .env.example .env
+cp apps/web/.env.example apps/web/.env
 corepack enable && corepack prepare pnpm@9.15.9 --activate
 pnpm install
 pnpm run db:migrate

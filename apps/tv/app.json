@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "owntube TV",
+    "slug": "owntube-tv",
+    "version": "0.1.0",
+    "orientation": "landscape",
+    "userInterfaceStyle": "dark",
+    "platforms": ["android"],
+    "android": {
+      "package": "tube.own.tv"
+    },
+    "plugins": [
+      ["@react-native-tvos/config-tv", { "isTV": true }],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
+    ],
+    "extra": {
+      "owntubeUrl": "http://10.0.2.2:3000"
+    }
+  }
+}

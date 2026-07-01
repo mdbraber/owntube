@@ -9,12 +9,15 @@
     "ignoreUnknown": true,
     "includes": [
       "**",
-      "!node_modules",
-      "!.next",
-      "!dist",
-      "!build",
+      "!**/node_modules",
+      "!**/.next",
+      "!**/dist",
+      "!**/build",
       "!ui-inspîration",
-      "!owntube-charte-graphique"
+      "!owntube-charte-graphique",
+      "!apps/tv/android",
+      "!apps/tv/ios",
+      "!apps/tv/.expo"
     ]
   },
   "formatter": {

@@ -1,11 +1,13 @@
 services:
   app:
-    build: .
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
     restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
-      DATABASE_PATH: /app/data/owntube.db
+      DATABASE_PATH: /app/apps/web/data/owntube.db
       PIPED_BASE_URL: ${PIPED_BASE_URL:-https://pipedapi.kavin.rocks}
       INVIDIOUS_BASE_URL: ${INVIDIOUS_BASE_URL:-}
       AUTH_SECRET: ${AUTH_SECRET:-change-me-in-production}
@@ -18,16 +20,18 @@ services:
       retries: 5
       start_period: 20s
     volumes:
-      - owntube-data:/app/data
+      - owntube-data:/app/apps/web/data
 
   cache-warmer:
-    build: .
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
     restart: unless-stopped
     depends_on:
       app:
         condition: service_healthy
     environment:
-      DATABASE_PATH: /app/data/owntube.db
+      DATABASE_PATH: /app/apps/web/data/owntube.db
       PIPED_BASE_URL: ${PIPED_BASE_URL:-https://pipedapi.kavin.rocks}
       INVIDIOUS_BASE_URL: ${INVIDIOUS_BASE_URL:-}
       OWNTUBE_WARM_INTERVAL_SEC: ${OWNTUBE_WARM_INTERVAL_SEC:-1200}
@@ -41,7 +45,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       NEXT_TELEMETRY_DISABLED: "1"
     volumes:
-      - owntube-data:/app/data
+      - owntube-data:/app/apps/web/data
     command: >
       sh -c 'while true; do
         pnpm warm:cache || true;
