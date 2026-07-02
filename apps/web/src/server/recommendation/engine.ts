@@ -333,6 +333,7 @@ async function ensureRecommendationPool(
 
   const inFlight = recommendationPoolInFlight.get(cacheKey);
   if (inFlight) {
+    if (cached) return cached;
     const pool = await inFlight;
     if (pool.expiresAt > Date.now()) {
       return pool;
@@ -568,13 +569,27 @@ async function ensureRecommendationPool(
     };
   })();
   recommendationPoolInFlight.set(cacheKey, task);
-  try {
-    const pool = await task;
-    recommendationPoolCache.set(cacheKey, pool);
-    return pool;
-  } finally {
-    recommendationPoolInFlight.delete(cacheKey);
+  const settled = task
+    .then((pool) => {
+      recommendationPoolCache.set(cacheKey, pool);
+      return pool;
+    })
+    .finally(() => {
+      recommendationPoolInFlight.delete(cacheKey);
+    });
+  // Stale-while-revalidate: a rebuild can take dozens of upstream fetches when
+  // the 10-min channel caches are cold, so an expired pool is served instantly
+  // and the fresh one lands in the background for the next load.
+  if (cached) {
+    settled.catch((error: unknown) => {
+      logger.warn("recommendation.pool_refresh_failed", {
+        userId,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    });
+    return cached;
   }
+  return settled;
 }
 
 export async function getRecommendations(

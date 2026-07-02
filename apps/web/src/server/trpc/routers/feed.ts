@@ -2,6 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { stripRestrictedListVideos } from "@/lib/feed-exclude-restricted";
+import { logger } from "@/lib/logger";
 import { watchHistory } from "@/server/db/schema";
 import { RateLimitExceededError } from "@/server/errors/rate-limit-exceeded";
 import { UpstreamUnavailableError } from "@/server/errors/upstream-unavailable";
@@ -190,6 +191,7 @@ async function buildTrendingTailPool(
   }
   const inFlight = trendingTailPoolInFlight.get(cacheKey);
   if (inFlight) {
+    if (cached) return cached.pool;
     const entry = await inFlight;
     if (entry.expiresAt > Date.now()) return entry.pool;
   }
@@ -207,13 +209,26 @@ async function buildTrendingTailPool(
     };
   })();
   trendingTailPoolInFlight.set(cacheKey, task);
-  try {
-    const entry = await task;
-    trendingTailPoolCache.set(cacheKey, entry);
-    return entry.pool;
-  } finally {
-    trendingTailPoolInFlight.delete(cacheKey);
+  const settled = task
+    .then((entry) => {
+      trendingTailPoolCache.set(cacheKey, entry);
+      return entry;
+    })
+    .finally(() => {
+      trendingTailPoolInFlight.delete(cacheKey);
+    });
+  // Stale-while-revalidate, same as the recommendation pool: an expired tail is
+  // served instantly and the refresh lands in the background.
+  if (cached) {
+    settled.catch((error: unknown) => {
+      logger.warn("feed.trending_tail_refresh_failed", {
+        userId,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    });
+    return cached.pool;
   }
+  return (await settled).pool;
 }
 
 /** Items already returned to the client (next slice starts here). */
@@ -269,19 +284,21 @@ export const feedRouter = router({
     try {
       if (ctx.userId && !category) {
         const settings = getUserSettings(ctx.db, ctx.userId);
-        const { videos: personalized, coldStart } =
-          await getPersonalizedFeedVideos(ctx.db, ctx.userId, {
-            pageSize,
-            region,
-            overrides,
-          });
-        const tailPool = await buildTrendingTailPool(
-          ctx.db,
-          ctx.userId,
-          region,
-          overrides,
-          settings.hideRestrictedVideos,
-        );
+        const [{ videos: personalized, coldStart }, tailPool] =
+          await Promise.all([
+            getPersonalizedFeedVideos(ctx.db, ctx.userId, {
+              pageSize,
+              region,
+              overrides,
+            }),
+            buildTrendingTailPool(
+              ctx.db,
+              ctx.userId,
+              region,
+              overrides,
+              settings.hideRestrictedVideos,
+            ),
+          ]);
         const stream = mergePersonalizedWithTrendingTail(
           settings.hideRestrictedVideos
             ? stripRestrictedListVideos(personalized)
