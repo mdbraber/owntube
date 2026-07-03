@@ -32,6 +32,55 @@ describe("historyRouter", () => {
     sqlite.close();
   });
 
+  it("stores denormalized titles and matches them in search", async () => {
+    const { db, sqlite } = createTestDb();
+    const now = Math.floor(Date.now() / 1000);
+    const user = db
+      .insert(users)
+      .values({
+        email: "history-search@example.com",
+        passwordHash: "x",
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning({ id: users.id })
+      .get();
+
+    const caller = appRouter.createCaller({ db, userId: user.id });
+    await caller.history.upsertEvent({
+      videoId: "dQw4w9WgXcQ",
+      channelId: "UC1",
+      durationWatched: 42,
+      completed: false,
+      videoTitle: "Never Gonna Give You Up",
+      channelName: "Rick Astley",
+    });
+
+    const byTitle = await caller.history.list({
+      page: 1,
+      pageSize: 20,
+      q: "gonna give",
+    });
+    expect(byTitle).toHaveLength(1);
+    expect(byTitle[0]?.videoTitle).toBe("Never Gonna Give You Up");
+    expect(byTitle[0]?.channelName).toBe("Rick Astley");
+
+    const byChannel = await caller.history.list({
+      page: 1,
+      pageSize: 20,
+      q: "astley",
+    });
+    expect(byChannel).toHaveLength(1);
+
+    const noMatch = await caller.history.list({
+      page: 1,
+      pageSize: 20,
+      q: "unrelated query",
+    });
+    expect(noMatch).toHaveLength(0);
+    sqlite.close();
+  });
+
   it("stores videoDurationSeconds and max-merges it on the recent-watch path", async () => {
     const { db, sqlite } = createTestDb();
     const now = Math.floor(Date.now() / 1000);

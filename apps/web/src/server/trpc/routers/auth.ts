@@ -4,8 +4,18 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { verifyCredentials } from "@/server/credentials";
 import { users } from "@/server/db/schema";
+import {
+  approveDevicePairing,
+  normalizeDevicePairingUserCode,
+  pollDevicePairing,
+  startDevicePairing,
+} from "@/server/device-pairing";
 import { createDeviceToken } from "@/server/device-token";
-import { publicProcedure, router } from "@/server/trpc/init";
+import {
+  protectedProcedure,
+  publicProcedure,
+  router,
+} from "@/server/trpc/init";
 
 const credentialsInputSchema = z.object({
   email: z.string().email(),
@@ -13,6 +23,19 @@ const credentialsInputSchema = z.object({
 });
 
 const registerInputSchema = credentialsInputSchema;
+
+const devicePairingUserCodeSchema = z.object({
+  userCode: z
+    .string()
+    .min(8)
+    .max(16)
+    .transform((value) => normalizeDevicePairingUserCode(value))
+    .refine((value) => value.length > 0, "Invalid pairing code."),
+});
+
+const devicePairingPollSchema = devicePairingUserCodeSchema.extend({
+  deviceCode: z.string().min(32).max(128),
+});
 
 function nowUnix(): number {
   return Math.floor(Date.now() / 1000);
@@ -65,4 +88,16 @@ export const authRouter = router({
       const token = await createDeviceToken(user.id);
       return { token, user };
     }),
+
+  startDevicePairing: publicProcedure.mutation(() => startDevicePairing()),
+
+  approveDevicePairing: protectedProcedure
+    .input(devicePairingUserCodeSchema)
+    .mutation(({ ctx, input }) =>
+      approveDevicePairing(input.userCode, ctx.userId),
+    ),
+
+  pollDevicePairing: publicProcedure
+    .input(devicePairingPollSchema)
+    .query(({ input }) => pollDevicePairing(input)),
 });

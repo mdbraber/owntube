@@ -410,6 +410,8 @@ export default async function WatchPage({
               <WatchTracker
                 videoId={detail.videoId}
                 channelId={detail.channelId}
+                videoTitle={detail.title}
+                channelName={detail.channelName}
                 durationSeconds={detail.durationSeconds}
                 isLive={isLive}
               />

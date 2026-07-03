@@ -26,6 +26,9 @@ const historyEventInputSchema = z.object({
     .default(0),
   /** Recorded from the Shorts feed — kept out of the long-form recommendation signal. */
   isShort: z.boolean().default(false),
+  /** Denormalized for history search/display; absent on events from callers without detail loaded. */
+  videoTitle: z.string().trim().min(1).max(300).optional(),
+  channelName: z.string().trim().min(1).max(200).optional(),
 });
 
 const historyPageInputSchema = z.object({
@@ -75,6 +78,8 @@ export const historyRouter = router({
               recent.videoDurationSeconds,
               input.videoDurationSeconds,
             ),
+            videoTitle: recent.videoTitle ?? input.videoTitle ?? null,
+            channelName: recent.channelName ?? input.channelName ?? null,
             createdAt: ts,
           })
           .where(eq(watchHistory.id, recent.id))
@@ -97,6 +102,8 @@ export const historyRouter = router({
           videoDurationSeconds: input.videoDurationSeconds,
           isDeleted: 0,
           isShort: input.isShort ? 1 : 0,
+          videoTitle: input.videoTitle ?? null,
+          channelName: input.channelName ?? null,
           createdAt: ts,
         })
         .returning({ id: watchHistory.id })
@@ -119,6 +126,8 @@ export const historyRouter = router({
         ? and(
             baseWhere,
             or(
+              like(watchHistory.videoTitle, `%${q}%`),
+              like(watchHistory.channelName, `%${q}%`),
               like(watchHistory.videoId, `%${q}%`),
               like(watchHistory.channelId, `%${q}%`),
             ),
@@ -132,6 +141,8 @@ export const historyRouter = router({
           startedAt: watchHistory.startedAt,
           durationWatched: watchHistory.durationWatched,
           completed: watchHistory.completed,
+          videoTitle: watchHistory.videoTitle,
+          channelName: watchHistory.channelName,
         })
         .from(watchHistory)
         .where(where)
@@ -142,6 +153,16 @@ export const historyRouter = router({
       const overrides = getUserProxyOverrides(ctx.db, ctx.userId);
       const enriched = await Promise.all(
         rows.map(async (row) => {
+          // Rows written since titles were denormalized need no upstream call;
+          // the client derives the thumbnail from videoId.
+          if (row.videoTitle) {
+            return {
+              ...row,
+              videoTitle: row.videoTitle,
+              thumbnailUrl: undefined as string | undefined,
+              channelName: row.channelName ?? row.channelId,
+            };
+          }
           try {
             const detail = await fetchVideoDetail(
               ctx.db,

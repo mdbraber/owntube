@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { VideoThumbnailImg } from "@/components/videos/video-thumbnail-img";
+import { formatDuration } from "@/lib/video-display";
 import { trpc } from "@/trpc/react";
 
 type HistoryItem = {
@@ -86,7 +87,7 @@ export function HistoryList({ initialItems }: HistoryListProps) {
         <Input
           value={query}
           onChange={(e) => setQuery(e.currentTarget.value)}
-          placeholder="Search by video ID or channel ID"
+          placeholder="Search by title or channel"
           className="sm:w-80"
           aria-label="Search history"
         />
@@ -135,7 +136,8 @@ export function HistoryList({ initialItems }: HistoryListProps) {
                   >
                     {item.channelName ?? item.channelId}
                   </Link>
-                  {" · "}Watched: {item.durationWatched}s
+                  {" · "}Watched:{" "}
+                  {formatDuration(item.durationWatched) ?? "0:00"}
                   {item.completed ? " · Completed" : ""}
                 </p>
                 <p className="text-xs text-[hsl(var(--muted-foreground))]">

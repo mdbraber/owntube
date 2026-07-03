@@ -543,6 +543,49 @@ export const subscriptionsRouter = router({
       return listDetailedChannelRows(ctx.db, subs, overrides);
     }),
 
+  /** OPML export (NewPipe/FreeTube-compatible) — SQLite + `channel_meta` only, no upstream. */
+  exportOpml: protectedProcedure.query(({ ctx }) => {
+    reconcileSubscriptionChannelIdsForUser(ctx.db, ctx.userId);
+    const subs = ctx.db
+      .select({ channelId: subscriptions.channelId })
+      .from(subscriptions)
+      .where(eq(subscriptions.userId, ctx.userId))
+      .orderBy(desc(subscriptions.subscribedAt))
+      .all();
+    const metaById = readChannelMetaByIds(
+      ctx.db,
+      subs.map((s) => s.channelId),
+    );
+    const escapeXml = (value: string) =>
+      value
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
+    const outlines = subs.map((s) => {
+      const name = escapeXml(
+        metaById.get(s.channelId)?.channelName ?? s.channelId,
+      );
+      const feedUrl = escapeXml(
+        `https://www.youtube.com/feeds/videos.xml?channel_id=${encodeURIComponent(s.channelId)}`,
+      );
+      return `    <outline text="${name}" title="${name}" type="rss" xmlUrl="${feedUrl}" />`;
+    });
+    const opml = [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<opml version="1.1">',
+      "  <head>",
+      "    <title>owntube subscriptions</title>",
+      "  </head>",
+      "  <body>",
+      ...outlines,
+      "  </body>",
+      "</opml>",
+      "",
+    ].join("\n");
+    return { opml, count: subs.length };
+  }),
+
   /** Sidebar only — SQLite + `channel_meta`, no upstream (keeps home feed batch fast). */
   listSidebar: protectedProcedure
     .input(

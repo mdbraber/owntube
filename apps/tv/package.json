@@ -20,11 +20,13 @@
     "expo-secure-store": "~14.0.1",
     "expo-status-bar": "~2.0.0",
     "expo-video": "~2.0.5",
+    "qrcode": "^1.5.4",
     "react": "18.3.1",
     "react-native": "npm:react-native-tvos@0.76.9-0",
     "superjson": "^2.2.5"
   },
   "devDependencies": {
+    "@types/qrcode": "^1.5.6",
     "@types/react": "~18.3.12",
     "typescript": "~5.9.0"
   }

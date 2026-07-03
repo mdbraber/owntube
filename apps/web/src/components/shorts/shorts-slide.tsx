@@ -226,6 +226,8 @@ export function ShortsSlide({
         <WatchTracker
           videoId={video.videoId}
           channelId={video.channelId ?? detailQuery.data.channelId}
+          videoTitle={video.title ?? detailQuery.data.title}
+          channelName={video.channelName ?? detailQuery.data.channelName}
           durationSeconds={detailQuery.data.durationSeconds}
           isShort
           onWatched={onWatched}

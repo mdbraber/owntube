@@ -7,6 +7,9 @@ import { trpc } from "@/trpc/react";
 type WatchTrackerProps = {
   videoId: string;
   channelId?: string;
+  /** Denormalized into watch_history so history search/display skip upstream fetches. */
+  videoTitle?: string;
+  channelName?: string;
   durationSeconds?: number;
   /** Use session elapsed time instead of VOD duration (live streams). */
   isLive?: boolean;
@@ -19,6 +22,8 @@ type WatchTrackerProps = {
 export function WatchTracker({
   videoId,
   channelId = "unknown",
+  videoTitle,
+  channelName,
   durationSeconds = 0,
   isLive = false,
   isShort = false,
@@ -75,6 +80,8 @@ export function WatchTracker({
       return {
         videoId,
         channelId,
+        videoTitle,
+        channelName,
         durationWatched: event.durationWatched,
         completed: event.completed,
         videoDurationSeconds: reportedDuration,
@@ -85,6 +92,8 @@ export function WatchTracker({
     m({
       videoId,
       channelId,
+      videoTitle,
+      channelName,
       durationWatched: 0,
       completed: false,
       videoDurationSeconds: reportedDuration,
@@ -100,7 +109,15 @@ export function WatchTracker({
         onSuccess: () => onWatchedRef.current?.(videoId),
       });
     };
-  }, [channelId, durationSeconds, isLive, isShort, videoId]);
+  }, [
+    channelId,
+    channelName,
+    durationSeconds,
+    isLive,
+    isShort,
+    videoId,
+    videoTitle,
+  ]);
 
   return null;
 }

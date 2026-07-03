@@ -68,6 +68,9 @@ const exportPayloadSchema = z.object({
       completed: z.number().int(),
       isDeleted: z.number().int(),
       createdAt: z.number().int(),
+      /** Optional so pre-denormalization exports keep importing. */
+      videoTitle: z.string().nullish(),
+      channelName: z.string().nullish(),
     }),
   ),
   interactions: z.array(
@@ -202,6 +205,8 @@ export const settingsRouter = router({
         completed: watchHistory.completed,
         isDeleted: watchHistory.isDeleted,
         createdAt: watchHistory.createdAt,
+        videoTitle: watchHistory.videoTitle,
+        channelName: watchHistory.channelName,
       })
       .from(watchHistory)
       .where(eq(watchHistory.userId, ctx.userId))
@@ -284,6 +289,8 @@ export const settingsRouter = router({
               completed: item.completed,
               isDeleted: item.isDeleted,
               createdAt: item.createdAt,
+              videoTitle: item.videoTitle ?? null,
+              channelName: item.channelName ?? null,
             })
             .run();
         }

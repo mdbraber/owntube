@@ -41,6 +41,9 @@ export const watchHistory = sqliteTable(
     isDeleted: integer("is_deleted").notNull().default(0),
     /** 1 when recorded from the Shorts feed — excluded from the long-form recommendation signal. */
     isShort: integer("is_short").notNull().default(0),
+    /** Denormalized at watch time so history search/display work without upstream fetches; null on pre-migration rows. */
+    videoTitle: text("video_title"),
+    channelName: text("channel_name"),
     createdAt: integer("created_at").notNull(),
   },
   (t) => [

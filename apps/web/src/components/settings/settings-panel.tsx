@@ -257,6 +257,10 @@ export function SettingsPanel({
     enabled: false,
   });
 
+  const opmlQuery = trpc.subscriptions.exportOpml.useQuery(undefined, {
+    enabled: false,
+  });
+
   const importMutation = trpc.settings.importData.useMutation({
     onSuccess: async () => {
       await utils.settings.get.invalidate();
@@ -395,6 +399,23 @@ export function SettingsPanel({
       replaceExisting: importModeReplace,
       payloadJson: importJson,
     });
+  }
+
+  async function onExportOpml() {
+    setMessage(null);
+    const data = await opmlQuery.refetch();
+    if (!data.data) {
+      setMessage("OPML export failed.");
+      return;
+    }
+    const blob = new Blob([data.data.opml], { type: "text/xml" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "owntube-subscriptions.opml";
+    anchor.click();
+    URL.revokeObjectURL(url);
+    setMessage(`OPML exported (${data.data.count} subscriptions).`);
   }
 
   async function onCheckInstances() {
@@ -642,6 +663,14 @@ export function SettingsPanel({
             disabled={exporting}
           >
             Export (copy JSON)
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onExportOpml}
+            disabled={opmlQuery.isFetching}
+          >
+            Export subscriptions (OPML)
           </Button>
           <label className="flex items-center gap-2 text-sm">
             <input
