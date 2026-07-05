@@ -349,8 +349,11 @@ async function appendNextPageIfNeeded(
         buf.nextContinuation === undefined
           ? { channelId: buf.channelId }
           : { channelId: buf.channelId, continuation: buf.nextContinuation };
+      // Cache-only: the feed never blocks on a live upstream call. Fresh/stale
+      // cached pages plus the RSS seed cover normal loads; an explicit refresh
+      // repopulates the cache in bounded parallel. See `refreshFeed`.
       const res = await fetchChannelPage(db, input, overrides, {
-        bypassChannelCache: true,
+        cacheOnly: true,
       });
       buf.nextContinuation = res.continuation ?? null;
       const patched = rssPublishedByVideoId
@@ -409,8 +412,7 @@ async function collectSortedFeedPage(
     );
     for (let i = 0; i < seedTargets.length; i++) {
       const channelEntries = rssEntries[i] ?? [];
-      const latest = channelEntries[0];
-      if (!latest) continue;
+      if (channelEntries.length === 0) continue;
       const byVideoId = new Map<string, number>();
       for (const e of channelEntries) {
         if (
@@ -421,7 +423,9 @@ async function collectSortedFeedPage(
         }
       }
       rssPublishedByChannel.set(seedTargets[i].channelId, byVideoId);
-      seedTargets[i]?.videos.push(latest);
+      // Seed the full RSS window (~15 newest uploads), not just the latest, so
+      // page 1 can be built entirely from RSS with no live channel-page fetch.
+      seedTargets[i]?.videos.push(...channelEntries);
     }
   }
 
@@ -496,6 +500,46 @@ async function collectSortedFeedPage(
   }
 
   return { videos, exhausted };
+}
+
+/** Bounded-parallel per-fetch timeout so one slow/rate-limited channel can't stall the whole refresh. */
+const REFRESH_CONCURRENCY = 8;
+const REFRESH_PER_CHANNEL_TIMEOUT_MS = 6000;
+
+/**
+ * Repopulate the channel-page cache for a user's subscriptions by live-fetching
+ * page 1 of each channel, bounded to `REFRESH_CONCURRENCY` at a time and capped
+ * at `REFRESH_PER_CHANNEL_TIMEOUT_MS` each. Failures/timeouts are swallowed — the
+ * feed just serves whatever landed in cache. This is the only subscription path
+ * that talks to Invidious live; normal feed loads are cache-only.
+ */
+async function refreshChannelPageCache(
+  db: AppDb,
+  channelIds: string[],
+  overrides: ProxySourceOverrides | undefined,
+): Promise<{ refreshed: number }> {
+  let cursor = 0;
+  let refreshed = 0;
+  async function worker(): Promise<void> {
+    while (cursor < channelIds.length) {
+      const channelId = channelIds[cursor++];
+      if (!channelId) continue;
+      const fetchDone = fetchChannelPage(db, { channelId }, overrides, {
+        bypassChannelCache: true,
+      })
+        .then(() => {
+          refreshed++;
+        })
+        .catch(() => {});
+      await Promise.race([fetchDone, sleepMs(REFRESH_PER_CHANNEL_TIMEOUT_MS)]);
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(REFRESH_CONCURRENCY, channelIds.length) }, () =>
+      worker(),
+    ),
+  );
+  return { refreshed };
 }
 
 export const subscriptionsRouter = router({
@@ -729,6 +773,28 @@ export const subscriptionsRouter = router({
       );
       return { ok: true as const };
     }),
+
+  /**
+   * User-initiated refresh (button / pull-to-refresh): live-fetch each
+   * subscribed channel's newest page in bounded parallel to repopulate the
+   * channel-page cache, then the feed refetches from the now-warm cache.
+   */
+  refreshFeed: protectedProcedure.mutation(async ({ ctx }) => {
+    reconcileSubscriptionChannelIdsForUser(ctx.db, ctx.userId);
+    const overrides = getUserProxyOverrides(ctx.db, ctx.userId);
+    const subs = ctx.db
+      .select({ channelId: subscriptions.channelId })
+      .from(subscriptions)
+      .where(eq(subscriptions.userId, ctx.userId))
+      .orderBy(desc(subscriptions.subscribedAt))
+      .all();
+    const { refreshed } = await refreshChannelPageCache(
+      ctx.db,
+      subs.map((s) => s.channelId),
+      overrides,
+    );
+    return { ok: true as const, refreshed, refreshedAt: nowUnix() };
+  }),
 
   /**
    * All uploads from subscribed channels (up to `pagesPerChannel` per

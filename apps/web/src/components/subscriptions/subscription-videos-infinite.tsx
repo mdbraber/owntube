@@ -1,12 +1,20 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
 import { VideoGrid } from "@/components/videos/video-grid";
 import { trpc } from "@/trpc/react";
+
+/** Pixels the user must pull past (at the top of the page) to trigger a refresh. */
+const PULL_THRESHOLD = 64;
+/** Damping so the indicator trails the finger rather than tracking it 1:1. */
+const PULL_DAMPING = 0.5;
+const PULL_MAX = 96;
 
 export function SubscriptionVideosInfinite() {
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const refreshTokenRef = useRef<number>(Date.now());
+  const utils = trpc.useUtils();
   const query = trpc.subscriptions.mergedFeedInfinite.useInfiniteQuery(
     { limit: 24, refreshToken: refreshTokenRef.current },
     {
@@ -19,6 +27,44 @@ export function SubscriptionVideosInfinite() {
   );
   const queryRef = useRef(query);
   queryRef.current = query;
+
+  const refreshMutation = trpc.subscriptions.refreshFeed.useMutation({
+    // Whether the live warm succeeds or partially times out, refetch so the feed
+    // shows whatever landed in the (now warmer) cache.
+    onSettled: async () => {
+      refreshTokenRef.current = Date.now();
+      await utils.subscriptions.mergedFeedInfinite.invalidate();
+    },
+  });
+
+  const isRefreshing = refreshMutation.isPending;
+  const doRefresh = useCallback(() => {
+    if (refreshMutation.isPending) return;
+    refreshMutation.mutate();
+  }, [refreshMutation]);
+
+  // ── Pull-to-refresh (touch) ────────────────────────────────────────────────
+  const [pull, setPull] = useState(0);
+  const pullStartY = useRef<number | null>(null);
+
+  const onTouchStart = useCallback(
+    (e: React.TouchEvent) => {
+      if (isRefreshing) return;
+      pullStartY.current =
+        window.scrollY <= 0 ? (e.touches[0]?.clientY ?? null) : null;
+    },
+    [isRefreshing],
+  );
+  const onTouchMove = useCallback((e: React.TouchEvent) => {
+    if (pullStartY.current === null) return;
+    const dy = (e.touches[0]?.clientY ?? 0) - pullStartY.current;
+    setPull(dy > 0 ? Math.min(dy * PULL_DAMPING, PULL_MAX) : 0);
+  }, []);
+  const onTouchEnd = useCallback(() => {
+    if (pullStartY.current !== null && pull >= PULL_THRESHOLD) doRefresh();
+    pullStartY.current = null;
+    setPull(0);
+  }, [pull, doRefresh]);
 
   useEffect(() => {
     if (!query.hasNextPage) return;
@@ -47,16 +93,46 @@ export function SubscriptionVideosInfinite() {
 
   if (query.isError) {
     return (
-      <p className="rounded-[var(--radius-card)] border border-[hsl(var(--border))] bg-[hsl(var(--muted)_/_0.35)] py-8 text-center text-sm text-[hsl(var(--muted-foreground))]">
-        Could not load subscription videos. Try again later.
-      </p>
+      <div className="space-y-4">
+        <RefreshBar isRefreshing={isRefreshing} onRefresh={doRefresh} />
+        <p className="rounded-[var(--radius-card)] border border-[hsl(var(--border))] bg-[hsl(var(--muted)_/_0.35)] py-8 text-center text-sm text-[hsl(var(--muted-foreground))]">
+          Could not load subscription videos. Try again later.
+        </p>
+      </div>
     );
   }
 
   const videos = query.data.pages.flatMap((p) => p.videos);
+  const pullActive = pull > 0 || isRefreshing;
 
   return (
-    <div className="space-y-6">
+    <div
+      className="space-y-6"
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+      onTouchCancel={onTouchEnd}
+    >
+      {/* Pull-to-refresh indicator (touch); collapses to 0 height when idle. */}
+      <div
+        aria-hidden={!pullActive}
+        className="flex items-center justify-center overflow-hidden text-xs text-[hsl(var(--muted-foreground))] transition-[height] duration-150"
+        style={{ height: isRefreshing ? 32 : pull }}
+      >
+        {pullActive ? (
+          <span className="flex items-center gap-2">
+            <Spinner spinning={isRefreshing || pull >= PULL_THRESHOLD} />
+            {isRefreshing
+              ? "Refreshing…"
+              : pull >= PULL_THRESHOLD
+                ? "Release to refresh"
+                : "Pull to refresh"}
+          </span>
+        ) : null}
+      </div>
+
+      <RefreshBar isRefreshing={isRefreshing} onRefresh={doRefresh} />
+
       <VideoGrid videos={videos} size="large" />
       {query.hasNextPage ? (
         <div ref={sentinelRef} className="h-1 w-full shrink-0" aria-hidden />
@@ -67,5 +143,46 @@ export function SubscriptionVideosInfinite() {
         </p>
       ) : null}
     </div>
+  );
+}
+
+function RefreshBar({
+  isRefreshing,
+  onRefresh,
+}: {
+  isRefreshing: boolean;
+  onRefresh: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-end">
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={onRefresh}
+        disabled={isRefreshing}
+        aria-label="Refresh subscriptions feed"
+      >
+        <Spinner spinning={isRefreshing} />
+        {isRefreshing ? "Refreshing…" : "Refresh"}
+      </Button>
+    </div>
+  );
+}
+
+function Spinner({ spinning }: { spinning: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className={spinning ? "animate-spin" : undefined}
+      aria-hidden
+    >
+      <path
+        d="M21 12a9 9 0 1 1-6.219-8.56"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
   );
 }

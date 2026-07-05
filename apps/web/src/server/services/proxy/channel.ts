@@ -50,6 +50,13 @@ import { upstreamGetText } from "@/server/services/upstream-get";
 export type FetchChannelPageOptions = {
   /** Force a live upstream read instead of using the fresh channel cache row. */
   bypassChannelCache?: boolean;
+  /**
+   * Never call upstream. Serve the fresh cache row, else the latest stale row,
+   * else an empty page. Keeps the subscriptions feed off the slow serialized
+   * live-fetch path; an explicit refresh (`bypassChannelCache`) repopulates the
+   * cache in bounded parallel instead.
+   */
+  cacheOnly?: boolean;
 };
 
 const inFlightChannel = new Map<string, Promise<ChannelPageResult>>();
@@ -936,6 +943,19 @@ export async function fetchChannelPage(
   opts?: FetchChannelPageOptions,
 ): Promise<ChannelPageResult> {
   const key = channelCacheKey(input);
+  if (opts?.cacheOnly) {
+    const fresh = readFreshChannelCache(db, key);
+    if (fresh) return fresh;
+    const stale = readStaleChannelCache(db, key);
+    if (stale) return stale;
+    return {
+      channelId: input.channelId,
+      videos: [],
+      continuation: null,
+      sourceUsed: "cache",
+      stale: true,
+    };
+  }
   if (!opts?.bypassChannelCache) {
     const fresh = readFreshChannelCache(db, key);
     if (fresh) return fresh;
