@@ -2,6 +2,11 @@ import { and, desc, eq, inArray, or } from "drizzle-orm";
 import { z } from "zod";
 import { stripRestrictedListVideos } from "@/lib/feed-exclude-restricted";
 import {
+  fetchLongFormWindows,
+  type LongFormWindow,
+} from "@/lib/long-form-uploads";
+import { isStrictShortVideo } from "@/lib/short-video";
+import {
   compareSubscriptionHeads,
   newerPublished,
   publishedSortKey,
@@ -542,6 +547,43 @@ async function refreshChannelPageCache(
   return { refreshed };
 }
 
+/**
+ * A subscription-feed video is treated as a Short when the channel's long-form
+ * uploads playlist (UULF) — an authoritative, Shorts-free allowlist — is available
+ * and the video sits inside that recent window yet is absent from it (this catches
+ * long Shorts the duration heuristic misses, with no false positives, since any
+ * long-form upload newer than the window's oldest entry would be in the window).
+ * Live/upcoming are never hidden (the long-form playlist also omits those). Videos
+ * older than the fetched window, or channels with no playlist data, fall back to the
+ * duration/#shorts heuristic in `isStrictShortVideo`.
+ */
+function isSubscriptionShort(
+  video: UnifiedVideo,
+  windows: ReadonlyMap<string, LongFormWindow>,
+): boolean {
+  if (video.isLive || video.isUpcoming) return false;
+  const window = video.channelId ? windows.get(video.channelId) : undefined;
+  if (window) {
+    if (window.ids.has(video.videoId)) return false;
+    if (
+      typeof video.publishedAt === "number" &&
+      window.oldestPublishedAt !== null &&
+      video.publishedAt >= window.oldestPublishedAt
+    ) {
+      return true;
+    }
+  }
+  return isStrictShortVideo(video);
+}
+
+async function stripShortsFromSubscriptionFeed(
+  videos: UnifiedVideo[],
+): Promise<UnifiedVideo[]> {
+  if (videos.length === 0) return videos;
+  const windows = await fetchLongFormWindows(videos.map((v) => v.channelId));
+  return videos.filter((v) => !isSubscriptionShort(v, windows));
+}
+
 export const subscriptionsRouter = router({
   list: protectedProcedure.query(async ({ ctx }) => {
     reconcileSubscriptionChannelIdsForUser(ctx.db, ctx.userId);
@@ -851,10 +893,13 @@ export const subscriptionsRouter = router({
       );
       const settings = getUserSettings(ctx.db, ctx.userId);
 
+      const restrictedFiltered = settings.hideRestrictedVideos
+        ? stripRestrictedListVideos(videos)
+        : videos;
       return {
-        videos: settings.hideRestrictedVideos
-          ? stripRestrictedListVideos(videos)
-          : videos,
+        videos: settings.hideShortsInSubscriptions
+          ? await stripShortsFromSubscriptionFeed(restrictedFiltered)
+          : restrictedFiltered,
       };
     }),
 
@@ -906,9 +951,12 @@ export const subscriptionsRouter = router({
         sortedPatchedVideos,
       );
       const settings = getUserSettings(ctx.db, ctx.userId);
-      const visibleVideos = settings.hideRestrictedVideos
+      const restrictedFiltered = settings.hideRestrictedVideos
         ? stripRestrictedListVideos(withMeta)
         : withMeta;
+      const visibleVideos = settings.hideShortsInSubscriptions
+        ? await stripShortsFromSubscriptionFeed(restrictedFiltered)
+        : restrictedFiltered;
       const visibleVideoIds = visibleVideos.map((v) => v.videoId);
       const watchedRows =
         visibleVideoIds.length > 0

@@ -172,6 +172,9 @@ export function SettingsPanel({
   const [hideRestrictedVideos, setHideRestrictedVideos] = useState(
     initial.hideRestrictedVideos ?? true,
   );
+  const [hideShortsInSubscriptions, setHideShortsInSubscriptions] = useState(
+    initial.hideShortsInSubscriptions ?? true,
+  );
   const [defaultCinemaMode, setDefaultCinemaMode] = useState(
     initial.defaultCinemaMode ?? false,
   );
@@ -212,6 +215,10 @@ export function SettingsPanel({
   useEffect(() => {
     setHideRestrictedVideos(initial.hideRestrictedVideos ?? true);
   }, [initial.hideRestrictedVideos]);
+
+  useEffect(() => {
+    setHideShortsInSubscriptions(initial.hideShortsInSubscriptions ?? true);
+  }, [initial.hideShortsInSubscriptions]);
 
   useEffect(() => {
     setDefaultCinemaMode(initial.defaultCinemaMode ?? false);
@@ -366,6 +373,7 @@ export function SettingsPanel({
         : nextInvidiousBaseUrls[0],
       trendingRegion,
       hideRestrictedVideos,
+      hideShortsInSubscriptions,
       defaultCinemaMode,
       enableMiniPlayer,
       defaultPlaybackQuality,
@@ -536,6 +544,16 @@ export function SettingsPanel({
               onChange={(e) => setHideRestrictedVideos(e.currentTarget.checked)}
             />
             Hide members-only / subscribers-only videos in feeds
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={hideShortsInSubscriptions}
+              onChange={(e) =>
+                setHideShortsInSubscriptions(e.currentTarget.checked)
+              }
+            />
+            Hide Shorts from the Subscriptions feed
           </label>
           <label className="flex items-center gap-2 text-sm">
             <input

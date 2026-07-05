@@ -38,6 +38,7 @@ const settingsPatchSchema = z.object({
   preferredInvidiousBaseUrl: z.string().max(512).optional(),
   trendingRegion: z.string().length(2).optional(),
   hideRestrictedVideos: z.boolean().optional(),
+  hideShortsInSubscriptions: z.boolean().optional(),
   defaultCinemaMode: z.boolean().optional(),
   enableMiniPlayer: z.boolean().optional(),
   defaultPlaybackQuality: defaultPlaybackQualitySchema.optional(),

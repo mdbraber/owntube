@@ -38,6 +38,8 @@ export const appSettingsSchema = z.object({
   tasteOnboardingSkippedAt: z.number().int().optional(),
   /** Hide members/subscribers-only videos when detected in list titles. */
   hideRestrictedVideos: z.boolean().default(true),
+  /** Hide YouTube Shorts from the subscriptions feed (UULF long-form allowlist + duration/#shorts fallback). */
+  hideShortsInSubscriptions: z.boolean().default(true),
   /** Start watch page with cinema mode enabled. */
   defaultCinemaMode: z.boolean().default(false),
   /** Keep a mini player when leaving watch page. */
@@ -78,6 +80,7 @@ const defaultSettings: AppSettings = {
   trendingRegion: "US",
   tasteKeywords: [],
   hideRestrictedVideos: true,
+  hideShortsInSubscriptions: true,
   defaultCinemaMode: false,
   enableMiniPlayer: true,
   defaultPlaybackQuality: "1080p",
