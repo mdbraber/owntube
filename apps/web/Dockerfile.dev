@@ -1,0 +1,27 @@
+# Development image: toolchain only. The repo source is bind-mounted at runtime
+# and Next runs `next dev --turbopack`, so editing code hot-reloads WITHOUT any
+# image rebuild. Rebuild this image only when the toolchain below changes.
+#
+#   docker compose -f docker-compose.dev.yml up -d --build
+#
+FROM node:22-bookworm-slim
+WORKDIR /app
+
+# Native deps (better-sqlite3, sharp) may compile if no prebuild matches.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends python3 make g++ \
+  && rm -rf /var/lib/apt/lists/*
+
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
+
+ENV NEXT_TELEMETRY_DISABLED=1
+# Keep the pnpm content-addressed store on a volume (mounted at /pnpm) so installs
+# are near-instant after the first run.
+ENV PNPM_HOME=/pnpm
+ENV PATH=/pnpm:$PATH
+ENV NPM_CONFIG_STORE_DIR=/pnpm/store
+
+# On each `up`: sync deps from the lockfile, apply pending DB migrations, then
+# start the hot-reloading dev server bound to 0.0.0.0 so Caddy can reach it.
+CMD ["sh", "-c", "pnpm install --frozen-lockfile --filter web... && pnpm --filter web db:migrate && pnpm --filter web exec next dev --turbopack -H 0.0.0.0"]
