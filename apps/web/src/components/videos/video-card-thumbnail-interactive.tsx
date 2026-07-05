@@ -8,6 +8,7 @@ import {
   type CardPreviewPlayback,
   cardPreviewPlaybackFromDetail,
 } from "@/lib/card-preview-playback";
+import { useInvidiousOrigins } from "@/components/videos/invidious-origin-context";
 import { toBrowserUpstreamImageUrl } from "@/lib/channel-avatar-proxy";
 import { buildHlsSameOriginConfig } from "@/lib/hls-same-origin";
 import { cn } from "@/lib/utils";
@@ -106,12 +107,14 @@ export function VideoCardThumbnailInteractive({
     return () => window.clearTimeout(t);
   }, [pointerInside]);
 
+  const invidiousOrigins = useInvidiousOrigins();
   const displayThumbnailUrl = useMemo(
     () =>
       toBrowserUpstreamImageUrl(
         preferHighResVideoThumbnailUrl(thumbnailUrl, videoId),
+        invidiousOrigins,
       ),
-    [thumbnailUrl, videoId],
+    [thumbnailUrl, videoId, invidiousOrigins],
   );
 
   const queryEnabled =

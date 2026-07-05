@@ -8,6 +8,7 @@ import { FaviconSync } from "@/components/settings/favicon-sync";
 import { MiniPlayerSync } from "@/components/settings/mini-player-sync";
 import { SponsorBlockSync } from "@/components/settings/sponsorblock-sync";
 import { ThemeSync } from "@/components/settings/theme-sync";
+import { InvidiousOriginProvider } from "@/components/videos/invidious-origin-context";
 import { trpc } from "@/trpc/react";
 
 function getBaseUrl() {
@@ -20,7 +21,14 @@ function getBaseUrl() {
   return `http://localhost:${process.env.PORT ?? 3000}`;
 }
 
-export function Providers({ children }: { children: React.ReactNode }) {
+export function Providers({
+  children,
+  invidiousOrigins = [],
+}: {
+  children: React.ReactNode;
+  /** Server-computed Invidious origins (from INVIDIOUS_BASE_URL) for browser image URLs. */
+  invidiousOrigins?: readonly string[];
+}) {
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -49,7 +57,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
         <FaviconSync />
         <MiniPlayerSync />
         <SponsorBlockSync />
-        {children}
+        <InvidiousOriginProvider origins={invidiousOrigins}>
+          {children}
+        </InvidiousOriginProvider>
       </QueryClientProvider>
     </trpc.Provider>
   );

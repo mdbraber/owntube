@@ -3,6 +3,7 @@ import { Inter, JetBrains_Mono } from "next/font/google";
 import type { ReactNode } from "react";
 import { Providers } from "@/app/providers";
 import { UserNav } from "@/components/auth/user-nav";
+import { collectInvidiousOrigins } from "@/lib/channel-avatar-proxy";
 import { SwRegister } from "@/components/pwa/sw-register";
 import { FaviconInitScript } from "@/components/settings/favicon-init-script";
 import { AppShell } from "@/components/shell/app-shell";
@@ -52,6 +53,9 @@ export default async function RootLayout({
 }>) {
   const session = await auth();
   const isLoggedIn = Boolean(session?.user?.id);
+  // Computed server-side from INVIDIOUS_BASE_URL and handed to the browser via
+  // context so client image URLs match SSR without any client-side env var.
+  const invidiousOrigins = collectInvidiousOrigins();
 
   return (
     <html lang="en" suppressHydrationWarning>
@@ -61,7 +65,7 @@ export default async function RootLayout({
       <body
         className={`${inter.variable} ${jetbrainsMono.variable} font-sans antialiased`}
       >
-        <Providers>
+        <Providers invidiousOrigins={invidiousOrigins}>
           <UiScale />
           <SwRegister />
           <AppShell

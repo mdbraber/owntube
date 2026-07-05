@@ -1,5 +1,6 @@
 "use client";
 
+import { useInvidiousOrigins } from "@/components/videos/invidious-origin-context";
 import { toBrowserUpstreamImageUrl } from "@/lib/channel-avatar-proxy";
 import {
   applyVideoThumbnailImgError,
@@ -43,8 +44,10 @@ export function VideoThumbnailImg({
   alt = "",
   variant = "default",
 }: VideoThumbnailImgProps) {
+  const invidiousOrigins = useInvidiousOrigins();
   const src = toBrowserUpstreamImageUrl(
     resolveTieredThumbnailUrl(url, videoId, variant),
+    invidiousOrigins,
   );
   if (!src) return null;
   return (

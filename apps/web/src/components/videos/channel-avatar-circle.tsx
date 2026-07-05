@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useInvidiousOrigins } from "@/components/videos/invidious-origin-context";
 import { gradientForChannelId, initialsFromLabel } from "@/lib/channel-avatar";
 import { toBrowserChannelAvatarUrl } from "@/lib/channel-avatar-proxy";
 
@@ -17,7 +18,8 @@ export function ChannelAvatarCircle({
   size = "md",
 }: ChannelAvatarCircleProps) {
   const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
-  const resolvedImageUrl = toBrowserChannelAvatarUrl(imageUrl);
+  const invidiousOrigins = useInvidiousOrigins();
+  const resolvedImageUrl = toBrowserChannelAvatarUrl(imageUrl, invidiousOrigins);
   const initials = initialsFromLabel(label);
   const avatarBg = gradientForChannelId(label);
   const sizeClass =
