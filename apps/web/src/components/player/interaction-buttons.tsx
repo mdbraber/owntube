@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { QueueToggleButton } from "@/components/queue/queue-toggle-button";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/trpc/react";
@@ -8,6 +9,7 @@ import { trpc } from "@/trpc/react";
 type InteractionButtonsProps = {
   videoId: string;
   channelId?: string;
+  title: string;
   isAuthenticated: boolean;
 };
 
@@ -55,6 +57,7 @@ function SaveIcon() {
 export function InteractionButtons({
   videoId,
   channelId,
+  title,
   isAuthenticated,
 }: InteractionButtonsProps) {
   const utils = trpc.useUtils();
@@ -155,6 +158,7 @@ export function InteractionButtons({
             channelId,
             type: "save",
             active: !state.save,
+            title,
           })
         }
       >
@@ -169,6 +173,12 @@ export function InteractionButtons({
         </span>
         <span>{state.save ? "Saved" : "Save"}</span>
       </Button>
+      <QueueToggleButton
+        videoId={videoId}
+        title={title}
+        channelId={channelId}
+        variant="player"
+      />
     </div>
   );
 }

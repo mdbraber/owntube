@@ -1,17 +1,23 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { interactions } from "@/server/db/schema";
 import { clearRecommendationCachesForUser } from "@/server/recommendation/engine";
-import { getUserSettings, upsertUserSettings } from "@/server/settings/profile";
+import { fetchVideoDetail } from "@/server/services/proxy";
+import {
+  getUserProxyOverrides,
+  getUserSettings,
+  upsertUserSettings,
+} from "@/server/settings/profile";
 import { protectedProcedure, router } from "@/server/trpc/init";
 
-const interactionTypeSchema = z.enum(["like", "dislike", "save"]);
+const interactionTypeSchema = z.enum(["like", "dislike", "save", "ignore"]);
 
 const setInteractionSchema = z.object({
   videoId: z.string().min(5).max(64),
   channelId: z.string().min(1).max(128).optional(),
   type: interactionTypeSchema,
   active: z.boolean(),
+  title: z.string().max(300).optional(),
 });
 
 function nowUnix(): number {
@@ -49,6 +55,7 @@ export const interactionsRouter = router({
             channelId: input.channelId ?? null,
             type: input.type,
             createdAt: ts,
+            title: input.title ?? null,
           })
           .run();
       } else if (existing) {
@@ -79,6 +86,68 @@ export const interactionsRouter = router({
         dislike: rows.some((row) => row.type === "dislike"),
         save: rows.some((row) => row.type === "save"),
       };
+    }),
+  listSaved: protectedProcedure.query(async ({ ctx }) => {
+    const rows = ctx.db
+      .select({
+        videoId: interactions.videoId,
+        title: interactions.title,
+        channelId: interactions.channelId,
+        createdAt: interactions.createdAt,
+      })
+      .from(interactions)
+      .where(
+        and(eq(interactions.userId, ctx.userId), eq(interactions.type, "save")),
+      )
+      .orderBy(desc(interactions.createdAt))
+      .all();
+    const overrides = getUserProxyOverrides(ctx.db, ctx.userId);
+    return Promise.all(
+      rows.map(async (r) => {
+        try {
+          const detail = await fetchVideoDetail(
+            ctx.db,
+            { videoId: r.videoId },
+            overrides,
+          );
+          return {
+            videoId: r.videoId,
+            videoTitle: detail.title ?? r.title ?? r.videoId,
+            thumbnailUrl: detail.thumbnailUrl,
+            channelId: r.channelId,
+            channelName: detail.channelName ?? r.channelId,
+            href: `/watch/${r.videoId}`,
+          };
+        } catch {
+          return {
+            videoId: r.videoId,
+            videoTitle: r.title ?? r.videoId,
+            thumbnailUrl: undefined as string | undefined,
+            channelId: r.channelId,
+            channelName: r.channelId,
+            href: `/watch/${r.videoId}`,
+          };
+        }
+      }),
+    );
+  }),
+  /** Bounded lookup: which of the given video ids has this user ignored. */
+  ignoredAmong: protectedProcedure
+    .input(z.object({ videoIds: z.array(z.string().min(1).max(64)).max(200) }))
+    .query(({ ctx, input }) => {
+      if (input.videoIds.length === 0) return [] as string[];
+      const rows = ctx.db
+        .select({ videoId: interactions.videoId })
+        .from(interactions)
+        .where(
+          and(
+            eq(interactions.userId, ctx.userId),
+            eq(interactions.type, "ignore"),
+            inArray(interactions.videoId, input.videoIds),
+          ),
+        )
+        .all();
+      return rows.map((r) => r.videoId);
     }),
   blockRecommendationChannel: protectedProcedure
     .input(z.object({ channelId: z.string().min(1).max(128) }))

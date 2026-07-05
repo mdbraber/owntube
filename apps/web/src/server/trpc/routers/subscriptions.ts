@@ -5,12 +5,12 @@ import {
   fetchLongFormWindows,
   type LongFormWindow,
 } from "@/lib/long-form-uploads";
-import { isStrictShortVideo } from "@/lib/short-video";
 import {
   compareSubscriptionHeads,
   newerPublished,
   publishedSortKey,
 } from "@/lib/published-sort-key";
+import { isStrictShortVideo } from "@/lib/short-video";
 import { normalizeYoutubeChannelId } from "@/lib/youtube-channel-id";
 import {
   nowUnix,
@@ -18,7 +18,7 @@ import {
   refreshChannelMetaIfStale,
 } from "@/server/channel-meta/store";
 import type { AppDb } from "@/server/db/client";
-import { subscriptions, watchHistory } from "@/server/db/schema";
+import { interactions, subscriptions, watchHistory } from "@/server/db/schema";
 import { RateLimitExceededError } from "@/server/errors/rate-limit-exceeded";
 import { UpstreamUnavailableError } from "@/server/errors/upstream-unavailable";
 import {
@@ -154,9 +154,10 @@ async function fetchChannelVideosUpToPages(
   for (let page = 0; page < maxPages; page++) {
     let res: ChannelPageResult;
     try {
-      res = await fetchChannelPage(db, { channelId, continuation }, overrides, {
-        bypassChannelCache: true,
-      });
+      // Serve from the warm channel-page cache when fresh; the merge feed already
+      // gets each channel's newest upload from the RSS seed, so a slightly stale
+      // page (older videos) is fine and avoids a live ~1s Invidious call per channel.
+      res = await fetchChannelPage(db, { channelId, continuation }, overrides);
     } catch (e) {
       if (
         e instanceof UpstreamUnavailableError ||
@@ -957,7 +958,26 @@ export const subscriptionsRouter = router({
       const visibleVideos = settings.hideShortsInSubscriptions
         ? await stripShortsFromSubscriptionFeed(restrictedFiltered)
         : restrictedFiltered;
-      const visibleVideoIds = visibleVideos.map((v) => v.videoId);
+      const candidateVideoIds = visibleVideos.map((v) => v.videoId);
+      const ignoredRows =
+        candidateVideoIds.length > 0
+          ? ctx.db
+              .select({ videoId: interactions.videoId })
+              .from(interactions)
+              .where(
+                and(
+                  eq(interactions.userId, ctx.userId),
+                  eq(interactions.type, "ignore"),
+                  inArray(interactions.videoId, candidateVideoIds),
+                ),
+              )
+              .all()
+          : [];
+      const ignoredSet = new Set(ignoredRows.map((r) => r.videoId));
+      const keptVideos = visibleVideos.filter(
+        (v) => !ignoredSet.has(v.videoId),
+      );
+      const visibleVideoIds = keptVideos.map((v) => v.videoId);
       const watchedRows =
         visibleVideoIds.length > 0
           ? ctx.db
@@ -973,7 +993,7 @@ export const subscriptionsRouter = router({
               .all()
           : [];
       const watchedSet = new Set(watchedRows.map((r) => r.videoId));
-      const visibleWithWatchState = visibleVideos.map((v) => ({
+      const visibleWithWatchState = keptVideos.map((v) => ({
         ...v,
         watched: watchedSet.has(v.videoId),
       }));

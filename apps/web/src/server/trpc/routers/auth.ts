@@ -42,6 +42,9 @@ function nowUnix(): number {
 }
 
 export const authRouter = router({
+  session: publicProcedure.query(({ ctx }) => ({
+    authed: Boolean(ctx.userId),
+  })),
   register: publicProcedure
     .input(registerInputSchema)
     .mutation(async ({ ctx, input }) => {

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { useIgnoredVideos } from "@/components/videos/ignored-videos-context";
 import { trpc } from "@/trpc/react";
 
 type VideoCardMarkWatchedButtonProps = {
@@ -16,6 +17,7 @@ export function VideoCardMarkWatchedButton({
   className,
 }: VideoCardMarkWatchedButtonProps) {
   const utils = trpc.useUtils();
+  const { ignore } = useIgnoredVideos();
   const [animLike, setAnimLike] = useState(false);
   const [animDislike, setAnimDislike] = useState(false);
   const [animWatched, setAnimWatched] = useState(false);
@@ -171,6 +173,34 @@ export function VideoCardMarkWatchedButton({
           <title>Mark as watched</title>
           <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" />
           <circle cx="12" cy="12" r="2.5" />
+        </svg>
+      </Button>
+      <Button
+        type="button"
+        variant="secondary"
+        size="icon"
+        className="h-8 w-8 border border-white/20 bg-black/65 text-white transition-transform duration-150 hover:bg-black/75"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          ignore(videoId, channelId);
+        }}
+        title="Ignore (hide from feeds)"
+        aria-label="Ignore this video"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="h-4 w-4"
+          aria-hidden
+        >
+          <title>Ignore</title>
+          <circle cx="12" cy="12" r="9" />
+          <path d="M5.6 5.6l12.8 12.8" />
         </svg>
       </Button>
     </div>

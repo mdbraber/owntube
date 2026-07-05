@@ -21,7 +21,7 @@ async function TrendingGrid({ region }: { region: string }) {
         Source: {data.sourceUsed}
         {data.stale ? " · stale cache" : ""}
       </p>
-      <VideoGrid videos={data.videos} />
+      <VideoGrid videos={data.videos} enableSwipe />
     </section>
   );
 }

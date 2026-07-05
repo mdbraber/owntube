@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { useIgnoredVideos } from "@/components/videos/ignored-videos-context";
 import { VideoGrid } from "@/components/videos/video-grid";
 import { mergeVideosNewestFirst } from "@/lib/published-sort-key";
 import type { ChannelTab, UnifiedVideo } from "@/server/services/proxy.types";
@@ -58,6 +59,16 @@ export function ChannelVideosSection({
   const videos = useMemo(
     () => mergeVideosNewestFirst(query.data?.pages.map((p) => p.videos) ?? []),
     [query.data?.pages],
+  );
+
+  const { sessionIgnored } = useIgnoredVideos();
+  const ignoredQuery = trpc.interactions.ignoredAmong.useQuery(
+    { videoIds: videos.slice(0, 200).map((v) => v.videoId) },
+    { enabled: videos.length > 0 },
+  );
+  const dimVideoIds = useMemo(
+    () => new Set([...(ignoredQuery.data ?? []), ...sessionIgnored]),
+    [ignoredQuery.data, sessionIgnored],
   );
 
   const lastPage = query.data?.pages.at(-1);
@@ -136,6 +147,7 @@ export function ChannelVideosSection({
           videos={videos}
           size="large"
           variant={tab === "shorts" ? "short" : "video"}
+          dimVideoIds={dimVideoIds}
         />
       ) : !query.isPending && !query.isError ? (
         <p className="rounded-[var(--radius-card)] border border-dashed border-[hsl(var(--border))] bg-[hsl(var(--muted)_/_0.35)] py-14 text-center text-sm text-[hsl(var(--muted-foreground))]">

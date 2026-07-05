@@ -13,9 +13,9 @@ import type {
 
 const CACHE_TTL_SEC = 6 * 60 * 60;
 /** Channel “videos” lists change often; long TTL hid fresh uploads from recommendations. */
-const CHANNEL_PAGE_CACHE_TTL_SEC = 10 * 60;
+const CHANNEL_PAGE_CACHE_TTL_SEC = 45 * 60;
 /** Home Shorts shelf discovery — fresher than the default 6h shorts cache. */
-const SHORTS_SHELF_CACHE_TTL_SEC = 10 * 60;
+const SHORTS_SHELF_CACHE_TTL_SEC = 30 * 60;
 /** Invidious/Piped HLS and DASH URLs expire quickly; long TTL serves dead 404 manifests. */
 const STREAMS_DETAIL_CACHE_TTL_SEC = 3 * 60;
 

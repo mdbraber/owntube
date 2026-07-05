@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { useIgnoredVideos } from "@/components/videos/ignored-videos-context";
 import { VideoGrid } from "@/components/videos/video-grid";
 import { trpc } from "@/trpc/react";
 
@@ -13,6 +14,7 @@ const PULL_MAX = 96;
 
 export function SubscriptionVideosInfinite() {
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const { sessionIgnored } = useIgnoredVideos();
   const refreshTokenRef = useRef<number>(Date.now());
   const utils = trpc.useUtils();
   const query = trpc.subscriptions.mergedFeedInfinite.useInfiniteQuery(
@@ -102,7 +104,9 @@ export function SubscriptionVideosInfinite() {
     );
   }
 
-  const videos = query.data.pages.flatMap((p) => p.videos);
+  const videos = query.data.pages
+    .flatMap((p) => p.videos)
+    .filter((v) => !sessionIgnored.has(v.videoId));
   const pullActive = pull > 0 || isRefreshing;
 
   return (
@@ -133,7 +137,7 @@ export function SubscriptionVideosInfinite() {
 
       <RefreshBar isRefreshing={isRefreshing} onRefresh={doRefresh} />
 
-      <VideoGrid videos={videos} size="large" />
+      <VideoGrid videos={videos} size="large" enableSwipe />
       {query.hasNextPage ? (
         <div ref={sentinelRef} className="h-1 w-full shrink-0" aria-hidden />
       ) : null}

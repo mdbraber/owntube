@@ -1,3 +1,4 @@
+import { CardSwipeLayer } from "@/components/videos/card-swipe-layer";
 import { VideoCard, VideoCardShort } from "@/components/videos/video-card";
 import type { UnifiedVideo } from "@/server/services/proxy.types";
 
@@ -6,6 +7,10 @@ type VideoGridProps = {
   size?: "default" | "large";
   /** Vertical 9:16 cards in a dense grid (Shorts tab). */
   variant?: "video" | "short";
+  /** Ids to dim in place (e.g. ignored videos on a channel page). */
+  dimVideoIds?: ReadonlySet<string>;
+  /** Enable mobile swipe gestures (Home/Explore/Subscriptions only). */
+  enableSwipe?: boolean;
 };
 
 function videoCardProps(v: UnifiedVideo) {
@@ -34,6 +39,8 @@ export function VideoGrid({
   videos,
   size = "default",
   variant = "video",
+  dimVideoIds,
+  enableSwipe,
 }: VideoGridProps) {
   if (videos.length === 0) {
     return (
@@ -61,7 +68,23 @@ export function VideoGrid({
     <ul className={gridClass}>
       {videos.map((v) => (
         <li key={v.videoId}>
-          <VideoCard {...videoCardProps(v)} />
+          {enableSwipe ? (
+            <CardSwipeLayer
+              videoId={v.videoId}
+              title={v.title}
+              channelId={v.channelId}
+            >
+              <VideoCard
+                {...videoCardProps(v)}
+                dimmed={dimVideoIds?.has(v.videoId) ?? false}
+              />
+            </CardSwipeLayer>
+          ) : (
+            <VideoCard
+              {...videoCardProps(v)}
+              dimmed={dimVideoIds?.has(v.videoId) ?? false}
+            />
+          )}
         </li>
       ))}
     </ul>

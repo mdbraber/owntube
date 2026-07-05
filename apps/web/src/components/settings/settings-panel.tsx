@@ -183,6 +183,22 @@ export function SettingsPanel({
   );
   const [defaultPlaybackQuality, setDefaultPlaybackQuality] =
     useState<DefaultPlaybackQuality>(initial.defaultPlaybackQuality ?? "1080p");
+  const [enableSwipeGestures, setEnableSwipeGestures] = useState(
+    initial.enableSwipeGestures ?? true,
+  );
+  const [swipeGestures, setSwipeGestures] = useState<
+    Record<
+      "shortLeft" | "longLeft" | "shortRight" | "longRight",
+      "none" | "queue" | "saved" | "ignore" | "watched"
+    >
+  >(
+    initial.swipeGestures ?? {
+      shortLeft: "ignore",
+      longLeft: "watched",
+      shortRight: "queue",
+      longRight: "saved",
+    },
+  );
   const initialSponsorPrefs = sponsorBlockPrefsFromAppSettings(initial);
   const [sponsorBlockEnabled, setSponsorBlockEnabled] = useState(
     initialSponsorPrefs.enabled,
@@ -380,6 +396,8 @@ export function SettingsPanel({
       sponsorBlockEnabled,
       sponsorBlockAutoSkip,
       sponsorBlockCategories,
+      enableSwipeGestures,
+      swipeGestures,
     });
   }
 
@@ -555,6 +573,57 @@ export function SettingsPanel({
             />
             Hide Shorts from the Subscriptions feed
           </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={enableSwipeGestures}
+              onChange={(e) => setEnableSwipeGestures(e.currentTarget.checked)}
+            />
+            Enable swipe gestures on Home / Explore / Subscriptions cards
+            (mobile)
+          </label>
+          {enableSwipeGestures ? (
+            <div className="grid grid-cols-1 gap-2 pl-6 sm:grid-cols-2">
+              {(
+                [
+                  ["shortLeft", "Short swipe left"],
+                  ["longLeft", "Long swipe left"],
+                  ["shortRight", "Short swipe right"],
+                  ["longRight", "Long swipe right"],
+                ] as const
+              ).map(([key, label]) => (
+                <label
+                  key={key}
+                  className="flex items-center justify-between gap-2 text-sm"
+                >
+                  <span className="text-[hsl(var(--muted-foreground))]">
+                    {label}
+                  </span>
+                  <select
+                    className="rounded border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-2 py-1 text-sm"
+                    value={swipeGestures[key]}
+                    onChange={(e) =>
+                      setSwipeGestures((g) => ({
+                        ...g,
+                        [key]: e.currentTarget.value as
+                          | "none"
+                          | "queue"
+                          | "saved"
+                          | "ignore"
+                          | "watched",
+                      }))
+                    }
+                  >
+                    <option value="none">None</option>
+                    <option value="queue">Queue</option>
+                    <option value="saved">Save</option>
+                    <option value="ignore">Ignore</option>
+                    <option value="watched">Mark watched</option>
+                  </select>
+                </label>
+              ))}
+            </div>
+          ) : null}
           <label className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"

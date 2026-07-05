@@ -64,6 +64,7 @@ export const interactions = sqliteTable(
     channelId: text("channel_id"),
     type: text("type").notNull(),
     createdAt: integer("created_at").notNull(),
+    title: text("title"),
   },
   (t) => [
     index("interactions_user_video_idx").on(t.userId, t.videoId),
@@ -163,5 +164,24 @@ export const videoCache = sqliteTable(
   (t) => [
     index("video_cache_expires_idx").on(t.expiresAt),
     index("video_cache_kind_idx").on(t.kind),
+  ],
+);
+
+export const watchQueue = sqliteTable(
+  "watch_queue",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    videoId: text("video_id").notNull(),
+    title: text("title").notNull(),
+    channelId: text("channel_id"),
+    position: integer("position").notNull(),
+    addedAt: integer("added_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("watch_queue_user_video_uidx").on(t.userId, t.videoId),
+    index("watch_queue_user_pos_idx").on(t.userId, t.position),
   ],
 );

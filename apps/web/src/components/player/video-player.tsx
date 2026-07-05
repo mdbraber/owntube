@@ -258,6 +258,11 @@ export function VideoPlayer({
     if (nextCountdown <= 0) {
       if (nextUp && autoplayNext) {
         writeWatchQueue(queue.slice(1));
+      window.dispatchEvent(
+        new CustomEvent("ot:queue-consume", {
+          detail: { videoId: nextUp.href.split("/watch/")[1]?.split("?")[0] },
+        }),
+      );
         router.push(nextUp.href);
       }
       setNextCountdown(null);
@@ -420,6 +425,11 @@ export function VideoPlayer({
   const playNextNow = useCallback(() => {
     if (!nextUp) return;
     writeWatchQueue(queue.slice(1));
+      window.dispatchEvent(
+        new CustomEvent("ot:queue-consume", {
+          detail: { videoId: nextUp.href.split("/watch/")[1]?.split("?")[0] },
+        }),
+      );
     router.push(nextUp.href);
   }, [nextUp, router, queue]);
 

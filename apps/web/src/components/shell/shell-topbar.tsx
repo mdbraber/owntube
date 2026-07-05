@@ -23,7 +23,7 @@ export function ShellTopbar({
   return (
     <header
       className={cn(
-        "ot-shell-topbar sticky top-0 z-30 flex shrink-0 items-center gap-2 border-b border-[hsl(var(--border))] bg-[hsl(var(--background)_/_0.88)] px-3 py-2 backdrop-blur-xl backdrop-saturate-150 md:gap-3 md:px-4 dark:bg-[hsl(var(--background)_/_0.78)]",
+        "ot-shell-topbar sticky top-0 z-30 flex shrink-0 items-center gap-2 border-b border-[hsl(var(--border))] bg-[hsl(var(--background)_/_0.88)] px-3 pb-2 pt-[calc(0.5rem_+_env(safe-area-inset-top))] backdrop-blur-xl backdrop-saturate-150 md:gap-3 md:px-4 dark:bg-[hsl(var(--background)_/_0.78)]",
         hiddenOnMobile && "hidden min-[901px]:flex",
       )}
     >

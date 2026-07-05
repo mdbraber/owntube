@@ -19,6 +19,14 @@ export const visualThemeSchema = z.enum(["default", "terminal"]);
 
 const tasteKeywordSchema = z.string().trim().min(1).max(80);
 
+const swipeActionSchema = z.enum([
+  "none",
+  "queue",
+  "saved",
+  "ignore",
+  "watched",
+]);
+
 export const appSettingsSchema = z.object({
   theme: themeSchema.default("system"),
   visualTheme: visualThemeSchema.default("default"),
@@ -59,6 +67,22 @@ export const appSettingsSchema = z.object({
   sponsorBlockCategories: z
     .array(sponsorBlockCategorySchema)
     .default(DEFAULT_SPONSORBLOCK_CATEGORIES),
+  /** Enable mobile swipe gestures on Home/Explore/Subscriptions cards. */
+  enableSwipeGestures: z.boolean().default(true),
+  /** Action mapping for short/long swipes left/right. */
+  swipeGestures: z
+    .object({
+      shortLeft: swipeActionSchema.default("ignore"),
+      longLeft: swipeActionSchema.default("watched"),
+      shortRight: swipeActionSchema.default("queue"),
+      longRight: swipeActionSchema.default("saved"),
+    })
+    .default({
+      shortLeft: "ignore",
+      longLeft: "watched",
+      shortRight: "queue",
+      longRight: "saved",
+    }),
 });
 
 export type AppSettings = z.infer<typeof appSettingsSchema>;
@@ -88,6 +112,13 @@ const defaultSettings: AppSettings = {
   sponsorBlockEnabled: true,
   sponsorBlockAutoSkip: true,
   sponsorBlockCategories: DEFAULT_SPONSORBLOCK_CATEGORIES,
+  enableSwipeGestures: true,
+  swipeGestures: {
+    shortLeft: "ignore",
+    longLeft: "watched",
+    shortRight: "queue",
+    longRight: "saved",
+  },
 };
 
 function nowUnix(): number {

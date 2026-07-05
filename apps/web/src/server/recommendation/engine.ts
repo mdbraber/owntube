@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { stripRestrictedListVideos } from "@/lib/feed-exclude-restricted";
 import { logger } from "@/lib/logger";
 import {
@@ -6,7 +6,7 @@ import {
   pickNewestVideoPerChannel,
 } from "@/lib/published-sort-key";
 import type { AppDb } from "@/server/db/client";
-import { channelMeta, watchHistory } from "@/server/db/schema";
+import { channelMeta, interactions, watchHistory } from "@/server/db/schema";
 import {
   expandScoredPoolWithRelatedCandidates,
   HOME_RELATED_LIMITS,
@@ -63,7 +63,7 @@ type RecommendationPoolCacheEntry = {
   diversified: ScoredVideo[];
 };
 
-const RECOMMENDATION_POOL_CACHE_TTL_MS = 90_000;
+const RECOMMENDATION_POOL_CACHE_TTL_MS = 600_000;
 const recommendationPoolCache = new Map<string, RecommendationPoolCacheEntry>();
 const recommendationPoolInFlight = new Map<
   string,
@@ -386,11 +386,29 @@ async function ensureRecommendationPool(
       nowSec,
     );
     /** One unwatched “head” per channel so TF-IDF cannot bury a newer upload under an older highlights row. */
+    const poolVideoIds = [...byId.keys()];
+    const ignoredVideoIds = new Set(
+      poolVideoIds.length > 0
+        ? db
+            .select({ videoId: interactions.videoId })
+            .from(interactions)
+            .where(
+              and(
+                eq(interactions.userId, userId),
+                eq(interactions.type, "ignore"),
+                inArray(interactions.videoId, poolVideoIds),
+              ),
+            )
+            .all()
+            .map((r) => r.videoId)
+        : [],
+    );
     const uniqueRaw = pickNewestVideoPerChannel(
       stripRestrictedListVideos(
         [...byId.values()].filter(
           (v) =>
             !watchedEver.has(v.videoId) &&
+            !ignoredVideoIds.has(v.videoId) &&
             !(v.channelId && blockedRecommendationChannels.has(v.channelId)),
         ),
       ),

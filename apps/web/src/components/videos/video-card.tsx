@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AddToQueueButton } from "@/components/player/add-to-queue-button";
+import { QueueToggleButton } from "@/components/queue/queue-toggle-button";
 import { ChannelAvatarCircle } from "@/components/videos/channel-avatar-circle";
 import { VideoCardActionsMenu } from "@/components/videos/video-card-actions-menu";
 import { VideoCardDurationBadge } from "@/components/videos/video-card-duration-badge";
@@ -34,6 +34,8 @@ type VideoCardProps = {
   publishedAt?: number;
   /** Personalized feed only — surfaced as a "why recommended" line in the menu. */
   recommendationReason?: RecommendationReason;
+  /** Render dimmed (ignored video on a channel page). */
+  dimmed?: boolean;
 };
 
 export function VideoCard({
@@ -52,6 +54,7 @@ export function VideoCard({
   publishedText,
   publishedAt,
   recommendationReason,
+  dimmed,
 }: VideoCardProps) {
   const viewsLabel = formatViews(viewCount);
   const publishedLabel = formatPublishedLabel(publishedText, publishedAt);
@@ -68,7 +71,11 @@ export function VideoCard({
     "h-full w-full object-cover transition duration-500 ease-out group-hover:scale-[1.04]";
 
   return (
-    <article className="ot-video-card group flex flex-col gap-3 text-left text-[hsl(var(--foreground))]">
+    <article
+      className={`ot-video-card group flex flex-col gap-3 text-left text-[hsl(var(--foreground))]${
+        dimmed ? " opacity-40 transition-opacity hover:opacity-75" : ""
+      }`}
+    >
       {videoId ? (
         <div className="relative">
           <VideoCardThumbnailInteractive
@@ -511,7 +518,11 @@ export function VideoCardCompact({
           </p>
           {showAddToQueue ? (
             <div className={metaPadClass}>
-              <AddToQueueButton href={href} title={title} />
+              <QueueToggleButton
+                videoId={href.split("/watch/")[1]?.split("?")[0] ?? ""}
+                title={title}
+                variant="card"
+              />
             </div>
           ) : null}
         </div>

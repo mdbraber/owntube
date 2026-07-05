@@ -6,7 +6,9 @@ export type NavKey =
   | "explore"
   | "subs"
   | "library"
-  | "algorithm";
+  | "algorithm"
+  | "queue"
+  | "saved";
 
 type NavItem = {
   key: NavKey;
@@ -237,6 +239,36 @@ const SettingsIcon = (
 );
 
 /** Full primary navigation list rendered in the desktop sidebar. */
+const SavedIcon = (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden
+  >
+    <title>Saved</title>
+    <path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z" />
+  </svg>
+);
+
+const QueueIcon = (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden
+  >
+    <title>Queue</title>
+    <path d="M4 6h11M4 12h11M4 18h7M17 15v6M20 18h-6" />
+  </svg>
+);
+
 export const SIDEBAR_NAV: NavItem[] = [
   {
     key: "home",
@@ -265,6 +297,18 @@ export const SIDEBAR_NAV: NavItem[] = [
     label: "Subscriptions",
     icon: SubscriptionsIcon,
     iconActive: SubscriptionsIconActive,
+  },
+  {
+    key: "queue",
+    href: "/queue",
+    label: "Queue",
+    icon: QueueIcon,
+  },
+  {
+    key: "saved",
+    href: "/saved",
+    label: "Saved",
+    icon: SavedIcon,
   },
   // History stays outline when active: the glyph is an arc + arrow with no
   // fillable body, so a filled variant would lose its identity.
@@ -296,6 +340,8 @@ export const ACCOUNT_LINKS: { href: string; label: string; icon: ReactNode }[] =
     { href: "/settings", label: "Settings", icon: SettingsIcon },
     { href: "/history", label: "History", icon: HistoryIcon },
     { href: "/playlists", label: "Playlists", icon: PlaylistsIcon },
+    { href: "/queue", label: "Queue", icon: QueueIcon },
+    { href: "/saved", label: "Saved", icon: SavedIcon },
     { href: "/subscriptions", label: "Subscriptions", icon: SubscriptionsIcon },
     { href: "/dashboard", label: "Algorithm", icon: AlgorithmIcon },
   ];

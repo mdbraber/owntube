@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import { HomeHero } from "@/components/home/home-hero";
 import { HomeShortsShelf } from "@/components/home/home-shorts-shelf";
 import { Button } from "@/components/ui/button";
+import { useIgnoredVideos } from "@/components/videos/ignored-videos-context";
 import { VideoGrid } from "@/components/videos/video-grid";
 import { useLargeVideoGridColumnCount } from "@/hooks/use-large-video-grid-column-count";
 import {
@@ -86,6 +87,7 @@ function HomeShortsShelfSkeletonInline({
 export function HomeFeedClient({ region, isAuthed }: HomeFeedClientProps) {
   const { measureRef, columnCount, columnWidthPx, containerWidthPx } =
     useLargeVideoGridColumnCount();
+  const { sessionIgnored } = useIgnoredVideos();
   const shortsShelfLayout = useMemo(
     () =>
       computeHomeShortsShelfLayout(
@@ -279,7 +281,11 @@ export function HomeFeedClient({ region, isAuthed }: HomeFeedClientProps) {
               className="ot-video-grid ot-video-grid--large pointer-events-none invisible m-0 h-0 p-0"
             />
             {topVideos.length > 0 ? (
-              <VideoGrid videos={topVideos} size="large" />
+              <VideoGrid
+                videos={topVideos.filter((v) => !sessionIgnored.has(v.videoId))}
+                size="large"
+                enableSwipe
+              />
             ) : null}
             <HomeShortsShelf
               region={region}
@@ -289,7 +295,13 @@ export function HomeFeedClient({ region, isAuthed }: HomeFeedClientProps) {
               excludeVideoIds={excludeVideoIds}
             />
             {bottomVideos.length > 0 ? (
-              <VideoGrid videos={bottomVideos} size="large" />
+              <VideoGrid
+                videos={bottomVideos.filter(
+                  (v) => !sessionIgnored.has(v.videoId),
+                )}
+                size="large"
+                enableSwipe
+              />
             ) : null}
           </div>
         </>
