@@ -8,7 +8,8 @@ export type NavKey =
   | "library"
   | "algorithm"
   | "queue"
-  | "saved";
+  | "saved"
+  | "continue";
 
 type NavItem = {
   key: NavKey;
@@ -269,6 +270,22 @@ const QueueIcon = (
   </svg>
 );
 
+const ContinueIcon = (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden
+  >
+    <title>Continue watching</title>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M10 8.5l5 3.5-5 3.5z" />
+  </svg>
+);
+
 export const SIDEBAR_NAV: NavItem[] = [
   {
     key: "home",
@@ -297,6 +314,12 @@ export const SIDEBAR_NAV: NavItem[] = [
     label: "Subscriptions",
     icon: SubscriptionsIcon,
     iconActive: SubscriptionsIconActive,
+  },
+  {
+    key: "continue",
+    href: "/continue",
+    label: "Continue watching",
+    icon: ContinueIcon,
   },
   {
     key: "queue",
@@ -339,6 +362,7 @@ export const ACCOUNT_LINKS: { href: string; label: string; icon: ReactNode }[] =
   [
     { href: "/settings", label: "Settings", icon: SettingsIcon },
     { href: "/history", label: "History", icon: HistoryIcon },
+    { href: "/continue", label: "Continue watching", icon: ContinueIcon },
     { href: "/playlists", label: "Playlists", icon: PlaylistsIcon },
     { href: "/queue", label: "Queue", icon: QueueIcon },
     { href: "/saved", label: "Saved", icon: SavedIcon },

@@ -10,8 +10,12 @@ type LibraryVideoRowProps = {
   channelId?: string | null;
   channelName?: string | null;
   thumbnailUrl?: string | null;
+  /** Link target for the thumbnail/title; defaults to the watch page. */
+  href?: string;
   /** Extra metadata line under the channel (e.g. position, saved date). */
   meta?: ReactNode;
+  /** Progress fraction 0–1; renders a resume bar across the thumbnail bottom. */
+  progress?: number;
   /** Leading control, e.g. a drag handle. */
   leading?: ReactNode;
   /** Trailing action(s), e.g. Remove / Unqueue. */
@@ -29,15 +33,21 @@ export function LibraryVideoRow({
   channelId,
   channelName,
   thumbnailUrl,
+  href,
   meta,
+  progress,
   leading,
   trailing,
 }: LibraryVideoRowProps) {
-  const href = `/watch/${encodeURIComponent(videoId)}`;
+  const target = href ?? `/watch/${encodeURIComponent(videoId)}`;
+  const pct =
+    typeof progress === "number"
+      ? Math.max(0, Math.min(100, Math.round(progress * 100)))
+      : null;
   return (
     <div className="flex items-start gap-3 rounded-lg border p-3">
       {leading ? <div className="shrink-0 self-center">{leading}</div> : null}
-      <Link href={href} className="block shrink-0">
+      <Link href={target} className="block shrink-0">
         <div className="relative aspect-video w-44 overflow-hidden rounded-lg bg-[hsl(var(--muted))]">
           {thumbnailUrl ? (
             <VideoThumbnailImg
@@ -47,10 +57,21 @@ export function LibraryVideoRow({
               loading="lazy"
             />
           ) : null}
+          {pct !== null ? (
+            <span className="absolute inset-x-0 bottom-0 h-1 bg-black/40">
+              <span
+                className="block h-full bg-[hsl(var(--primary))]"
+                style={{ width: `${pct}%` }}
+              />
+            </span>
+          ) : null}
         </div>
       </Link>
       <div className="min-w-0 flex-1 space-y-1">
-        <Link href={href} className="line-clamp-2 font-medium hover:underline">
+        <Link
+          href={target}
+          className="line-clamp-2 font-medium hover:underline"
+        >
           {title}
         </Link>
         {channelId ? (

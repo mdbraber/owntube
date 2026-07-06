@@ -66,6 +66,7 @@ export const historyRouter = router({
       const limit = input?.limit ?? 12;
       const rows = ctx.db
         .select({
+          id: watchHistory.id,
           videoId: watchHistory.videoId,
           channelId: watchHistory.channelId,
           startedAt: watchHistory.startedAt,
@@ -93,6 +94,7 @@ export const historyRouter = router({
       return Promise.all(
         rows.map(async (row) => {
           const base = {
+            id: row.id,
             videoId: row.videoId,
             channelId: row.channelId,
             durationWatched: row.durationWatched,
