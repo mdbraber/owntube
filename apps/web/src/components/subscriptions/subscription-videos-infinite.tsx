@@ -110,6 +110,9 @@ export function SubscriptionVideosInfinite() {
       refetchOnMount: "always",
       refetchOnWindowFocus: true,
       refetchOnReconnect: true,
+      // Keep the current results on screen while a tag-filter change refetches,
+      // instead of blanking to the pending state (which reads like a reload).
+      placeholderData: (prev) => prev,
     },
   );
   const queryRef = useRef(query);
