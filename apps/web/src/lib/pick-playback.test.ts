@@ -46,7 +46,7 @@ describe("buildWatchPlayback", () => {
     });
   });
 
-  it("prefers progressive split over HLS when ≥2 audio languages are exposed", () => {
+  it("routes multi-language Invidious adaptive video to the generated HLS manifest", () => {
     const w = buildWatchPlayback(
       base({
         hlsUrl: "https://h.example/playlist.m3u8",
@@ -76,23 +76,20 @@ describe("buildWatchPlayback", () => {
         ],
       }),
     );
-    expect(w.kind).toBe("progressive");
-    if (w.kind === "progressive") {
-      expect(w.variants).toHaveLength(1);
-      const v = w.variants[0];
-      expect(v?.t).toBe("split");
-      if (v?.t === "split") {
-        expect(v.audioOptions).toHaveLength(2);
-        const labels = v.audioOptions.map((o) => o.label.toLowerCase());
-        expect(labels.some((l) => /eng|angl/.test(l))).toBe(true);
-        expect(labels.some((l) => /fr[ae]|fran/.test(l))).toBe(true);
-      }
-    }
+    expect(w).toEqual({
+      kind: "hls",
+      url: "/hls/x/master.m3u8",
+      onlyDashOrUnsupported: false,
+    });
   });
 
-  it("infers ≥2 audio languages from xtags inside googlevideo URLs and prefers split", () => {
+  it("infers ≥2 audio languages from xtags and keeps the Piped split picker", () => {
     const w = buildWatchPlayback(
       base({
+        // Multi-language Piped keeps the split (language picker) even with an
+        // HLS URL; Invidious adaptive would instead route to generated HLS.
+        sourceUsed: "piped",
+        mediaProxyBase: "https://g.example",
         hlsUrl: "https://h.example/playlist.m3u8",
         videoSources: [
           {
@@ -130,6 +127,10 @@ describe("buildWatchPlayback", () => {
   it("defaults to original audio even when it is not the first adaptive row", () => {
     const w = buildWatchPlayback(
       base({
+        // Split construction is Piped-only now; Invidious adaptive routes to
+        // the generated HLS manifest (see the routing tests above).
+        sourceUsed: "piped",
+        mediaProxyBase: "https://g.example",
         videoSources: [
           {
             url: "https://g.example/1080v.mp4",
@@ -205,6 +206,8 @@ describe("buildWatchPlayback", () => {
   it("drops muxed rows with audio MIME when a real video split exists", () => {
     const w = buildWatchPlayback(
       base({
+        sourceUsed: "piped",
+        mediaProxyBase: "https://g.example",
         videoSources: [
           {
             url: "https://g.example/bad-audio.m4a",
@@ -334,19 +337,27 @@ describe("buildWatchPlayback", () => {
     }
   });
 
-  it("DASH only yields none", () => {
+  it("routes DASH-only Invidious video to the generated HLS manifest", () => {
+    // dashUrl signals adaptive streams exist; generate.ts re-fetches its own
+    // AVC/AAC streams, so we route to the synthesized manifest rather than none.
     const w = buildWatchPlayback(
       base({
         dashUrl: "https://d.example/playlist",
         videoSources: [],
       }),
     );
-    expect(w).toEqual({ kind: "none", onlyDashOrUnsupported: true });
+    expect(w).toEqual({
+      kind: "hls",
+      url: "/hls/x/master.m3u8",
+      onlyDashOrUnsupported: false,
+    });
   });
 
   it("uses quality-only split row label; audio submenu shows language name without bitrate noise", () => {
     const w = buildWatchPlayback(
       base({
+        sourceUsed: "piped",
+        mediaProxyBase: "https://g.example",
         videoSources: [
           {
             url: "https://g.example/1080v.mp4",
@@ -382,6 +393,9 @@ describe("buildWatchPlayback", () => {
   });
 
   it("prefers split at low rungs when muxed and split share 360p", () => {
+    // Invidious prefers split at 360p (unlike Piped, which keeps muxed itag 18
+    // for fast start). Invidious VOD now routes to generated HLS, so this split
+    // construction is reached via the shorts path.
     const w = buildWatchPlayback(
       base({
         videoSources: [
@@ -417,6 +431,7 @@ describe("buildWatchPlayback", () => {
           },
         ],
       }),
+      { shorts: true },
     );
     expect(w.kind).toBe("progressive");
     if (w.kind === "progressive") {
@@ -432,6 +447,8 @@ describe("buildWatchPlayback", () => {
   it("keeps a single split per quality label (highest bitrate)", () => {
     const w = buildWatchPlayback(
       base({
+        sourceUsed: "piped",
+        mediaProxyBase: "https://g.example",
         videoSources: [
           {
             url: "https://g.example/1440-a.mp4",
@@ -478,6 +495,8 @@ describe("buildWatchPlayback", () => {
   it("lists muxed and split variants when both exist (full quality menu)", () => {
     const w = buildWatchPlayback(
       base({
+        sourceUsed: "piped",
+        mediaProxyBase: "https://g.example",
         videoSources: [
           {
             url: "https://g.example/1080v.mp4",
@@ -524,6 +543,8 @@ describe("buildWatchPlayback", () => {
   it("lists one split row per video-only quality", () => {
     const w = buildWatchPlayback(
       base({
+        sourceUsed: "piped",
+        mediaProxyBase: "https://g.example",
         videoSources: [
           {
             url: "https://g.example/1080v.mp4",
@@ -559,6 +580,8 @@ describe("buildWatchPlayback", () => {
   it("collapses multiple bitrate-only audio rows without language metadata into one split track", () => {
     const w = buildWatchPlayback(
       base({
+        sourceUsed: "piped",
+        mediaProxyBase: "https://g.example",
         videoSources: [
           {
             url: "https://g.example/1080v.mp4",
@@ -594,6 +617,8 @@ describe("buildWatchPlayback", () => {
   it("uses split when there is no muxed stream", () => {
     const w = buildWatchPlayback(
       base({
+        sourceUsed: "piped",
+        mediaProxyBase: "https://g.example",
         videoSources: [
           {
             url: "https://g.example/1080v.mp4",
