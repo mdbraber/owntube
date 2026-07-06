@@ -165,9 +165,16 @@ export default async function WatchPage({
       : null;
   const effectiveStartAtSeconds = startAtSeconds ?? resumeSeconds ?? undefined;
 
-  const relatedResult = detail
-    ? await fetchRelatedVideos(db, input, 24, overrides).catch(() => null)
-    : null;
+  // The detail payload usually already carries related videos; only spend the
+  // extra upstream round-trip when it doesn't have enough to fill the sidebar.
+  const RELATED_SIDEBAR_TARGET = 20;
+  const detailRelatedCount = (detail?.relatedVideos ?? []).filter(
+    (v) => v.videoId !== videoId,
+  ).length;
+  const relatedResult =
+    detail && detailRelatedCount < RELATED_SIDEBAR_TARGET
+      ? await fetchRelatedVideos(db, input, 24, overrides).catch(() => null)
+      : null;
 
   const applyRestrictedFilter = (videos: UnifiedVideo[]) =>
     userSettings?.hideRestrictedVideos === false
