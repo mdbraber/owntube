@@ -1,4 +1,4 @@
-import { eq, inArray, sql } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import type { AppDb } from "@/server/db/client";
 import { channelMeta } from "@/server/db/schema";
 import { RateLimitExceededError } from "@/server/errors/rate-limit-exceeded";
@@ -143,11 +143,11 @@ export function readChannelMetaByIds(
 }
 
 /**
- * Record a channel's newest-upload timestamp (only ever moves forward). No-op
- * for channels without a meta row yet — the row appears once its name/avatar is
- * known (on subscribe or feed enrichment), and the next feed pass fills this in.
+ * Set a channel's newest long-form upload timestamp (authoritative overwrite —
+ * derived from the long-form uploads playlist, so it excludes Shorts). No-op for
+ * channels without a meta row yet; the row appears once name/avatar is known.
  */
-export function touchChannelLatestVideoAt(
+export function setChannelLatestVideoAt(
   db: AppDb,
   channelId: string,
   publishedAt: number,
@@ -155,9 +155,7 @@ export function touchChannelLatestVideoAt(
   if (!Number.isFinite(publishedAt) || publishedAt <= 0) return;
   try {
     db.update(channelMeta)
-      .set({
-        latestVideoAt: sql`MAX(COALESCE(${channelMeta.latestVideoAt}, 0), ${Math.floor(publishedAt)})`,
-      })
+      .set({ latestVideoAt: Math.floor(publishedAt) })
       .where(eq(channelMeta.channelId, channelId))
       .run();
   } catch (error) {

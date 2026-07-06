@@ -18,6 +18,8 @@ export type LongFormWindow = {
   ids: Set<string>;
   /** Unix seconds of the oldest entry in `ids`; null when no dated entries were parsed. */
   oldestPublishedAt: number | null;
+  /** Unix seconds of the newest long-form upload; null when no dated entries were parsed. */
+  newestPublishedAt: number | null;
 };
 
 async function fetchLongFormWindow(
@@ -36,6 +38,7 @@ async function fetchLongFormWindow(
     const xml = await resp.text();
     const ids = new Set<string>();
     let oldestPublishedAt: number | null = null;
+    let newestPublishedAt: number | null = null;
     for (const m of xml.matchAll(/<entry>([\s\S]*?)<\/entry>/gi)) {
       const entry = m[1] ?? "";
       const id = entry.match(/<yt:videoId>([^<]+)<\/yt:videoId>/i)?.[1]?.trim();
@@ -50,10 +53,13 @@ async function fetchLongFormWindow(
         if (oldestPublishedAt === null || sec < oldestPublishedAt) {
           oldestPublishedAt = sec;
         }
+        if (newestPublishedAt === null || sec > newestPublishedAt) {
+          newestPublishedAt = sec;
+        }
       }
     }
     if (ids.size === 0) return null;
-    return { ids, oldestPublishedAt };
+    return { ids, oldestPublishedAt, newestPublishedAt };
   } catch {
     return null;
   }

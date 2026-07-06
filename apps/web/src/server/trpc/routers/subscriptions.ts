@@ -16,7 +16,7 @@ import {
   nowUnix,
   readChannelMetaByIds,
   refreshChannelMetaIfStale,
-  touchChannelLatestVideoAt,
+  setChannelLatestVideoAt,
 } from "@/server/channel-meta/store";
 import type { AppDb } from "@/server/db/client";
 import { interactions, subscriptions, watchHistory } from "@/server/db/schema";
@@ -433,12 +433,6 @@ async function collectSortedFeedPage(
       // Seed the full RSS window (~15 newest uploads), not just the latest, so
       // page 1 can be built entirely from RSS with no live channel-page fetch.
       seedTargets[i]?.videos.push(...channelEntries);
-      // Record the newest upload so the sidebar can order channels by recency.
-      let newest = 0;
-      for (const ts of byVideoId.values()) if (ts > newest) newest = ts;
-      if (newest > 0) {
-        touchChannelLatestVideoAt(db, seedTargets[i].channelId, newest);
-      }
     }
   }
 
@@ -769,25 +763,17 @@ export const subscriptionsRouter = router({
       );
     }
 
-    // 2. Channels missing a newest-upload time → derive it from RSS (light,
-    // fetched in parallel like the merged-feed seed; capped for safety).
-    const needRecency = subs
-      .filter(
-        (s) => (metaById.get(s.channelId)?.latestVideoAt ?? null) === null,
-      )
-      .slice(0, RSS_SEED_MAX_CHANNELS);
-    const rss = await Promise.all(
-      needRecency.map((s) => fetchRssEntriesFromChannel(s.channelId)),
+    // 2. Newest *long-form* upload per channel, from the UULF uploads playlist
+    // (excludes Shorts / premieres, unlike channel RSS). Authoritative overwrite,
+    // capped and fetched in parallel like the merged-feed seed.
+    const recencyTargets = subs.slice(0, RSS_SEED_MAX_CHANNELS);
+    const windows = await fetchLongFormWindows(
+      recencyTargets.map((s) => s.channelId),
     );
-    for (let j = 0; j < needRecency.length; j++) {
-      let newest = 0;
-      for (const e of rss[j] ?? []) {
-        if (typeof e.publishedAt === "number" && e.publishedAt > newest) {
-          newest = e.publishedAt;
-        }
-      }
-      if (newest > 0) {
-        touchChannelLatestVideoAt(ctx.db, needRecency[j].channelId, newest);
+    for (const s of recencyTargets) {
+      const newest = windows.get(s.channelId)?.newestPublishedAt;
+      if (typeof newest === "number" && newest > 0) {
+        setChannelLatestVideoAt(ctx.db, s.channelId, newest);
         updated++;
       }
     }
