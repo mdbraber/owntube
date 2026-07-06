@@ -187,11 +187,18 @@ export async function GET(
   const contentRange = r.headers.get("content-range");
   const contentLength = r.headers.get("content-length");
 
+  // Images (thumbnails, avatars) are effectively content-addressed by video/
+  // channel id, so they can be cached hard; media segments must stay short.
+  const isImage = ct.startsWith("image/");
+  const cacheControl = isImage
+    ? "public, max-age=86400, stale-while-revalidate=604800"
+    : "public, max-age=60";
+
   const out = new Response(r.body, {
     status: r.status,
     headers: {
       "content-type": ct,
-      "cache-control": "public, max-age=60",
+      "cache-control": cacheControl,
       ...(acceptRanges ? { "accept-ranges": acceptRanges } : {}),
       ...(contentRange ? { "content-range": contentRange } : {}),
       ...(contentLength ? { "content-length": contentLength } : {}),
