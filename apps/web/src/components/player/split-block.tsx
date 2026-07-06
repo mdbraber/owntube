@@ -60,6 +60,7 @@ export function SplitBlock({
   miniMode = false,
   shortsMode = false,
   miniStartPaused = false,
+  autoplay = false,
   restoredVolume,
   restoredMuted,
   scrubPreview,
@@ -93,6 +94,7 @@ export function SplitBlock({
   miniMode?: boolean;
   shortsMode?: boolean;
   miniStartPaused?: boolean;
+  autoplay?: boolean;
   restoredVolume?: number;
   restoredMuted?: boolean;
   scrubPreview?: ScrubPreviewConfig | null;
@@ -446,7 +448,7 @@ export function SplitBlock({
         playsInline
         muted
         preload="auto"
-        autoPlay={shortsMode}
+        autoPlay={shortsMode || autoplay}
         onError={emitPlaybackError}
         onEnded={onEnded}
         className={cn("absolute inset-0 h-full w-full", "object-contain")}

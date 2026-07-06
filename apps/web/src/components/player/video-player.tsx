@@ -616,6 +616,7 @@ export function VideoPlayer({
               miniMode={miniMode}
               shortsMode={shortsMode}
               miniStartPaused={miniStartPaused}
+              autoplay={watchAutoplay}
               restoredVolume={restoredVolume}
               restoredMuted={restoredMuted}
               onVideoIntrinsics={onVideoIntrinsics}
@@ -648,6 +649,7 @@ export function VideoPlayer({
               miniMode={miniMode}
               shortsMode={shortsMode}
               miniStartPaused={miniStartPaused}
+              autoplay={watchAutoplay}
               restoredVolume={restoredVolume}
               restoredMuted={restoredMuted}
               onVideoIntrinsics={onVideoIntrinsics}
@@ -686,6 +688,7 @@ export function VideoPlayer({
             miniMode={miniMode}
             shortsMode={shortsMode}
             miniStartPaused={miniStartPaused}
+            autoplay={watchAutoplay}
             restoredVolume={restoredVolume}
             restoredMuted={restoredMuted}
             onVideoIntrinsics={onVideoIntrinsics}
