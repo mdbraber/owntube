@@ -16,6 +16,7 @@ import {
   nowUnix,
   readChannelMetaByIds,
   refreshChannelMetaIfStale,
+  touchChannelLatestVideoAt,
 } from "@/server/channel-meta/store";
 import type { AppDb } from "@/server/db/client";
 import { interactions, subscriptions, watchHistory } from "@/server/db/schema";
@@ -432,6 +433,12 @@ async function collectSortedFeedPage(
       // Seed the full RSS window (~15 newest uploads), not just the latest, so
       // page 1 can be built entirely from RSS with no live channel-page fetch.
       seedTargets[i]?.videos.push(...channelEntries);
+      // Record the newest upload so the sidebar can order channels by recency.
+      let newest = 0;
+      for (const ts of byVideoId.values()) if (ts > newest) newest = ts;
+      if (newest > 0) {
+        touchChannelLatestVideoAt(db, seedTargets[i].channelId, newest);
+      }
     }
   }
 
@@ -541,8 +548,9 @@ async function refreshChannelPageCache(
     }
   }
   await Promise.all(
-    Array.from({ length: Math.min(REFRESH_CONCURRENCY, channelIds.length) }, () =>
-      worker(),
+    Array.from(
+      { length: Math.min(REFRESH_CONCURRENCY, channelIds.length) },
+      () => worker(),
     ),
   );
   return { refreshed };
@@ -690,6 +698,8 @@ export const subscriptionsRouter = router({
     .query(async ({ ctx, input }) => {
       const limit = input?.limit ?? SIDEBAR_SUBSCRIPTION_LIMIT_DEFAULT;
       reconcileSubscriptionChannelIdsForUser(ctx.db, ctx.userId);
+      // Order by newest upload first, so ranking must consider every sub (a
+      // long-standing channel may have just posted). Cap the scan for safety.
       const subs = ctx.db
         .select({
           channelId: subscriptions.channelId,
@@ -698,21 +708,28 @@ export const subscriptionsRouter = router({
         .from(subscriptions)
         .where(eq(subscriptions.userId, ctx.userId))
         .orderBy(desc(subscriptions.subscribedAt))
-        .limit(limit)
+        .limit(2000)
         .all();
       const metaById = readChannelMetaByIds(
         ctx.db,
         subs.map((s) => s.channelId),
       );
-      return subs.map((s) => {
+      const rows = subs.map((s) => {
         const meta = metaById.get(s.channelId);
         return {
           channelId: s.channelId,
           subscribedAt: s.subscribedAt,
           channelName: meta?.channelName ?? s.channelId,
           avatarUrl: meta?.avatarUrl ?? null,
+          latestVideoAt: meta?.latestVideoAt ?? null,
         };
       });
+      rows.sort(
+        (a, b) =>
+          (b.latestVideoAt ?? 0) - (a.latestVideoAt ?? 0) ||
+          b.subscribedAt - a.subscribedAt,
+      );
+      return rows.slice(0, limit);
     }),
 
   status: publicProcedure
@@ -754,6 +771,12 @@ export const subscriptionsRouter = router({
           target: [subscriptions.userId, subscriptions.channelId],
         })
         .run();
+      // Populate name + avatar now so the sidebar shows them immediately instead
+      // of the raw channel id (usually cached already from viewing the channel).
+      const overrides = getUserProxyOverrides(ctx.db, ctx.userId);
+      await refreshChannelMetaIfStale(ctx.db, channelId, overrides).catch(
+        () => {},
+      );
       return { ok: true as const };
     }),
 

@@ -1,4 +1,4 @@
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import type { AppDb } from "@/server/db/client";
 import { channelMeta } from "@/server/db/schema";
 import { RateLimitExceededError } from "@/server/errors/rate-limit-exceeded";
@@ -97,19 +97,23 @@ export function upsertChannelMetaRow(
   }
 }
 
+export type ChannelMetaLite = {
+  channelName: string;
+  avatarUrl: string | null;
+  latestVideoAt: number | null;
+};
+
 export function readChannelMetaByIds(
   db: AppDb,
   channelIds: string[],
-): Map<string, { channelName: string; avatarUrl: string | null }> {
-  const out = new Map<
-    string,
-    { channelName: string; avatarUrl: string | null }
-  >();
+): Map<string, ChannelMetaLite> {
+  const out = new Map<string, ChannelMetaLite>();
   if (channelIds.length === 0) return out;
   let rows: {
     channelId: string;
     channelName: string;
     avatarUrl: string | null;
+    latestVideoAt: number | null;
   }[] = [];
   try {
     rows = db
@@ -117,6 +121,7 @@ export function readChannelMetaByIds(
         channelId: channelMeta.channelId,
         channelName: channelMeta.channelName,
         avatarUrl: channelMeta.avatarUrl,
+        latestVideoAt: channelMeta.latestVideoAt,
       })
       .from(channelMeta)
       .where(inArray(channelMeta.channelId, channelIds))
@@ -131,9 +136,34 @@ export function readChannelMetaByIds(
     out.set(r.channelId, {
       channelName: name,
       avatarUrl: r.avatarUrl ?? null,
+      latestVideoAt: r.latestVideoAt ?? null,
     });
   }
   return out;
+}
+
+/**
+ * Record a channel's newest-upload timestamp (only ever moves forward). No-op
+ * for channels without a meta row yet — the row appears once its name/avatar is
+ * known (on subscribe or feed enrichment), and the next feed pass fills this in.
+ */
+export function touchChannelLatestVideoAt(
+  db: AppDb,
+  channelId: string,
+  publishedAt: number,
+): void {
+  if (!Number.isFinite(publishedAt) || publishedAt <= 0) return;
+  try {
+    db.update(channelMeta)
+      .set({
+        latestVideoAt: sql`MAX(COALESCE(${channelMeta.latestVideoAt}, 0), ${Math.floor(publishedAt)})`,
+      })
+      .where(eq(channelMeta.channelId, channelId))
+      .run();
+  } catch (error) {
+    if (isMissingChannelMetaTableError(error)) return;
+    throw error;
+  }
 }
 
 function sleepMs(ms: number): Promise<void> {
