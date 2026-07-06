@@ -2,6 +2,7 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { HlsVodBlock } from "@/components/player/hls-vod-block";
 import { NativeMuxedBlock } from "@/components/player/native-block";
 import type { VideoPlayerPayload } from "@/components/player/player-payload";
 import {
@@ -553,38 +554,71 @@ export function VideoPlayer({
         )}
       >
         {active.kind === "hls" ? (
-          <VidstackBlock
-            {...sponsorChromeProps}
-            reactKey={active.src}
-            src={active.src}
-            scrubPreview={buildScrubPreview(active.src) ?? undefined}
-            title={title}
-            poster={displayPoster}
-            progressiveQualityMenu={progressiveQualityMenu}
-            setQualityIndex={setQualityWithResume}
-            settingsOpen={settingsOpen}
-            onSettingsOpenChange={setSettingsOpen}
-            chapters={chapters}
-            startAtSeconds={effectiveStartAt}
-            cinemaMode={cinemaMode}
-            onExitCinema={exitCinema}
-            onToggleCinema={toggleCinema}
-            onPlaybackError={handlePlaybackError}
-            onEnded={handleVideoEnded}
-            nextUp={nextUp}
-            queue={queue}
-            autoplayNext={autoplayNext}
-            onToggleAutoplayNext={() => setAutoplayNext((v) => !v)}
-            onPlayNext={playNextNow}
-            miniMode={miniMode}
-            shortsMode={shortsMode}
-            miniStartPaused={miniStartPaused}
-            autoplay={watchAutoplay}
-            restoredVolume={restoredVolume}
-            restoredMuted={restoredMuted}
-            onVideoIntrinsics={onVideoIntrinsics}
-            isLive={isLive}
-          />
+          isLive ? (
+            <VidstackBlock
+              {...sponsorChromeProps}
+              reactKey={active.src}
+              src={active.src}
+              scrubPreview={buildScrubPreview(active.src) ?? undefined}
+              title={title}
+              poster={displayPoster}
+              progressiveQualityMenu={progressiveQualityMenu}
+              setQualityIndex={setQualityWithResume}
+              settingsOpen={settingsOpen}
+              onSettingsOpenChange={setSettingsOpen}
+              chapters={chapters}
+              startAtSeconds={effectiveStartAt}
+              cinemaMode={cinemaMode}
+              onExitCinema={exitCinema}
+              onToggleCinema={toggleCinema}
+              onPlaybackError={handlePlaybackError}
+              onEnded={handleVideoEnded}
+              nextUp={nextUp}
+              queue={queue}
+              autoplayNext={autoplayNext}
+              onToggleAutoplayNext={() => setAutoplayNext((v) => !v)}
+              onPlayNext={playNextNow}
+              miniMode={miniMode}
+              shortsMode={shortsMode}
+              miniStartPaused={miniStartPaused}
+              autoplay={watchAutoplay}
+              restoredVolume={restoredVolume}
+              restoredMuted={restoredMuted}
+              onVideoIntrinsics={onVideoIntrinsics}
+              isLive={isLive}
+            />
+          ) : (
+            <HlsVodBlock
+              {...sponsorChromeProps}
+              reactKey={active.src}
+              src={active.src}
+              title={title}
+              poster={displayPoster}
+              volume={splitVolume}
+              setVolume={setSplitVolume}
+              settingsOpen={settingsOpen}
+              onSettingsOpenChange={setSettingsOpen}
+              chapters={chapters}
+              startAtSeconds={effectiveStartAt}
+              cinemaMode={cinemaMode}
+              onExitCinema={exitCinema}
+              onToggleCinema={toggleCinema}
+              onPlaybackError={handlePlaybackError}
+              onEnded={handleVideoEnded}
+              nextUp={nextUp}
+              queue={queue}
+              autoplayNext={autoplayNext}
+              onToggleAutoplayNext={() => setAutoplayNext((v) => !v)}
+              onPlayNext={playNextNow}
+              miniMode={miniMode}
+              shortsMode={shortsMode}
+              miniStartPaused={miniStartPaused}
+              autoplay={watchAutoplay}
+              restoredVolume={restoredVolume}
+              restoredMuted={restoredMuted}
+              onVideoIntrinsics={onVideoIntrinsics}
+            />
+          )
         ) : null}
         {active.kind === "variant" && active.v.t === "muxed" ? (
           isDirectProgressiveVideoUrl(active.v.src) || shortsMode ? (

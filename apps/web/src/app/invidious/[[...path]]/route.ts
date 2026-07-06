@@ -9,6 +9,31 @@ function invidiousUpstreamBase(): string {
   return normalizeUpstreamBaseUrl(process.env.INVIDIOUS_BASE_URL);
 }
 
+/**
+ * Range/segment fetches through the Invidious→googlevideo proxy occasionally
+ * fail to connect or time out (upstream drops). Retry a couple of times with a
+ * short backoff so a transient hiccup during a seek doesn't stall playback.
+ * GETs (with or without a Range) are idempotent, so this is safe.
+ */
+async function fetchUpstreamWithRetry(
+  url: string | URL,
+  init: RequestInit,
+  attempts = 3,
+): Promise<Response> {
+  let lastError: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fetchWithTimeout(url, init);
+    } catch (e) {
+      lastError = e;
+      if (i < attempts - 1) {
+        await new Promise((r) => setTimeout(r, 150 * (i + 1)));
+      }
+    }
+  }
+  throw lastError;
+}
+
 /** `/vi/{id}/maxres.jpg` often 404s when YouTube has no maxres; try smaller stills. */
 const VI_THUMB_FALLBACKS = [
   "maxresdefault.jpg",
@@ -26,7 +51,7 @@ async function fetchInvidiousUpstream(
 ): Promise<Response> {
   const base = `${inv}/`;
   const upstream = new URL(subpath + search, base);
-  const r = await fetchWithTimeout(upstream, {
+  const r = await fetchUpstreamWithRetry(upstream, {
     headers: forwardHeaders,
     cache: "no-store",
   });

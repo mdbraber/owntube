@@ -481,6 +481,25 @@ function hasUsableProgressiveVideoPane(detail: VideoDetail): boolean {
   });
 }
 
+/**
+ * True when there are adaptive **video-only** streams — i.e. playback would
+ * otherwise take the progressive *split* path (video-only element + separate
+ * audio), whose Safari seeking to un-buffered positions stalls (single huge
+ * progressive file). We instead route these to the synthesized VOD HLS manifest
+ * (`generate.ts`), which is segmented and seeks reliably. Triggering on this
+ * rather than `detail.dashUrl` is deliberate: the fetch/cache layer sometimes
+ * drops `dashUrl` (and codec strings) even when the adaptive streams exist.
+ * `generate.ts` re-fetches its own fresh AVC streams, so we don't require the
+ * codec here (near-universally H.264 is available for YouTube VOD).
+ */
+function hasAdaptiveVideoOnly(detail: VideoDetail): boolean {
+  return detail.videoSources.some((s) => {
+    const u = s.url;
+    if (!u || isDashPath(u) || isHlsPath(u)) return false;
+    return streamIsVideoOnly(s);
+  });
+}
+
 function firstHlsUrlFromDetail(detail: VideoDetail): string | undefined {
   if (detail.hlsUrl) return detail.hlsUrl;
   for (const s of detail.videoSources) {
@@ -598,6 +617,32 @@ export function buildWatchPlayback(
     return {
       kind: "progressive",
       variants,
+      onlyDashOrUnsupported: false,
+    };
+  }
+
+  // Synthesize a byte-range HLS manifest from the adaptive fMP4 streams and
+  // play it as HLS — native on iOS (the only robust path there; MSE engines
+  // like dash.js stall/freeze) and hls.js everywhere else. Replaces both the
+  // split video+audio path and Invidious's native `hlsUrl`. Any adaptive
+  // video-only stream (or `dashUrl`) signals the adaptive streams exist; only
+  // Piped is excluded (no Invidious adaptive streams).
+  //
+  // Also used for MULTI-LANGUAGE videos: the alternative (progressive *split*)
+  // offers an in-player language picker, but its single-huge-progressive-file
+  // seek stalls in Safari and its second <audio> element is blocked on iOS. We
+  // prioritise reliable seeking and play the synthesized HLS with the DEFAULT
+  // (original) audio track; a multi-language HLS audio group is the follow-up.
+  //
+  // Preferred OVER Invidious's native `hlsUrl` below: the synthesized manifest's
+  // segments resolve to the same-origin, companion-backed `/invidious/videoplayback`
+  // proxy, whereas native `hlsUrl` segments are raw googlevideo URLs that 403 when
+  // fetched from the server IP. Native `hlsUrl` stays as the fallback for videos
+  // with no adaptive streams.
+  if ((detail.dashUrl || hasAdaptiveVideoOnly(detail)) && !isPipedLike) {
+    return {
+      kind: "hls",
+      url: `/hls/${detail.videoId}/master.m3u8`,
       onlyDashOrUnsupported: false,
     };
   }
