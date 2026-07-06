@@ -117,7 +117,9 @@ export function SubscriptionVideosInfinite() {
   const videos = query.data.pages
     .flatMap((p) => p.videos)
     .filter((v) => !sessionIgnored.has(v.videoId));
-  const pullActive = pull > 0 || isRefreshing;
+  // Only reflect the pull gesture here; the RefreshControl button owns the
+  // refreshing spinner/label, so there's no duplicate indicator during a refresh.
+  const pullActive = pull > 0 && !isRefreshing;
 
   return (
     <div
@@ -127,20 +129,16 @@ export function SubscriptionVideosInfinite() {
       onTouchEnd={onTouchEnd}
       onTouchCancel={onTouchEnd}
     >
-      {/* Pull-to-refresh indicator (touch); collapses to 0 height when idle. */}
+      {/* Pull-to-refresh hint (touch only); collapses to 0 height when idle. */}
       <div
         aria-hidden={!pullActive}
         className="flex items-center justify-center overflow-hidden text-xs text-[hsl(var(--muted-foreground))] transition-[height] duration-150"
-        style={{ height: isRefreshing ? 32 : pull }}
+        style={{ height: pullActive ? pull : 0 }}
       >
         {pullActive ? (
           <span className="flex items-center gap-2">
-            <Spinner spinning={isRefreshing || pull >= PULL_THRESHOLD} />
-            {isRefreshing
-              ? "Refreshing…"
-              : pull >= PULL_THRESHOLD
-                ? "Release to refresh"
-                : "Pull to refresh"}
+            <Spinner spinning={pull >= PULL_THRESHOLD} />
+            {pull >= PULL_THRESHOLD ? "Release to refresh" : "Pull to refresh"}
           </span>
         ) : null}
       </div>
