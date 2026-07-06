@@ -60,6 +60,9 @@ export function PlayerHost() {
   const [drag, setDrag] = useState<{ dx: number; dy: number } | null>(null);
   const dragStart = useRef<{ x: number; y: number } | null>(null);
   const dragging = useRef(false);
+  // Set while we dispatch a synthetic pointerup to the player's tap surface (to
+  // cancel its long-press ×2); our own onDragEnd must ignore that echo.
+  const clearingHold = useRef(false);
   // Mini width (desktop; aspect-ratio keeps the height), resizable by a corner.
   const [miniWidth, setMiniWidth] = useState<number | null>(null);
   const miniWidthRef = useRef<number | null>(null);
@@ -180,12 +183,10 @@ export function PlayerHost() {
   // data-controls / role=slider / buttons), which keep working. A small movement
   // threshold means a tap still falls through to the player (play/pause).
   const onDragStart = useCallback((e: React.PointerEvent) => {
+    // Skip real controls (bottom bar, sliders); the full-surface tap button
+    // (data-tap-surface) is draggable — a tap still falls through to play/pause.
     const target = e.target as HTMLElement;
-    if (
-      target.closest("[data-controls],button,a,input,[role='slider']") !== null
-    ) {
-      return;
-    }
+    if (target.closest("[data-controls],[role='slider']") !== null) return;
     dragStart.current = { x: e.clientX, y: e.clientY };
     dragging.current = false;
   }, []);
@@ -197,11 +198,29 @@ export function PlayerHost() {
       if (Math.hypot(dx, dy) < 6) return;
       dragging.current = true;
       e.currentTarget.setPointerCapture(e.pointerId);
+      // The tap surface armed a long-press ×2 on pointerdown; cancel it so it
+      // can't fire mid-drag (its own pointerup won't reach it once we capture).
+      const tap =
+        containerRef.current?.querySelector<HTMLElement>("[data-tap-surface]");
+      if (tap) {
+        clearingHold.current = true;
+        tap.dispatchEvent(
+          new PointerEvent("pointerup", {
+            bubbles: true,
+            pointerId: e.pointerId,
+          }),
+        );
+      }
     }
     setDrag({ dx, dy });
   }, []);
   const onDragEnd = useCallback(
     (e: React.PointerEvent) => {
+      // Ignore the synthetic pointerup we dispatched to cancel the ×2 hold.
+      if (clearingHold.current) {
+        clearingHold.current = false;
+        return;
+      }
       if (!dragStart.current) return;
       dragStart.current = null;
       const wasDragging = dragging.current;
@@ -389,14 +408,12 @@ export function PlayerHost() {
           onPointerUp={onResizeEnd}
           onPointerCancel={onResizeEnd}
           className={cn(
-            "absolute z-20 flex h-5 w-5 touch-none items-center justify-center opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100",
+            "absolute z-20 h-5 w-5 touch-none bg-transparent",
             resizeHandlePos[effCorner],
           )}
           aria-label="Resize mini player"
           title="Drag to resize"
-        >
-          <span className="h-2 w-2 rounded-[2px] border-2 border-white/70" />
-        </button>
+        />
       ) : null}
     </div>
   );
