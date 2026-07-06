@@ -43,7 +43,19 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [slotEl, setSlotEl] = useState<HTMLElement | null>(null);
 
   const setActive = useCallback((next: ActivePlayer) => {
-    setActiveState(next);
+    setActiveState((prev) => {
+      // Re-adopting the same, already-playing video (e.g. mini → its watch page)
+      // must not swap in fresh server props: a new payload / startAtSeconds would
+      // make the live player re-init and re-seek (a hitch). Keep its props and
+      // only refresh the still-live bits — the cinema bridge and auth.
+      if (prev && prev.props.videoId === next.props.videoId) {
+        return {
+          isAuthed: next.isAuthed,
+          props: { ...prev.props, cinema: next.props.cinema },
+        };
+      }
+      return next;
+    });
   }, []);
   const clearActive = useCallback(() => {
     setActiveState(null);

@@ -141,7 +141,8 @@ export function PlayerHost() {
         mode === "full"
           ? "z-20 overflow-hidden bg-black"
           : cn(
-              "group fixed bottom-3 right-3 z-50 w-[min(420px,94vw)] overflow-hidden rounded-[var(--radius-card)] border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-2xl ring-1 ring-black/5 transition-all duration-300 ease-out",
+              // Clear the mobile bottom nav (h-14, shown < 901px); plain bottom-3 on desktop.
+              "group fixed bottom-[calc(3.5rem_+_env(safe-area-inset-bottom)_+_0.5rem)] right-3 z-50 w-[min(420px,94vw)] overflow-hidden rounded-[var(--radius-card)] border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-2xl ring-1 ring-black/5 transition-all duration-300 ease-out min-[901px]:bottom-3",
               entered ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0",
             )
       }
