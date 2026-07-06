@@ -203,130 +203,134 @@ export function VideoCardOverlayActions({
 
   return (
     <div className={className}>
-      <OverlayButton
-        active={isSaved}
-        persistWhenActive
-        activeClassName="border-emerald-400/40 bg-emerald-600 hover:bg-emerald-600/90"
-        onClick={toggleSave}
-        title={isSaved ? "Saved — click to remove" : "Save"}
-        label={isSaved ? "Saved" : "Save"}
-      >
-        <svg
-          viewBox="0 0 24 24"
-          fill="currentColor"
-          className="h-4 w-4"
-          aria-hidden
+      <div className="flex flex-wrap gap-1">
+        <OverlayButton
+          active={liked}
+          activeClassName="border-rose-400/40 bg-rose-600 hover:bg-rose-600/90"
+          onClick={(e) => toggleReaction(e, "like")}
+          title="Like"
+          label={liked ? "Liked" : "Like"}
         >
-          <title>Save</title>
-          <path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z" />
-        </svg>
-      </OverlayButton>
-      <OverlayButton
-        active={isQueued}
-        persistWhenActive
-        activeClassName="border-sky-400/40 bg-sky-600 hover:bg-sky-600/90"
-        onClick={toggleQueue}
-        title={isQueued ? "Queued — click to remove" : "Add to queue"}
-        label={isQueued ? "Queued" : "Add to queue"}
-      >
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="h-4 w-4"
-          aria-hidden
+          <svg
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            className="h-4 w-4"
+            aria-hidden
+          >
+            <title>Like</title>
+            <path d="M9 21h8a2 2 0 0 0 2-1.6l1-5A2 2 0 0 0 18 12h-5l.7-3.3A2 2 0 0 0 11.8 6L9 9v12ZM4 10h3v11H4z" />
+          </svg>
+        </OverlayButton>
+        <OverlayButton
+          active={disliked}
+          activeClassName="border-violet-400/40 bg-violet-600 hover:bg-violet-600/90"
+          onClick={(e) => toggleReaction(e, "dislike")}
+          title="Dislike"
+          label={disliked ? "Disliked" : "Dislike"}
         >
-          <title>Queue</title>
-          <path
-            d={
-              isQueued
-                ? "M4 6h11M4 12h11M4 18h7M15 18l2 2 4-4"
-                : "M4 6h11M4 12h11M4 18h7M17 15v6M20 18h-6"
-            }
-          />
-        </svg>
-      </OverlayButton>
-      <OverlayButton
-        active={liked}
-        activeClassName="border-rose-400/40 bg-rose-600 hover:bg-rose-600/90"
-        onClick={(e) => toggleReaction(e, "like")}
-        title="Like"
-        label={liked ? "Liked" : "Like"}
-      >
-        <svg
-          viewBox="0 0 24 24"
-          fill="currentColor"
-          className="h-4 w-4"
-          aria-hidden
+          <svg
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            className="h-4 w-4"
+            aria-hidden
+          >
+            <title>Dislike</title>
+            <path d="M15 3H7a2 2 0 0 0-2 1.6l-1 5A2 2 0 0 0 6 12h5l-.7 3.3A2 2 0 0 0 12.2 18L15 15V3Zm5 1h-3v11h3z" />
+          </svg>
+        </OverlayButton>
+        <OverlayButton
+          disabled={watched || markWatched.isPending}
+          onClick={onMarkWatched}
+          title="Mark as watched"
+          label={watched ? "Watched" : "Mark as watched"}
         >
-          <title>Like</title>
-          <path d="M9 21h8a2 2 0 0 0 2-1.6l1-5A2 2 0 0 0 18 12h-5l.7-3.3A2 2 0 0 0 11.8 6L9 9v12ZM4 10h3v11H4z" />
-        </svg>
-      </OverlayButton>
-      <OverlayButton
-        active={disliked}
-        activeClassName="border-violet-400/40 bg-violet-600 hover:bg-violet-600/90"
-        onClick={(e) => toggleReaction(e, "dislike")}
-        title="Dislike"
-        label={disliked ? "Disliked" : "Dislike"}
-      >
-        <svg
-          viewBox="0 0 24 24"
-          fill="currentColor"
-          className="h-4 w-4"
-          aria-hidden
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="h-4 w-4"
+            aria-hidden
+          >
+            <title>Mark as watched</title>
+            <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" />
+            <circle cx="12" cy="12" r="2.5" />
+          </svg>
+        </OverlayButton>
+        <OverlayButton
+          onClick={(e) => {
+            stop(e);
+            ignore(videoId, channelId);
+          }}
+          title="Ignore (hide from feeds)"
+          label="Ignore this video"
         >
-          <title>Dislike</title>
-          <path d="M15 3H7a2 2 0 0 0-2 1.6l-1 5A2 2 0 0 0 6 12h5l-.7 3.3A2 2 0 0 0 12.2 18L15 15V3Zm5 1h-3v11h3z" />
-        </svg>
-      </OverlayButton>
-      <OverlayButton
-        disabled={watched || markWatched.isPending}
-        onClick={onMarkWatched}
-        title="Mark as watched"
-        label={watched ? "Watched" : "Mark as watched"}
-      >
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="h-4 w-4"
-          aria-hidden
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="h-4 w-4"
+            aria-hidden
+          >
+            <title>Ignore</title>
+            <circle cx="12" cy="12" r="9" />
+            <path d="M5.6 5.6l12.8 12.8" />
+          </svg>
+        </OverlayButton>
+      </div>
+      <div className="flex gap-1">
+        <OverlayButton
+          active={isSaved}
+          persistWhenActive
+          activeClassName="border-emerald-400/40 bg-emerald-600 hover:bg-emerald-600/90"
+          onClick={toggleSave}
+          title={isSaved ? "Saved — click to remove" : "Save"}
+          label={isSaved ? "Saved" : "Save"}
         >
-          <title>Mark as watched</title>
-          <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" />
-          <circle cx="12" cy="12" r="2.5" />
-        </svg>
-      </OverlayButton>
-      <OverlayButton
-        onClick={(e) => {
-          stop(e);
-          ignore(videoId, channelId);
-        }}
-        title="Ignore (hide from feeds)"
-        label="Ignore this video"
-      >
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="h-4 w-4"
-          aria-hidden
+          <svg
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            className="h-4 w-4"
+            aria-hidden
+          >
+            <title>Save</title>
+            <path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z" />
+          </svg>
+        </OverlayButton>
+        <OverlayButton
+          active={isQueued}
+          persistWhenActive
+          activeClassName="border-sky-400/40 bg-sky-600 hover:bg-sky-600/90"
+          onClick={toggleQueue}
+          title={isQueued ? "Queued — click to remove" : "Add to queue"}
+          label={isQueued ? "Queued" : "Add to queue"}
         >
-          <title>Ignore</title>
-          <circle cx="12" cy="12" r="9" />
-          <path d="M5.6 5.6l12.8 12.8" />
-        </svg>
-      </OverlayButton>
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="h-4 w-4"
+            aria-hidden
+          >
+            <title>Queue</title>
+            <path
+              d={
+                isQueued
+                  ? "M4 6h11M4 12h11M4 18h7M15 18l2 2 4-4"
+                  : "M4 6h11M4 12h11M4 18h7M17 15v6M20 18h-6"
+              }
+            />
+          </svg>
+        </OverlayButton>
+      </div>
     </div>
   );
 }

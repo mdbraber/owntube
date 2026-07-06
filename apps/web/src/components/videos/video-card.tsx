@@ -94,7 +94,7 @@ export function VideoCard({
             videoId={videoId}
             title={title}
             channelId={channelId}
-            className="absolute left-2 top-2 z-20 flex max-w-[calc(100%-1rem)] flex-wrap gap-1"
+            className="absolute inset-x-2 top-2 z-20 flex items-start justify-between gap-1"
           />
         </div>
       ) : (
@@ -132,7 +132,7 @@ export function VideoCard({
               videoId={videoId}
               title={title}
               channelId={channelId}
-              className="absolute left-2 top-2 z-20 flex max-w-[calc(100%-1rem)] flex-wrap gap-1"
+              className="absolute inset-x-2 top-2 z-20 flex items-start justify-between gap-1"
             />
           </div>
         </Link>
@@ -314,7 +314,7 @@ export function VideoCardShort({
           videoId={videoId}
           title={title}
           channelId={channelId}
-          className="absolute left-1.5 top-1.5 z-20 flex max-w-[calc(100%-0.75rem)] flex-wrap gap-1"
+          className="absolute inset-x-1.5 top-1.5 z-20 flex items-start justify-between gap-1"
         />
       </div>
       <div className="px-0.5">
@@ -457,7 +457,7 @@ export function VideoCardCompact({
               videoId={videoId}
               title={title}
               channelId={channelId}
-              className="absolute left-1.5 top-1.5 z-20 flex max-w-[calc(100%-0.75rem)] flex-wrap gap-1"
+              className="absolute inset-x-1.5 top-1.5 z-20 flex items-start justify-between gap-1"
             />
           </div>
         </Link>
