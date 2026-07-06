@@ -1,5 +1,6 @@
 import { unstable_noStore as noStore } from "next/cache";
 import { ChannelSubscribeButton } from "@/components/channel/channel-subscribe-button";
+import { ChannelTags } from "@/components/channel/channel-tags";
 import { ChannelVideosSection } from "@/components/channel/channel-videos-section";
 import { ChannelAvatarCircle } from "@/components/videos/channel-avatar-circle";
 import { formatSubscribersLabel } from "@/lib/video-display";
@@ -58,13 +59,14 @@ export default async function ChannelPage({ params }: ChannelPageProps) {
                     {channelName}
                   </h1>
                 </div>
-                {subscribersLabel ? (
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-white/85 sm:text-sm">
-                    <span className="rounded-full border border-white/20 bg-black/30 px-2.5 py-1">
+                <div className="flex flex-wrap items-center gap-2 text-xs text-white/85 sm:text-sm">
+                  {subscribersLabel ? (
+                    <span className="inline-flex items-center rounded-full border border-white/20 bg-black/30 px-2.5 py-1">
                       {subscribersLabel}
                     </span>
-                  </div>
-                ) : null}
+                  ) : null}
+                  <ChannelTags channelId={page.channelId} isAuthed={isAuthed} />
+                </div>
               </div>
               <div className="shrink-0">
                 <ChannelSubscribeButton
