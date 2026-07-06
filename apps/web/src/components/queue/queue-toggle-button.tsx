@@ -122,7 +122,7 @@ export function QueueToggleButton({
           toggle();
         }}
       >
-        {queued ? "Unqueue" : "Queue"}
+        {queued ? "Queued" : "Queue"}
       </Button>
     );
   }
@@ -152,7 +152,7 @@ export function QueueToggleButton({
       >
         {queued ? <QueuedIcon /> : <QueueIcon />}
       </span>
-      <span>{queued ? "Unqueue" : "Queue"}</span>
+      <span>{queued ? "Queued" : "Queue"}</span>
     </Button>
   );
 }
