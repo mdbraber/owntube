@@ -36,11 +36,11 @@ export function WatchTracker({
   mutateRef.current = mutate;
   const onWatchedRef = useRef(onWatched);
   onWatchedRef.current = onWatched;
-  const invalidateContinueRef = useRef(() => {
-    void utils.history.continueWatching.invalidate();
+  const invalidateHistoryRef = useRef(() => {
+    void utils.history.list.invalidate();
   });
-  invalidateContinueRef.current = () => {
-    void utils.history.continueWatching.invalidate();
+  invalidateHistoryRef.current = () => {
+    void utils.history.list.invalidate();
   };
 
   useEffect(() => {
@@ -115,7 +115,7 @@ export function WatchTracker({
       m(buildEvent(), {
         onSuccess: () => {
           onWatchedRef.current?.(videoId);
-          invalidateContinueRef.current();
+          invalidateHistoryRef.current();
         },
       });
     };

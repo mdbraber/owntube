@@ -1,10 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { LibraryVideoRow } from "@/components/library/library-video-row";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { VideoThumbnailImg } from "@/components/videos/video-thumbnail-img";
 import { formatDuration } from "@/lib/video-display";
 import { trpc } from "@/trpc/react";
 
@@ -14,6 +13,7 @@ type HistoryItem = {
   channelId: string;
   startedAt: number;
   durationWatched: number;
+  videoDurationSeconds: number;
   completed: number;
   videoTitle?: string;
   thumbnailUrl?: string;
@@ -30,6 +30,7 @@ export function HistoryList({ initialItems }: HistoryListProps) {
   const utils = trpc.useUtils();
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [hideWatched, setHideWatched] = useState(false);
   const [page, setPage] = useState(1);
   const [items, setItems] = useState<HistoryItem[]>(initialItems);
   const appliedQueryRef = useRef("");
@@ -51,6 +52,7 @@ export function HistoryList({ initialItems }: HistoryListProps) {
       page,
       pageSize: PAGE_SIZE,
       q: debouncedQuery || undefined,
+      hideWatched,
     },
     {
       placeholderData: (prev) => prev,
@@ -73,6 +75,12 @@ export function HistoryList({ initialItems }: HistoryListProps) {
     },
   });
 
+  const toggleHideWatched = (next: boolean) => {
+    setHideWatched(next);
+    setPage(1);
+    setItems([]);
+  };
+
   const hasMore = (listQuery.data?.length ?? 0) >= PAGE_SIZE;
   const isSearching = debouncedQuery.length > 0;
   const title = useMemo(() => {
@@ -84,13 +92,24 @@ export function HistoryList({ initialItems }: HistoryListProps) {
     <section className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
-        <Input
-          value={query}
-          onChange={(e) => setQuery(e.currentTarget.value)}
-          placeholder="Search by title or channel"
-          className="sm:w-80"
-          aria-label="Search history"
-        />
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <label className="flex cursor-pointer select-none items-center gap-2 text-sm text-[hsl(var(--muted-foreground))]">
+            <input
+              type="checkbox"
+              checked={hideWatched}
+              onChange={(e) => toggleHideWatched(e.currentTarget.checked)}
+              className="h-4 w-4 accent-[hsl(var(--primary))]"
+            />
+            Hide watched videos
+          </label>
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.currentTarget.value)}
+            placeholder="Search by title or channel"
+            className="sm:w-80"
+            aria-label="Search history"
+          />
+        </div>
       </div>
 
       {items.length === 0 && listQuery.isFetching ? (
@@ -99,52 +118,43 @@ export function HistoryList({ initialItems }: HistoryListProps) {
 
       {items.length === 0 && !listQuery.isFetching ? (
         <p className="rounded-[var(--radius-card)] border border-dashed border-[hsl(var(--border))] bg-[hsl(var(--muted)_/_0.35)] py-10 text-center text-sm text-[hsl(var(--muted-foreground))]">
-          {isSearching ? "No matches in history." : "No history yet."}
+          {isSearching
+            ? "No matches in history."
+            : hideWatched
+              ? "No unwatched videos in history."
+              : "No history yet."}
         </p>
       ) : null}
 
       <ul className="space-y-3">
         {items.map((item) => (
-          <li key={item.id} className="rounded-lg border p-3">
-            <div className="flex items-start gap-3">
-              <Link
-                href={`/watch/${encodeURIComponent(item.videoId)}`}
-                className="block shrink-0"
-              >
-                <div className="relative aspect-video w-44 overflow-hidden rounded-lg bg-[hsl(var(--muted))]">
-                  {item.thumbnailUrl ? (
-                    <VideoThumbnailImg
-                      url={item.thumbnailUrl}
-                      videoId={item.videoId}
-                      className="h-full w-full object-cover"
-                      loading="lazy"
-                    />
-                  ) : null}
-                </div>
-              </Link>
-              <div className="min-w-0 flex-1 space-y-1">
-                <Link
-                  href={`/watch/${encodeURIComponent(item.videoId)}`}
-                  className="line-clamp-2 font-medium hover:underline"
-                >
-                  {item.videoTitle ?? item.videoId}
-                </Link>
-                <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                  <Link
-                    href={`/channel/${encodeURIComponent(item.channelId)}`}
-                    className="hover:underline"
-                  >
-                    {item.channelName ?? item.channelId}
-                  </Link>
-                  {" · "}Watched:{" "}
-                  {formatDuration(item.durationWatched) ?? "0:00"}
-                  {item.completed ? " · Completed" : ""}
-                </p>
-                <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                  {new Date(item.startedAt * 1000).toLocaleString()}
-                </p>
-              </div>
-              <div className="shrink-0">
+          <li key={item.id}>
+            <LibraryVideoRow
+              videoId={item.videoId}
+              title={item.videoTitle ?? item.videoId}
+              channelId={item.channelId}
+              channelName={item.channelName}
+              thumbnailUrl={item.thumbnailUrl}
+              progress={
+                item.videoDurationSeconds > 0
+                  ? item.durationWatched / item.videoDurationSeconds
+                  : undefined
+              }
+              meta={
+                <>
+                  <span>
+                    Watched: {formatDuration(item.durationWatched) ?? "0:00"}
+                    {item.videoDurationSeconds > 0
+                      ? ` / ${formatDuration(item.videoDurationSeconds)}`
+                      : ""}
+                    {item.completed ? " · Completed" : ""}
+                  </span>
+                  <span className="mt-0.5 block">
+                    {new Date(item.startedAt * 1000).toLocaleString()}
+                  </span>
+                </>
+              }
+              trailing={
                 <Button
                   variant="outline"
                   onClick={() => deleteMutation.mutate({ id: item.id })}
@@ -152,8 +162,8 @@ export function HistoryList({ initialItems }: HistoryListProps) {
                 >
                   Remove
                 </Button>
-              </div>
-            </div>
+              }
+            />
           </li>
         ))}
       </ul>

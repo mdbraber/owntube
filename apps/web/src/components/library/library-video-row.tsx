@@ -10,11 +10,9 @@ type LibraryVideoRowProps = {
   channelId?: string | null;
   channelName?: string | null;
   thumbnailUrl?: string | null;
-  /** Link target for the thumbnail/title; defaults to the watch page. */
-  href?: string;
   /** Extra metadata line under the channel (e.g. position, saved date). */
   meta?: ReactNode;
-  /** Progress fraction 0–1; renders a resume bar across the thumbnail bottom. */
+  /** Progress fraction 0–1; renders a watch-progress bar across the thumbnail bottom. */
   progress?: number;
   /** Leading control, e.g. a drag handle. */
   leading?: ReactNode;
@@ -33,13 +31,12 @@ export function LibraryVideoRow({
   channelId,
   channelName,
   thumbnailUrl,
-  href,
   meta,
   progress,
   leading,
   trailing,
 }: LibraryVideoRowProps) {
-  const target = href ?? `/watch/${encodeURIComponent(videoId)}`;
+  const target = `/watch/${encodeURIComponent(videoId)}`;
   const pct =
     typeof progress === "number"
       ? Math.max(0, Math.min(100, Math.round(progress * 100)))

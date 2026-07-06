@@ -127,13 +127,13 @@ describe("historyRouter", () => {
     sqlite.close();
   });
 
-  it("continueWatching returns partially-watched videos and excludes completed", async () => {
+  it("hideWatched excludes completed videos and exposes progress fields", async () => {
     const { db, sqlite } = createTestDb();
     const now = Math.floor(Date.now() / 1000);
     const user = db
       .insert(users)
       .values({
-        email: "history-continue@example.com",
+        email: "history-hide@example.com",
         passwordHash: "x",
         createdAt: now,
         updatedAt: now,
@@ -142,7 +142,6 @@ describe("historyRouter", () => {
       .get();
 
     const caller = appRouter.createCaller({ db, userId: user.id });
-    // Partially watched — should resume.
     await caller.history.upsertEvent({
       videoId: "partialVid0",
       channelId: "UC1",
@@ -152,7 +151,6 @@ describe("historyRouter", () => {
       videoTitle: "Half Watched",
       channelName: "Chan",
     });
-    // Completed — should be excluded.
     await caller.history.upsertEvent({
       videoId: "doneVideo00",
       channelId: "UC1",
@@ -162,21 +160,20 @@ describe("historyRouter", () => {
       videoTitle: "Finished",
       channelName: "Chan",
     });
-    // Barely started — below the resume threshold, excluded.
-    await caller.history.upsertEvent({
-      videoId: "glanceVid00",
-      channelId: "UC1",
-      durationWatched: 5,
-      completed: false,
-      videoDurationSeconds: 600,
-      videoTitle: "Glanced",
-      channelName: "Chan",
-    });
 
-    const resume = await caller.history.continueWatching({ limit: 10 });
-    expect(resume).toHaveLength(1);
-    expect(resume[0]?.videoId).toBe("partialVid0");
-    expect(resume[0]?.href).toBe("/watch/partialVid0?t=100");
+    const all = await caller.history.list({ page: 1, pageSize: 20 });
+    expect(all).toHaveLength(2);
+    const partial = all.find((r) => r.videoId === "partialVid0");
+    expect(partial?.videoDurationSeconds).toBe(600);
+    expect(partial?.durationWatched).toBe(100);
+
+    const unwatched = await caller.history.list({
+      page: 1,
+      pageSize: 20,
+      hideWatched: true,
+    });
+    expect(unwatched).toHaveLength(1);
+    expect(unwatched[0]?.videoId).toBe("partialVid0");
     sqlite.close();
   });
 
