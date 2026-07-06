@@ -256,6 +256,7 @@ function VodVidstackBlock(props: VidstackBlockProps) {
     shortsMode = false,
     miniMode = false,
     miniStartPaused = false,
+    autoplay = false,
   } = props;
   const miniShouldAutoplay = miniMode && !miniStartPaused;
   const playerRef = useRef<MediaPlayerElement | null>(null);
@@ -313,7 +314,7 @@ function VodVidstackBlock(props: VidstackBlockProps) {
         load="eager"
         preferNativeHLS={false}
         playsInline
-        autoPlay={shortsMode || miniShouldAutoplay}
+        autoPlay={shortsMode || miniShouldAutoplay || autoplay}
         muted={shortsMode}
         onProviderChange={(event: CustomEvent<MediaProvider | null>) =>
           applyHlsSameOriginToVidstackProvider(event.detail)

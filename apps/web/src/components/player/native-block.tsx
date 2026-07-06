@@ -48,6 +48,7 @@ export function NativeMuxedBlock({
   miniMode = false,
   shortsMode = false,
   miniStartPaused = false,
+  autoplay = false,
   restoredVolume,
   restoredMuted,
   scrubPreview,
@@ -79,6 +80,7 @@ export function NativeMuxedBlock({
   miniMode?: boolean;
   shortsMode?: boolean;
   miniStartPaused?: boolean;
+  autoplay?: boolean;
   restoredVolume?: number;
   restoredMuted?: boolean;
   scrubPreview?: ScrubPreviewConfig | null;
@@ -165,7 +167,7 @@ export function NativeMuxedBlock({
         poster={poster}
         playsInline
         preload="auto"
-        autoPlay={shortsMode || miniShouldAutoplay}
+        autoPlay={shortsMode || miniShouldAutoplay || autoplay}
         muted={shortsMode}
         onError={emitPlaybackError}
         onEnded={onEnded}

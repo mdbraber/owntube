@@ -306,6 +306,7 @@ export default async function WatchPage({
                 defaultPlaybackQuality={
                   userSettings?.defaultPlaybackQuality ?? "1080p"
                 }
+                autoplayOnWatch={userSettings?.autoplayOnWatch ?? true}
                 sponsorBlockPrefs={
                   userSettings && !isLive
                     ? sponsorBlockPrefsFromAppSettings(userSettings)

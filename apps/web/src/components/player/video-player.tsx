@@ -82,6 +82,8 @@ type VideoPlayerProps = {
   restoredMuted?: boolean;
   /** Mini player: do not autoplay (user left watch while paused). */
   miniStartPaused?: boolean;
+  /** Start playing as soon as the watch page loads (user setting). */
+  autoplayOnWatch?: boolean;
   /** Server-backed SponsorBlock prefs (watch page); falls back to localStorage. */
   sponsorBlockPrefs?: SponsorBlockPrefs;
   /** Active live HLS broadcast — live chrome, no SponsorBlock/scrub preview. */
@@ -112,11 +114,15 @@ export function VideoPlayer({
   restoredVolume,
   restoredMuted,
   miniStartPaused = false,
+  autoplayOnWatch = false,
   sponsorBlockPrefs: sponsorBlockPrefsProp,
   isLive = false,
   playbackSourceUsed,
 }: VideoPlayerProps) {
   const playerMediaRootRef = useRef<HTMLDivElement>(null);
+  // Autoplay on the full watch page only (never in the mini player or Shorts,
+  // which have their own autoplay semantics).
+  const watchAutoplay = autoplayOnWatch && !miniMode && !shortsMode;
   const scrubFrames = useScrubFramePreview({
     videoId,
     durationSeconds: isLive ? undefined : durationSeconds,
@@ -258,11 +264,11 @@ export function VideoPlayer({
     if (nextCountdown <= 0) {
       if (nextUp && autoplayNext) {
         writeWatchQueue(queue.slice(1));
-      window.dispatchEvent(
-        new CustomEvent("ot:queue-consume", {
-          detail: { videoId: nextUp.href.split("/watch/")[1]?.split("?")[0] },
-        }),
-      );
+        window.dispatchEvent(
+          new CustomEvent("ot:queue-consume", {
+            detail: { videoId: nextUp.href.split("/watch/")[1]?.split("?")[0] },
+          }),
+        );
         router.push(nextUp.href);
       }
       setNextCountdown(null);
@@ -425,11 +431,11 @@ export function VideoPlayer({
   const playNextNow = useCallback(() => {
     if (!nextUp) return;
     writeWatchQueue(queue.slice(1));
-      window.dispatchEvent(
-        new CustomEvent("ot:queue-consume", {
-          detail: { videoId: nextUp.href.split("/watch/")[1]?.split("?")[0] },
-        }),
-      );
+    window.dispatchEvent(
+      new CustomEvent("ot:queue-consume", {
+        detail: { videoId: nextUp.href.split("/watch/")[1]?.split("?")[0] },
+      }),
+    );
     router.push(nextUp.href);
   }, [nextUp, router, queue]);
 
@@ -573,6 +579,7 @@ export function VideoPlayer({
             miniMode={miniMode}
             shortsMode={shortsMode}
             miniStartPaused={miniStartPaused}
+            autoplay={watchAutoplay}
             restoredVolume={restoredVolume}
             restoredMuted={restoredMuted}
             onVideoIntrinsics={onVideoIntrinsics}

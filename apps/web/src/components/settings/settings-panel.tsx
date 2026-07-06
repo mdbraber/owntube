@@ -181,6 +181,9 @@ export function SettingsPanel({
   const [enableMiniPlayer, setEnableMiniPlayer] = useState(
     initial.enableMiniPlayer ?? true,
   );
+  const [autoplayOnWatch, setAutoplayOnWatch] = useState(
+    initial.autoplayOnWatch ?? true,
+  );
   const [defaultPlaybackQuality, setDefaultPlaybackQuality] =
     useState<DefaultPlaybackQuality>(initial.defaultPlaybackQuality ?? "1080p");
   const [enableSwipeGestures, setEnableSwipeGestures] = useState(
@@ -244,6 +247,10 @@ export function SettingsPanel({
     setEnableMiniPlayer(initial.enableMiniPlayer ?? true);
     writeWatchMiniEnabled(initial.enableMiniPlayer ?? true);
   }, [initial.enableMiniPlayer]);
+
+  useEffect(() => {
+    setAutoplayOnWatch(initial.autoplayOnWatch ?? true);
+  }, [initial.autoplayOnWatch]);
 
   useEffect(() => {
     const q = initial.defaultPlaybackQuality ?? "1080p";
@@ -392,6 +399,7 @@ export function SettingsPanel({
       hideShortsInSubscriptions,
       defaultCinemaMode,
       enableMiniPlayer,
+      autoplayOnWatch,
       defaultPlaybackQuality,
       sponsorBlockEnabled,
       sponsorBlockAutoSkip,
@@ -639,6 +647,14 @@ export function SettingsPanel({
               onChange={(e) => setEnableMiniPlayer(e.currentTarget.checked)}
             />
             Keep mini-player when leaving watch page
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={autoplayOnWatch}
+              onChange={(e) => setAutoplayOnWatch(e.currentTarget.checked)}
+            />
+            Autoplay videos when opening the watch page
           </label>
           <div className="max-w-md space-y-1 pt-1">
             <label

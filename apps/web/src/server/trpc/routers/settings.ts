@@ -41,6 +41,7 @@ const settingsPatchSchema = z.object({
   hideShortsInSubscriptions: z.boolean().optional(),
   defaultCinemaMode: z.boolean().optional(),
   enableMiniPlayer: z.boolean().optional(),
+  autoplayOnWatch: z.boolean().optional(),
   defaultPlaybackQuality: defaultPlaybackQualitySchema.optional(),
   sponsorBlockEnabled: z.boolean().optional(),
   sponsorBlockAutoSkip: z.boolean().optional(),

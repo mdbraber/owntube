@@ -87,6 +87,8 @@ export type VidstackBlockProps = SponsorBlockChromeProps & {
   miniMode?: boolean;
   shortsMode?: boolean;
   miniStartPaused?: boolean;
+  /** Autoplay on the full watch page (user setting). */
+  autoplay?: boolean;
   restoredVolume?: number;
   restoredMuted?: boolean;
   onVideoIntrinsics?: (width: number, height: number) => void;
