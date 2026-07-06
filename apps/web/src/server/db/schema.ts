@@ -96,6 +96,27 @@ export const subscriptions = sqliteTable(
   ],
 );
 
+export const channelTags = sqliteTable(
+  "channel_tags",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    channelId: text("channel_id").notNull(),
+    tag: text("tag").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("channel_tags_user_channel_tag_uidx").on(
+      t.userId,
+      t.channelId,
+      t.tag,
+    ),
+    index("channel_tags_user_tag_idx").on(t.userId, t.tag),
+  ],
+);
+
 export const channelMeta = sqliteTable(
   "channel_meta",
   {

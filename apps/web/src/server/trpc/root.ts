@@ -1,6 +1,7 @@
 import { router } from "@/server/trpc/init";
 import { authRouter } from "@/server/trpc/routers/auth";
 import { channelRouter } from "@/server/trpc/routers/channel";
+import { channelTagsRouter } from "@/server/trpc/routers/channel-tags";
 import { feedRouter } from "@/server/trpc/routers/feed";
 import { historyRouter } from "@/server/trpc/routers/history";
 import { interactionsRouter } from "@/server/trpc/routers/interactions";
@@ -20,6 +21,7 @@ import { videoRouter } from "@/server/trpc/routers/video";
 export const appRouter = router({
   auth: authRouter,
   channel: channelRouter,
+  channelTags: channelTagsRouter,
   feed: feedRouter,
   history: historyRouter,
   interactions: interactionsRouter,
