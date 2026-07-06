@@ -1,10 +1,33 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  SubscriptionTagFilter,
+  type TagState,
+} from "@/components/subscriptions/subscription-tag-filter";
 import { RefreshControl } from "@/components/ui/refresh-control";
 import { useIgnoredVideos } from "@/components/videos/ignored-videos-context";
 import { VideoGrid } from "@/components/videos/video-grid";
+import { normalizeChannelTag } from "@/lib/channel-tag";
 import { trpc } from "@/trpc/react";
+
+const TAG_FILTER_STORAGE_KEY = "ot:sub-tag-filter";
+
+function readStoredTagStates(): Record<string, TagState> {
+  try {
+    const raw = localStorage.getItem(TAG_FILTER_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, TagState>;
+    const out: Record<string, TagState> = {};
+    for (const [tag, state] of Object.entries(parsed)) {
+      if (state === "include" || state === "exclude") out[tag] = state;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
 
 /** Pixels the user must pull past (at the top of the page) to trigger a refresh. */
 const PULL_THRESHOLD = 64;
@@ -17,8 +40,70 @@ export function SubscriptionVideosInfinite() {
   const { sessionIgnored } = useIgnoredVideos();
   const refreshTokenRef = useRef<number>(Date.now());
   const utils = trpc.useUtils();
+  const searchParams = useSearchParams();
+
+  // ── Tag filter ──────────────────────────────────────────────────────────────
+  const allTagsQuery = trpc.channelTags.listAll.useQuery(undefined, {
+    staleTime: 5 * 60_000,
+  });
+  const [tagStates, setTagStates] = useState<Record<string, TagState>>({});
+  const [tagHydrated, setTagHydrated] = useState(false);
+  // A `?tag=` link (from a channel page) presets "only this tag"; otherwise
+  // restore the persisted filter. Done in an effect to avoid SSR hydration drift.
+  useEffect(() => {
+    const paramTag = normalizeChannelTag(searchParams.get("tag") ?? "");
+    setTagStates(paramTag ? { [paramTag]: "include" } : readStoredTagStates());
+    setTagHydrated(true);
+  }, [searchParams]);
+  useEffect(() => {
+    if (!tagHydrated) return;
+    try {
+      localStorage.setItem(TAG_FILTER_STORAGE_KEY, JSON.stringify(tagStates));
+    } catch {
+      // ignore storage failures (private mode, quota)
+    }
+  }, [tagStates, tagHydrated]);
+
+  const includeTags = useMemo(
+    () =>
+      Object.entries(tagStates)
+        .filter(([, s]) => s === "include")
+        .map(([t]) => t),
+    [tagStates],
+  );
+  const excludeTags = useMemo(
+    () =>
+      Object.entries(tagStates)
+        .filter(([, s]) => s === "exclude")
+        .map(([t]) => t),
+    [tagStates],
+  );
+  const filterActive = includeTags.length > 0 || excludeTags.length > 0;
+
+  const cycleTag = useCallback((tag: string) => {
+    setTagStates((prev) => {
+      const cur = prev[tag] ?? "off";
+      const next: TagState =
+        cur === "off" ? "include" : cur === "include" ? "exclude" : "off";
+      const copy = { ...prev };
+      if (next === "off") delete copy[tag];
+      else copy[tag] = next;
+      return copy;
+    });
+  }, []);
+  const showAllTags = useCallback(() => setTagStates({}), []);
+  const hideAllTags = useCallback(() => {
+    const all = allTagsQuery.data ?? [];
+    setTagStates(Object.fromEntries(all.map((t) => [t.tag, "exclude"])));
+  }, [allTagsQuery.data]);
+
   const query = trpc.subscriptions.mergedFeedInfinite.useInfiniteQuery(
-    { limit: 24, refreshToken: refreshTokenRef.current },
+    {
+      limit: 24,
+      refreshToken: refreshTokenRef.current,
+      includeTags: includeTags.length > 0 ? includeTags : undefined,
+      excludeTags: excludeTags.length > 0 ? excludeTags : undefined,
+    },
     {
       getNextPageParam: (last) => last.nextCursor ?? undefined,
       initialCursor: null,
@@ -143,15 +228,30 @@ export function SubscriptionVideosInfinite() {
         ) : null}
       </div>
 
-      <div className="flex justify-end">
-        <RefreshControl
-          isRefreshing={isRefreshing}
-          onRefresh={doRefresh}
-          refreshedAt={refreshedAt}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <SubscriptionTagFilter
+          tags={allTagsQuery.data ?? []}
+          stateFor={(tag) => tagStates[tag] ?? "off"}
+          onCycle={cycleTag}
+          onShowAll={showAllTags}
+          onHideAll={hideAllTags}
         />
+        <div className="ml-auto">
+          <RefreshControl
+            isRefreshing={isRefreshing}
+            onRefresh={doRefresh}
+            refreshedAt={refreshedAt}
+          />
+        </div>
       </div>
 
-      <VideoGrid videos={videos} size="large" enableSwipe />
+      {videos.length === 0 && filterActive ? (
+        <p className="rounded-[var(--radius-card)] border border-dashed border-[hsl(var(--border))] bg-[hsl(var(--muted)_/_0.35)] py-10 text-center text-sm text-[hsl(var(--muted-foreground))]">
+          No videos match the current tag filter.
+        </p>
+      ) : (
+        <VideoGrid videos={videos} size="large" enableSwipe />
+      )}
       {query.hasNextPage ? (
         <div ref={sentinelRef} className="h-1 w-full shrink-0" aria-hidden />
       ) : null}

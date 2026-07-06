@@ -19,7 +19,13 @@ import {
   refreshChannelMetaIfStale,
 } from "@/server/channel-meta/store";
 import type { AppDb } from "@/server/db/client";
-import { interactions, subscriptions, watchHistory } from "@/server/db/schema";
+import { normalizeChannelTag } from "@/lib/channel-tag";
+import {
+  channelTags,
+  interactions,
+  subscriptions,
+  watchHistory,
+} from "@/server/db/schema";
 import { RateLimitExceededError } from "@/server/errors/rate-limit-exceeded";
 import { UpstreamUnavailableError } from "@/server/errors/upstream-unavailable";
 import {
@@ -43,6 +49,65 @@ import {
 
 const channelIdSchema = z.string().min(1).max(128);
 const videoIdSchema = z.string().min(5).max(64);
+const tagFilterSchema = z.array(z.string().max(40)).max(64).optional();
+
+function normalizeTagList(raw: string[] | undefined): string[] {
+  if (!raw || raw.length === 0) return [];
+  const out = new Set<string>();
+  for (const t of raw) {
+    const norm = normalizeChannelTag(t);
+    if (norm) out.add(norm);
+  }
+  return [...out];
+}
+
+/**
+ * Filter a channel-id list by the user's local tags. A channel is kept when it
+ * has none of the excluded tags AND (no include tags are active OR it carries at
+ * least one). Untagged channels drop out as soon as any include tag is active.
+ */
+function filterChannelIdsByTags(
+  db: AppDb,
+  userId: number,
+  channelIds: string[],
+  includeTagsRaw: string[] | undefined,
+  excludeTagsRaw: string[] | undefined,
+): string[] {
+  const include = normalizeTagList(includeTagsRaw);
+  const exclude = normalizeTagList(excludeTagsRaw);
+  if (include.length === 0 && exclude.length === 0) return channelIds;
+
+  const wanted = [...new Set([...include, ...exclude])];
+  const rows = db
+    .select({ channelId: channelTags.channelId, tag: channelTags.tag })
+    .from(channelTags)
+    .where(and(eq(channelTags.userId, userId), inArray(channelTags.tag, wanted)))
+    .all();
+  const tagsByChannel = new Map<string, Set<string>>();
+  for (const r of rows) {
+    let set = tagsByChannel.get(r.channelId);
+    if (!set) {
+      set = new Set<string>();
+      tagsByChannel.set(r.channelId, set);
+    }
+    set.add(r.tag);
+  }
+
+  const includeSet = new Set(include);
+  const excludeSet = new Set(exclude);
+  return channelIds.filter((id) => {
+    const tags = tagsByChannel.get(id);
+    if (excludeSet.size > 0 && tags) {
+      for (const t of tags) if (excludeSet.has(t)) return false;
+    }
+    if (includeSet.size > 0) {
+      if (!tags) return false;
+      for (const t of tags) if (includeSet.has(t)) return true;
+      return false;
+    }
+    return true;
+  });
+}
 
 /** Avoid hundreds of parallel upstream calls (rate limit → names fall back to raw IDs). */
 const LIST_DETAILED_BATCH = 5;
@@ -976,6 +1041,8 @@ export const subscriptionsRouter = router({
         cursor: z.string().max(512).optional().nullable(),
         direction: z.enum(["forward", "backward"]).optional(),
         refreshToken: z.number().optional(),
+        includeTags: tagFilterSchema,
+        excludeTags: tagFilterSchema,
       }),
     )
     .query(async ({ ctx, input }) => {
@@ -992,7 +1059,15 @@ export const subscriptionsRouter = router({
         .orderBy(desc(subscriptions.subscribedAt))
         .all();
 
-      if (subs.length === 0) {
+      const channelIds = filterChannelIdsByTags(
+        ctx.db,
+        ctx.userId,
+        subs.map((s) => s.channelId),
+        input.includeTags,
+        input.excludeTags,
+      );
+
+      if (channelIds.length === 0) {
         return {
           videos: [] as UnifiedVideo[],
           nextCursor: null as string | null,
@@ -1001,7 +1076,7 @@ export const subscriptionsRouter = router({
 
       const { videos, exhausted } = await collectSortedFeedPage(
         ctx.db,
-        subs.map((s) => s.channelId),
+        channelIds,
         overrides,
         offset,
         limit,
