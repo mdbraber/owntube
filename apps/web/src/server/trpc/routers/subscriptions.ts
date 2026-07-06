@@ -732,6 +732,68 @@ export const subscriptionsRouter = router({
       return rows.slice(0, limit);
     }),
 
+  /**
+   * Backfill sidebar data that only the merged feed used to populate: each
+   * channel's newest-upload time (via cheap RSS) for ordering, and name/avatar
+   * for any channel that still lacks meta. Idempotent and self-throttling — once
+   * a channel has a recency it is skipped — so the sidebar can fire it on mount.
+   */
+  refreshRecency: protectedProcedure.mutation(async ({ ctx }) => {
+    reconcileSubscriptionChannelIdsForUser(ctx.db, ctx.userId);
+    const subs = ctx.db
+      .select({ channelId: subscriptions.channelId })
+      .from(subscriptions)
+      .where(eq(subscriptions.userId, ctx.userId))
+      .limit(2000)
+      .all();
+    const overrides = getUserProxyOverrides(ctx.db, ctx.userId);
+    const metaById = readChannelMetaByIds(
+      ctx.db,
+      subs.map((s) => s.channelId),
+    );
+    let updated = 0;
+
+    // 1. Channels with no meta at all → fetch name + avatar (channel page).
+    const missingMeta = subs
+      .filter((s) => !metaById.has(s.channelId))
+      .slice(0, 20);
+    for (let i = 0; i < missingMeta.length; i += LIST_DETAILED_BATCH) {
+      await Promise.all(
+        missingMeta.slice(i, i + LIST_DETAILED_BATCH).map((s) =>
+          refreshChannelMetaIfStale(ctx.db, s.channelId, overrides)
+            .then(() => {
+              updated++;
+            })
+            .catch(() => {}),
+        ),
+      );
+    }
+
+    // 2. Channels missing a newest-upload time → derive it from RSS (light,
+    // fetched in parallel like the merged-feed seed; capped for safety).
+    const needRecency = subs
+      .filter(
+        (s) => (metaById.get(s.channelId)?.latestVideoAt ?? null) === null,
+      )
+      .slice(0, RSS_SEED_MAX_CHANNELS);
+    const rss = await Promise.all(
+      needRecency.map((s) => fetchRssEntriesFromChannel(s.channelId)),
+    );
+    for (let j = 0; j < needRecency.length; j++) {
+      let newest = 0;
+      for (const e of rss[j] ?? []) {
+        if (typeof e.publishedAt === "number" && e.publishedAt > newest) {
+          newest = e.publishedAt;
+        }
+      }
+      if (newest > 0) {
+        touchChannelLatestVideoAt(ctx.db, needRecency[j].channelId, newest);
+        updated++;
+      }
+    }
+    return { updated };
+  }),
+
   status: publicProcedure
     .input(z.object({ channelId: channelIdSchema }))
     .query(async ({ ctx, input }) => {

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useRef } from "react";
 import { ChannelAvatarCircle } from "@/components/videos/channel-avatar-circle";
 import { trpc } from "@/trpc/react";
 
@@ -9,6 +10,7 @@ type Props = {
 };
 
 export function SidebarSubscriptions({ enabled }: Props) {
+  const utils = trpc.useUtils();
   const { data, isLoading } = trpc.subscriptions.listSidebar.useQuery(
     { limit: 24 },
     {
@@ -17,6 +19,20 @@ export function SidebarSubscriptions({ enabled }: Props) {
       refetchOnWindowFocus: false,
     },
   );
+
+  // Backfill newest-upload times (for ordering) and any missing names/avatars
+  // once per session; re-sort the list when it finishes. Idempotent server-side.
+  const refresh = trpc.subscriptions.refreshRecency.useMutation({
+    onSuccess: (res) => {
+      if (res.updated > 0) utils.subscriptions.listSidebar.invalidate();
+    },
+  });
+  const startedRef = useRef(false);
+  useEffect(() => {
+    if (!enabled || startedRef.current) return;
+    startedRef.current = true;
+    refresh.mutate();
+  }, [enabled, refresh]);
 
   if (!enabled) return null;
 
