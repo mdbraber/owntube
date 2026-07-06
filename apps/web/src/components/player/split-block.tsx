@@ -362,6 +362,33 @@ export function SplitBlock({
     restoredMuted,
   );
 
+  // Autoplay starts the muted video track, but the browser gates the separate
+  // (unmuted) companion audio behind a user gesture — so an autoplayed split
+  // stream plays silently until the viewer interacts. Resume the audio on the
+  // first interaction anywhere (what a manual pause/play does today), then
+  // detach. No-op once audio is already running or the user muted it.
+  useEffect(() => {
+    if (!autoplay || shortsMode || miniMode) return;
+    const unlock = () => {
+      const v = videoRef.current;
+      const a = audioRef.current;
+      if (v && a && !v.paused && a.paused && !adapter.muted) {
+        a.currentTime = v.currentTime;
+        void a.play().catch(() => {});
+      }
+      detach();
+    };
+    const detach = () => {
+      document.removeEventListener("pointerdown", unlock);
+      document.removeEventListener("keydown", unlock);
+      document.removeEventListener("touchstart", unlock);
+    };
+    document.addEventListener("pointerdown", unlock);
+    document.addEventListener("keydown", unlock);
+    document.addEventListener("touchstart", unlock);
+    return detach;
+  }, [autoplay, shortsMode, miniMode, adapter.muted]);
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: activeAudioSrc reapplies volume to a newly mounted companion audio element.
   useEffect(() => {
     const a = audioRef.current;
