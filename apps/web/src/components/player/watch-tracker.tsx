@@ -78,6 +78,15 @@ export function WatchTracker({
     const reportedDuration = isLive
       ? 0
       : Math.min(86_400, Math.max(0, Math.floor(durationSeconds || 0)));
+    /** Exact playback position from the main watch player, for accurate resume. */
+    const readPositionSeconds = (): number | undefined => {
+      if (isLive) return undefined;
+      const el = document.querySelector<HTMLVideoElement>(
+        "[data-ot-player-root] video",
+      );
+      if (!el || !Number.isFinite(el.currentTime)) return undefined;
+      return Math.min(86_400, Math.max(0, Math.floor(el.currentTime)));
+    };
     const buildEvent = () => {
       const event = computeWatchEvent(
         elapsedVisibleSeconds(),
@@ -90,6 +99,7 @@ export function WatchTracker({
         videoTitle,
         channelName,
         durationWatched: event.durationWatched,
+        positionSeconds: readPositionSeconds(),
         completed: event.completed,
         videoDurationSeconds: reportedDuration,
         isShort,
@@ -109,9 +119,24 @@ export function WatchTracker({
     const interval = window.setInterval(() => {
       m(buildEvent());
     }, 20_000);
+
+    // Capture the position promptly on the events most likely to precede losing
+    // it: pausing, and the tab being hidden or closed (pagehide). `pause` does
+    // not bubble, so listen in the capture phase and ignore companion <audio>.
+    const onMediaPause = (e: Event) => {
+      if ((e.target as HTMLElement | null)?.tagName === "VIDEO") {
+        m(buildEvent());
+      }
+    };
+    const onPageHide = () => m(buildEvent());
+    document.addEventListener("pause", onMediaPause, true);
+    window.addEventListener("pagehide", onPageHide);
+
     return () => {
       window.clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisibilityChange);
+      document.removeEventListener("pause", onMediaPause, true);
+      window.removeEventListener("pagehide", onPageHide);
       m(buildEvent(), {
         onSuccess: () => {
           onWatchedRef.current?.(videoId);

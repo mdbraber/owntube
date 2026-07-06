@@ -16,6 +16,13 @@ const historyEventInputSchema = z.object({
     .min(0)
     .max(60 * 60 * 24)
     .default(0),
+  /** Real playback position (video.currentTime) for resume; omitted/0 keeps the saved one. */
+  positionSeconds: z
+    .number()
+    .int()
+    .min(0)
+    .max(60 * 60 * 24)
+    .optional(),
   completed: z.boolean().default(false),
   /** Total video length; 0 = unknown. Rows with 0 are excluded from engagement-weighted signals. */
   videoDurationSeconds: z
@@ -74,11 +81,19 @@ export const historyRouter = router({
           input.durationWatched,
         );
         const completed = recent.completed || (input.completed ? 1 : 0);
+        // Position is the *latest* known playback point (unlike max-merged
+        // duration). A 0/absent value keeps the saved one so the mount-time
+        // event can't wipe a resume point before playback starts.
+        const positionSeconds =
+          input.positionSeconds && input.positionSeconds > 0
+            ? input.positionSeconds
+            : recent.positionSeconds;
         ctx.db
           .update(watchHistory)
           .set({
             startedAt: ts,
             durationWatched: duration,
+            positionSeconds,
             completed,
             videoDurationSeconds: Math.max(
               recent.videoDurationSeconds,
@@ -104,6 +119,7 @@ export const historyRouter = router({
           channelId: input.channelId,
           startedAt: ts,
           durationWatched: input.durationWatched,
+          positionSeconds: input.positionSeconds ?? 0,
           completed: input.completed ? 1 : 0,
           videoDurationSeconds: input.videoDurationSeconds,
           isDeleted: 0,

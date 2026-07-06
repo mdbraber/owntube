@@ -22,6 +22,7 @@ export function getWatchResumeSeconds(
   const row = db
     .select({
       durationWatched: watchHistory.durationWatched,
+      positionSeconds: watchHistory.positionSeconds,
       videoDurationSeconds: watchHistory.videoDurationSeconds,
       completed: watchHistory.completed,
     })
@@ -38,7 +39,10 @@ export function getWatchResumeSeconds(
     .all()[0];
 
   if (!row || row.completed) return null;
-  const watched = row.durationWatched;
+  // Prefer the exact playback position; fall back to recorded dwell for rows
+  // written before position tracking existed.
+  const watched =
+    row.positionSeconds > 0 ? row.positionSeconds : row.durationWatched;
   if (watched < MIN_RESUME_SECONDS) return null;
 
   const total =

@@ -29,6 +29,33 @@ describe("getWatchResumeSeconds", () => {
     sqlite.close();
   });
 
+  it("prefers the exact position over dwell, and a mount-time 0 does not wipe it", async () => {
+    const { db, sqlite } = createTestDb();
+    const userId = seedUser(db, "resume-position@example.com");
+    const caller = appRouter.createCaller({ db, userId });
+    // Real position (200) diverges from dwell (150) — e.g. user seeked forward.
+    await caller.history.upsertEvent({
+      videoId: "seekedVid00",
+      channelId: "UC1",
+      durationWatched: 150,
+      positionSeconds: 200,
+      completed: false,
+      videoDurationSeconds: 600,
+    });
+    expect(getWatchResumeSeconds(db, userId, "seekedVid00")).toBe(200);
+
+    // Reopening fires a mount event with no position; the saved 200 must remain.
+    await caller.history.upsertEvent({
+      videoId: "seekedVid00",
+      channelId: "UC1",
+      durationWatched: 0,
+      completed: false,
+      videoDurationSeconds: 600,
+    });
+    expect(getWatchResumeSeconds(db, userId, "seekedVid00")).toBe(200);
+    sqlite.close();
+  });
+
   it("returns null for unwatched, completed, barely-started, or near-finished", async () => {
     const { db, sqlite } = createTestDb();
     const userId = seedUser(db, "resume-null@example.com");

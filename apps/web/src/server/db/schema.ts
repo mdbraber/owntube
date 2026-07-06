@@ -34,6 +34,8 @@ export const watchHistory = sqliteTable(
     channelId: text("channel_id").notNull(),
     startedAt: integer("started_at").notNull(),
     durationWatched: integer("duration_watched").notNull().default(0),
+    /** Last real playback position (video.currentTime) for resume; 0 = unknown. */
+    positionSeconds: integer("position_seconds").notNull().default(0),
     completed: integer("completed").notNull().default(0),
     /** Total video length when the watch was recorded; 0 = unknown (pre-tracking rows, engagement signals ignore them). */
     videoDurationSeconds: integer("video_duration_seconds")
