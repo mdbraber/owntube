@@ -68,11 +68,22 @@ export function PlayerHost() {
   const miniWidthRef = useRef<number | null>(null);
   miniWidthRef.current = miniWidth;
   const resizeStart = useRef<{ x: number; width: number } | null>(null);
+  // Desktop-only: the inline watch player has scrolled mostly out of view, so
+  // it should float as a mini until it scrolls back in. Refs mirror the live
+  // values the scroll-driven measure() reads without re-subscribing.
+  const [slotOffscreen, setSlotOffscreen] = useState(false);
+  const offRef = useRef(false);
+  offRef.current = slotOffscreen;
+  const insetsRef = useRef({ top: 0, bottom: 0 });
 
   const isShorts = pathname === "/shorts" || pathname.startsWith("/shorts?");
   const onWatch = slotEl !== null;
   const canMini =
     active !== null && !onWatch && !isShorts && active.isAuthed && miniEnabled;
+  // Float the inline watch player once it scrolls off (desktop only).
+  const watchScrollMini =
+    active !== null && onWatch && !isMobile && miniEnabled && slotOffscreen;
+  const showMini = canMini || watchScrollMini;
 
   // Reflect the "keep mini-player" setting (localStorage, updated in Settings).
   useEffect(() => {
@@ -113,6 +124,7 @@ export function PlayerHost() {
           ? bottomNav.getBoundingClientRect().height
           : 0;
       setInsets({ top, bottom });
+      insetsRef.current = { top, bottom };
     };
     measure();
     window.addEventListener("resize", measure);
@@ -131,6 +143,7 @@ export function PlayerHost() {
   useIsoLayoutEffect(() => {
     if (!slotEl) {
       setRect(null);
+      setSlotOffscreen(false);
       return;
     }
     let raf = 0;
@@ -138,6 +151,16 @@ export function PlayerHost() {
       raf = 0;
       const r = slotEl.getBoundingClientRect();
       setRect({ left: r.left, top: r.top, width: r.width });
+      // Desktop PiP-on-scroll: float to mini once the inline player is mostly
+      // above the fold, and dock back once it's mostly visible again. The band
+      // between 40% and 60% visible is hysteresis so it can't flicker.
+      const topInset = insetsRef.current.top + MINI_GAP;
+      const h = r.height || r.width * (9 / 16);
+      if (!offRef.current && r.bottom < topInset + h * 0.4) {
+        setSlotOffscreen(true);
+      } else if (offRef.current && r.bottom > topInset + h * 0.6) {
+        setSlotOffscreen(false);
+      }
     };
     const schedule = () => {
       if (!raf) raf = window.requestAnimationFrame(measure);
@@ -160,16 +183,22 @@ export function PlayerHost() {
 
   // Mini slide-in.
   useEffect(() => {
-    if (!canMini) {
+    if (!showMini) {
       setEntered(false);
       return;
     }
     const id = window.requestAnimationFrame(() => setEntered(true));
     return () => window.cancelAnimationFrame(id);
-  }, [canMini]);
+  }, [showMini]);
 
   const expand = useCallback(() => {
     if (!active) return;
+    // Already on the watch page (scroll-mini): just dock back by scrolling the
+    // inline slot into view — no navigation, same instance keeps playing.
+    if (onWatch) {
+      slotEl?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
     const v = containerRef.current?.querySelector<HTMLVideoElement>(
       "[data-ot-player-root] video",
     );
@@ -177,7 +206,7 @@ export function PlayerHost() {
       v && Number.isFinite(v.currentTime) ? Math.round(v.currentTime) : 0;
     // The same persistent instance continues; ?t= just overrides history-resume.
     router.push(`/watch/${encodeURIComponent(active.props.videoId)}?t=${t}`);
-  }, [active, router]);
+  }, [active, onWatch, slotEl, router]);
 
   // Drag from anywhere on the mini except the player's own controls (marked with
   // data-controls / role=slider / buttons), which keep working. A small movement
@@ -278,10 +307,10 @@ export function PlayerHost() {
 
   const mode: "full" | "mini" | "hidden" = !active
     ? "hidden"
-    : onWatch
-      ? "full"
-      : canMini
-        ? "mini"
+    : showMini
+      ? "mini"
+      : onWatch
+        ? "full"
         : "hidden";
 
   // Memoized so scroll-driven re-renders here never re-render the player.
@@ -359,8 +388,10 @@ export function PlayerHost() {
             onPointerDown={(e) => e.stopPropagation()}
             onClick={expand}
             className="pointer-events-auto flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm transition hover:bg-black/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
-            aria-label="Expand to full player"
-            title="Expand"
+            aria-label={
+              onWatch ? "Back to full player" : "Expand to full player"
+            }
+            title={onWatch ? "Back to player" : "Expand"}
           >
             <svg
               viewBox="0 0 24 24"
@@ -376,28 +407,30 @@ export function PlayerHost() {
               <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
             </svg>
           </button>
-          <button
-            type="button"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={clearActive}
-            className="pointer-events-auto flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm transition hover:bg-black/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
-            aria-label="Close mini player"
-            title="Close"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="h-3.5 w-3.5"
-              aria-hidden
+          {onWatch ? null : (
+            <button
+              type="button"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={clearActive}
+              className="pointer-events-auto flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm transition hover:bg-black/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+              aria-label="Close mini player"
+              title="Close"
             >
-              <title>Close</title>
-              <path d="M18 6 6 18M6 6l12 12" />
-            </svg>
-          </button>
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="h-3.5 w-3.5"
+                aria-hidden
+              >
+                <title>Close</title>
+                <path d="M18 6 6 18M6 6l12 12" />
+              </svg>
+            </button>
+          )}
         </div>
       ) : null}
       {mode === "mini" && !isMobile ? (
