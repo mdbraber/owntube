@@ -13,8 +13,8 @@ import { WatchCinemaProvider } from "@/components/watch/watch-cinema-context";
 import { WatchCommentsSection } from "@/components/watch/watch-comments-section";
 import { WatchDescription } from "@/components/watch/watch-description";
 import { WatchPageGrid } from "@/components/watch/watch-page-grid";
+import { WatchPlayerMount } from "@/components/watch/watch-player-mount";
 import { WatchUpcomingLive } from "@/components/watch/watch-upcoming-live";
-import { WatchVideoPlayer } from "@/components/watch/watch-video-player";
 import { stripRestrictedListVideos } from "@/lib/feed-exclude-restricted";
 import {
   getAppOriginFromRequestHeaders,
@@ -305,7 +305,7 @@ export default async function WatchPage({
                 message={ageRestricted.message}
               />
             ) : videoPayload && detail ? (
-              <WatchVideoPlayer
+              <WatchPlayerMount
                 key={detail.videoId}
                 isAuthed={isAuthed}
                 videoId={detail.videoId}

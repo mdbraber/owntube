@@ -1,7 +1,15 @@
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  type Dispatch,
+  type SetStateAction,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { HlsVodBlock } from "@/components/player/hls-vod-block";
 import { NativeMuxedBlock } from "@/components/player/native-block";
 import type { VideoPlayerPayload } from "@/components/player/player-payload";
@@ -45,17 +53,11 @@ import {
 import type { SponsorBlockPrefs } from "@/lib/sponsorblock-prefs";
 import { cn } from "@/lib/utils";
 import type { VideoChapter } from "@/lib/video-chapters";
-import {
-  clearWatchMiniStateForOtherVideo,
-  readWatchMiniEnabled,
-  type WatchMiniPayload,
-  writeWatchMiniState,
-} from "@/lib/watch-mini-player-state";
 import type { VideoStoryboard } from "@/server/services/proxy.types";
 
 export type { VideoPlayerPayload };
 
-type VideoPlayerProps = {
+export type VideoPlayerProps = {
   videoId: string;
   payload: VideoPlayerPayload;
   title: string;
@@ -74,8 +76,6 @@ type VideoPlayerProps = {
   /** Fired when the &lt;video&gt; element exposes intrinsic dimensions. */
   onVideoIntrinsics?: (width: number, height: number) => void;
   defaultPlaybackQuality?: DefaultPlaybackQuality;
-  /** Persist playback snapshot for the in-app mini player (watch page, logged-in). */
-  persistMiniSnapshot?: boolean;
   /** Resume quality rung when restoring from mini player state. */
   initialQualityIndex?: number;
   /** Volume / mute captured at handoff from watch (optional). */
@@ -85,6 +85,15 @@ type VideoPlayerProps = {
   miniStartPaused?: boolean;
   /** Start playing as soon as the watch page loads (user setting). */
   autoplayOnWatch?: boolean;
+  /**
+   * External cinema control. The persistent player is hosted outside
+   * WatchCinemaProvider, so the watch page bridges its cinema state through
+   * here; falls back to the provider/local state when absent.
+   */
+  cinema?: {
+    cinemaMode: boolean;
+    setCinemaMode: Dispatch<SetStateAction<boolean>>;
+  } | null;
   /** Server-backed SponsorBlock prefs (watch page); falls back to localStorage. */
   sponsorBlockPrefs?: SponsorBlockPrefs;
   /** Active live HLS broadcast — live chrome, no SponsorBlock/scrub preview. */
@@ -110,12 +119,12 @@ export function VideoPlayer({
   onEnded: onEndedExternal,
   onVideoIntrinsics,
   defaultPlaybackQuality: defaultPlaybackQualityProp,
-  persistMiniSnapshot = false,
   initialQualityIndex: initialQualityIndexProp,
   restoredVolume,
   restoredMuted,
   miniStartPaused = false,
   autoplayOnWatch = false,
+  cinema,
   sponsorBlockPrefs: sponsorBlockPrefsProp,
   isLive = false,
   playbackSourceUsed,
@@ -170,13 +179,13 @@ export function VideoPlayer({
         sponsorSegments,
         sponsorBlockPrefs,
       };
-  const pathname = usePathname();
   const router = useRouter();
   const watchCinema = useWatchCinema();
   const [localCinema, setLocalCinema] = useState(false);
-  const cinemaMode = watchCinema ? watchCinema.cinemaMode : localCinema;
-  const setCinemaMode = watchCinema
-    ? watchCinema.setCinemaMode
+  const effectiveCinema = cinema ?? watchCinema;
+  const cinemaMode = effectiveCinema ? effectiveCinema.cinemaMode : localCinema;
+  const setCinemaMode = effectiveCinema
+    ? effectiveCinema.setCinemaMode
     : setLocalCinema;
   const exitCinema = useCallback(() => setCinemaMode(false), [setCinemaMode]);
   const toggleCinema = useCallback(
@@ -448,88 +457,6 @@ export function VideoPlayer({
     if (!nextUp || !autoplayNext) return;
     setNextCountdown(3);
   }, [shortsMode, onEndedExternal, nextUp, autoplayNext]);
-
-  const snapshotPayloadForMini = useMemo((): WatchMiniPayload | null => {
-    if (effectivePayload.mode === "hls") {
-      return { mode: "hls", src: effectivePayload.src };
-    }
-    if (
-      effectivePayload.mode === "progressive" &&
-      effectivePayload.variants.length > 0
-    ) {
-      return {
-        mode: "progressive",
-        variants: effectivePayload.variants,
-      };
-    }
-    return null;
-  }, [effectivePayload]);
-
-  useEffect(() => {
-    if (!persistMiniSnapshot) return;
-    clearWatchMiniStateForOtherVideo(videoId);
-  }, [persistMiniSnapshot, videoId]);
-
-  useEffect(() => {
-    if (!pathname.startsWith("/watch/")) return;
-    if (!persistMiniSnapshot) return;
-    if (!readWatchMiniEnabled(true)) return;
-    if (!snapshotPayloadForMini) return;
-
-    const getWatchVideo = () =>
-      playerMediaRootRef.current?.querySelector(
-        "video",
-      ) as HTMLVideoElement | null;
-
-    const saveSnapshot = (target: HTMLVideoElement | null) => {
-      if (!target) return;
-      const currentTime = Number.isFinite(target.currentTime)
-        ? Math.max(0, target.currentTime)
-        : 0;
-      const prefs = readPlayerMediaPrefs();
-      writeWatchMiniState({
-        videoId,
-        title,
-        poster,
-        payload: snapshotPayloadForMini,
-        currentTime,
-        qualityIndex,
-        volume: prefs.volume,
-        muted: prefs.muted,
-        paused: target.paused,
-      });
-    };
-
-    const onTimeUpdate = () => {
-      saveSnapshot(getWatchVideo());
-    };
-    const onPause = () => {
-      saveSnapshot(getWatchVideo());
-    };
-    const onPageHide = () => {
-      saveSnapshot(getWatchVideo());
-    };
-
-    const media = getWatchVideo();
-    media?.addEventListener("timeupdate", onTimeUpdate);
-    media?.addEventListener("pause", onPause);
-    window.addEventListener("pagehide", onPageHide);
-
-    return () => {
-      media?.removeEventListener("timeupdate", onTimeUpdate);
-      media?.removeEventListener("pause", onPause);
-      window.removeEventListener("pagehide", onPageHide);
-      saveSnapshot(getWatchVideo());
-    };
-  }, [
-    pathname,
-    persistMiniSnapshot,
-    poster,
-    qualityIndex,
-    snapshotPayloadForMini,
-    title,
-    videoId,
-  ]);
 
   if (active.kind === "empty") return null;
   if (active.kind === "hls" && !active.src) return null;

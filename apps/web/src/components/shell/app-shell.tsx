@@ -3,7 +3,7 @@
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useState } from "react";
-import { WatchMiniPlayer } from "@/components/player/watch-mini-player";
+import { PlayerHost } from "@/components/player/player-host";
 import { ShellBottomNav } from "@/components/shell/shell-bottom-nav";
 import { ShellSidebar } from "@/components/shell/shell-sidebar";
 import { ShellTopbar } from "@/components/shell/shell-topbar";
@@ -62,7 +62,7 @@ export function AppShell({
         </div>
         <ShellBottomNav account={bottomNavAccount} />
       </div>
-      <WatchMiniPlayer isLoggedIn={isLoggedIn} />
+      <PlayerHost />
     </div>
   );
 }

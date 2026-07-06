@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink } from "@trpc/client";
 import { useState } from "react";
 import superjson from "superjson";
+import { PlayerProvider } from "@/components/player/player-context";
 import { QueueSync } from "@/components/queue/queue-sync";
 import { FaviconSync } from "@/components/settings/favicon-sync";
 import { MiniPlayerSync } from "@/components/settings/mini-player-sync";
@@ -63,7 +64,9 @@ export function Providers({
         <QueueSync />
         <InvidiousOriginProvider origins={invidiousOrigins}>
           <IgnoredVideosProvider>
-            <VideoMembershipProvider>{children}</VideoMembershipProvider>
+            <VideoMembershipProvider>
+              <PlayerProvider>{children}</PlayerProvider>
+            </VideoMembershipProvider>
           </IgnoredVideosProvider>
         </InvidiousOriginProvider>
       </QueryClientProvider>
