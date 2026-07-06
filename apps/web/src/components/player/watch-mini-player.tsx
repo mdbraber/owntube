@@ -144,11 +144,18 @@ export function WatchMiniPlayer({ isLoggedIn }: WatchMiniPlayerProps) {
   }, [activeVideoId, hidden]);
 
   const handleReopen = useCallback(() => {
-    if (!state) return;
-    const href = `/watch/${encodeURIComponent(state.videoId)}?t=${Math.floor(state.currentTime || 0)}`;
+    const current = stateRef.current ?? readWatchMiniState();
+    if (!current) return;
+    // Use the live position, not the React snapshot: timeupdate persists to
+    // storage silently (notify=false), so `state.currentTime` is stale and would
+    // reopen the full player at the wrong spot.
+    const v = wrapRef.current?.querySelector<HTMLVideoElement>("video");
+    const liveTime =
+      v && Number.isFinite(v.currentTime) ? v.currentTime : current.currentTime;
+    const href = `/watch/${encodeURIComponent(current.videoId)}?t=${Math.round(liveTime || 0)}`;
     writeWatchMiniState(null);
     router.push(href);
-  }, [router, state]);
+  }, [router]);
 
   if (!state || hidden) return null;
 
