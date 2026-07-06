@@ -2,11 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNativeAdapter } from "@/components/player/player-adapters";
+import { usePlayerCaptions } from "@/components/player/player-captions";
 import { PlayerChrome } from "@/components/player/player-chrome";
 import {
   useMiniPlayerMediaBootstrap,
   useReportVideoIntrinsics,
 } from "@/components/player/player-media-hooks";
+import type { CaptionTrack } from "@/components/player/player-payload";
 import type { SponsorBlockChromeProps } from "@/components/player/player-types";
 import { useHlsVodPlayback } from "@/hooks/use-hls-vod-playback";
 import { isIosLikeBrowser } from "@/lib/ios-playback";
@@ -29,6 +31,7 @@ export function HlsVodBlock({
   poster,
   title,
   reactKey,
+  captions,
   volume,
   setVolume,
   settingsOpen,
@@ -60,6 +63,7 @@ export function HlsVodBlock({
   poster?: string;
   title: string;
   reactKey: string;
+  captions?: CaptionTrack[];
   volume: number;
   setVolume: (v: number) => void;
   settingsOpen: boolean;
@@ -120,6 +124,15 @@ export function HlsVodBlock({
     setExternalVolume: setVolume,
   });
 
+  // On iOS we hand off to Safari's own controls, which manage captions
+  // natively from the <track> children — so don't also drive TextTrack modes.
+  const captionModel = usePlayerCaptions(
+    videoRef,
+    captions ?? [],
+    reactKey,
+    !useNativeControls,
+  );
+
   useReportVideoIntrinsics(videoRef, onVideoIntrinsics);
 
   // Re-seek whenever the requested start time changes to a NEW value. The
@@ -169,7 +182,7 @@ export function HlsVodBlock({
           : "aspect-video w-full",
       )}
     >
-      {/* biome-ignore lint/a11y/useMediaCaption: HLS captions are not exposed as local text tracks here. */}
+      {/* biome-ignore lint/a11y/useMediaCaption: subtitle <track>s are provided dynamically from the `captions` prop (mapped children the rule can't statically see). */}
       <video
         key={reactKey}
         ref={videoRef}
@@ -180,7 +193,17 @@ export function HlsVodBlock({
         onError={emitPlaybackError}
         onEnded={onEnded}
         className="absolute inset-0 h-full w-full object-contain"
-      />
+      >
+        {(captions ?? []).map((track) => (
+          <track
+            key={`${track.languageCode}-${track.label}`}
+            kind="subtitles"
+            srcLang={track.languageCode}
+            label={track.label}
+            src={track.src}
+          />
+        ))}
+      </video>
       {useNativeControls ? null : (
         <PlayerChrome
           adapter={adapter}
@@ -192,6 +215,7 @@ export function HlsVodBlock({
           sponsorBlockPrefs={sponsorBlockPrefs}
           quality={{ kind: "none" }}
           audio={{ kind: "none" }}
+          captions={captionModel}
           settingsOpen={settingsOpen}
           onSettingsOpenChange={onSettingsOpenChange}
           cinemaMode={cinemaMode}

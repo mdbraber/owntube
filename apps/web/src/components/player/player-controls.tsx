@@ -10,6 +10,7 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import type { CaptionModel } from "@/components/player/player-captions";
 import {
   CHAPTER_GAP_PX,
   formatClock,
@@ -38,17 +39,25 @@ import {
 import { cn } from "@/lib/utils";
 import { chapterIndexAt, type VideoChapter } from "@/lib/video-chapters";
 
-type SettingsView = "root" | "speed" | "quality" | "audio";
+type SettingsView = "root" | "speed" | "quality" | "audio" | "captions";
+
+/** Menu label for the currently selected caption track (or "Off"). */
+function captionsShortLabel(captions: CaptionModel): string {
+  if (captions.kind !== "tracks" || captions.activeIndex === null) return "Off";
+  return captions.items[captions.activeIndex]?.label ?? "Off";
+}
 
 export function SettingsMenu({
   quality,
   audio,
+  captions,
   rate,
   setRate,
   onClose,
 }: {
   quality: QualityModel;
   audio: AudioModel;
+  captions: CaptionModel;
   rate: number;
   setRate: (r: number) => void;
   onClose: () => void;
@@ -56,7 +65,8 @@ export function SettingsMenu({
   const [view, setView] = useState<SettingsView>("root");
   useEffect(() => {
     if (audio.kind === "none" && view === "audio") setView("root");
-  }, [audio.kind, view]);
+    if (captions.kind === "none" && view === "captions") setView("root");
+  }, [audio.kind, captions.kind, view]);
   return (
     <div
       className="absolute bottom-14 right-3 z-40 w-56 overflow-hidden rounded-lg border border-white/10 bg-zinc-950/95 text-sm shadow-xl backdrop-blur-md"
@@ -92,11 +102,7 @@ export function SettingsMenu({
                 <span className="text-xs text-zinc-400">
                   {quality.kind === "progressive"
                     ? (quality.items[quality.index]?.label ?? "")
-                    : quality.kind === "hls-managed"
-                      ? (quality.items.find((i) => i.selected)?.label ??
-                        quality.items[0]?.label ??
-                        "")
-                      : ""}
+                    : ""}
                 </span>
               </button>
             </li>
@@ -112,11 +118,21 @@ export function SettingsMenu({
                 <span className="text-xs text-zinc-400">
                   {audio.kind === "split-native"
                     ? (audio.items[audio.index]?.label ?? "")
-                    : audio.kind === "hls-managed"
-                      ? (audio.items.find((i) => i.selected)?.label ??
-                        audio.items[0]?.label ??
-                        "")
-                      : ""}
+                    : ""}
+                </span>
+              </button>
+            </li>
+          ) : null}
+          {captions.kind === "tracks" ? (
+            <li>
+              <button
+                type="button"
+                onClick={() => setView("captions")}
+                className="flex w-full items-center justify-between gap-2 px-3 py-2 text-zinc-100 hover:bg-white/10"
+              >
+                <span>Subtitles/CC</span>
+                <span className="text-xs text-zinc-400">
+                  {captionsShortLabel(captions)}
                 </span>
               </button>
             </li>
@@ -199,38 +215,6 @@ export function SettingsMenu({
                   </li>
                 ))
               : null}
-            {quality.kind === "hls-managed"
-              ? quality.items.map((it) => (
-                  <li key={`${it.label}-${it.idx}`}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        quality.remote.changeQuality(it.idx);
-                        setView("root");
-                      }}
-                      className={cn(
-                        "flex w-full items-center justify-between gap-2 px-3 py-2 hover:bg-white/10",
-                        it.idx === -1
-                          ? quality.auto
-                            ? "text-[hsl(var(--primary))]"
-                            : "text-zinc-100"
-                          : !quality.auto && it.selected
-                            ? "text-[hsl(var(--primary))]"
-                            : "text-zinc-100",
-                      )}
-                    >
-                      <span>{it.label}</span>
-                      {it.idx === -1 ? (
-                        quality.auto ? (
-                          <span aria-hidden>✓</span>
-                        ) : null
-                      ) : !quality.auto && it.selected ? (
-                        <span aria-hidden>✓</span>
-                      ) : null}
-                    </button>
-                  </li>
-                ))
-              : null}
           </ul>
         </div>
       ) : null}
@@ -268,28 +252,63 @@ export function SettingsMenu({
                   </li>
                 ))
               : null}
-            {audio.kind === "hls-managed"
-              ? audio.items.map((it) => (
-                  <li key={`${it.label}-${it.idx}`}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        audio.remote.changeAudioTrack(it.idx);
-                        setView("root");
-                      }}
-                      className={cn(
-                        "flex w-full items-center justify-between gap-2 px-3 py-2 hover:bg-white/10",
-                        it.selected
-                          ? "text-[hsl(var(--primary))]"
-                          : "text-zinc-100",
-                      )}
-                    >
-                      <span>{it.label}</span>
-                      {it.selected ? <span aria-hidden>✓</span> : null}
-                    </button>
-                  </li>
-                ))
-              : null}
+          </ul>
+        </div>
+      ) : null}
+      {view === "captions" && captions.kind === "tracks" ? (
+        <div>
+          <div className="border-b border-white/10 px-3 py-2 text-xs uppercase tracking-wider text-zinc-400">
+            <button
+              type="button"
+              onClick={() => setView("root")}
+              className="hover:underline"
+            >
+              ‹ Subtitles/CC
+            </button>
+          </div>
+          <ul className="max-h-64 overflow-y-auto py-1">
+            <li>
+              <button
+                type="button"
+                onClick={() => {
+                  captions.setActive(null);
+                  setView("root");
+                }}
+                className={cn(
+                  "flex w-full items-center justify-between gap-2 px-3 py-2 hover:bg-white/10",
+                  captions.activeIndex === null
+                    ? "text-[hsl(var(--primary))]"
+                    : "text-zinc-100",
+                )}
+              >
+                <span>Off</span>
+                {captions.activeIndex === null ? (
+                  <span aria-hidden>✓</span>
+                ) : null}
+              </button>
+            </li>
+            {captions.items.map((it, i) => (
+              <li key={`${it.languageCode}-${it.label}-${i}`}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    captions.setActive(i);
+                    setView("root");
+                  }}
+                  className={cn(
+                    "flex w-full items-center justify-between gap-2 px-3 py-2 hover:bg-white/10",
+                    i === captions.activeIndex
+                      ? "text-[hsl(var(--primary))]"
+                      : "text-zinc-100",
+                  )}
+                >
+                  <span>{it.label}</span>
+                  {i === captions.activeIndex ? (
+                    <span aria-hidden>✓</span>
+                  ) : null}
+                </button>
+              </li>
+            ))}
           </ul>
         </div>
       ) : null}
@@ -883,41 +902,6 @@ export function ShortsQualityPicker({
                 >
                   <span>{it.label}</span>
                   {i === quality.index ? <span aria-hidden>✓</span> : null}
-                </button>
-              ))
-            : null}
-          {quality.kind === "hls-managed"
-            ? quality.items.map((it) => (
-                <button
-                  key={`${it.label}-${it.idx}`}
-                  type="button"
-                  role="option"
-                  aria-selected={
-                    it.idx === -1 ? quality.auto : !quality.auto && it.selected
-                  }
-                  onClick={() => {
-                    quality.remote.changeQuality(it.idx);
-                    onOpenChange(false);
-                  }}
-                  className={cn(
-                    "flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-white/10",
-                    it.idx === -1
-                      ? quality.auto
-                        ? "text-[hsl(var(--primary))]"
-                        : "text-zinc-100"
-                      : !quality.auto && it.selected
-                        ? "text-[hsl(var(--primary))]"
-                        : "text-zinc-100",
-                  )}
-                >
-                  <span>{it.label}</span>
-                  {it.idx === -1 ? (
-                    quality.auto ? (
-                      <span aria-hidden>✓</span>
-                    ) : null
-                  ) : !quality.auto && it.selected ? (
-                    <span aria-hidden>✓</span>
-                  ) : null}
                 </button>
               ))
             : null}

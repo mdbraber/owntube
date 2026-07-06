@@ -170,3 +170,18 @@ export function CinemaIcon({ className }: { className?: string }) {
     </svg>
   );
 }
+
+export function CaptionsIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      role="img"
+      aria-label="Subtitles"
+    >
+      <title>Subtitles</title>
+      <path d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm3.5 6.5c.9 0 1.6.44 2 1.12l-1.2.7c-.16-.3-.44-.5-.8-.5-.55 0-.95.44-.95 1.18s.4 1.18.95 1.18c.36 0 .64-.2.8-.5l1.2.7c-.4.68-1.1 1.12-2 1.12-1.36 0-2.4-.96-2.4-2.5s1.04-2.5 2.4-2.5zm7 0c.9 0 1.6.44 2 1.12l-1.2.7c-.16-.3-.44-.5-.8-.5-.55 0-.95.44-.95 1.18s.4 1.18.95 1.18c.36 0 .64-.2.8-.5l1.2.7c-.4.68-1.1 1.12-2 1.12-1.36 0-2.4-.96-2.4-2.5s1.04-2.5 2.4-2.5z" />
+    </svg>
+  );
+}

@@ -25,6 +25,7 @@ import {
 } from "@/components/player/player-fullscreen";
 import {
   BigPlayOverlayIcon,
+  CaptionsIcon,
   CinemaIcon,
   FsEnterIcon,
   FsExitIcon,
@@ -53,6 +54,7 @@ export function PlayerChrome({
   sponsorBlockPrefs,
   quality,
   audio,
+  captions,
   settingsOpen,
   onSettingsOpenChange,
   cinemaMode,
@@ -512,6 +514,26 @@ export function PlayerChrome({
                 </div>
               ) : null}
 
+              {!miniMode && !shortsMode && captions.kind === "tracks" ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    captions.setActive(captions.activeIndex === null ? 0 : null)
+                  }
+                  className={cn(
+                    "flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-white/15",
+                    captions.activeIndex !== null
+                      ? "bg-white/15 text-white"
+                      : "",
+                  )}
+                  aria-label="Subtitles / captions"
+                  aria-pressed={captions.activeIndex !== null}
+                  title="Subtitles"
+                >
+                  <CaptionsIcon className="h-5 w-5" />
+                </button>
+              ) : null}
+
               {!miniMode && !shortsMode ? (
                 <div className="relative">
                   <button
@@ -589,12 +611,11 @@ export function PlayerChrome({
           key={
             quality.kind === "progressive"
               ? `p-${quality.items.map((i) => i.label).join("\0")}`
-              : quality.kind === "hls-managed"
-                ? `h-${quality.items.length}`
-                : "none"
+              : "none"
           }
           quality={quality}
           audio={audio}
+          captions={captions}
           rate={adapter.playbackRate}
           setRate={(r) => adapter.setPlaybackRate(r)}
           onClose={() => onSettingsOpenChange(false)}

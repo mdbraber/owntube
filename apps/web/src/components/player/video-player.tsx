@@ -11,8 +11,12 @@ import {
   useState,
 } from "react";
 import { HlsVodBlock } from "@/components/player/hls-vod-block";
+import { LiveHlsDirectBlock } from "@/components/player/live-block";
 import { NativeMuxedBlock } from "@/components/player/native-block";
-import type { VideoPlayerPayload } from "@/components/player/player-payload";
+import type {
+  CaptionTrack,
+  VideoPlayerPayload,
+} from "@/components/player/player-payload";
 import {
   initialQualityIndexForPayload,
   progressiveQualityMenuFromPayload,
@@ -26,7 +30,6 @@ import {
 } from "@/components/player/player-recovery";
 import type { SponsorBlockChromeProps } from "@/components/player/player-types";
 import { SplitBlock } from "@/components/player/split-block";
-import { VidstackBlock } from "@/components/player/vidstack-block";
 import {
   readWatchQueue,
   type WatchQueueItem,
@@ -44,7 +47,6 @@ import {
   type DefaultPlaybackQuality,
   readDefaultPlaybackQuality,
 } from "@/lib/default-playback-quality";
-import { isDirectProgressiveVideoUrl } from "@/lib/media-source-from-url";
 import { nextPlaybackVariantIndex } from "@/lib/playback-variant-fallback";
 import {
   readPlayerMediaPrefs,
@@ -60,6 +62,8 @@ export type { VideoPlayerPayload };
 export type VideoPlayerProps = {
   videoId: string;
   payload: VideoPlayerPayload;
+  /** Subtitle tracks (same-origin VTT srcs); attached to every block's <video>. */
+  captions?: CaptionTrack[];
   title: string;
   poster?: string;
   chapters?: VideoChapter[];
@@ -107,6 +111,7 @@ export type VideoPlayerProps = {
 export function VideoPlayer({
   videoId,
   payload,
+  captions,
   title,
   poster,
   chapters = [],
@@ -483,8 +488,9 @@ export function VideoPlayer({
       >
         {active.kind === "hls" ? (
           isLive ? (
-            <VidstackBlock
+            <LiveHlsDirectBlock
               {...sponsorChromeProps}
+              captions={captions}
               reactKey={active.src}
               src={active.src}
               scrubPreview={buildScrubPreview(active.src) ?? undefined}
@@ -518,6 +524,7 @@ export function VideoPlayer({
           ) : (
             <HlsVodBlock
               {...sponsorChromeProps}
+              captions={captions}
               reactKey={active.src}
               src={active.src}
               title={title}
@@ -549,79 +556,46 @@ export function VideoPlayer({
           )
         ) : null}
         {active.kind === "variant" && active.v.t === "muxed" ? (
-          isDirectProgressiveVideoUrl(active.v.src) || shortsMode ? (
-            <NativeMuxedBlock
-              {...sponsorChromeProps}
-              reactKey={active.v.src}
-              src={active.v.src}
-              scrubPreview={buildScrubPreview(active.v.src) ?? undefined}
-              title={title}
-              poster={displayPoster}
-              volume={splitVolume}
-              setVolume={setSplitVolume}
-              progressiveQualityMenu={progressiveQualityMenu}
-              setQualityIndex={setQualityWithResume}
-              settingsOpen={settingsOpen}
-              onSettingsOpenChange={setSettingsOpen}
-              chapters={chapters}
-              startAtSeconds={effectiveStartAt}
-              cinemaMode={cinemaMode}
-              onExitCinema={exitCinema}
-              onToggleCinema={toggleCinema}
-              onPlaybackError={handlePlaybackError}
-              onEnded={handleVideoEnded}
-              nextUp={nextUp}
-              queue={queue}
-              autoplayNext={autoplayNext}
-              onToggleAutoplayNext={() => setAutoplayNext((v) => !v)}
-              onPlayNext={playNextNow}
-              miniMode={miniMode}
-              shortsMode={shortsMode}
-              miniStartPaused={miniStartPaused}
-              autoplay={watchAutoplay}
-              restoredVolume={restoredVolume}
-              restoredMuted={restoredMuted}
-              onVideoIntrinsics={onVideoIntrinsics}
-              isLive={isLive}
-            />
-          ) : (
-            <VidstackBlock
-              {...sponsorChromeProps}
-              reactKey={active.v.src}
-              src={active.v.src}
-              scrubPreview={buildScrubPreview(active.v.src) ?? undefined}
-              title={title}
-              poster={displayPoster}
-              progressiveQualityMenu={progressiveQualityMenu}
-              setQualityIndex={setQualityWithResume}
-              settingsOpen={settingsOpen}
-              onSettingsOpenChange={setSettingsOpen}
-              chapters={chapters}
-              startAtSeconds={effectiveStartAt}
-              cinemaMode={cinemaMode}
-              onExitCinema={exitCinema}
-              onToggleCinema={toggleCinema}
-              onPlaybackError={handlePlaybackError}
-              onEnded={handleVideoEnded}
-              nextUp={nextUp}
-              queue={queue}
-              autoplayNext={autoplayNext}
-              onToggleAutoplayNext={() => setAutoplayNext((v) => !v)}
-              onPlayNext={playNextNow}
-              miniMode={miniMode}
-              shortsMode={shortsMode}
-              miniStartPaused={miniStartPaused}
-              autoplay={watchAutoplay}
-              restoredVolume={restoredVolume}
-              restoredMuted={restoredMuted}
-              onVideoIntrinsics={onVideoIntrinsics}
-              isLive={isLive}
-            />
-          )
+          <NativeMuxedBlock
+            {...sponsorChromeProps}
+            captions={captions}
+            reactKey={active.v.src}
+            src={active.v.src}
+            scrubPreview={buildScrubPreview(active.v.src) ?? undefined}
+            title={title}
+            poster={displayPoster}
+            volume={splitVolume}
+            setVolume={setSplitVolume}
+            progressiveQualityMenu={progressiveQualityMenu}
+            setQualityIndex={setQualityWithResume}
+            settingsOpen={settingsOpen}
+            onSettingsOpenChange={setSettingsOpen}
+            chapters={chapters}
+            startAtSeconds={effectiveStartAt}
+            cinemaMode={cinemaMode}
+            onExitCinema={exitCinema}
+            onToggleCinema={toggleCinema}
+            onPlaybackError={handlePlaybackError}
+            onEnded={handleVideoEnded}
+            nextUp={nextUp}
+            queue={queue}
+            autoplayNext={autoplayNext}
+            onToggleAutoplayNext={() => setAutoplayNext((v) => !v)}
+            onPlayNext={playNextNow}
+            miniMode={miniMode}
+            shortsMode={shortsMode}
+            miniStartPaused={miniStartPaused}
+            autoplay={watchAutoplay}
+            restoredVolume={restoredVolume}
+            restoredMuted={restoredMuted}
+            onVideoIntrinsics={onVideoIntrinsics}
+            isLive={isLive}
+          />
         ) : null}
         {active.kind === "variant" && active.v.t === "split" ? (
           <SplitBlock
             {...sponsorChromeProps}
+            captions={captions}
             key={active.v.video}
             video={active.v.video}
             scrubPreview={buildScrubPreview(active.v.video) ?? undefined}

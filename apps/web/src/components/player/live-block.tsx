@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNativeAdapter } from "@/components/player/player-adapters";
+import { usePlayerCaptions } from "@/components/player/player-captions";
 import { PlayerChrome } from "@/components/player/player-chrome";
 import { useReportVideoIntrinsics } from "@/components/player/player-media-hooks";
-import type { VidstackBlockProps } from "@/components/player/player-types";
+import type { HlsBlockProps } from "@/components/player/player-types";
 import { useLiveHlsPlayback } from "@/hooks/use-live-hls-playback";
 import {
   readPlayerMediaPrefs,
@@ -21,6 +22,7 @@ export function LiveHlsDirectBlock({
   poster,
   title,
   reactKey,
+  captions,
   settingsOpen,
   onSettingsOpenChange,
   chapters,
@@ -39,7 +41,7 @@ export function LiveHlsDirectBlock({
   onPlayNext,
   restoredVolume,
   onVideoIntrinsics,
-}: VidstackBlockProps) {
+}: HlsBlockProps) {
   const shellRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -58,6 +60,8 @@ export function LiveHlsDirectBlock({
     externalVolume: volume,
     setExternalVolume: setVolume,
   });
+
+  const captionModel = usePlayerCaptions(videoRef, captions ?? [], reactKey);
 
   useReportVideoIntrinsics(videoRef, onVideoIntrinsics);
 
@@ -102,7 +106,7 @@ export function LiveHlsDirectBlock({
           : "aspect-video w-full",
       )}
     >
-      {/* biome-ignore lint/a11y/useMediaCaption: upstream live HLS captions are not exposed as local text tracks here. */}
+      {/* biome-ignore lint/a11y/useMediaCaption: subtitle <track>s are provided dynamically from the `captions` prop (mapped children the rule can't statically see). */}
       <video
         key={reactKey}
         ref={videoRef}
@@ -112,7 +116,17 @@ export function LiveHlsDirectBlock({
         onError={emitPlaybackError}
         onEnded={onEnded}
         className="absolute inset-0 h-full w-full object-contain"
-      />
+      >
+        {(captions ?? []).map((track) => (
+          <track
+            key={`${track.languageCode}-${track.label}`}
+            kind="subtitles"
+            srcLang={track.languageCode}
+            label={track.label}
+            src={track.src}
+          />
+        ))}
+      </video>
       <PlayerChrome
         adapter={adapter}
         shellRef={shellRef}
@@ -123,6 +137,7 @@ export function LiveHlsDirectBlock({
         sponsorBlockPrefs={sponsorBlockPrefs}
         quality={{ kind: "none" }}
         audio={{ kind: "none" }}
+        captions={captionModel}
         settingsOpen={settingsOpen}
         onSettingsOpenChange={onSettingsOpenChange}
         cinemaMode={cinemaMode}

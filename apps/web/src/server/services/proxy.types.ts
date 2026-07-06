@@ -123,6 +123,16 @@ export const streamSourceSchema = z.object({
   videoOnly: z.boolean().optional(),
 });
 
+/** A subtitle/caption track advertised by upstream (Invidious `captions[]`). */
+export const captionTrackSchema = z.object({
+  /** Human label, e.g. "English" or "English (auto-generated)". */
+  label: z.string(),
+  /** BCP-47 language code, e.g. "en" or "de-DE". */
+  languageCode: z.string(),
+});
+
+export type CaptionTrack = z.infer<typeof captionTrackSchema>;
+
 export const videoDetailSchema = z.object({
   videoId: z.string(),
   title: z.string(),
@@ -146,6 +156,8 @@ export const videoDetailSchema = z.object({
   dashUrl: z.string().url().optional(),
   audioSources: z.array(streamSourceSchema),
   videoSources: z.array(streamSourceSchema),
+  /** Subtitle/caption tracks (Invidious `captions[]`); empty/absent when none. */
+  captions: z.array(captionTrackSchema).optional(),
   sourceUsed: z.enum(["piped", "invidious", "cache"]),
   /** Piped `/streams` `proxyUrl` — used to validate same-origin media proxy targets. */
   mediaProxyBase: z.string().url().optional(),

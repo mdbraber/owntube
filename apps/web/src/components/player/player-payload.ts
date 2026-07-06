@@ -1,3 +1,11 @@
+/** A subtitle track ready to attach to a `<video>` (same-origin VTT src). */
+export type CaptionTrack = {
+  label: string;
+  languageCode: string;
+  /** Same-origin `/captions/{videoId}?label=…` URL serving WebVTT. */
+  src: string;
+};
+
 export type ProxiedVariant =
   | { t: "muxed"; label: string; src: string }
   | {

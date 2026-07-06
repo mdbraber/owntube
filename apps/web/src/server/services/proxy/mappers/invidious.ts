@@ -220,6 +220,33 @@ function mapInvidiousStreamItem(
   return { url, mimeType: type, quality, videoOnly, bitrate, fps, height };
 }
 
+/**
+ * Map Invidious `captions[]` (`{label, language_code, url}`) to our
+ * `{label, languageCode}` shape. The upstream `url` is dropped: the client
+ * rebuilds a same-origin `/captions/{videoId}?label=…` URL so caption fetches
+ * go through our validating, caching proxy instead of straight to Invidious.
+ */
+function mapInvidiousCaptions(
+  value: unknown,
+): { label: string; languageCode: string }[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const out: { label: string; languageCode: string }[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const c = item as Record<string, unknown>;
+    const label = typeof c.label === "string" ? c.label : "";
+    if (!label) continue;
+    const languageCode =
+      typeof c.language_code === "string"
+        ? c.language_code
+        : typeof c.languageCode === "string"
+          ? c.languageCode
+          : "";
+    out.push({ label, languageCode });
+  }
+  return out.length > 0 ? out : undefined;
+}
+
 export function mapInvidiousVideo(
   data: unknown,
   baseUrl = "",
@@ -323,6 +350,7 @@ export function mapInvidiousVideo(
     dashUrl: dashResolved,
     audioSources: audioFromAdaptive,
     videoSources,
+    captions: mapInvidiousCaptions(o.captions),
     sourceUsed: "invidious" as const,
   };
   const parsed = videoDetailSchema.safeParse(detail);

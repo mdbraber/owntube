@@ -174,21 +174,6 @@ export function buildHlsSameOriginConfig(
   };
 }
 
-type VidstackHlsProvider = {
-  type?: string;
-  config?: Partial<HlsConfig>;
-  library?: (() => Promise<typeof import("hls.js").default>) | string;
-};
-
-/** Apply same-origin hls.js config on a Vidstack HLS provider (if present). */
-export function applyHlsSameOriginToVidstackProvider(
-  provider: VidstackHlsProvider | null | undefined,
-): void {
-  if (provider?.type !== "hls") return;
-  provider.config = buildHlsSameOriginConfig();
-  provider.library = () => import("hls.js").then((m) => m.default);
-}
-
 let fetchGuardInstallCount = 0;
 let restoreFetchGuard: (() => void) | null = null;
 

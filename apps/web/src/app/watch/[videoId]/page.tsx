@@ -249,6 +249,17 @@ export default async function WatchPage({
             }
           : null
       : null;
+  // Subtitle tracks → same-origin `/captions/{id}?label=…` (validating, caching
+  // proxy). Both human-authored and auto-generated tracks are included.
+  const videoCaptions = detail?.captions?.length
+    ? detail.captions.map((c) => ({
+        label: c.label,
+        languageCode: c.languageCode,
+        src: `/captions/${encodeURIComponent(detail.videoId)}?label=${encodeURIComponent(
+          c.label,
+        )}`,
+      }))
+    : undefined;
   const poster =
     detail &&
     toProxiedOrDirectPoster(
@@ -317,6 +328,7 @@ export default async function WatchPage({
                 isAuthed={isAuthed}
                 videoId={detail.videoId}
                 payload={videoPayload}
+                captions={videoCaptions}
                 title={detail.title}
                 poster={poster ?? undefined}
                 chapters={chapters}

@@ -51,7 +51,6 @@
     "@trpc/client": "^11.7.1",
     "@trpc/react-query": "^11.7.1",
     "@trpc/server": "^11.7.1",
-    "@vidstack/react": "^0.6.15",
     "bcrypt": "^6.0.0",
     "better-sqlite3": "^12.9.0",
     "class-variance-authority": "^0.7.1",
@@ -64,7 +63,6 @@
     "react-dom": "19.1.0",
     "superjson": "^2.2.5",
     "tailwind-merge": "^3.3.1",
-    "vidstack": "0.6.15",
     "zod": "^4.1.12",
     "zustand": "^5.0.8"
   },

@@ -1,3 +1,5 @@
+import type { CaptionModel } from "@/components/player/player-captions";
+import type { CaptionTrack } from "@/components/player/player-payload";
 import type {
   AudioModel,
   ProgressiveQualityMenu,
@@ -44,6 +46,7 @@ export type ChromeProps = SponsorBlockChromeProps & {
   chapters: VideoChapter[];
   quality: QualityModel;
   audio: AudioModel;
+  captions: CaptionModel;
   settingsOpen: boolean;
   onSettingsOpenChange: (open: boolean) => void;
   cinemaMode: boolean;
@@ -62,11 +65,12 @@ export type ChromeProps = SponsorBlockChromeProps & {
   isLive?: boolean;
 };
 
-export type VidstackBlockProps = SponsorBlockChromeProps & {
+export type HlsBlockProps = SponsorBlockChromeProps & {
   src: string;
   title: string;
   poster?: string;
   reactKey: string;
+  captions?: CaptionTrack[];
   progressiveQualityMenu: ProgressiveQualityMenu | null;
   setQualityIndex: (i: number, seekSeconds?: number) => void;
   settingsOpen: boolean;

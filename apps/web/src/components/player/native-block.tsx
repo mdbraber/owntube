@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import { useNativeAdapter } from "@/components/player/player-adapters";
+import { usePlayerCaptions } from "@/components/player/player-captions";
 import { PlayerChrome } from "@/components/player/player-chrome";
 import { SHORTS_SHELL_POINTER } from "@/components/player/player-constants";
 import {
@@ -9,6 +10,7 @@ import {
   useReportVideoIntrinsics,
   useShortsNativeAutoplay,
 } from "@/components/player/player-media-hooks";
+import type { CaptionTrack } from "@/components/player/player-payload";
 import {
   type ProgressiveQualityMenu,
   type QualityModel,
@@ -24,6 +26,7 @@ export function NativeMuxedBlock({
   poster,
   title,
   reactKey,
+  captions,
   volume,
   setVolume,
   progressiveQualityMenu,
@@ -59,6 +62,7 @@ export function NativeMuxedBlock({
   poster?: string;
   title: string;
   reactKey: string;
+  captions?: CaptionTrack[];
   volume: number;
   setVolume: (v: number) => void;
   progressiveQualityMenu: ProgressiveQualityMenu | null;
@@ -108,6 +112,8 @@ export function NativeMuxedBlock({
     externalVolume: volume,
     setExternalVolume: setVolume,
   });
+
+  const captionModel = usePlayerCaptions(videoRef, captions ?? [], reactKey);
 
   useReportVideoIntrinsics(videoRef, onVideoIntrinsics);
 
@@ -176,7 +182,17 @@ export function NativeMuxedBlock({
             ? "relative z-0 h-full w-full object-contain"
             : "absolute inset-0 h-full w-full object-contain",
         )}
-      />
+      >
+        {(captions ?? []).map((track) => (
+          <track
+            key={`${track.languageCode}-${track.label}`}
+            kind="subtitles"
+            srcLang={track.languageCode}
+            label={track.label}
+            src={track.src}
+          />
+        ))}
+      </video>
       <PlayerChrome
         adapter={adapter}
         shellRef={shellRef}
@@ -187,6 +203,7 @@ export function NativeMuxedBlock({
         sponsorBlockPrefs={sponsorBlockPrefs}
         quality={quality}
         audio={{ kind: "none" }}
+        captions={captionModel}
         settingsOpen={settingsOpen}
         onSettingsOpenChange={onSettingsOpenChange}
         cinemaMode={cinemaMode}

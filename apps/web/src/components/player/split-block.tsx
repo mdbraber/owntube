@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNativeAdapter } from "@/components/player/player-adapters";
+import { usePlayerCaptions } from "@/components/player/player-captions";
 import { PlayerChrome } from "@/components/player/player-chrome";
 import {
   SHORTS_SHELL_POINTER,
@@ -12,6 +13,7 @@ import {
   useReportVideoIntrinsics,
   useShortsNativeAutoplay,
 } from "@/components/player/player-media-hooks";
+import type { CaptionTrack } from "@/components/player/player-payload";
 import {
   type AudioModel,
   hasMultipleDistinctAudioStreams,
@@ -32,6 +34,7 @@ import type { VideoChapter } from "@/lib/video-chapters";
 
 export function SplitBlock({
   video,
+  captions,
   audioTracks,
   defaultAudioIndex = 0,
   poster,
@@ -68,6 +71,7 @@ export function SplitBlock({
   isLive = false,
 }: SponsorBlockChromeProps & {
   video: string;
+  captions?: CaptionTrack[];
   audioTracks: { label: string; src: string }[];
   /** Initial / reset index for the language picker (original when known). */
   defaultAudioIndex?: number;
@@ -455,6 +459,8 @@ export function SplitBlock({
       }
     : { kind: "none" };
 
+  const captionModel = usePlayerCaptions(videoRef, captions ?? [], video);
+
   return (
     <div
       ref={shellRef}
@@ -479,7 +485,17 @@ export function SplitBlock({
         onError={emitPlaybackError}
         onEnded={onEnded}
         className={cn("absolute inset-0 h-full w-full", "object-contain")}
-      />
+      >
+        {(captions ?? []).map((track) => (
+          <track
+            key={`${track.languageCode}-${track.label}`}
+            kind="subtitles"
+            srcLang={track.languageCode}
+            label={track.label}
+            src={track.src}
+          />
+        ))}
+      </video>
       {/* biome-ignore lint/a11y/useMediaCaption: companion audio, no VTT */}
       <audio
         ref={audioRef}
@@ -499,6 +515,7 @@ export function SplitBlock({
         sponsorBlockPrefs={sponsorBlockPrefs}
         quality={quality}
         audio={audioModel}
+        captions={captionModel}
         settingsOpen={settingsOpen}
         onSettingsOpenChange={onSettingsOpenChange}
         cinemaMode={cinemaMode}
