@@ -13,10 +13,14 @@ import { usePlayerContext } from "@/components/player/player-context";
 import { VideoPlayer } from "@/components/player/video-player";
 import { cn } from "@/lib/utils";
 import {
+  MINI_MAX_WIDTH,
+  MINI_MIN_WIDTH,
   type MiniCorner,
   readMiniCorner,
+  readMiniWidth,
   readWatchMiniEnabled,
   writeMiniCorner,
+  writeMiniWidth,
 } from "@/lib/watch-mini-player-state";
 
 /** Gap between the mini player and the viewport / chrome edges. */
@@ -56,6 +60,11 @@ export function PlayerHost() {
   const [drag, setDrag] = useState<{ dx: number; dy: number } | null>(null);
   const dragStart = useRef<{ x: number; y: number } | null>(null);
   const dragging = useRef(false);
+  // Mini width (desktop; aspect-ratio keeps the height), resizable by a corner.
+  const [miniWidth, setMiniWidth] = useState<number | null>(null);
+  const miniWidthRef = useRef<number | null>(null);
+  miniWidthRef.current = miniWidth;
+  const resizeStart = useRef<{ x: number; width: number } | null>(null);
 
   const isShorts = pathname === "/shorts" || pathname.startsWith("/shorts?");
   const onWatch = slotEl !== null;
@@ -77,9 +86,11 @@ export function PlayerHost() {
     };
   }, []);
 
-  // Restore saved corner; track mobile (which limits snapping to top/bottom).
+  // Restore saved corner + width; track mobile (limits snapping to top/bottom
+  // and disables resize).
   useEffect(() => {
     setCorner(readMiniCorner());
+    setMiniWidth(readMiniWidth());
     const mq = window.matchMedia("(max-width: 900px)");
     const onChange = () => setIsMobile(mq.matches);
     onChange();
@@ -214,6 +225,38 @@ export function PlayerHost() {
     [isMobile],
   );
 
+  // Resize the mini by dragging its inner corner (desktop). Width changes toward
+  // the free corner; the 16:9 wrapper keeps the height in step.
+  const onResizeStart = useCallback((e: React.PointerEvent) => {
+    e.stopPropagation();
+    resizeStart.current = {
+      x: e.clientX,
+      width: miniWidthRef.current ?? MINI_MIN_WIDTH,
+    };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }, []);
+  const onResizeMove = useCallback(
+    (e: React.PointerEvent) => {
+      if (!resizeStart.current) return;
+      const dx = e.clientX - resizeStart.current.x;
+      // Anchored on the right → the handle is on the left, so widen by dragging left.
+      const dir = corner[1] === "r" ? -1 : 1;
+      const max = Math.min(MINI_MAX_WIDTH, window.innerWidth * 0.94);
+      const w = Math.max(
+        MINI_MIN_WIDTH,
+        Math.min(max, resizeStart.current.width + dir * dx),
+      );
+      setMiniWidth(w);
+    },
+    [corner],
+  );
+  const onResizeEnd = useCallback((e: React.PointerEvent) => {
+    if (!resizeStart.current) return;
+    resizeStart.current = null;
+    e.currentTarget.releasePointerCapture?.(e.pointerId);
+    if (miniWidthRef.current) writeMiniWidth(miniWidthRef.current);
+  }, []);
+
   const mode: "full" | "mini" | "hidden" = !active
     ? "hidden"
     : onWatch
@@ -252,6 +295,7 @@ export function PlayerHost() {
     else style.bottom = insets.bottom + MINI_GAP;
     if (effCorner[1] === "l") style.left = MINI_GAP;
     else style.right = MINI_GAP;
+    if (!isMobile && miniWidth) style.width = miniWidth;
     if (drag) {
       style.transform = `translate(${drag.dx}px, ${drag.dy}px)`;
       style.transition = "none";
@@ -337,6 +381,31 @@ export function PlayerHost() {
           </button>
         </div>
       ) : null}
+      {mode === "mini" && !isMobile ? (
+        <button
+          type="button"
+          onPointerDown={onResizeStart}
+          onPointerMove={onResizeMove}
+          onPointerUp={onResizeEnd}
+          onPointerCancel={onResizeEnd}
+          className={cn(
+            "absolute z-20 flex h-5 w-5 touch-none items-center justify-center opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100",
+            resizeHandlePos[effCorner],
+          )}
+          aria-label="Resize mini player"
+          title="Drag to resize"
+        >
+          <span className="h-2 w-2 rounded-[2px] border-2 border-white/70" />
+        </button>
+      ) : null}
     </div>
   );
 }
+
+/** Resize grip corner (opposite the anchored corner) + the matching cursor. */
+const resizeHandlePos: Record<MiniCorner, string> = {
+  br: "left-0 top-0 cursor-nwse-resize",
+  bl: "right-0 top-0 cursor-nesw-resize",
+  tr: "left-0 bottom-0 cursor-nesw-resize",
+  tl: "right-0 bottom-0 cursor-nwse-resize",
+};

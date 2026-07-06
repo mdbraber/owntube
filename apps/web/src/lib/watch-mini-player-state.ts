@@ -135,3 +135,29 @@ export function writeMiniCorner(corner: MiniCorner): void {
     window.localStorage.setItem(WATCH_MINI_CORNER_KEY, corner);
   } catch {}
 }
+
+/** Mini player width in px (desktop; aspect-ratio keeps the height). */
+export const MINI_MIN_WIDTH = 260;
+export const MINI_MAX_WIDTH = 680;
+export const MINI_DEFAULT_WIDTH = 420;
+const WATCH_MINI_WIDTH_KEY = "ot:mini-player-width";
+
+export function readMiniWidth(defaultValue = MINI_DEFAULT_WIDTH): number {
+  try {
+    const raw = window.localStorage.getItem(WATCH_MINI_WIDTH_KEY);
+    const n = raw ? Number.parseInt(raw, 10) : Number.NaN;
+    if (Number.isFinite(n)) {
+      return Math.max(MINI_MIN_WIDTH, Math.min(MINI_MAX_WIDTH, n));
+    }
+  } catch {}
+  return defaultValue;
+}
+
+export function writeMiniWidth(width: number): void {
+  try {
+    window.localStorage.setItem(
+      WATCH_MINI_WIDTH_KEY,
+      String(Math.round(width)),
+    );
+  } catch {}
+}
