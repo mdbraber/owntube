@@ -770,11 +770,34 @@ export const subscriptionsRouter = router({
     const windows = await fetchLongFormWindows(
       recencyTargets.map((s) => s.channelId),
     );
+    const noLongForm: { channelId: string }[] = [];
     for (const s of recencyTargets) {
       const newest = windows.get(s.channelId)?.newestPublishedAt;
       if (typeof newest === "number" && newest > 0) {
         setChannelLatestVideoAt(ctx.db, s.channelId, newest);
         updated++;
+      } else {
+        noLongForm.push(s);
+      }
+    }
+
+    // Shorts-only channels have no long-form playlist → fall back to the channel
+    // RSS (which includes Shorts) so they still order by their newest upload.
+    if (noLongForm.length > 0) {
+      const rss = await Promise.all(
+        noLongForm.map((s) => fetchRssEntriesFromChannel(s.channelId)),
+      );
+      for (let j = 0; j < noLongForm.length; j++) {
+        let newest = 0;
+        for (const e of rss[j] ?? []) {
+          if (typeof e.publishedAt === "number" && e.publishedAt > newest) {
+            newest = e.publishedAt;
+          }
+        }
+        if (newest > 0) {
+          setChannelLatestVideoAt(ctx.db, noLongForm[j].channelId, newest);
+          updated++;
+        }
       }
     }
     return { updated };
