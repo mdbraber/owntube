@@ -2,6 +2,7 @@ import { unstable_noStore as noStore } from "next/cache";
 import { ChannelSubscribeButton } from "@/components/channel/channel-subscribe-button";
 import { ChannelVideosSection } from "@/components/channel/channel-videos-section";
 import { ChannelAvatarCircle } from "@/components/videos/channel-avatar-circle";
+import { formatSubscribersLabel } from "@/lib/video-display";
 import { auth } from "@/server/auth";
 import { channelPageInputSchema } from "@/server/services/proxy.types";
 import { createCaller } from "@/server/trpc/caller";
@@ -19,6 +20,9 @@ export default async function ChannelPage({ params }: ChannelPageProps) {
   const caller = await createCaller();
   const page = await caller.channel.page({ channelId: input.channelId });
   const channelName = page.name ?? page.channelId;
+  const subscribersLabel = formatSubscribersLabel(
+    page.subscriberCount ?? undefined,
+  );
 
   return (
     <main className="ot-page space-y-7 pb-8">
@@ -54,16 +58,13 @@ export default async function ChannelPage({ params }: ChannelPageProps) {
                     {channelName}
                   </h1>
                 </div>
-                <div className="flex flex-wrap items-center gap-2 text-xs text-white/85 sm:text-sm">
-                  {page.subscriberCount != null ? (
+                {subscribersLabel ? (
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-white/85 sm:text-sm">
                     <span className="rounded-full border border-white/20 bg-black/30 px-2.5 py-1">
-                      {page.subscriberCount.toLocaleString()} subscribers
+                      {subscribersLabel}
                     </span>
-                  ) : null}
-                  <span className="rounded-full border border-white/20 bg-black/30 px-2.5 py-1 font-mono text-[11px] sm:text-xs">
-                    {page.channelId}
-                  </span>
-                </div>
+                  </div>
+                ) : null}
               </div>
               <div className="shrink-0">
                 <ChannelSubscribeButton
