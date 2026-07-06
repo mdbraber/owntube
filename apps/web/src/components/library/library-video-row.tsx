@@ -46,14 +46,15 @@ export function LibraryVideoRow({
       {leading ? <div className="shrink-0 self-center">{leading}</div> : null}
       <Link href={target} className="block shrink-0">
         <div className="relative aspect-video w-44 overflow-hidden rounded-lg bg-[hsl(var(--muted))]">
-          {thumbnailUrl ? (
-            <VideoThumbnailImg
-              url={thumbnailUrl}
-              videoId={videoId}
-              className="h-full w-full object-cover"
-              loading="lazy"
-            />
-          ) : null}
+          {/* Derives the thumbnail from videoId when no explicit URL is given
+              (denormalized history/library rows omit it); renders nothing only
+              when no source can be built at all. */}
+          <VideoThumbnailImg
+            url={thumbnailUrl ?? undefined}
+            videoId={videoId}
+            className="h-full w-full object-cover"
+            loading="lazy"
+          />
           {pct !== null ? (
             <span className="absolute inset-x-0 bottom-0 h-1 bg-black/40">
               <span
