@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Button } from "@/components/ui/button";
+import { RefreshControl } from "@/components/ui/refresh-control";
 import { useIgnoredVideos } from "@/components/videos/ignored-videos-context";
 import { VideoGrid } from "@/components/videos/video-grid";
 import { trpc } from "@/trpc/react";
@@ -30,7 +30,11 @@ export function SubscriptionVideosInfinite() {
   const queryRef = useRef(query);
   queryRef.current = query;
 
+  const [refreshedAt, setRefreshedAt] = useState<number | null>(null);
   const refreshMutation = trpc.subscriptions.refreshFeed.useMutation({
+    onSuccess: (res) => {
+      setRefreshedAt(res.refreshedAt);
+    },
     // Whether the live warm succeeds or partially times out, refetch so the feed
     // shows whatever landed in the (now warmer) cache.
     onSettled: async () => {
@@ -96,7 +100,13 @@ export function SubscriptionVideosInfinite() {
   if (query.isError) {
     return (
       <div className="space-y-4">
-        <RefreshBar isRefreshing={isRefreshing} onRefresh={doRefresh} />
+        <div className="flex justify-end">
+          <RefreshControl
+            isRefreshing={isRefreshing}
+            onRefresh={doRefresh}
+            refreshedAt={refreshedAt}
+          />
+        </div>
         <p className="rounded-[var(--radius-card)] border border-[hsl(var(--border))] bg-[hsl(var(--muted)_/_0.35)] py-8 text-center text-sm text-[hsl(var(--muted-foreground))]">
           Could not load subscription videos. Try again later.
         </p>
@@ -135,7 +145,13 @@ export function SubscriptionVideosInfinite() {
         ) : null}
       </div>
 
-      <RefreshBar isRefreshing={isRefreshing} onRefresh={doRefresh} />
+      <div className="flex justify-end">
+        <RefreshControl
+          isRefreshing={isRefreshing}
+          onRefresh={doRefresh}
+          refreshedAt={refreshedAt}
+        />
+      </div>
 
       <VideoGrid videos={videos} size="large" enableSwipe />
       {query.hasNextPage ? (
@@ -150,37 +166,15 @@ export function SubscriptionVideosInfinite() {
   );
 }
 
-function RefreshBar({
-  isRefreshing,
-  onRefresh,
-}: {
-  isRefreshing: boolean;
-  onRefresh: () => void;
-}) {
-  return (
-    <div className="flex items-center justify-end">
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={onRefresh}
-        disabled={isRefreshing}
-        aria-label="Refresh subscriptions feed"
-      >
-        <Spinner spinning={isRefreshing} />
-        {isRefreshing ? "Refreshing…" : "Refresh"}
-      </Button>
-    </div>
-  );
-}
-
 function Spinner({ spinning }: { spinning: boolean }) {
   return (
     <svg
       viewBox="0 0 24 24"
       fill="none"
-      className={spinning ? "animate-spin" : undefined}
+      className={`h-3.5 w-3.5${spinning ? " animate-spin" : ""}`}
       aria-hidden
     >
+      <title>Refreshing</title>
       <path
         d="M21 12a9 9 0 1 1-6.219-8.56"
         stroke="currentColor"
