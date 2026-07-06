@@ -55,6 +55,7 @@ export function PlayerHost() {
   const [insets, setInsets] = useState({ top: 0, bottom: 0 });
   const [drag, setDrag] = useState<{ dx: number; dy: number } | null>(null);
   const dragStart = useRef<{ x: number; y: number } | null>(null);
+  const dragging = useRef(false);
 
   const isShorts = pathname === "/shorts" || pathname.startsWith("/shorts?");
   const onWatch = slotEl !== null;
@@ -164,22 +165,37 @@ export function PlayerHost() {
     router.push(`/watch/${encodeURIComponent(active.props.videoId)}?t=${t}`);
   }, [active, router]);
 
+  // Drag from anywhere on the mini except the player's own controls (marked with
+  // data-controls / role=slider / buttons), which keep working. A small movement
+  // threshold means a tap still falls through to the player (play/pause).
   const onDragStart = useCallback((e: React.PointerEvent) => {
+    const target = e.target as HTMLElement;
+    if (
+      target.closest("[data-controls],button,a,input,[role='slider']") !== null
+    ) {
+      return;
+    }
     dragStart.current = { x: e.clientX, y: e.clientY };
-    e.currentTarget.setPointerCapture(e.pointerId);
-    setDrag({ dx: 0, dy: 0 });
+    dragging.current = false;
   }, []);
   const onDragMove = useCallback((e: React.PointerEvent) => {
     if (!dragStart.current) return;
-    setDrag({
-      dx: e.clientX - dragStart.current.x,
-      dy: e.clientY - dragStart.current.y,
-    });
+    const dx = e.clientX - dragStart.current.x;
+    const dy = e.clientY - dragStart.current.y;
+    if (!dragging.current) {
+      if (Math.hypot(dx, dy) < 6) return;
+      dragging.current = true;
+      e.currentTarget.setPointerCapture(e.pointerId);
+    }
+    setDrag({ dx, dy });
   }, []);
   const onDragEnd = useCallback(
     (e: React.PointerEvent) => {
       if (!dragStart.current) return;
       dragStart.current = null;
+      const wasDragging = dragging.current;
+      dragging.current = false;
+      if (!wasDragging) return; // a tap — let the player handle it
       e.currentTarget.releasePointerCapture?.(e.pointerId);
       const el = containerRef.current;
       if (el) {
@@ -242,15 +258,26 @@ export function PlayerHost() {
     }
   }
 
+  const dragProps =
+    mode === "mini"
+      ? {
+          onPointerDown: onDragStart,
+          onPointerMove: onDragMove,
+          onPointerUp: onDragEnd,
+          onPointerCancel: onDragEnd,
+        }
+      : {};
+
   return (
     <div
       ref={containerRef}
       style={style}
+      {...dragProps}
       className={
         mode === "full"
           ? "z-20 overflow-hidden bg-black"
           : cn(
-              "group z-50 w-[min(420px,94vw)] overflow-hidden rounded-[var(--radius-card)] border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-2xl ring-1 ring-black/5 transition-opacity duration-300",
+              "group z-50 w-[min(420px,94vw)] cursor-move touch-none overflow-hidden rounded-[var(--radius-card)] border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-2xl ring-1 ring-black/5 transition-opacity duration-300",
               entered ? "opacity-100" : "opacity-0",
             )
       }
@@ -263,19 +290,12 @@ export function PlayerHost() {
         {playerEl}
       </div>
       {mode === "mini" ? (
-        // Top strip doubles as the drag handle; buttons stop the drag.
-        <div
-          onPointerDown={onDragStart}
-          onPointerMove={onDragMove}
-          onPointerUp={onDragEnd}
-          onPointerCancel={onDragEnd}
-          className="absolute inset-x-0 top-0 z-10 flex cursor-move touch-none items-start justify-end gap-1.5 bg-gradient-to-b from-black/55 to-transparent p-2 opacity-100 transition-opacity duration-200 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
-        >
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-start justify-end gap-1.5 bg-gradient-to-b from-black/55 to-transparent p-2 opacity-100 transition-opacity duration-200 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
           <button
             type="button"
             onPointerDown={(e) => e.stopPropagation()}
             onClick={expand}
-            className="flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm transition hover:bg-black/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+            className="pointer-events-auto flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm transition hover:bg-black/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
             aria-label="Expand to full player"
             title="Expand"
           >
@@ -297,7 +317,7 @@ export function PlayerHost() {
             type="button"
             onPointerDown={(e) => e.stopPropagation()}
             onClick={clearActive}
-            className="flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm transition hover:bg-black/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+            className="pointer-events-auto flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm transition hover:bg-black/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
             aria-label="Close mini player"
             title="Close"
           >
