@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { ChannelTags } from "@/components/channel/channel-tags";
 import { PageHeader } from "@/components/layout/page-header";
 import { SubscriptionUnfollowButton } from "@/components/subscriptions/subscription-unfollow-button";
 import { ChannelAvatarCircle } from "@/components/videos/channel-avatar-circle";
@@ -38,26 +39,24 @@ export default async function SubscriptionChannelsPage() {
             const label = c.channelName || c.channelId;
             return (
               <li key={c.channelId}>
-                <div className="group flex items-center gap-2 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-3 transition hover:border-[hsl(var(--primary)_/_0.35)]">
-                  <Link
-                    href={`/channel/${encodeURIComponent(c.channelId)}`}
-                    className="flex min-w-0 flex-1 items-center gap-3"
-                  >
-                    <ChannelAvatarCircle
-                      imageUrl={c.avatarUrl ?? undefined}
-                      label={label}
-                      size="lg"
-                    />
-                    <span className="min-w-0">
-                      <span className="block truncate text-sm font-semibold text-[hsl(var(--foreground))] group-hover:text-[hsl(var(--primary))]">
+                <div className="group flex h-full flex-col gap-3 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-3 transition hover:border-[hsl(var(--primary)_/_0.35)]">
+                  <div className="flex items-center gap-2">
+                    <Link
+                      href={`/channel/${encodeURIComponent(c.channelId)}`}
+                      className="flex min-w-0 flex-1 items-center gap-3"
+                    >
+                      <ChannelAvatarCircle
+                        imageUrl={c.avatarUrl ?? undefined}
+                        label={label}
+                        size="lg"
+                      />
+                      <span className="block min-w-0 truncate text-sm font-semibold text-[hsl(var(--foreground))] group-hover:text-[hsl(var(--primary))]">
                         {label}
                       </span>
-                      <span className="block truncate text-xs text-[hsl(var(--muted-foreground))]">
-                        {c.channelId}
-                      </span>
-                    </span>
-                  </Link>
-                  <SubscriptionUnfollowButton channelId={c.channelId} />
+                    </Link>
+                    <SubscriptionUnfollowButton channelId={c.channelId} />
+                  </div>
+                  <ChannelTags channelId={c.channelId} isAuthed tone="card" />
                 </div>
               </li>
             );

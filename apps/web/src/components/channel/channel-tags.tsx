@@ -5,20 +5,59 @@ import { useEffect, useId, useRef, useState } from "react";
 import { normalizeChannelTag } from "@/lib/channel-tag";
 import { trpc } from "@/trpc/react";
 
-const PILL =
-  "inline-flex items-center gap-1 rounded-full border border-white/20 bg-black/30 px-2.5 py-1 text-xs text-white/85 sm:text-sm";
+type Tone = "dark" | "card";
+
+const PILL_BASE =
+  "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs sm:text-sm";
+
+const TONES: Record<
+  Tone,
+  {
+    pill: string;
+    hash: string;
+    remove: string;
+    input: string;
+    addButton: string;
+  }
+> = {
+  // On the channel banner (white text over a dark image).
+  dark: {
+    pill: "border-white/20 bg-black/30 text-white/85",
+    hash: "text-white/50",
+    remove: "text-white/60 transition hover:bg-white/15 hover:text-white",
+    input: "text-white placeholder:text-white/40",
+    addButton:
+      "text-white/70 transition hover:border-white/40 hover:text-white",
+  },
+  // On light card surfaces (the channels list).
+  card: {
+    pill: "border-[hsl(var(--border))] bg-[hsl(var(--muted)_/_0.45)] text-[hsl(var(--foreground))]",
+    hash: "text-[hsl(var(--muted-foreground))]",
+    remove:
+      "text-[hsl(var(--muted-foreground))] transition hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))]",
+    input:
+      "text-[hsl(var(--foreground))] placeholder:text-[hsl(var(--muted-foreground))]",
+    addButton:
+      "text-[hsl(var(--muted-foreground))] transition hover:border-[hsl(var(--primary)_/_0.5)] hover:text-[hsl(var(--primary))]",
+  },
+};
 
 type Props = {
   channelId: string;
   isAuthed: boolean;
+  tone?: Tone;
 };
 
 /**
- * Local per-user tags shown on the channel header. Each tag pill links to the
- * subscriptions feed filtered to only that tag and carries an × to remove it;
- * a same-styled "+ Tag" button adds one (with autocomplete from existing tags).
+ * Local per-user tags for a channel (channel header + the All-channels list).
+ * Each tag pill links to the subscriptions feed filtered to only that tag and
+ * carries an × to remove it; a same-styled "+ Tag" button adds one (with
+ * autocomplete from existing tags). `tone` adapts colors to dark banners vs
+ * light card surfaces.
  */
-export function ChannelTags({ channelId, isAuthed }: Props) {
+export function ChannelTags({ channelId, isAuthed, tone = "dark" }: Props) {
+  const t = TONES[tone];
+  const pill = `${PILL_BASE} ${t.pill}`;
   const utils = trpc.useUtils();
   const listId = useId();
   const { data: tags } = trpc.channelTags.listForChannel.useQuery(
@@ -61,7 +100,7 @@ export function ChannelTags({ channelId, isAuthed }: Props) {
   return (
     <div className="flex flex-wrap items-center gap-2">
       {(tags ?? []).map((tag) => (
-        <span key={tag} className={PILL}>
+        <span key={tag} className={pill}>
           <Link
             href={`/subscriptions?tag=${encodeURIComponent(tag)}`}
             className="hover:underline"
@@ -72,7 +111,7 @@ export function ChannelTags({ channelId, isAuthed }: Props) {
             type="button"
             onClick={() => remove.mutate({ channelId, tag })}
             aria-label={`Remove tag ${tag}`}
-            className="-mr-1 ml-0.5 flex h-4 w-4 items-center justify-center rounded-full text-white/60 transition hover:bg-white/15 hover:text-white"
+            className={`-mr-1 ml-0.5 flex h-4 w-4 items-center justify-center rounded-full ${t.remove}`}
           >
             ×
           </button>
@@ -80,8 +119,8 @@ export function ChannelTags({ channelId, isAuthed }: Props) {
       ))}
 
       {adding ? (
-        <span className={PILL}>
-          <span aria-hidden className="text-white/50">
+        <span className={pill}>
+          <span aria-hidden className={t.hash}>
             #
           </span>
           <input
@@ -98,11 +137,11 @@ export function ChannelTags({ channelId, isAuthed }: Props) {
             }}
             onBlur={submit}
             placeholder="add tag"
-            className="w-24 bg-transparent text-white placeholder:text-white/40 focus:outline-none"
+            className={`w-24 bg-transparent focus:outline-none ${t.input}`}
           />
           <datalist id={listId}>
-            {(allTags ?? []).map((t) => (
-              <option key={t.tag} value={t.tag} />
+            {(allTags ?? []).map((tagOption) => (
+              <option key={tagOption.tag} value={tagOption.tag} />
             ))}
           </datalist>
         </span>
@@ -110,7 +149,7 @@ export function ChannelTags({ channelId, isAuthed }: Props) {
         <button
           type="button"
           onClick={() => setAdding(true)}
-          className={`${PILL} font-medium text-white/70 transition hover:border-white/40 hover:text-white`}
+          className={`${pill} font-medium ${t.addButton}`}
         >
           + Tag
         </button>
