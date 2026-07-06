@@ -32,7 +32,10 @@ export function PlaylistsPanel() {
     onSuccess: async () => {
       setName("");
       setDescription("");
-      await utils.playlists.list.invalidate();
+      await Promise.all([
+        utils.playlists.list.invalidate(),
+        utils.playlists.membership.invalidate(),
+      ]);
     },
   });
   const remove = trpc.playlists.remove.useMutation({
@@ -54,7 +57,10 @@ export function PlaylistsPanel() {
           playlistId: selectedPlaylistId,
         });
       }
-      await utils.playlists.list.invalidate();
+      await Promise.all([
+        utils.playlists.list.invalidate(),
+        utils.playlists.membership.invalidate(),
+      ]);
     },
   });
   const removeItem = trpc.playlists.removeItem.useMutation({
@@ -64,7 +70,10 @@ export function PlaylistsPanel() {
           playlistId: selectedPlaylistId,
         });
       }
-      await utils.playlists.list.invalidate();
+      await Promise.all([
+        utils.playlists.list.invalidate(),
+        utils.playlists.membership.invalidate(),
+      ]);
     },
   });
 

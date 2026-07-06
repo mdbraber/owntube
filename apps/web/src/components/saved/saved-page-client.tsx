@@ -19,7 +19,11 @@ export function SavedPageClient() {
     onError: (_e, _v, ctx) => {
       if (ctx?.prev) utils.interactions.listSaved.setData(undefined, ctx.prev);
     },
-    onSettled: () => utils.interactions.listSaved.invalidate(),
+    onSettled: () =>
+      Promise.all([
+        utils.interactions.listSaved.invalidate(),
+        utils.interactions.savedIds.invalidate(),
+      ]),
   });
 
   const items = savedQuery.data ?? [];

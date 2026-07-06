@@ -45,6 +45,7 @@ export function useVideoCardActions({
       // here would resurface a freshly hidden card before the server pool clears.
       await Promise.all([
         utils.interactions.state.invalidate({ videoId }),
+        utils.interactions.savedIds.invalidate(),
         utils.video.related.invalidate(),
         utils.shorts.feed.invalidate(),
       ]);
@@ -52,7 +53,10 @@ export function useVideoCardActions({
   });
   const addToPlaylist = trpc.playlists.addItem.useMutation({
     onSuccess: async () => {
-      await utils.playlists.list.invalidate();
+      await Promise.all([
+        utils.playlists.list.invalidate(),
+        utils.playlists.membership.invalidate(),
+      ]);
     },
   });
   const createPlaylist = trpc.playlists.create.useMutation({

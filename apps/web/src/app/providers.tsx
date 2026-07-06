@@ -11,6 +11,7 @@ import { SponsorBlockSync } from "@/components/settings/sponsorblock-sync";
 import { ThemeSync } from "@/components/settings/theme-sync";
 import { IgnoredVideosProvider } from "@/components/videos/ignored-videos-context";
 import { InvidiousOriginProvider } from "@/components/videos/invidious-origin-context";
+import { VideoMembershipProvider } from "@/components/videos/video-membership-context";
 import { trpc } from "@/trpc/react";
 
 function getBaseUrl() {
@@ -61,7 +62,9 @@ export function Providers({
         <SponsorBlockSync />
         <QueueSync />
         <InvidiousOriginProvider origins={invidiousOrigins}>
-          <IgnoredVideosProvider>{children}</IgnoredVideosProvider>
+          <IgnoredVideosProvider>
+            <VideoMembershipProvider>{children}</VideoMembershipProvider>
+          </IgnoredVideosProvider>
         </InvidiousOriginProvider>
       </QueryClientProvider>
     </trpc.Provider>

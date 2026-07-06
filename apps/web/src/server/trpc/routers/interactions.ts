@@ -131,6 +131,17 @@ export const interactionsRouter = router({
       }),
     );
   }),
+  /** Lightweight id-only list of saved videos for membership pills (no detail fetch). */
+  savedIds: protectedProcedure.query(({ ctx }) => {
+    const rows = ctx.db
+      .select({ videoId: interactions.videoId })
+      .from(interactions)
+      .where(
+        and(eq(interactions.userId, ctx.userId), eq(interactions.type, "save")),
+      )
+      .all();
+    return rows.map((r) => r.videoId);
+  }),
   /** Bounded lookup: which of the given video ids has this user ignored. */
   ignoredAmong: protectedProcedure
     .input(z.object({ videoIds: z.array(z.string().min(1).max(64)).max(200) }))

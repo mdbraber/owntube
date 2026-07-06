@@ -6,6 +6,7 @@ import { VideoCardDurationBadge } from "@/components/videos/video-card-duration-
 import { VideoCardMarkWatchedButton } from "@/components/videos/video-card-mark-watched-button";
 import { VideoCardThumbnailImg } from "@/components/videos/video-card-thumbnail-img";
 import { VideoCardThumbnailInteractive } from "@/components/videos/video-card-thumbnail-interactive";
+import { VideoStatusPills } from "@/components/videos/video-status-pills";
 import {
   formatPublishedAbsoluteLabel,
   formatPublishedDebugTitle,
@@ -94,6 +95,7 @@ export function VideoCard({
             channelId={channelId}
             className="absolute left-2 top-2 z-20 flex items-center gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100 focus-within:opacity-100"
           />
+          <VideoStatusPills videoId={videoId} />
         </div>
       ) : (
         <Link href={href} className="block">
@@ -308,6 +310,7 @@ export function VideoCardShort({
           channelId={channelId}
           className="absolute left-1.5 top-1.5 z-20 flex items-center gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100 focus-within:opacity-100"
         />
+        <VideoStatusPills videoId={videoId} size="sm" />
       </div>
       <div className="px-0.5">
         <div className="relative min-w-0 pr-8">
@@ -446,6 +449,7 @@ export function VideoCardCompact({
               channelId={channelId}
               className="absolute left-1.5 top-1.5 z-20 flex items-center gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100 focus-within:opacity-100"
             />
+            <VideoStatusPills videoId={videoId} size="sm" />
           </div>
         </Link>
         <div className="flex min-w-0 flex-1 flex-col gap-0.5 py-0.5 pr-1">

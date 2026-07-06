@@ -49,6 +49,24 @@ export const playlistsRouter = router({
     }));
   }),
 
+  /**
+   * Lightweight membership map for status pills: every playlisted video the
+   * user has, with its playlist name. Videos in multiple playlists appear once
+   * per playlist (most recently added first) — the client keeps the first.
+   */
+  membership: protectedProcedure.query(({ ctx }) => {
+    return ctx.db
+      .select({
+        videoId: playlistItems.videoId,
+        playlistName: playlists.name,
+      })
+      .from(playlistItems)
+      .innerJoin(playlists, eq(playlistItems.playlistId, playlists.id))
+      .where(eq(playlists.userId, ctx.userId))
+      .orderBy(desc(playlistItems.addedAt))
+      .all();
+  }),
+
   create: protectedProcedure
     .input(playlistInputSchema)
     .mutation(({ ctx, input }) => {

@@ -67,7 +67,10 @@ export function InteractionButtons({
   );
   const setMutation = trpc.interactions.set.useMutation({
     onSuccess: async () => {
-      await utils.interactions.state.invalidate({ videoId });
+      await Promise.all([
+        utils.interactions.state.invalidate({ videoId }),
+        utils.interactions.savedIds.invalidate(),
+      ]);
     },
   });
 
