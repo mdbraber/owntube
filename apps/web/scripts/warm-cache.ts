@@ -6,6 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
+import { refreshChannelsLatestVideoAt } from "../src/server/channel-meta/recency";
 import { refreshChannelMetaIfStale } from "../src/server/channel-meta/store";
 import type { AppDb } from "../src/server/db/client";
 import { runSqlMigrations } from "../src/server/db/run-migrations";
@@ -56,6 +57,7 @@ function envFlag(name: string, defaultValue = true): boolean {
 const warmChannelsEnabled = envFlag("OWNTUBE_WARM_CHANNELS", true);
 const warmChannelPagesEnabled = envFlag("OWNTUBE_WARM_CHANNEL_PAGES", true);
 const warmShortsEnabled = envFlag("OWNTUBE_WARM_SHORTS", true);
+const warmRecencyEnabled = envFlag("OWNTUBE_WARM_RECENCY", true);
 
 function sleepMs(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -153,6 +155,23 @@ async function warmChannelMeta(
   return stats.failed === 0;
 }
 
+async function warmChannelRecency(
+  db: AppDb,
+  channelIds: string[],
+): Promise<boolean> {
+  try {
+    const updated = await refreshChannelsLatestVideoAt(db, channelIds);
+    logLine(
+      `warm-cache: channel recency — updated=${updated} total=${channelIds.length}`,
+    );
+    return true;
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    logError(`warm-cache: channel recency failed — ${message}`);
+    return false;
+  }
+}
+
 async function warmChannelPages(
   db: AppDb,
   channelIds: string[],
@@ -213,6 +232,9 @@ async function main(): Promise<void> {
     } else {
       logLine(`warm-cache: warming ${channelIds.length} channel(s)`);
       if (warmChannelsEnabled && !(await warmChannelMeta(db, channelIds))) {
+        hadFailure = true;
+      }
+      if (warmRecencyEnabled && !(await warmChannelRecency(db, channelIds))) {
         hadFailure = true;
       }
       if (

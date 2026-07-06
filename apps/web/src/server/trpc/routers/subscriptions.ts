@@ -12,11 +12,11 @@ import {
 } from "@/lib/published-sort-key";
 import { isStrictShortVideo } from "@/lib/short-video";
 import { normalizeYoutubeChannelId } from "@/lib/youtube-channel-id";
+import { refreshChannelsLatestVideoAt } from "@/server/channel-meta/recency";
 import {
   nowUnix,
   readChannelMetaByIds,
   refreshChannelMetaIfStale,
-  setChannelLatestVideoAt,
 } from "@/server/channel-meta/store";
 import type { AppDb } from "@/server/db/client";
 import { interactions, subscriptions, watchHistory } from "@/server/db/schema";
@@ -763,43 +763,13 @@ export const subscriptionsRouter = router({
       );
     }
 
-    // 2. Newest *long-form* upload per channel, from the UULF uploads playlist
-    // (excludes Shorts / premieres, unlike channel RSS). Authoritative overwrite,
-    // capped and fetched in parallel like the merged-feed seed.
+    // 2. Newest upload per channel (long-form playlist, Shorts-RSS fallback),
+    // capped like the merged-feed seed. Shared with the cache warmer.
     const recencyTargets = subs.slice(0, RSS_SEED_MAX_CHANNELS);
-    const windows = await fetchLongFormWindows(
+    updated += await refreshChannelsLatestVideoAt(
+      ctx.db,
       recencyTargets.map((s) => s.channelId),
     );
-    const noLongForm: { channelId: string }[] = [];
-    for (const s of recencyTargets) {
-      const newest = windows.get(s.channelId)?.newestPublishedAt;
-      if (typeof newest === "number" && newest > 0) {
-        setChannelLatestVideoAt(ctx.db, s.channelId, newest);
-        updated++;
-      } else {
-        noLongForm.push(s);
-      }
-    }
-
-    // Shorts-only channels have no long-form playlist → fall back to the channel
-    // RSS (which includes Shorts) so they still order by their newest upload.
-    if (noLongForm.length > 0) {
-      const rss = await Promise.all(
-        noLongForm.map((s) => fetchRssEntriesFromChannel(s.channelId)),
-      );
-      for (let j = 0; j < noLongForm.length; j++) {
-        let newest = 0;
-        for (const e of rss[j] ?? []) {
-          if (typeof e.publishedAt === "number" && e.publishedAt > newest) {
-            newest = e.publishedAt;
-          }
-        }
-        if (newest > 0) {
-          setChannelLatestVideoAt(ctx.db, noLongForm[j].channelId, newest);
-          updated++;
-        }
-      }
-    }
     return { updated };
   }),
 
