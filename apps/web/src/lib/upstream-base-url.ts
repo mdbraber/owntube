@@ -1,23 +1,6 @@
-/**
- * Strip one layer of matching surrounding quotes. Docker Compose `env_file` and
- * `${VAR}` interpolation keep quotes literally, so `PIPED_BASE_URL="disabled"`
- * arrives as the value `"disabled"` (quotes included) — without this, that reads
- * as a base URL rather than the disable keyword.
- */
-function stripSurroundingQuotes(value: string): string {
-  const v = value.trim();
-  if (v.length >= 2) {
-    const first = v[0];
-    if ((first === '"' || first === "'") && v[v.length - 1] === first) {
-      return v.slice(1, -1).trim();
-    }
-  }
-  return v;
-}
-
 /** Values that mean “do not use this upstream” in `.env` or user settings. */
 export function isUpstreamDisabled(value: string | undefined | null): boolean {
-  const v = stripSurroundingQuotes(value ?? "").toLowerCase();
+  const v = value?.trim().toLowerCase() ?? "";
   if (!v) return false;
   return (
     v === "disabled" ||
@@ -33,7 +16,22 @@ export function isUpstreamDisabled(value: string | undefined | null): boolean {
 export function normalizeUpstreamBaseUrl(
   value: string | undefined | null,
 ): string {
-  const raw = stripSurroundingQuotes(value ?? "");
+  const raw = value?.trim() ?? "";
   if (!raw || isUpstreamDisabled(raw)) return "";
   return raw.replace(/\/+$/, "");
+}
+
+/**
+ * True when a value is wrapped in matching surrounding quotes. Environment
+ * variables are not a quoted format, so this signals a `.env` mistake (e.g.
+ * `PIPED_BASE_URL="disabled"`) — the value should be written unquoted. Callers
+ * warn on this rather than silently stripping it.
+ */
+export function hasSurroundingQuotes(
+  value: string | undefined | null,
+): boolean {
+  const v = value?.trim() ?? "";
+  if (v.length < 2) return false;
+  const q = v[0];
+  return (q === '"' || q === "'") && v[v.length - 1] === q;
 }

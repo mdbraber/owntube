@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  hasSurroundingQuotes,
   isUpstreamDisabled,
   normalizeUpstreamBaseUrl,
 } from "@/lib/upstream-base-url";
@@ -18,14 +19,19 @@ describe("upstream base URL helpers", () => {
     expect(normalizeUpstreamBaseUrl("")).toBe("");
   });
 
-  it("ignores surrounding quotes kept by Docker env parsing", () => {
-    // `PIPED_BASE_URL="disabled"` arrives with the quotes still attached.
-    expect(isUpstreamDisabled('"disabled"')).toBe(true);
-    expect(isUpstreamDisabled("'disabled'")).toBe(true);
-    expect(normalizeUpstreamBaseUrl('"disabled"')).toBe("");
-    // A quoted real URL is still usable, minus the quotes.
-    expect(normalizeUpstreamBaseUrl('"https://inv.example/"')).toBe(
-      "https://inv.example",
-    );
+  it("does not silently strip quotes (env is not a quoted format)", () => {
+    // `PIPED_BASE_URL="disabled"` arrives with the quotes still attached; the
+    // disable keyword is not recognized, so callers must warn about it.
+    expect(isUpstreamDisabled('"disabled"')).toBe(false);
+    expect(normalizeUpstreamBaseUrl('"disabled"')).toBe('"disabled"');
+  });
+
+  it("detects surrounding quotes for misconfig warnings", () => {
+    expect(hasSurroundingQuotes('"disabled"')).toBe(true);
+    expect(hasSurroundingQuotes("'https://inv.example'")).toBe(true);
+    expect(hasSurroundingQuotes("https://inv.example")).toBe(false);
+    expect(hasSurroundingQuotes('"mismatched')).toBe(false);
+    expect(hasSurroundingQuotes("")).toBe(false);
+    expect(hasSurroundingQuotes(undefined)).toBe(false);
   });
 });
