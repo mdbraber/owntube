@@ -3,7 +3,7 @@ import { QueueToggleButton } from "@/components/queue/queue-toggle-button";
 import { ChannelAvatarCircle } from "@/components/videos/channel-avatar-circle";
 import { VideoCardActionsMenu } from "@/components/videos/video-card-actions-menu";
 import { VideoCardDurationBadge } from "@/components/videos/video-card-duration-badge";
-import { VideoCardMarkWatchedButton } from "@/components/videos/video-card-mark-watched-button";
+import { VideoCardOverlayActions } from "@/components/videos/video-card-overlay-actions";
 import { VideoCardThumbnailImg } from "@/components/videos/video-card-thumbnail-img";
 import { VideoCardThumbnailInteractive } from "@/components/videos/video-card-thumbnail-interactive";
 import { VideoStatusPills } from "@/components/videos/video-status-pills";
@@ -90,12 +90,12 @@ export function VideoCard({
             thumbClassName={thumbShell}
             imgClassName={thumbImg}
           />
-          <VideoCardMarkWatchedButton
+          <VideoCardOverlayActions
             videoId={videoId}
+            title={title}
             channelId={channelId}
-            className="absolute left-2 top-2 z-20 flex items-center gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100 focus-within:opacity-100"
+            className="absolute left-2 top-2 z-20 flex max-w-[calc(100%-1rem)] flex-wrap gap-1"
           />
-          <VideoStatusPills videoId={videoId} />
         </div>
       ) : (
         <Link href={href} className="block">
@@ -128,10 +128,11 @@ export function VideoCard({
               isUpcoming={isUpcoming}
               className="bottom-2 right-2 px-2 py-0.5 text-[11px]"
             />
-            <VideoCardMarkWatchedButton
+            <VideoCardOverlayActions
               videoId={videoId}
+              title={title}
               channelId={channelId}
-              className="absolute left-2 top-2 z-20 flex items-center gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100 focus-within:opacity-100"
+              className="absolute left-2 top-2 z-20 flex max-w-[calc(100%-1rem)] flex-wrap gap-1"
             />
           </div>
         </Link>
@@ -297,20 +298,24 @@ export function VideoCardShort({
                 <polygon points="6 4 20 12 6 20 6 4" />
               </svg>
             </div>
-            <VideoCardDurationBadge
-              durationSeconds={durationSeconds}
-              isLive={isLive}
-              isUpcoming={isUpcoming}
-              className="bottom-1.5 right-1.5 px-1.5 py-px text-[10px]"
-            />
+            <div className="pointer-events-none absolute inset-x-1.5 bottom-1.5 z-10 flex items-center justify-end gap-1">
+              <VideoStatusPills videoId={videoId} size="sm" />
+              <VideoCardDurationBadge
+                durationSeconds={durationSeconds}
+                isLive={isLive}
+                isUpcoming={isUpcoming}
+                positioned={false}
+                className="px-1.5 py-px text-[10px]"
+              />
+            </div>
           </div>
         </Link>
-        <VideoCardMarkWatchedButton
+        <VideoCardOverlayActions
           videoId={videoId}
+          title={title}
           channelId={channelId}
-          className="absolute left-1.5 top-1.5 z-20 flex items-center gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100 focus-within:opacity-100"
+          className="absolute left-1.5 top-1.5 z-20 flex max-w-[calc(100%-0.75rem)] flex-wrap gap-1"
         />
-        <VideoStatusPills videoId={videoId} size="sm" />
       </div>
       <div className="px-0.5">
         <div className="relative min-w-0 pr-8">
@@ -438,18 +443,22 @@ export function VideoCardCompact({
                 className="h-full w-full object-cover transition duration-500 ease-out group-hover:scale-105"
               />
             ) : null}
-            <VideoCardDurationBadge
-              durationSeconds={durationSeconds}
-              isLive={isLive}
-              isUpcoming={isUpcoming}
-              className="bottom-1 right-1 px-1 py-px text-[10px]"
-            />
-            <VideoCardMarkWatchedButton
+            <div className="pointer-events-none absolute inset-x-1 bottom-1 z-10 flex items-center justify-end gap-1">
+              <VideoStatusPills videoId={videoId} size="sm" />
+              <VideoCardDurationBadge
+                durationSeconds={durationSeconds}
+                isLive={isLive}
+                isUpcoming={isUpcoming}
+                positioned={false}
+                className="px-1 py-px text-[10px]"
+              />
+            </div>
+            <VideoCardOverlayActions
               videoId={videoId}
+              title={title}
               channelId={channelId}
-              className="absolute left-1.5 top-1.5 z-20 flex items-center gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100 focus-within:opacity-100"
+              className="absolute left-1.5 top-1.5 z-20 flex max-w-[calc(100%-0.75rem)] flex-wrap gap-1"
             />
-            <VideoStatusPills videoId={videoId} size="sm" />
           </div>
         </Link>
         <div className="flex min-w-0 flex-1 flex-col gap-0.5 py-0.5 pr-1">

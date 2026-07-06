@@ -5,54 +5,39 @@ import { cn } from "@/lib/utils";
 
 type VideoStatusPillsProps = {
   videoId?: string;
-  /** Position/wrapper classes for the pill stack (defaults to top-right overlay). */
   className?: string;
   /** Compact pill sizing for smaller cards (shorts/compact). */
   size?: "default" | "sm";
 };
 
-const pillBase =
-  "pointer-events-none inline-flex max-w-full items-center gap-1 rounded-full font-semibold text-white shadow-sm";
-
 /**
- * Renders "Saved" / "Queued" / "Playlist: X" pills for a video, styled like the
- * upcoming duration pill. Reads shared membership state from context, so any
- * card can drop this in without wiring its own queries. Renders nothing when the
- * video has no membership (or the user is signed out).
+ * Renders a "Playlist: X" pill for a video when it belongs to a playlist,
+ * styled like the upcoming duration pill. Rendered inline so cards can place it
+ * in the bottom-right row next to the duration badge. Reads shared membership
+ * state from context, so any card can drop it in without wiring its own query.
+ * Saved / queued state is surfaced by the corner action buttons instead.
  */
 export function VideoStatusPills({
   videoId,
   className,
   size = "default",
 }: VideoStatusPillsProps) {
-  const { saved, queued, playlistName } = useVideoMembership(videoId);
-  if (!saved && !queued && !playlistName) return null;
+  const { playlistName } = useVideoMembership(videoId);
+  if (!playlistName) return null;
 
   const sizeClass =
     size === "sm" ? "px-2 py-0.5 text-[10px]" : "px-2.5 py-1 text-[11px]";
 
   return (
-    <div
+    <span
       className={cn(
-        "pointer-events-none absolute right-2 top-2 z-10 flex flex-wrap justify-end gap-1",
-        size === "sm" && "right-1.5 top-1.5",
+        "pointer-events-none inline-flex min-w-0 items-center rounded-full bg-violet-600 font-semibold text-white shadow-sm",
+        sizeClass,
         className,
       )}
+      title={`Playlist: ${playlistName}`}
     >
-      {saved ? (
-        <span className={cn(pillBase, sizeClass, "bg-emerald-600")}>Saved</span>
-      ) : null}
-      {queued ? (
-        <span className={cn(pillBase, sizeClass, "bg-sky-600")}>Queued</span>
-      ) : null}
-      {playlistName ? (
-        <span
-          className={cn(pillBase, sizeClass, "bg-violet-600")}
-          title={`Playlist: ${playlistName}`}
-        >
-          <span className="truncate">Playlist: {playlistName}</span>
-        </span>
-      ) : null}
-    </div>
+      <span className="truncate">Playlist: {playlistName}</span>
+    </span>
   );
 }

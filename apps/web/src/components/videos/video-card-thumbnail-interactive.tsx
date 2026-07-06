@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useInvidiousOrigins } from "@/components/videos/invidious-origin-context";
 import { VideoCardDurationBadge } from "@/components/videos/video-card-duration-badge";
+import { VideoStatusPills } from "@/components/videos/video-status-pills";
 import {
   type CardPreviewPlayback,
   cardPreviewPlaybackFromDetail,
 } from "@/lib/card-preview-playback";
-import { useInvidiousOrigins } from "@/components/videos/invidious-origin-context";
 import { toBrowserUpstreamImageUrl } from "@/lib/channel-avatar-proxy";
 import { buildHlsSameOriginConfig } from "@/lib/hls-same-origin";
 import { cn } from "@/lib/utils";
@@ -387,12 +388,16 @@ export function VideoCardThumbnailInteractive({
             </svg>
           </div>
         ) : null}
-        <VideoCardDurationBadge
-          durationSeconds={durationSeconds}
-          isLive={isLive}
-          isUpcoming={isUpcoming}
-          className="bottom-2 right-2 px-2 py-0.5 text-[11px]"
-        />
+        <div className="pointer-events-none absolute inset-x-2 bottom-2 z-10 flex items-center justify-end gap-1">
+          <VideoStatusPills videoId={videoId} />
+          <VideoCardDurationBadge
+            durationSeconds={durationSeconds}
+            isLive={isLive}
+            isUpcoming={isUpcoming}
+            positioned={false}
+            className="px-2 py-0.5 text-[11px]"
+          />
+        </div>
       </Link>
       {/* biome-ignore lint/a11y/useMediaCaption: split preview companion */}
       <audio ref={audioRef} className="hidden" preload="none" />
