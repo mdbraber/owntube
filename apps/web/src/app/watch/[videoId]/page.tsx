@@ -36,6 +36,7 @@ import { auth } from "@/server/auth";
 import { getDb } from "@/server/db/client";
 import { UpstreamAgeRestrictedError } from "@/server/errors/upstream-age-restricted";
 import { UpstreamLiveUpcomingError } from "@/server/errors/upstream-live-upcoming";
+import { getWatchResumeSeconds } from "@/server/history/watch-resume";
 import { getRecommendations } from "@/server/recommendation/engine";
 import {
   fetchRelatedVideos,
@@ -149,6 +150,20 @@ export default async function WatchPage({
 
   const isUpcoming = upcomingLive !== null || detail?.isUpcoming === true;
   const isLive = !isUpcoming && detail?.isLive === true;
+
+  // Resume a previously-watched, unfinished video where the viewer left off,
+  // unless the URL asked for a specific time (?t=) or this is a live/upcoming
+  // stream (no meaningful saved position).
+  const resumeSeconds =
+    startAtSeconds === undefined &&
+    detail &&
+    !isLive &&
+    !isUpcoming &&
+    Number.isFinite(userId) &&
+    userId > 0
+      ? getWatchResumeSeconds(db, userId, videoId, detail.durationSeconds)
+      : null;
+  const effectiveStartAtSeconds = startAtSeconds ?? resumeSeconds ?? undefined;
 
   const relatedResult = detail
     ? await fetchRelatedVideos(db, input, 24, overrides).catch(() => null)
@@ -298,7 +313,7 @@ export default async function WatchPage({
                 title={detail.title}
                 poster={poster ?? undefined}
                 chapters={chapters}
-                startAtSeconds={startAtSeconds}
+                startAtSeconds={effectiveStartAtSeconds}
                 isLive={isLive}
                 playbackSourceUsed={
                   detail.sourceUsed === "cache" ? undefined : detail.sourceUsed
