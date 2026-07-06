@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   index,
   integer,
@@ -50,6 +51,10 @@ export const watchHistory = sqliteTable(
     index("watch_history_user_started_idx").on(t.userId, t.startedAt),
     index("watch_history_video_idx").on(t.videoId),
     index("watch_history_channel_idx").on(t.channelId),
+    // One active row per (user, video); duplicates are soft-deleted.
+    uniqueIndex("watch_history_user_video_active_uidx")
+      .on(t.userId, t.videoId)
+      .where(sql`is_deleted = 0`),
   ],
 );
 

@@ -29,12 +29,19 @@ export function WatchTracker({
   isShort = false,
   onWatched,
 }: WatchTrackerProps) {
+  const utils = trpc.useUtils();
   const { mutate } = trpc.history.upsertEvent.useMutation();
   /** tRPC’s mutation return object is not referentially stable; do not list it in effect deps. */
   const mutateRef = useRef(mutate);
   mutateRef.current = mutate;
   const onWatchedRef = useRef(onWatched);
   onWatchedRef.current = onWatched;
+  const invalidateContinueRef = useRef(() => {
+    void utils.history.continueWatching.invalidate();
+  });
+  invalidateContinueRef.current = () => {
+    void utils.history.continueWatching.invalidate();
+  };
 
   useEffect(() => {
     const m = mutateRef.current;
@@ -106,7 +113,10 @@ export function WatchTracker({
       window.clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisibilityChange);
       m(buildEvent(), {
-        onSuccess: () => onWatchedRef.current?.(videoId),
+        onSuccess: () => {
+          onWatchedRef.current?.(videoId);
+          invalidateContinueRef.current();
+        },
       });
     };
   }, [

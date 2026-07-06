@@ -241,7 +241,7 @@ describe("collectUserSignals — engagement weighting", () => {
     expect(signals.quickSkipVideoIds.size).toBe(0);
   });
 
-  it("does not flag a skipped-then-liked video and resolves multi-row sessions by best row", () => {
+  it("does not flag a skipped-then-liked video or a completed watch as quick-skip", () => {
     const { db } = createTestDb();
     const userId = seedUser(db);
     const now = Math.floor(Date.now() / 1000);
@@ -260,18 +260,8 @@ describe("collectUserSignals — engagement weighting", () => {
           isShort: 0,
           createdAt: now,
         },
-        // Same video: a mount row (unknown) and a later completed row.
-        {
-          userId,
-          videoId: "twoRowsVid01",
-          channelId: "UC-b",
-          startedAt: now - 5000,
-          durationWatched: 0,
-          completed: 0,
-          videoDurationSeconds: 600,
-          isShort: 0,
-          createdAt: now,
-        },
+        // A single row per video (see watch_history dedupe): the mount event and
+        // the later completed watch collapse into one completed row.
         {
           userId,
           videoId: "twoRowsVid01",

@@ -8,6 +8,7 @@ import {
   SECONDARY_NAV,
   SIDEBAR_NAV,
 } from "@/components/shell/nav-config";
+import { SidebarContinueWatching } from "@/components/shell/sidebar-continue-watching";
 import { SidebarSubscriptions } from "@/components/shell/sidebar-subscriptions";
 import { cn } from "@/lib/utils";
 
@@ -103,6 +104,8 @@ export function ShellSidebar({ open, onClose, isLoggedIn }: ShellSidebarProps) {
               </Link>
             ))}
           </div>
+
+          <SidebarContinueWatching enabled={isLoggedIn} />
 
           {isLoggedIn ? (
             <>

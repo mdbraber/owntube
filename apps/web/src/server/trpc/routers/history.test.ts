@@ -81,6 +81,105 @@ describe("historyRouter", () => {
     sqlite.close();
   });
 
+  it("keeps a single row per video and moves it up on re-watch", async () => {
+    const { db, sqlite } = createTestDb();
+    const now = Math.floor(Date.now() / 1000);
+    const user = db
+      .insert(users)
+      .values({
+        email: "history-dedupe@example.com",
+        passwordHash: "x",
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning({ id: users.id })
+      .get();
+
+    const caller = appRouter.createCaller({ db, userId: user.id });
+    const first = await caller.history.upsertEvent({
+      videoId: "dQw4w9WgXcQ",
+      channelId: "UC1",
+      durationWatched: 20,
+      completed: false,
+      videoDurationSeconds: 600,
+    });
+    // A second watch far later still folds into the same row (no duplicate).
+    const second = await caller.history.upsertEvent({
+      videoId: "dQw4w9WgXcQ",
+      channelId: "UC1",
+      durationWatched: 120,
+      completed: false,
+      videoDurationSeconds: 600,
+    });
+    expect(second).toEqual({ id: first.id, updated: true });
+
+    const activeRows = db
+      .select()
+      .from(watchHistory)
+      .where(eq(watchHistory.userId, user.id))
+      .all()
+      .filter((r) => r.isDeleted === 0);
+    expect(activeRows).toHaveLength(1);
+    expect(activeRows[0]?.durationWatched).toBe(120);
+
+    const listed = await caller.history.list({ page: 1, pageSize: 20 });
+    expect(listed).toHaveLength(1);
+    sqlite.close();
+  });
+
+  it("continueWatching returns partially-watched videos and excludes completed", async () => {
+    const { db, sqlite } = createTestDb();
+    const now = Math.floor(Date.now() / 1000);
+    const user = db
+      .insert(users)
+      .values({
+        email: "history-continue@example.com",
+        passwordHash: "x",
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning({ id: users.id })
+      .get();
+
+    const caller = appRouter.createCaller({ db, userId: user.id });
+    // Partially watched — should resume.
+    await caller.history.upsertEvent({
+      videoId: "partialVid0",
+      channelId: "UC1",
+      durationWatched: 100,
+      completed: false,
+      videoDurationSeconds: 600,
+      videoTitle: "Half Watched",
+      channelName: "Chan",
+    });
+    // Completed — should be excluded.
+    await caller.history.upsertEvent({
+      videoId: "doneVideo00",
+      channelId: "UC1",
+      durationWatched: 590,
+      completed: true,
+      videoDurationSeconds: 600,
+      videoTitle: "Finished",
+      channelName: "Chan",
+    });
+    // Barely started — below the resume threshold, excluded.
+    await caller.history.upsertEvent({
+      videoId: "glanceVid00",
+      channelId: "UC1",
+      durationWatched: 5,
+      completed: false,
+      videoDurationSeconds: 600,
+      videoTitle: "Glanced",
+      channelName: "Chan",
+    });
+
+    const resume = await caller.history.continueWatching({ limit: 10 });
+    expect(resume).toHaveLength(1);
+    expect(resume[0]?.videoId).toBe("partialVid0");
+    expect(resume[0]?.href).toBe("/watch/partialVid0?t=100");
+    sqlite.close();
+  });
+
   it("stores videoDurationSeconds and max-merges it on the recent-watch path", async () => {
     const { db, sqlite } = createTestDb();
     const now = Math.floor(Date.now() / 1000);

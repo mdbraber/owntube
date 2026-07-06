@@ -49,6 +49,7 @@ export function CardSwipeLayer({
     onSettled: () => {
       utils.subscriptions.mergedFeedInfinite.invalidate();
       utils.feed.home.invalidate();
+      utils.history.continueWatching.invalidate();
     },
   });
 

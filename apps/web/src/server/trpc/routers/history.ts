@@ -1,11 +1,15 @@
-import { and, desc, eq, like, or } from "drizzle-orm";
+import { and, desc, eq, gt, like, or, sql } from "drizzle-orm";
 import { z } from "zod";
+import { COMPLETION_RATIO } from "@/lib/watch-event";
 import { watchHistory } from "@/server/db/schema";
 import { clearRecommendationCachesForUser } from "@/server/recommendation/engine";
 import { loadWatchedVideoIdsForRecommendations } from "@/server/recommendation/watched-videos";
 import { fetchVideoDetail } from "@/server/services/proxy";
 import { getUserProxyOverrides } from "@/server/settings/profile";
 import { protectedProcedure, router } from "@/server/trpc/init";
+
+/** Minimum progress before a partially-watched video is worth resuming. */
+const MIN_RESUME_SECONDS = 15;
 
 const historyEventInputSchema = z.object({
   videoId: z.string().min(5).max(64),
@@ -45,6 +49,88 @@ export const historyRouter = router({
   watchedVideoIds: protectedProcedure.query(({ ctx }) => {
     return [...loadWatchedVideoIdsForRecommendations(ctx.db, ctx.userId)];
   }),
+  /**
+   * Partially-watched, not-yet-completed videos to resume — the newest first.
+   * Excludes shorts, completed/marked-watched videos, rows without a known
+   * length, and anything watched past the completion threshold. The resume
+   * position is the recorded watch time (dwell), an approximation of playback
+   * position given the app tracks dwell rather than exact seek position.
+   */
+  continueWatching: protectedProcedure
+    .input(
+      z
+        .object({ limit: z.number().int().min(1).max(50).default(12) })
+        .optional(),
+    )
+    .query(async ({ ctx, input }) => {
+      const limit = input?.limit ?? 12;
+      const rows = ctx.db
+        .select({
+          videoId: watchHistory.videoId,
+          channelId: watchHistory.channelId,
+          startedAt: watchHistory.startedAt,
+          durationWatched: watchHistory.durationWatched,
+          videoDurationSeconds: watchHistory.videoDurationSeconds,
+          videoTitle: watchHistory.videoTitle,
+          channelName: watchHistory.channelName,
+        })
+        .from(watchHistory)
+        .where(
+          and(
+            eq(watchHistory.userId, ctx.userId),
+            eq(watchHistory.isDeleted, 0),
+            eq(watchHistory.completed, 0),
+            eq(watchHistory.isShort, 0),
+            gt(watchHistory.videoDurationSeconds, 0),
+            gt(watchHistory.durationWatched, MIN_RESUME_SECONDS),
+            sql`${watchHistory.durationWatched} < ${COMPLETION_RATIO} * ${watchHistory.videoDurationSeconds}`,
+          ),
+        )
+        .orderBy(desc(watchHistory.startedAt))
+        .limit(limit)
+        .all();
+      const overrides = getUserProxyOverrides(ctx.db, ctx.userId);
+      return Promise.all(
+        rows.map(async (row) => {
+          const base = {
+            videoId: row.videoId,
+            channelId: row.channelId,
+            durationWatched: row.durationWatched,
+            videoDurationSeconds: row.videoDurationSeconds,
+            startedAt: row.startedAt,
+            href: `/watch/${row.videoId}?t=${row.durationWatched}`,
+          };
+          if (row.videoTitle) {
+            return {
+              ...base,
+              videoTitle: row.videoTitle,
+              thumbnailUrl: undefined as string | undefined,
+              channelName: row.channelName ?? row.channelId,
+            };
+          }
+          try {
+            const detail = await fetchVideoDetail(
+              ctx.db,
+              { videoId: row.videoId },
+              overrides,
+            );
+            return {
+              ...base,
+              videoTitle: detail.title,
+              thumbnailUrl: detail.thumbnailUrl,
+              channelName: detail.channelName ?? row.channelId,
+            };
+          } catch {
+            return {
+              ...base,
+              videoTitle: row.videoId,
+              thumbnailUrl: undefined,
+              channelName: row.channelId,
+            };
+          }
+        }),
+      );
+    }),
   upsertEvent: protectedProcedure
     .input(historyEventInputSchema)
     .mutation(async ({ ctx, input }) => {
@@ -63,7 +149,10 @@ export const historyRouter = router({
         .limit(1)
         .all()[0];
 
-      if (recent && ts - recent.startedAt < 30 * 60) {
+      // A video keeps a single history row: re-watching updates that row and
+      // bumps startedAt so it moves to the top (last-watched wins), rather than
+      // appending a duplicate.
+      if (recent) {
         const duration = Math.max(
           recent.durationWatched,
           input.durationWatched,
@@ -72,6 +161,7 @@ export const historyRouter = router({
         ctx.db
           .update(watchHistory)
           .set({
+            startedAt: ts,
             durationWatched: duration,
             completed,
             videoDurationSeconds: Math.max(

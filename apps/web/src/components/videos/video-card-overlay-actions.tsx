@@ -95,6 +95,7 @@ export function VideoCardOverlayActions({
         utils.subscriptions.mergedFeedInfinite.invalidate(),
         utils.feed.home.invalidate(),
         utils.video.related.invalidate(),
+        utils.history.continueWatching.invalidate(),
       ]);
     },
   });
