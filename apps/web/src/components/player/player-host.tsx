@@ -5,13 +5,22 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
 import { usePlayerContext } from "@/components/player/player-context";
 import { VideoPlayer } from "@/components/player/video-player";
 import { cn } from "@/lib/utils";
-import { readWatchMiniEnabled } from "@/lib/watch-mini-player-state";
+import {
+  type MiniCorner,
+  readMiniCorner,
+  readWatchMiniEnabled,
+  writeMiniCorner,
+} from "@/lib/watch-mini-player-state";
+
+/** Gap between the mini player and the viewport / chrome edges. */
+const MINI_GAP = 12;
 
 // Position the full-mode overlay before paint (no flash); no-op on the server.
 const useIsoLayoutEffect =
@@ -20,20 +29,32 @@ const useIsoLayoutEffect =
 /**
  * Renders the single, persistent <VideoPlayer> once for the whole app. It stays
  * mounted across navigation and is only repositioned: full-size over the watch
- * page's slot, or a mini corner off the watch page. Because the same instance
- * (and its <video>) is reused, leaving /watch never reloads or re-buffers.
+ * page's slot, or a draggable mini corner off the watch page. Because the same
+ * instance (and its <video>) is reused, leaving /watch never reloads/re-buffers.
  *
- * Critical: the <VideoPlayer> keeps the same position in the tree in every mode
- * so React never unmounts it — only the wrapper class/geometry changes. Full
- * geometry is applied imperatively so scrolling never re-renders the player.
+ * The <VideoPlayer> element is memoized so the frequent geometry re-renders
+ * (scroll tracking) never re-render the heavy player, and it stays at the same
+ * tree position in every mode so React never unmounts it.
  */
 export function PlayerHost() {
   const { active, slotEl, clearActive } = usePlayerContext();
   const router = useRouter();
   const pathname = usePathname();
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const [rect, setRect] = useState<{
+    left: number;
+    top: number;
+    width: number;
+  } | null>(null);
   const [miniEnabled, setMiniEnabled] = useState(true);
   const [entered, setEntered] = useState(false);
+  // Mini corner (draggable), the measured chrome insets it must clear, and the
+  // live drag offset.
+  const [corner, setCorner] = useState<MiniCorner>("br");
+  const [isMobile, setIsMobile] = useState(false);
+  const [insets, setInsets] = useState({ top: 0, bottom: 0 });
+  const [drag, setDrag] = useState<{ dx: number; dy: number } | null>(null);
+  const dragStart = useRef<{ x: number; y: number } | null>(null);
 
   const isShorts = pathname === "/shorts" || pathname.startsWith("/shorts?");
   const onWatch = slotEl !== null;
@@ -55,6 +76,34 @@ export function PlayerHost() {
     };
   }, []);
 
+  // Restore saved corner; track mobile (which limits snapping to top/bottom).
+  useEffect(() => {
+    setCorner(readMiniCorner());
+    const mq = window.matchMedia("(max-width: 900px)");
+    const onChange = () => setIsMobile(mq.matches);
+    onChange();
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+
+  // Measure chrome heights so the mini clears the sticky topbar and the mobile
+  // bottom nav (display:none — height 0 — on desktop).
+  useEffect(() => {
+    const measure = () => {
+      const topbar = document.querySelector(".ot-shell-topbar");
+      const bottomNav = document.querySelector(".ot-shell-bottom-nav");
+      const top = topbar?.getBoundingClientRect().height ?? 0;
+      const bottom =
+        bottomNav && getComputedStyle(bottomNav).display !== "none"
+          ? bottomNav.getBoundingClientRect().height
+          : 0;
+      setInsets({ top, bottom });
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, []);
+
   // Off the watch page with mini disabled / signed out → stop and tear down.
   const shouldClear =
     active !== null && !onWatch && (!active.isAuthed || !miniEnabled);
@@ -62,27 +111,18 @@ export function PlayerHost() {
     if (shouldClear) clearActive();
   }, [shouldClear, clearActive]);
 
-  // Full mode: pin the fixed container over the watch-page slot and keep it
-  // matched on scroll / resize / cinema — imperatively, so the player is not
-  // re-rendered per frame. Mini/hidden modes clear these inline styles so the
-  // className-driven corner positioning takes over.
+  // Full mode: track the watch-page slot's viewport box so the overlay matches
+  // it (and follows scroll / resize / cinema). Measured before paint.
   useIsoLayoutEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
     if (!slotEl) {
-      el.style.cssText = "";
+      setRect(null);
       return;
     }
     let raf = 0;
     const measure = () => {
       raf = 0;
-      const c = containerRef.current;
-      if (!c) return;
       const r = slotEl.getBoundingClientRect();
-      c.style.position = "fixed";
-      c.style.left = `${r.left}px`;
-      c.style.top = `${r.top}px`;
-      c.style.width = `${r.width}px`;
+      setRect({ left: r.left, top: r.top, width: r.width });
     };
     const schedule = () => {
       if (!raf) raf = window.requestAnimationFrame(measure);
@@ -124,26 +164,94 @@ export function PlayerHost() {
     router.push(`/watch/${encodeURIComponent(active.props.videoId)}?t=${t}`);
   }, [active, router]);
 
-  if (!active) return null;
-  const mode: "full" | "mini" | "hidden" = onWatch
-    ? "full"
-    : canMini
-      ? "mini"
-      : "hidden";
-  // Hidden (e.g. on /shorts): don't render. shouldClear covers the signed-out /
-  // mini-off case; otherwise the video reappears on the next page.
-  if (mode === "hidden") return null;
+  const onDragStart = useCallback((e: React.PointerEvent) => {
+    dragStart.current = { x: e.clientX, y: e.clientY };
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setDrag({ dx: 0, dy: 0 });
+  }, []);
+  const onDragMove = useCallback((e: React.PointerEvent) => {
+    if (!dragStart.current) return;
+    setDrag({
+      dx: e.clientX - dragStart.current.x,
+      dy: e.clientY - dragStart.current.y,
+    });
+  }, []);
+  const onDragEnd = useCallback(
+    (e: React.PointerEvent) => {
+      if (!dragStart.current) return;
+      dragStart.current = null;
+      e.currentTarget.releasePointerCapture?.(e.pointerId);
+      const el = containerRef.current;
+      if (el) {
+        const r = el.getBoundingClientRect();
+        const cx = r.left + r.width / 2;
+        const cy = r.top + r.height / 2;
+        const v = cy < window.innerHeight / 2 ? "t" : "b";
+        // Mobile snaps to top/bottom only (near full-width); desktop to any corner.
+        const h = isMobile ? "r" : cx < window.innerWidth / 2 ? "l" : "r";
+        const next = `${v}${h}` as MiniCorner;
+        setCorner(next);
+        writeMiniCorner(next);
+      }
+      setDrag(null);
+    },
+    [isMobile],
+  );
+
+  const mode: "full" | "mini" | "hidden" = !active
+    ? "hidden"
+    : onWatch
+      ? "full"
+      : canMini
+        ? "mini"
+        : "hidden";
+
+  // Memoized so scroll-driven re-renders here never re-render the player.
+  const playerEl = useMemo(
+    () =>
+      active ? (
+        <VideoPlayer
+          key={active.props.videoId}
+          {...active.props}
+          miniMode={mode === "mini"}
+          miniStartPaused={false}
+        />
+      ) : null,
+    [active, mode],
+  );
+
+  if (!active || mode === "hidden") return null;
+
+  const effCorner: MiniCorner = isMobile
+    ? (`${corner[0]}r` as MiniCorner)
+    : corner;
+  let style: React.CSSProperties;
+  if (mode === "full") {
+    style = rect
+      ? { position: "fixed", left: rect.left, top: rect.top, width: rect.width }
+      : { position: "fixed", left: 0, top: 0, width: 0, opacity: 0 };
+  } else {
+    style = { position: "fixed" };
+    if (effCorner[0] === "t") style.top = insets.top + MINI_GAP;
+    else style.bottom = insets.bottom + MINI_GAP;
+    if (effCorner[1] === "l") style.left = MINI_GAP;
+    else style.right = MINI_GAP;
+    if (drag) {
+      style.transform = `translate(${drag.dx}px, ${drag.dy}px)`;
+      style.transition = "none";
+    }
+  }
 
   return (
     <div
       ref={containerRef}
+      style={style}
       className={
         mode === "full"
           ? "z-20 overflow-hidden bg-black"
           : cn(
-              // Clear the mobile bottom nav (h-14, shown < 901px); plain bottom-3 on desktop.
-              "group fixed bottom-[calc(3.5rem_+_env(safe-area-inset-bottom)_+_0.5rem)] right-3 z-50 w-[min(420px,94vw)] overflow-hidden rounded-[var(--radius-card)] border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-2xl ring-1 ring-black/5 transition-all duration-300 ease-out min-[901px]:bottom-3",
-              entered ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0",
+              "group z-50 w-[min(420px,94vw)] overflow-hidden rounded-[var(--radius-card)] border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-2xl ring-1 ring-black/5 transition-opacity duration-300",
+              entered ? "opacity-100" : "opacity-0",
             )
       }
     >
@@ -152,19 +260,22 @@ export function PlayerHost() {
           mode === "mini" ? "relative aspect-video w-full bg-black" : "w-full"
         }
       >
-        <VideoPlayer
-          key={active.props.videoId}
-          {...active.props}
-          miniMode={mode === "mini"}
-          miniStartPaused={false}
-        />
+        {playerEl}
       </div>
       {mode === "mini" ? (
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-start justify-end gap-1.5 bg-gradient-to-b from-black/55 to-transparent p-2 opacity-100 transition-opacity duration-200 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
+        // Top strip doubles as the drag handle; buttons stop the drag.
+        <div
+          onPointerDown={onDragStart}
+          onPointerMove={onDragMove}
+          onPointerUp={onDragEnd}
+          onPointerCancel={onDragEnd}
+          className="absolute inset-x-0 top-0 z-10 flex cursor-move touch-none items-start justify-end gap-1.5 bg-gradient-to-b from-black/55 to-transparent p-2 opacity-100 transition-opacity duration-200 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+        >
           <button
             type="button"
+            onPointerDown={(e) => e.stopPropagation()}
             onClick={expand}
-            className="pointer-events-auto flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm transition hover:bg-black/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+            className="flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm transition hover:bg-black/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
             aria-label="Expand to full player"
             title="Expand"
           >
@@ -184,8 +295,9 @@ export function PlayerHost() {
           </button>
           <button
             type="button"
+            onPointerDown={(e) => e.stopPropagation()}
             onClick={clearActive}
-            className="pointer-events-auto flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm transition hover:bg-black/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+            className="flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm transition hover:bg-black/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
             aria-label="Close mini player"
             title="Close"
           >

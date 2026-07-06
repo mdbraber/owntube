@@ -114,3 +114,24 @@ export function clearWatchMiniStateForOtherVideo(videoId: string): void {
     writeWatchMiniState(null);
   }
 }
+
+/** Which corner the mini player snaps to: [t]op/[b]ottom + [l]eft/[r]ight. */
+export type MiniCorner = "tl" | "tr" | "bl" | "br";
+const WATCH_MINI_CORNER_KEY = "ot:mini-player-corner";
+const MINI_CORNERS: readonly MiniCorner[] = ["tl", "tr", "bl", "br"];
+
+export function readMiniCorner(defaultValue: MiniCorner = "br"): MiniCorner {
+  try {
+    const raw = window.localStorage.getItem(WATCH_MINI_CORNER_KEY);
+    if (raw && (MINI_CORNERS as readonly string[]).includes(raw)) {
+      return raw as MiniCorner;
+    }
+  } catch {}
+  return defaultValue;
+}
+
+export function writeMiniCorner(corner: MiniCorner): void {
+  try {
+    window.localStorage.setItem(WATCH_MINI_CORNER_KEY, corner);
+  } catch {}
+}
