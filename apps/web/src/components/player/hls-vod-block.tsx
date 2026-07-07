@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useNativeAdapter } from "@/components/player/player-adapters";
 import { usePlayerCaptions } from "@/components/player/player-captions";
 import { PlayerChrome } from "@/components/player/player-chrome";
@@ -11,7 +11,6 @@ import {
 import type { CaptionTrack } from "@/components/player/player-payload";
 import type { SponsorBlockChromeProps } from "@/components/player/player-types";
 import { useHlsVodPlayback } from "@/hooks/use-hls-vod-playback";
-import { isIosLikeBrowser } from "@/lib/ios-playback";
 import { cn } from "@/lib/utils";
 import type { VideoChapter } from "@/lib/video-chapters";
 
@@ -24,7 +23,9 @@ import type { VideoChapter } from "@/lib/video-chapters";
  *
  * Modeled on `NativeMuxedBlock`; the source is attached by the hook (never via
  * a `src` attribute), and `useNativeAdapter` drives OwnTube's `PlayerChrome`.
- * On iOS we hand off to Apple's native controls — bulletproof seeking.
+ * OwnTube's chrome is used on every platform (including iOS) so SponsorBlock
+ * segments/skipping and the rest of the custom UI are always available — the
+ * same as the mini player and the muxed/split blocks.
  */
 export function HlsVodBlock({
   src,
@@ -95,14 +96,6 @@ export function HlsVodBlock({
    *  that does not remount the element) re-seek; normal playback does not. */
   const lastAppliedStartRef = useRef<number | undefined>(undefined);
   const miniShouldAutoplay = miniMode && !miniStartPaused;
-  // iOS Safari plays HLS natively; hand off to Apple's own player UI (native
-  // scrub bar + fullscreen) — bulletproof seeking, none of our custom-overlay
-  // jank. Client-only to avoid a hydration mismatch. Not for mini/shorts, which
-  // need the inline custom chrome. Elsewhere we keep OwnTube's PlayerChrome.
-  const [useNativeControls, setUseNativeControls] = useState(false);
-  useEffect(() => {
-    setUseNativeControls(isIosLikeBrowser() && !miniMode && !shortsMode);
-  }, [miniMode, shortsMode]);
   const emitPlaybackError = useCallback(() => {
     if (!onPlaybackError) return;
     window.setTimeout(() => onPlaybackError(), 0);
@@ -124,13 +117,11 @@ export function HlsVodBlock({
     setExternalVolume: setVolume,
   });
 
-  // On iOS we hand off to Safari's own controls, which manage captions
-  // natively from the <track> children — so don't also drive TextTrack modes.
   const captionModel = usePlayerCaptions(
     videoRef,
     captions ?? [],
     reactKey,
-    !useNativeControls,
+    true,
   );
 
   useReportVideoIntrinsics(videoRef, onVideoIntrinsics);
@@ -189,7 +180,6 @@ export function HlsVodBlock({
         poster={poster}
         playsInline
         preload="auto"
-        controls={useNativeControls}
         onError={emitPlaybackError}
         onEnded={onEnded}
         className="absolute inset-0 h-full w-full object-contain"
@@ -204,34 +194,32 @@ export function HlsVodBlock({
           />
         ))}
       </video>
-      {useNativeControls ? null : (
-        <PlayerChrome
-          adapter={adapter}
-          shellRef={shellRef}
-          title={title}
-          chapters={chapters}
-          videoId={videoId}
-          sponsorSegments={sponsorSegments}
-          sponsorBlockPrefs={sponsorBlockPrefs}
-          quality={{ kind: "none" }}
-          audio={{ kind: "none" }}
-          captions={captionModel}
-          settingsOpen={settingsOpen}
-          onSettingsOpenChange={onSettingsOpenChange}
-          cinemaMode={cinemaMode}
-          onExitCinema={onExitCinema}
-          onToggleCinema={onToggleCinema}
-          scrubPreview={null}
-          nextUp={nextUp}
-          queue={queue}
-          autoplayNext={autoplayNext}
-          onToggleAutoplayNext={onToggleAutoplayNext}
-          onPlayNext={onPlayNext}
-          miniMode={miniMode}
-          shortsMode={shortsMode}
-          miniStartPaused={miniStartPaused}
-        />
-      )}
+      <PlayerChrome
+        adapter={adapter}
+        shellRef={shellRef}
+        title={title}
+        chapters={chapters}
+        videoId={videoId}
+        sponsorSegments={sponsorSegments}
+        sponsorBlockPrefs={sponsorBlockPrefs}
+        quality={{ kind: "none" }}
+        audio={{ kind: "none" }}
+        captions={captionModel}
+        settingsOpen={settingsOpen}
+        onSettingsOpenChange={onSettingsOpenChange}
+        cinemaMode={cinemaMode}
+        onExitCinema={onExitCinema}
+        onToggleCinema={onToggleCinema}
+        scrubPreview={null}
+        nextUp={nextUp}
+        queue={queue}
+        autoplayNext={autoplayNext}
+        onToggleAutoplayNext={onToggleAutoplayNext}
+        onPlayNext={onPlayNext}
+        miniMode={miniMode}
+        shortsMode={shortsMode}
+        miniStartPaused={miniStartPaused}
+      />
     </div>
   );
 }
