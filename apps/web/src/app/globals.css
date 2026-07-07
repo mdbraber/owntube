@@ -1,6 +1,4 @@
 @import "tailwindcss";
-@import "vidstack/styles/defaults.css";
-@import "vidstack/styles/community-skin/video.css";
 
 :root {
   --background: 0 0% 98%;
