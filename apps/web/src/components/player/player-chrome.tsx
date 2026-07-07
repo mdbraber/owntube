@@ -630,8 +630,8 @@ export function PlayerChrome({
 
 /**
  * Renders the active caption cue ourselves (the native track is kept `hidden`).
- * The text is left-anchored at a fixed position — the left edge of a centered,
- * fixed-width column — so a growing/word-by-word cue extends rightward without
+ * The text is left-anchored to the same edge as the scrubber (the bottom-chrome
+ * `px-3 sm:px-4` inset), so a growing/word-by-word cue extends rightward without
  * its left edge jittering. Lines stay left-aligned (shared left margin). It
  * rides low at rest and lifts above the scrubber while the chrome is shown.
  *
@@ -652,25 +652,26 @@ function CaptionOverlay({
     <output
       aria-live="polite"
       className={cn(
-        "pointer-events-none absolute inset-x-0 z-20 px-4 transition-[bottom] duration-200 ease-out",
-        raised ? "bottom-[4.5rem]" : "bottom-6",
+        // Match the scrubber's horizontal inset so the text starts at the same x.
+        "pointer-events-none absolute inset-x-0 z-20 px-3 transition-[bottom] duration-200 ease-out sm:px-4",
+        raised ? "bottom-[5.25rem]" : "bottom-6",
       )}
     >
-      <div className="mx-auto max-w-[40rem]">
-        <span
-          className="inline-block rounded bg-black/55 px-2 py-1 text-left font-medium leading-snug text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.9)]"
-          style={{ fontSize: "clamp(0.9rem, 2.5vw, 1.5rem)" }}
-        >
-          {lines.map((line, i) => (
-            <span
-              key={`${i}:${line}`}
-              className={cn("block", i < lastIndex && "text-white/55")}
-            >
-              {line}
-            </span>
-          ))}
-        </span>
-      </div>
+      {/* -ml-2 cancels the box's own px-2 so the *text* (not the padded box)
+          lines up with the scrubber's left edge. */}
+      <span
+        className="-ml-2 inline-block max-w-[40rem] rounded bg-black/55 px-2 py-1 text-left font-medium leading-snug text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.9)]"
+        style={{ fontSize: "clamp(0.9rem, 2.5vw, 1.5rem)" }}
+      >
+        {lines.map((line, i) => (
+          <span
+            key={`${i}:${line}`}
+            className={cn("block", i < lastIndex && "text-white/55")}
+          >
+            {line}
+          </span>
+        ))}
+      </span>
     </output>
   );
 }
