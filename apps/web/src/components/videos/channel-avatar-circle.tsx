@@ -19,7 +19,10 @@ export function ChannelAvatarCircle({
 }: ChannelAvatarCircleProps) {
   const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
   const invidiousOrigins = useInvidiousOrigins();
-  const resolvedImageUrl = toBrowserChannelAvatarUrl(imageUrl, invidiousOrigins);
+  const resolvedImageUrl = toBrowserChannelAvatarUrl(
+    imageUrl,
+    invidiousOrigins,
+  );
   const initials = initialsFromLabel(label);
   const avatarBg = gradientForChannelId(label);
   const sizeClass =

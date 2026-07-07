@@ -1,5 +1,6 @@
 import { and, desc, eq, inArray, or } from "drizzle-orm";
 import { z } from "zod";
+import { normalizeChannelTag } from "@/lib/channel-tag";
 import { stripRestrictedListVideos } from "@/lib/feed-exclude-restricted";
 import {
   fetchLongFormWindows,
@@ -19,7 +20,6 @@ import {
   refreshChannelMetaIfStale,
 } from "@/server/channel-meta/store";
 import type { AppDb } from "@/server/db/client";
-import { normalizeChannelTag } from "@/lib/channel-tag";
 import {
   channelTags,
   interactions,
@@ -81,7 +81,9 @@ function filterChannelIdsByTags(
   const rows = db
     .select({ channelId: channelTags.channelId, tag: channelTags.tag })
     .from(channelTags)
-    .where(and(eq(channelTags.userId, userId), inArray(channelTags.tag, wanted)))
+    .where(
+      and(eq(channelTags.userId, userId), inArray(channelTags.tag, wanted)),
+    )
     .all();
   const tagsByChannel = new Map<string, Set<string>>();
   for (const r of rows) {
