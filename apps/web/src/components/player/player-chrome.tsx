@@ -197,15 +197,7 @@ export function PlayerChrome({
     isLive && Number.isFinite(duration) && duration > LIVE_EDGE_SECONDS;
   const behindLiveEdge = liveWithDvr && seekPos < duration - LIVE_EDGE_SECONDS;
   const chromeShown = (shortsMode || visible) && !hold2xUi;
-
-  // Lift captions above the scrubber while the chrome is shown; drop them back
-  // to their lower resting position when it hides.
-  const setCaptionsRaised =
-    captions.kind === "tracks" ? captions.setRaised : null;
-  useEffect(() => {
-    setCaptionsRaised?.(chromeShown);
-  }, [setCaptionsRaised, chromeShown]);
-
+  const captionText = captions.kind === "tracks" ? captions.activeText : null;
   const currentChapterTitle =
     chapters.length > 1
       ? (chapters[chapterIndexAt(chapters, seekPos)]?.title ?? null)
@@ -226,6 +218,8 @@ export function PlayerChrome({
         onDoubleClick={shortsMode ? undefined : () => void toggleFs()}
         className="absolute inset-0 z-10 cursor-pointer bg-transparent"
       />
+
+      <CaptionOverlay text={captionText} raised={chromeShown} />
 
       {/* Buffering spinner */}
       {adapter.waiting && !adapter.paused ? (
@@ -631,5 +625,37 @@ export function PlayerChrome({
         />
       ) : null}
     </>
+  );
+}
+
+/**
+ * Renders the active caption cue ourselves (the native track is kept `hidden`).
+ * The block is centered horizontally but its lines are left-aligned, so a
+ * multi-line cue shares one left margin. It rides low at rest and lifts above
+ * the scrubber while the chrome is shown.
+ */
+function CaptionOverlay({
+  text,
+  raised,
+}: {
+  text: string | null;
+  raised: boolean;
+}) {
+  if (!text) return null;
+  return (
+    <output
+      aria-live="polite"
+      className={cn(
+        "pointer-events-none absolute inset-x-0 z-20 flex justify-center px-4 transition-[bottom] duration-200 ease-out",
+        raised ? "bottom-[5.5rem]" : "bottom-6",
+      )}
+    >
+      <span
+        className="max-w-[92%] whitespace-pre-line rounded bg-black/55 px-2 py-1 text-left font-medium leading-snug text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.9)]"
+        style={{ fontSize: "clamp(0.9rem, 2.5vw, 1.5rem)" }}
+      >
+        {text}
+      </span>
+    </output>
   );
 }
