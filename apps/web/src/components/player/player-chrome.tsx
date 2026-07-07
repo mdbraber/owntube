@@ -634,6 +634,9 @@ export function PlayerChrome({
  * fixed-width column — so a growing/word-by-word cue extends rightward without
  * its left edge jittering. Lines stay left-aligned (shared left margin). It
  * rides low at rest and lifts above the scrubber while the chrome is shown.
+ *
+ * YouTube-style roll-up: the last line is the one currently building (bright);
+ * any line above it is already-spoken context, shown dimmed.
  */
 function CaptionOverlay({
   text,
@@ -643,6 +646,8 @@ function CaptionOverlay({
   raised: boolean;
 }) {
   if (!text) return null;
+  const lines = text.split("\n");
+  const lastIndex = lines.length - 1;
   return (
     <output
       aria-live="polite"
@@ -653,10 +658,17 @@ function CaptionOverlay({
     >
       <div className="mx-auto max-w-[40rem]">
         <span
-          className="inline-block whitespace-pre-line rounded bg-black/55 px-2 py-1 text-left font-medium leading-snug text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.9)]"
+          className="inline-block rounded bg-black/55 px-2 py-1 text-left font-medium leading-snug text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.9)]"
           style={{ fontSize: "clamp(0.9rem, 2.5vw, 1.5rem)" }}
         >
-          {text}
+          {lines.map((line, i) => (
+            <span
+              key={`${i}:${line}`}
+              className={cn("block", i < lastIndex && "text-white/55")}
+            >
+              {line}
+            </span>
+          ))}
         </span>
       </div>
     </output>
