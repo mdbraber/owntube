@@ -697,9 +697,9 @@ body {
 /* Player captions: we render the active cue ourselves (the native track is kept
    `hidden`) so we control alignment, roll-up, and placement relative to the
    chrome. Real classes rather than Tailwind arbitrary utilities so placement is
-   a plain CSS edit. NOTE: adding a *new* selector here needs a dev-server
-   restart to compile (Turbopack doesn't always re-scan mid-session); editing an
-   existing value below hot-reloads fine. */
+   a plain CSS edit. NOTE: Turbopack doesn't reliably re-scan this file
+   mid-session — both adding a *new* selector and editing an existing value
+   below often need a dev-server restart to actually take effect. */
 .ot-caption {
   pointer-events: none;
   position: absolute;
@@ -709,7 +709,7 @@ body {
   /* Left inset matches the scrubber's (px-3, and px-4 ≥640px) so the text lines
      up with the start of the scrubber. */
   padding-inline: 0.75rem;
-  bottom: 0.5rem; /* resting: sits low, near the bottom edge */
+  bottom: 0.25rem; /* resting: sits low, near the bottom edge */
   transition: bottom 200ms ease-out;
 }
 @media (min-width: 640px) {
