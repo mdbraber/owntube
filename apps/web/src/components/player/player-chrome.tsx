@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import {
+  type CSSProperties,
   type MouseEvent as ReactMouseEvent,
   useEffect,
   useRef,
@@ -628,6 +629,33 @@ export function PlayerChrome({
   );
 }
 
+/** Caption overlay styling. Inline (see the note in CaptionOverlay for why). */
+const CAPTION_STYLE: Record<
+  "root" | "box" | "line" | "dimLine",
+  CSSProperties
+> = {
+  root: { transition: "bottom 200ms ease-out" },
+  box: {
+    display: "inline-block",
+    maxWidth: "40rem",
+    // Pull the box left by its own padding so the *text* (not the padded box)
+    // lines up with the scrubber's left edge.
+    marginLeft: "-0.5rem",
+    borderRadius: "0.25rem",
+    padding: "0.25rem 0.5rem",
+    textAlign: "left",
+    fontWeight: 500,
+    lineHeight: 1.375,
+    color: "#fff",
+    backgroundColor: "rgba(0,0,0,0.55)",
+    textShadow: "0 1px 2px rgba(0,0,0,0.9)",
+    fontSize: "clamp(0.9rem, 2.5vw, 1.5rem)",
+  },
+  line: { display: "block" },
+  // Already-spoken context line, dimmed under the bright building line.
+  dimLine: { display: "block", color: "rgba(255,255,255,0.6)" },
+};
+
 /**
  * Renders the active caption cue ourselves (the native track is kept `hidden`).
  * The text is left-anchored to the same edge as the scrubber (the bottom-chrome
@@ -648,20 +676,28 @@ function CaptionOverlay({
   if (!text) return null;
   const lines = text.split("\n");
   const lastIndex = lines.length - 1;
-  // Styling lives in the `.ot-caption` classes in globals.css (see the note
-  // there): a CSS-file placement tweak always recompiles, whereas one-off
-  // Tailwind arbitrary classes used only from a .tsx aren't reliably re-scanned
-  // by the dev server.
+  // Styling is inline (not Tailwind classes / globals.css) on purpose: this
+  // project's Turbopack dev server doesn't reliably hot-compile CSS added
+  // mid-session — a new arbitrary utility or a new globals.css selector ships in
+  // the markup but with no matching rule, leaving the overlay unstyled (it drops
+  // behind the video / to the top of the frame). Inline styles ride the JS HMR,
+  // so they always apply. See CAPTION_STYLE below for the values.
   return (
-    <output aria-live="polite" className="ot-caption" data-raised={raised}>
-      <span className="ot-caption__box">
+    <output
+      aria-live="polite"
+      // px-3 sm:px-4 (standard, already-compiled utilities) matches the
+      // scrubber's horizontal inset so the text starts at the same x.
+      className="pointer-events-none absolute inset-x-0 z-20 px-3 sm:px-4"
+      style={{
+        ...CAPTION_STYLE.root,
+        bottom: raised ? "5rem" : "1.5rem",
+      }}
+    >
+      <span style={CAPTION_STYLE.box}>
         {lines.map((line, i) => (
           <span
             key={`${i}:${line}`}
-            className={cn(
-              "ot-caption__line",
-              i < lastIndex && "ot-caption__line--dim",
-            )}
+            style={i < lastIndex ? CAPTION_STYLE.dimLine : CAPTION_STYLE.line}
           >
             {line}
           </span>
