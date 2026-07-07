@@ -17,9 +17,17 @@ type ShellSidebarProps = {
   open: boolean;
   onClose: () => void;
   isLoggedIn: boolean;
+  /** Animate width changes. Off for the initial desktop-default open so the
+   *  content column doesn't visibly resize (scaling the watch player) on load. */
+  animate?: boolean;
 };
 
-export function ShellSidebar({ open, onClose, isLoggedIn }: ShellSidebarProps) {
+export function ShellSidebar({
+  open,
+  onClose,
+  isLoggedIn,
+  animate = true,
+}: ShellSidebarProps) {
   const pathname = usePathname();
 
   return (
@@ -27,7 +35,8 @@ export function ShellSidebar({ open, onClose, isLoggedIn }: ShellSidebarProps) {
       aria-hidden={!open}
       style={{ width: open ? SHELL_SIDEBAR_WIDTH_PX : 0 }}
       className={cn(
-        "ot-shell-sidebar hidden h-full shrink-0 flex-col overflow-hidden bg-[hsl(var(--sidebar))] transition-[width,border-color] duration-200 ease-out min-[901px]:flex",
+        "ot-shell-sidebar hidden h-full shrink-0 flex-col overflow-hidden bg-[hsl(var(--sidebar))] min-[901px]:flex",
+        animate && "transition-[width,border-color] duration-200 ease-out",
         open ? "border-r border-[hsl(var(--border))]" : "border-r-0",
       )}
     >

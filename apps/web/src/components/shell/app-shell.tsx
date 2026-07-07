@@ -2,12 +2,17 @@
 
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { PlayerHost } from "@/components/player/player-host";
 import { ShellBottomNav } from "@/components/shell/shell-bottom-nav";
 import { ShellSidebar } from "@/components/shell/shell-sidebar";
 import { ShellTopbar } from "@/components/shell/shell-topbar";
 import { cn } from "@/lib/utils";
+
+// Position the sidebar's desktop default before the browser paints (no visible
+// resize of the content column). No-op on the server.
+const useIsoLayoutEffect =
+  typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 type AppShellProps = {
   children: ReactNode;
@@ -31,11 +36,17 @@ export function AppShell({
   const isShortsRoute =
     pathname === "/shorts" || pathname.startsWith("/shorts?");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Enable width animation only after the initial desktop-default open, so that
+  // first open doesn't smoothly resize the content column (scaling the player).
+  const [sidebarAnimate, setSidebarAnimate] = useState(false);
   const close = useCallback(() => setSidebarOpen(false), []);
   const toggleSidebar = useCallback(() => setSidebarOpen((open) => !open), []);
 
-  useEffect(() => {
+  useIsoLayoutEffect(() => {
     setSidebarOpen(readDesktopSidebarDefault());
+  }, []);
+  useEffect(() => {
+    setSidebarAnimate(true);
   }, []);
 
   return (
@@ -44,6 +55,7 @@ export function AppShell({
         open={sidebarOpen}
         onClose={close}
         isLoggedIn={isLoggedIn}
+        animate={sidebarAnimate}
       />
       <div className="flex min-w-0 flex-1 flex-col">
         <ShellTopbar
