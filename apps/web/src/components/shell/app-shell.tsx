@@ -35,9 +35,15 @@ export function AppShell({
   const pathname = usePathname();
   const isShortsRoute =
     pathname === "/shorts" || pathname.startsWith("/shorts?");
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  // Enable width animation only after the initial desktop-default open, so that
-  // first open doesn't smoothly resize the content column (scaling the player).
+  // Start open (the desktop default) so the SSR HTML paints at the final content
+  // width — otherwise the server renders it closed, the browser paints the
+  // column full-width, then the client opens the sidebar and the column (and the
+  // watch player/poster inside it) snaps narrower on load. The sidebar is
+  // display:none below 901px, so an initial `open` is a no-op on mobile; the
+  // effect then reconciles the real value.
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  // Animate width changes only after mount, so the initial reconcile (if any)
+  // doesn't animate.
   const [sidebarAnimate, setSidebarAnimate] = useState(false);
   const close = useCallback(() => setSidebarOpen(false), []);
   const toggleSidebar = useCallback(() => setSidebarOpen((open) => !open), []);
