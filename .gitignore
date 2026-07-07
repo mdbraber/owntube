@@ -74,3 +74,6 @@ apps/web/data/*.db-*
 
 # personal data (Google Takeout exports, never commit)
 /youtube-takeout/
+
+# local Claude sandbox tooling
+apps/web/Dockerfile.claude
