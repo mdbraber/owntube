@@ -647,7 +647,7 @@ function CaptionOverlay({
       aria-live="polite"
       className={cn(
         "pointer-events-none absolute inset-x-0 z-20 flex justify-center px-4 transition-[bottom] duration-200 ease-out",
-        raised ? "bottom-[5.5rem]" : "bottom-6",
+        raised ? "bottom-[4.5rem]" : "bottom-6",
       )}
     >
       <span
