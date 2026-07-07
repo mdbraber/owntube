@@ -185,7 +185,14 @@ export function usePlayerCaptions(
       const now = video.currentTime;
       let out = "";
       for (const seg of segments) if (seg.at <= now + 0.05) out += seg.text;
-      const text = out.replace(/\s+/g, " ").trim();
+      // Preserve line breaks: an ASR cue carries the already-spoken line and the
+      // building line separated by `\n` — that newline is YouTube's roll-up, so
+      // collapse only horizontal whitespace and keep the lines apart.
+      const text = out
+        .replace(/[ \t]+/g, " ")
+        .replace(/ *\n */g, "\n")
+        .replace(/\n{2,}/g, "\n")
+        .trim();
       const next = text.length > 0 ? text : null;
       if (next !== shown) {
         shown = next;
