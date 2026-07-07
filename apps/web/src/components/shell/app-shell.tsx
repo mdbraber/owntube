@@ -7,6 +7,7 @@ import { PlayerHost } from "@/components/player/player-host";
 import { ShellBottomNav } from "@/components/shell/shell-bottom-nav";
 import { ShellSidebar } from "@/components/shell/shell-sidebar";
 import { ShellTopbar } from "@/components/shell/shell-topbar";
+import { cn } from "@/lib/utils";
 
 type AppShellProps = {
   children: ReactNode;
@@ -51,18 +52,22 @@ export function AppShell({
           topbarRight={topbarRight}
           hiddenOnMobile={isShortsRoute}
         />
+        {/* Stable, relatively-positioned scroll container. PlayerHost lives
+            inside it so the full-size player is position:absolute in content
+            space — the browser scrolls it natively (no per-frame JS). */}
         <div
-          className={
+          className={cn(
+            "relative min-h-0 flex-1",
             isShortsRoute
-              ? "relative min-h-0 flex-1 overflow-hidden"
-              : "ot-app-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden"
-          }
+              ? "overflow-hidden"
+              : "ot-app-scroll overflow-y-auto overflow-x-hidden",
+          )}
         >
           {children}
+          <PlayerHost />
         </div>
         <ShellBottomNav account={bottomNavAccount} />
       </div>
-      <PlayerHost />
     </div>
   );
 }

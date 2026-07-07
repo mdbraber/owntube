@@ -551,14 +551,15 @@ body {
 
 /* UI scaling is handled dynamically by UiScale component */
 
+/* Fade only (no transform): `.ot-app-scroll` hosts the position:absolute full
+   player and the position:fixed mini, and a transformed ancestor would become
+   their containing block (clipping/offsetting the mini). */
 @keyframes ot-fade-slide {
   from {
     opacity: 0;
-    transform: translateY(6px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
   }
 }
 

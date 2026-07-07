@@ -138,22 +138,60 @@ export function PlayerHost() {
     if (shouldClear) clearActive();
   }, [shouldClear, clearActive]);
 
-  // Full mode: track the watch-page slot's viewport box so the overlay matches
-  // it (and follows scroll / resize / cinema). Measured before paint.
+  // Full mode: position the overlay over the watch-page slot in the scroll
+  // container's *content* coordinates. Because PlayerHost renders inside
+  // `.ot-app-scroll` (position:relative) and this box is position:absolute, the
+  // browser scrolls it natively — so we only recompute on layout changes
+  // (resize / cinema / content reflow), never on scroll. Measured before paint.
   useIsoLayoutEffect(() => {
     if (!slotEl) {
       setRect(null);
-      setSlotOffscreen(false);
       return;
     }
+    const scroller = document.querySelector<HTMLElement>(".ot-app-scroll");
     let raf = 0;
     const measure = () => {
       raf = 0;
       const r = slotEl.getBoundingClientRect();
-      setRect({ left: r.left, top: r.top, width: r.width });
-      // Desktop PiP-on-scroll: float to mini once the inline player is mostly
-      // above the fold, and dock back once it's mostly visible again. The band
-      // between 40% and 60% visible is hysteresis so it can't flicker.
+      const sr = scroller?.getBoundingClientRect();
+      const scrollTop = scroller?.scrollTop ?? 0;
+      const scrollLeft = scroller?.scrollLeft ?? 0;
+      setRect({
+        left: r.left - (sr?.left ?? 0) + scrollLeft,
+        top: r.top - (sr?.top ?? 0) + scrollTop,
+        width: r.width,
+      });
+    };
+    const schedule = () => {
+      if (!raf) raf = window.requestAnimationFrame(measure);
+    };
+    measure();
+    // Slot resizes (cinema), and content reflow above it, both move the slot.
+    const ro = new ResizeObserver(schedule);
+    ro.observe(slotEl);
+    if (scroller) ro.observe(scroller);
+    window.addEventListener("resize", schedule);
+    return () => {
+      if (raf) window.cancelAnimationFrame(raf);
+      ro.disconnect();
+      window.removeEventListener("resize", schedule);
+    };
+  }, [slotEl]);
+
+  // Desktop PiP-on-scroll: float to mini once the inline player is mostly above
+  // the fold, and dock back once it's mostly visible again. This only toggles a
+  // boolean at the thresholds (40/60% visible hysteresis) — it never drives the
+  // full-mode position, so scrolling stays smooth.
+  useEffect(() => {
+    if (!slotEl) {
+      setSlotOffscreen(false);
+      return;
+    }
+    const scroller = document.querySelector<HTMLElement>(".ot-app-scroll");
+    let raf = 0;
+    const check = () => {
+      raf = 0;
+      const r = slotEl.getBoundingClientRect();
       const topInset = insetsRef.current.top + MINI_GAP;
       const h = r.height || r.width * (9 / 16);
       if (!offRef.current && r.bottom < topInset + h * 0.4) {
@@ -163,21 +201,17 @@ export function PlayerHost() {
       }
     };
     const schedule = () => {
-      if (!raf) raf = window.requestAnimationFrame(measure);
+      if (!raf) raf = window.requestAnimationFrame(check);
     };
-    measure();
-    const ro = new ResizeObserver(schedule);
-    ro.observe(slotEl);
-    const scroller = document.querySelector(".ot-app-scroll");
+    check();
     scroller?.addEventListener("scroll", schedule, { passive: true });
-    window.addEventListener("resize", schedule);
     window.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule);
     return () => {
       if (raf) window.cancelAnimationFrame(raf);
-      ro.disconnect();
       scroller?.removeEventListener("scroll", schedule);
-      window.removeEventListener("resize", schedule);
       window.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
     };
   }, [slotEl]);
 
@@ -334,9 +368,15 @@ export function PlayerHost() {
     : corner;
   let style: React.CSSProperties;
   if (mode === "full") {
+    // position:absolute in `.ot-app-scroll` content space → scrolls natively.
     style = rect
-      ? { position: "fixed", left: rect.left, top: rect.top, width: rect.width }
-      : { position: "fixed", left: 0, top: 0, width: 0, opacity: 0 };
+      ? {
+          position: "absolute",
+          left: rect.left,
+          top: rect.top,
+          width: rect.width,
+        }
+      : { position: "absolute", left: 0, top: 0, width: 0, opacity: 0 };
   } else {
     style = { position: "fixed" };
     if (effCorner[0] === "t") style.top = insets.top + MINI_GAP;
