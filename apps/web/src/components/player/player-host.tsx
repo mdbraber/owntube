@@ -11,6 +11,7 @@ import {
 } from "react";
 import { usePlayerContext } from "@/components/player/player-context";
 import { VideoPlayer } from "@/components/player/video-player";
+import { isIosLikeBrowser } from "@/lib/ios-playback";
 import { cn } from "@/lib/utils";
 import {
   MINI_MAX_WIDTH,
@@ -75,14 +76,23 @@ export function PlayerHost() {
   const offRef = useRef(false);
   offRef.current = slotOffscreen;
   const insetsRef = useRef({ top: 0, bottom: 0 });
+  // iPad reports desktop width but native-HLS <video> restarts when its
+  // positioning context flips (absolute↔fixed), so keep scroll-to-mini off on
+  // iOS — it's meant for true (mouse) desktops anyway.
+  const [isIosLike, setIsIosLike] = useState(false);
 
   const isShorts = pathname === "/shorts" || pathname.startsWith("/shorts?");
   const onWatch = slotEl !== null;
   const canMini =
     active !== null && !onWatch && !isShorts && active.isAuthed && miniEnabled;
-  // Float the inline watch player once it scrolls off (desktop only).
+  // Float the inline watch player once it scrolls off (true desktop only).
   const watchScrollMini =
-    active !== null && onWatch && !isMobile && miniEnabled && slotOffscreen;
+    active !== null &&
+    onWatch &&
+    !isMobile &&
+    !isIosLike &&
+    miniEnabled &&
+    slotOffscreen;
   const showMini = canMini || watchScrollMini;
 
   // Reflect the "keep mini-player" setting (localStorage, updated in Settings).
@@ -105,6 +115,7 @@ export function PlayerHost() {
   useEffect(() => {
     setCorner(readMiniCorner());
     setMiniWidth(readMiniWidth());
+    setIsIosLike(isIosLikeBrowser());
     const mq = window.matchMedia("(max-width: 900px)");
     const onChange = () => setIsMobile(mq.matches);
     onChange();
