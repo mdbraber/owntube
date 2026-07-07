@@ -197,6 +197,15 @@ export function PlayerChrome({
     isLive && Number.isFinite(duration) && duration > LIVE_EDGE_SECONDS;
   const behindLiveEdge = liveWithDvr && seekPos < duration - LIVE_EDGE_SECONDS;
   const chromeShown = (shortsMode || visible) && !hold2xUi;
+
+  // Lift captions above the scrubber while the chrome is shown; drop them back
+  // to their lower resting position when it hides.
+  const setCaptionsRaised =
+    captions.kind === "tracks" ? captions.setRaised : null;
+  useEffect(() => {
+    setCaptionsRaised?.(chromeShown);
+  }, [setCaptionsRaised, chromeShown]);
+
   const currentChapterTitle =
     chapters.length > 1
       ? (chapters[chapterIndexAt(chapters, seekPos)]?.title ?? null)

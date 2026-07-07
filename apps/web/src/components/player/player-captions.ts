@@ -16,7 +16,25 @@ export type CaptionModel =
       activeIndex: number | null;
       /** Select a track (or `null` for off); persists the language choice. */
       setActive: (index: number | null) => void;
+      /**
+       * Lift the caption line up (above the scrubber) while the player chrome
+       * is showing; drop it back to the lower resting position when chrome hides.
+       */
+      setRaised: (raised: boolean) => void;
     };
+
+/** VTTCue positioning fields not present on the base `TextTrackCue` type. */
+type PositionableCue = TextTrackCue & {
+  align: string;
+  position: number | "auto";
+  line: number | "auto";
+  snapToLines: boolean;
+};
+
+// Caption line as a percentage of video height (top-anchored). The resting
+// position sits low; the raised position clears the bottom chrome/scrubber.
+const CAPTION_LINE_RESTING = 90;
+const CAPTION_LINE_RAISED = 78;
 
 /**
  * Drive sidecar `<track>` captions on a plain `<video>`. The block renders the
@@ -36,6 +54,7 @@ export function usePlayerCaptions(
   enabled = true,
 ): CaptionModel {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const [raised, setRaised] = useState(false);
 
   // On a new source, restore the remembered language when it's available.
   // biome-ignore lint/correctness/useExhaustiveDependencies: reactKey re-resolves the remembered track for a new video.
@@ -83,6 +102,51 @@ export function usePlayerCaptions(
     };
   }, [videoRef, tracks, activeIndex, enabled, reactKey]);
 
+  // Center each cue horizontally and place it vertically. WebVTT sources often
+  // ship cues with `align:start`/`position:0%`, which the browser renders
+  // left-aligned; we normalize to center and drive the line off `raised`.
+  // Re-applied on new cues (they load async) and whenever `raised` toggles.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reactKey rebinds after the media element remounts.
+  useEffect(() => {
+    if (!enabled) return;
+    const video = videoRef.current;
+    if (!video) return;
+    const wantLabel =
+      activeIndex !== null ? (tracks[activeIndex]?.label ?? null) : null;
+    if (wantLabel === null) return;
+
+    const findTrack = () => {
+      const list = video.textTracks;
+      for (let i = 0; i < list.length; i++) {
+        const tt = list[i];
+        if (tt && tt.label === wantLabel) return tt;
+      }
+      return null;
+    };
+
+    const line = raised ? CAPTION_LINE_RAISED : CAPTION_LINE_RESTING;
+    const place = () => {
+      const cues = findTrack()?.cues;
+      if (!cues) return;
+      for (let i = 0; i < cues.length; i++) {
+        const cue = cues[i] as PositionableCue;
+        cue.align = "center";
+        cue.position = "auto";
+        cue.snapToLines = false;
+        cue.line = line;
+      }
+    };
+
+    place();
+    const tt = findTrack();
+    tt?.addEventListener("cuechange", place);
+    video.addEventListener("loadedmetadata", place);
+    return () => {
+      tt?.removeEventListener("cuechange", place);
+      video.removeEventListener("loadedmetadata", place);
+    };
+  }, [videoRef, tracks, activeIndex, raised, enabled, reactKey]);
+
   const setActive = useCallback(
     (index: number | null) => {
       setActiveIndex(index);
@@ -102,5 +166,6 @@ export function usePlayerCaptions(
     })),
     activeIndex,
     setActive,
+    setRaised,
   };
 }
