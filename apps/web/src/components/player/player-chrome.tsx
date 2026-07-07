@@ -649,24 +649,38 @@ function CaptionOverlay({
   const lines = text.split("\n");
   const lastIndex = lines.length - 1;
   return (
+    // Dynamic/arbitrary values (bottom offset, max width, shadow, background)
+    // live in `style` rather than one-off Tailwind arbitrary classes: the dev
+    // server's incremental CSS doesn't reliably regenerate for a newly-added
+    // `bottom-[…rem]`, which left the class unstyled and dropped the overlay to
+    // its static position (the top of the player). Inline styles always apply.
     <output
       aria-live="polite"
-      className={cn(
-        // Match the scrubber's horizontal inset so the text starts at the same x.
-        "pointer-events-none absolute inset-x-0 z-20 px-3 transition-[bottom] duration-200 ease-out sm:px-4",
-        raised ? "bottom-[4.75rem]" : "bottom-6",
-      )}
+      // px-3 sm:px-4 matches the scrubber's horizontal inset.
+      className="pointer-events-none absolute inset-x-0 z-20 px-3 sm:px-4"
+      style={{
+        bottom: raised ? "4.75rem" : "1.5rem",
+        transition: "bottom 200ms ease-out",
+      }}
     >
       {/* -ml-2 cancels the box's own px-2 so the *text* (not the padded box)
           lines up with the scrubber's left edge. */}
       <span
-        className="-ml-2 inline-block max-w-[40rem] rounded bg-black/55 px-2 py-1 text-left font-medium leading-snug text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.9)]"
-        style={{ fontSize: "clamp(0.9rem, 2.5vw, 1.5rem)" }}
+        className="-ml-2 inline-block rounded px-2 py-1 text-left font-medium leading-snug text-white"
+        style={{
+          maxWidth: "40rem",
+          fontSize: "clamp(0.9rem, 2.5vw, 1.5rem)",
+          backgroundColor: "rgba(0,0,0,0.55)",
+          textShadow: "0 1px 2px rgba(0,0,0,0.9)",
+        }}
       >
         {lines.map((line, i) => (
           <span
             key={`${i}:${line}`}
-            className={cn("block", i < lastIndex && "text-white/55")}
+            className="block"
+            style={
+              i < lastIndex ? { color: "rgba(255,255,255,0.6)" } : undefined
+            }
           >
             {line}
           </span>
