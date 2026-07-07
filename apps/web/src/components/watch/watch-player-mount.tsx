@@ -46,7 +46,10 @@ export function WatchPlayerMount({
     <div
       ref={slotRef}
       className={cn(
-        "relative w-full overflow-hidden rounded-[var(--radius-card)] bg-black bg-cover bg-center",
+        // Poster uses contain (not cover) to match the <video>'s object-contain
+        // framing, so the placeholder doesn't show a cropped/zoomed poster that
+        // then "scales back" once the player overlays it.
+        "relative w-full overflow-hidden rounded-[var(--radius-card)] bg-black bg-contain bg-center bg-no-repeat",
         cinemaMode
           ? "mx-auto aspect-video max-h-[min(88vh,92dvh)]"
           : "aspect-video",
