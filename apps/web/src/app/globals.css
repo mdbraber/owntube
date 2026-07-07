@@ -709,7 +709,7 @@ body {
   /* Left inset matches the scrubber's (px-3, and px-4 ≥640px) so the text lines
      up with the start of the scrubber. */
   padding-inline: 0.75rem;
-  bottom: 1.5rem; /* resting: just above the bottom edge */
+  bottom: 0.75rem; /* resting: sits low, near the bottom edge */
   transition: bottom 200ms ease-out;
 }
 @media (min-width: 640px) {
