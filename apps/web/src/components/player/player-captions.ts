@@ -137,12 +137,17 @@ export function usePlayerCaptions(
         setActiveText(null);
         return;
       }
-      const parts: string[] = [];
+      // Sidecar VTT (esp. YouTube-derived) overlaps roll-up cues, so several
+      // are "active" at once. Showing them all stacks a tall, ever-changing
+      // block that grows up the frame and flickers — so show only the most
+      // recently started cue.
+      let latest: VTTCue | null = null;
       for (let i = 0; i < cues.length; i++) {
-        const text = cueToPlainText((cues[i] as VTTCue).text ?? "");
-        if (text) parts.push(text);
+        const cue = cues[i] as VTTCue;
+        if (!latest || cue.startTime >= latest.startTime) latest = cue;
       }
-      setActiveText(parts.length > 0 ? parts.join("\n") : null);
+      const text = latest ? cueToPlainText(latest.text ?? "") : "";
+      setActiveText(text.length > 0 ? text : null);
     };
 
     read();
