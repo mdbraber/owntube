@@ -2,17 +2,12 @@
 
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useLayoutEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { PlayerHost } from "@/components/player/player-host";
 import { ShellBottomNav } from "@/components/shell/shell-bottom-nav";
 import { ShellSidebar } from "@/components/shell/shell-sidebar";
 import { ShellTopbar } from "@/components/shell/shell-topbar";
 import { cn } from "@/lib/utils";
-
-// Position the sidebar's desktop default before the browser paints (no visible
-// resize of the content column). No-op on the server.
-const useIsoLayoutEffect =
-  typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 type AppShellProps = {
   children: ReactNode;
@@ -36,23 +31,17 @@ export function AppShell({
   const isShortsRoute =
     pathname === "/shorts" || pathname.startsWith("/shorts?");
   // Start open (the desktop default) so the SSR HTML paints at the final content
-  // width — otherwise the server renders it closed, the browser paints the
-  // column full-width, then the client opens the sidebar and the column (and the
-  // watch player/poster inside it) snaps narrower on load. The sidebar is
-  // display:none below 901px, so an initial `open` is a no-op on mobile; the
-  // effect then reconciles the real value.
+  // width. Otherwise the server renders the sidebar collapsed, the browser
+  // paints the content column full-width, then the client opens the sidebar and
+  // the column (and the watch player/poster inside it) snaps ~¾×228px narrower
+  // on load. The sidebar is display:none below 901px, so an initial `open` is a
+  // no-op on mobile; the effect reconciles the real value after mount.
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  // Animate width changes only after mount, so the initial reconcile (if any)
-  // doesn't animate.
-  const [sidebarAnimate, setSidebarAnimate] = useState(false);
   const close = useCallback(() => setSidebarOpen(false), []);
   const toggleSidebar = useCallback(() => setSidebarOpen((open) => !open), []);
 
-  useIsoLayoutEffect(() => {
-    setSidebarOpen(readDesktopSidebarDefault());
-  }, []);
   useEffect(() => {
-    setSidebarAnimate(true);
+    setSidebarOpen(readDesktopSidebarDefault());
   }, []);
 
   return (
@@ -61,7 +50,6 @@ export function AppShell({
         open={sidebarOpen}
         onClose={close}
         isLoggedIn={isLoggedIn}
-        animate={sidebarAnimate}
       />
       <div className="flex min-w-0 flex-1 flex-col">
         <ShellTopbar
