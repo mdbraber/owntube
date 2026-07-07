@@ -654,7 +654,7 @@ function CaptionOverlay({
       className={cn(
         // Match the scrubber's horizontal inset so the text starts at the same x.
         "pointer-events-none absolute inset-x-0 z-20 px-3 transition-[bottom] duration-200 ease-out sm:px-4",
-        raised ? "bottom-[5.25rem]" : "bottom-6",
+        raised ? "bottom-[4.75rem]" : "bottom-6",
       )}
     >
       {/* -ml-2 cancels the box's own px-2 so the *text* (not the padded box)
