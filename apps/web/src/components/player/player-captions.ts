@@ -25,8 +25,8 @@ export type CaptionModel =
       activeText: string | null;
     };
 
-/** Strip WebVTT markup/timestamps and decode the handful of entities we see. */
-function cueToPlainText(raw: string): string {
+/** Strip WebVTT markup (tags/timestamps) and decode the entities we see. */
+function stripMarkup(raw: string): string {
   return raw
     .replace(/<[^>]+>/g, "")
     .replace(/&amp;/g, "&")
@@ -34,8 +34,35 @@ function cueToPlainText(raw: string): string {
     .replace(/&gt;/g, ">")
     .replace(/&#39;/g, "'")
     .replace(/&quot;/g, '"')
-    .replace(/&nbsp;/g, " ")
-    .trim();
+    .replace(/&nbsp;/g, " ");
+}
+
+/** A run of caption text and the playback time (s) at which it appears. */
+type TimedSegment = { at: number; text: string };
+
+const TS_TAG = /<(?:(\d{1,2}):)?(\d{1,2}):(\d{2})\.(\d{3})>/g;
+
+/**
+ * Split a cue into timed segments using its inline `<HH:MM:SS.mmm>` word
+ * markers (YouTube ASR "paint-on" timing). Text before the first marker shows
+ * at the cue's own start; each marker sets when the following run appears. Cues
+ * without markers (manual subtitles) yield a single segment at `startTime`, so
+ * they simply show in full while active — matching normal subtitle behavior.
+ */
+function parseTimedSegments(cue: VTTCue): TimedSegment[] {
+  const raw = cue.text ?? "";
+  const segments: TimedSegment[] = [];
+  let at = cue.startTime;
+  let lastIndex = 0;
+  TS_TAG.lastIndex = 0;
+  for (let m = TS_TAG.exec(raw); m; m = TS_TAG.exec(raw)) {
+    segments.push({ at, text: stripMarkup(raw.slice(lastIndex, m.index)) });
+    const h = m[1] ? Number(m[1]) : 0;
+    at = h * 3600 + Number(m[2]) * 60 + Number(m[3]) + Number(m[4]) / 1000;
+    lastIndex = TS_TAG.lastIndex;
+  }
+  segments.push({ at, text: stripMarkup(raw.slice(lastIndex)) });
+  return segments;
 }
 
 /**
@@ -131,35 +158,62 @@ export function usePlayerCaptions(
       return null;
     };
 
-    const read = () => {
+    // YouTube-derived VTT overlaps roll-up cues, and each real cue carries the
+    // line's per-word timing. Pick the one live cue that owns the current words
+    // (latest start; longest when tied — the tiny 10ms echo cues lose), then
+    // reveal its words as playback reaches each timestamp so captions stream in
+    // like YouTube instead of popping a whole line at once.
+    let segments: TimedSegment[] = [];
+    const pickSegments = () => {
       const cues = findTrack()?.activeCues;
-      if (!cues || cues.length === 0) {
-        setActiveText(null);
-        return;
+      let best: VTTCue | null = null;
+      for (let i = 0; i < (cues?.length ?? 0); i++) {
+        const cue = cues?.[i] as VTTCue;
+        const better =
+          !best ||
+          cue.startTime > best.startTime ||
+          (cue.startTime === best.startTime &&
+            cue.endTime - cue.startTime > best.endTime - best.startTime);
+        if (better) best = cue;
       }
-      // Sidecar VTT (esp. YouTube-derived) overlaps roll-up cues, so several
-      // are "active" at once. Showing them all stacks a tall, ever-changing
-      // block that grows up the frame and flickers — so show only the most
-      // recently started cue.
-      let latest: VTTCue | null = null;
-      for (let i = 0; i < cues.length; i++) {
-        const cue = cues[i] as VTTCue;
-        if (!latest || cue.startTime >= latest.startTime) latest = cue;
-      }
-      const text = latest ? cueToPlainText(latest.text ?? "") : "";
-      setActiveText(text.length > 0 ? text : null);
+      segments = best ? parseTimedSegments(best) : [];
     };
 
-    read();
+    let raf = 0;
+    let shown: string | null = null;
+    const reveal = () => {
+      const now = video.currentTime;
+      let out = "";
+      for (const seg of segments) if (seg.at <= now + 0.05) out += seg.text;
+      const text = out.replace(/\s+/g, " ").trim();
+      const next = text.length > 0 ? text : null;
+      if (next !== shown) {
+        shown = next;
+        setActiveText(next);
+      }
+    };
+    const loop = () => {
+      reveal();
+      raf = requestAnimationFrame(loop);
+    };
+
+    const onCueChange = () => {
+      pickSegments();
+      reveal();
+    };
+
+    onCueChange();
+    loop();
     const tt = findTrack();
-    tt?.addEventListener("cuechange", read);
-    video.addEventListener("loadedmetadata", read);
+    tt?.addEventListener("cuechange", onCueChange);
+    video.addEventListener("loadedmetadata", onCueChange);
     // hls.js can swap the track object on attach; re-read when the list changes.
-    video.textTracks.addEventListener?.("change", read);
+    video.textTracks.addEventListener?.("change", onCueChange);
     return () => {
-      tt?.removeEventListener("cuechange", read);
-      video.removeEventListener("loadedmetadata", read);
-      video.textTracks.removeEventListener?.("change", read);
+      cancelAnimationFrame(raf);
+      tt?.removeEventListener("cuechange", onCueChange);
+      video.removeEventListener("loadedmetadata", onCueChange);
+      video.textTracks.removeEventListener?.("change", onCueChange);
     };
   }, [videoRef, tracks, activeIndex, enabled, reactKey]);
 
