@@ -188,7 +188,13 @@ export async function fetchYtPlaylist(
       const rawVideos = Array.isArray(p.videos) ? p.videos : [];
       const videos: UnifiedVideo[] = [];
       for (const raw of rawVideos) {
-        const v = mapInvidiousItem(raw, base);
+        // Invidious playlist entries are PlaylistVideo objects without a
+        // `type` discriminator — tag them so the shared mapper accepts them.
+        const item =
+          raw && typeof raw === "object" && !("type" in raw)
+            ? { ...(raw as Record<string, unknown>), type: "video" }
+            : raw;
+        const v = mapInvidiousItem(item, base);
         if (v) videos.push(v);
       }
       return {

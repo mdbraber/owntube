@@ -245,34 +245,34 @@ function ChannelPlaylistsGrid({
     );
   }
   return (
-    <ul className="grid gap-x-4 gap-y-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+    <ul className="space-y-1">
       {playlists.map((p) => (
-        <li key={p.playlistId} className="group">
+        <li key={p.playlistId}>
           <Link
             href={`/playlist/${encodeURIComponent(p.playlistId)}`}
-            className="block"
+            className="group flex items-center gap-3 rounded-[var(--radius-card)] p-2 transition hover:bg-[hsl(var(--muted)_/_0.45)]"
           >
-            <div className="relative aspect-video w-full overflow-hidden rounded-[var(--radius-card)] bg-[hsl(var(--muted))] transition duration-300 group-hover:-translate-y-0.5 group-hover:shadow-[var(--shadow-card-hover)]">
+            <div className="relative aspect-video w-[12.75rem] shrink-0 overflow-hidden rounded-xl bg-[hsl(var(--muted))] sm:w-60">
               {p.thumbnailUrl ? (
                 // biome-ignore lint/performance/noImgElement: third-party playlist thumbnail
                 <img
                   src={p.thumbnailUrl}
                   alt=""
                   loading="lazy"
-                  className="h-full w-full object-cover transition duration-500 ease-out group-hover:scale-[1.04]"
+                  className="h-full w-full object-cover transition duration-500 ease-out group-hover:scale-105"
                 />
               ) : (
                 <div className="flex h-full w-full items-center justify-center text-[hsl(var(--muted-foreground))]">
-                  <PlaylistIcon className="h-10 w-10" />
+                  <PlaylistIcon className="h-8 w-8" />
                 </div>
               )}
               {p.videoCount != null ? (
-                <span className="absolute bottom-2 right-2 z-10 rounded-md bg-black/78 px-2 py-0.5 font-mono text-[11px] font-semibold text-white">
+                <span className="absolute bottom-1 right-1 z-10 rounded-md bg-black/78 px-1.5 py-px font-mono text-[10px] font-semibold text-white">
                   {p.videoCount} {p.videoCount === 1 ? "video" : "videos"}
                 </span>
               ) : null}
             </div>
-            <p className="mt-2 line-clamp-2 text-[15px] font-semibold leading-snug tracking-tight transition group-hover:text-[hsl(var(--primary))]">
+            <p className="m-0 line-clamp-2 min-w-0 flex-1 text-[15px] font-semibold leading-snug tracking-tight transition group-hover:text-[hsl(var(--primary))]">
               {p.title}
             </p>
           </Link>
