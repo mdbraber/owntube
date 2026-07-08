@@ -1,16 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ShareDialog } from "@/components/player/share-dialog";
 import { useVideoActions } from "@/components/videos/use-video-actions";
-import { ShareIcon } from "@/components/videos/video-action-icons";
+import {
+  ChevronDownIcon,
+  ShareIcon,
+} from "@/components/videos/video-action-icons";
 import {
   isVideoActionActive,
   type VideoActionId,
   VideoActionGlyph,
   videoActionShortLabel,
 } from "@/components/videos/video-action-registry";
-import { VideoActionsMenu } from "@/components/videos/video-actions-menu";
+import {
+  PlaylistPicker,
+  VideoActionsMenu,
+} from "@/components/videos/video-actions-menu";
 import { VideoStatusPills } from "@/components/videos/video-status-pills";
 import { cn } from "@/lib/utils";
 
@@ -64,6 +70,7 @@ export function InteractionButtons({
   thumbnailUrl,
   isAuthenticated,
 }: InteractionButtonsProps) {
+  const [saveMenuOpen, setSaveMenuOpen] = useState(false);
   const actions = useVideoActions({
     videoId,
     channelId,
@@ -71,9 +78,40 @@ export function InteractionButtons({
     title,
     surface: "watch",
     withInteractionState: isAuthenticated,
+    loadPlaylists: saveMenuOpen,
   });
   const disabled = !isAuthenticated || actions.pending;
   const [shareOpen, setShareOpen] = useState(false);
+  const saveMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!saveMenuOpen) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (!saveMenuRef.current?.contains(e.target as Node)) {
+        setSaveMenuOpen(false);
+      }
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSaveMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [saveMenuOpen]);
+
+  // "Saved" is basically a playlist: the button reads active when the video
+  // sits in Saved *or* any playlist. Main press: save when nowhere yet;
+  // unsave when in Saved; when only in playlists, open the selector instead
+  // of blindly removing anything.
+  const inPlaylists = actions.playlistIds.size > 0;
+  const saveActive = actions.state.saved || inPlaylists;
+  const onSaveMainPress = () => {
+    if (actions.state.saved || !inPlaylists) actions.toggleSave();
+    else setSaveMenuOpen(true);
+  };
 
   const toggle = (id: "watched" | "save" | "queue") => {
     const active = isVideoActionActive(id, actions.state);
@@ -101,7 +139,63 @@ export function InteractionButtons({
   return (
     <div className="flex flex-wrap items-center gap-2">
       {toggle("watched")}
-      {toggle("save")}
+      <div ref={saveMenuRef} className="relative">
+        <div
+          className={cn(
+            "flex overflow-hidden rounded-full",
+            saveActive
+              ? "bg-[hsl(var(--primary)_/_0.12)]"
+              : "bg-[hsl(var(--muted)_/_0.6)]",
+          )}
+        >
+          <button
+            type="button"
+            className={cn(pillBase, "pl-4 pr-3", pillTone(saveActive))}
+            disabled={disabled}
+            aria-pressed={saveActive}
+            title={
+              actions.state.saved
+                ? "Saved — click to remove"
+                : inPlaylists
+                  ? "In playlists — choose where"
+                  : "Save"
+            }
+            onClick={onSaveMainPress}
+          >
+            <Glyph id="save" active={saveActive} />
+            <span>{saveActive ? "Saved" : "Save"}</span>
+          </button>
+          <span
+            aria-hidden
+            className="my-2 w-px shrink-0 bg-[hsl(var(--border))]"
+          />
+          <button
+            type="button"
+            className={cn(pillBase, "px-2.5", pillTone(saveActive))}
+            disabled={disabled}
+            aria-label="Choose playlists"
+            aria-expanded={saveMenuOpen}
+            title="Save to Saved or playlists"
+            onClick={() => setSaveMenuOpen((o) => !o)}
+          >
+            <ChevronDownIcon className="h-4 w-4" />
+          </button>
+        </div>
+        {saveMenuOpen ? (
+          <div
+            role="dialog"
+            aria-label="Save to"
+            className="absolute left-0 top-full z-40 mt-1.5 w-64 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] pt-2 text-sm shadow-lg"
+          >
+            <PlaylistPicker
+              actions={actions}
+              onBack={() => setSaveMenuOpen(false)}
+              includeSaved
+              title="Save to"
+            />
+          </div>
+        ) : null}
+      </div>
       {toggle("queue")}
       <ShareDialog
         videoId={videoId}
@@ -119,7 +213,7 @@ export function InteractionButtons({
         surface="watch"
         alwaysVisible
         // These are this row's own controls; reactions + Share live in the menu.
-        visibleActions={["watched", "save", "queue"]}
+        visibleActions={["watched", "save", "queue", "playlist"]}
         topItems={[
           {
             key: "share",

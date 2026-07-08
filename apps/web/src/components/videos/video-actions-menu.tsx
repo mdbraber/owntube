@@ -118,9 +118,14 @@ function menuItemClass(active = false) {
 export function PlaylistPicker({
   actions,
   onBack,
+  includeSaved = false,
+  title = "Add to playlist",
 }: {
   actions: ReturnType<typeof useVideoActions>;
   onBack: () => void;
+  /** Pin a "Saved" row on top — Saved is basically a playlist. */
+  includeSaved?: boolean;
+  title?: string;
 }) {
   const [createMode, setCreateMode] = useState(false);
   const [name, setName] = useState("");
@@ -147,11 +152,42 @@ export function PlaylistPicker({
         >
           ‹
         </button>
-        <span className="text-sm font-semibold">Add to playlist</span>
+        <span className="text-sm font-semibold">{title}</span>
       </div>
       {!createMode ? (
         <>
           <ul className="max-h-56 overflow-y-auto py-1">
+            {includeSaved ? (
+              <li>
+                <button
+                  type="button"
+                  className={cn(
+                    menuItemClass(),
+                    "border-b border-[hsl(var(--border))]",
+                  )}
+                  disabled={actions.pending}
+                  aria-pressed={actions.state.saved}
+                  onClick={() => actions.toggleSave()}
+                >
+                  <span
+                    className={cn(
+                      "flex h-4 w-4 shrink-0 items-center justify-center rounded border",
+                      actions.state.saved
+                        ? "border-[hsl(var(--primary))] bg-[hsl(var(--primary))] text-white"
+                        : "border-[hsl(var(--border))]",
+                    )}
+                    aria-hidden
+                  >
+                    {actions.state.saved ? (
+                      <CheckIcon className="h-3 w-3" />
+                    ) : null}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate font-medium">
+                    Saved
+                  </span>
+                </button>
+              </li>
+            ) : null}
             {actions.playlists.isLoading ? (
               <li className="px-3 py-2 text-xs text-[hsl(var(--muted-foreground))]">
                 Loading…
