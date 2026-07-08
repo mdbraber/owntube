@@ -39,6 +39,7 @@ export type VideoActionSurface =
   | "queue"
   | "history"
   | "saved"
+  | "playlist"
   | "watch";
 
 export type VideoActionState = {
@@ -57,9 +58,10 @@ export type VideoActionState = {
  */
 const BASE_GROUPS: VideoActionId[][] = [
   ["queue", "save", "playlist"],
-  ["like", "dislike"],
+  // Reactions read as one gesture set: like | ignore | dislike.
+  ["like", "ignore", "dislike"],
   ["watched"],
-  ["ignore", "block-channel"],
+  ["block-channel"],
 ];
 
 /** Actions that make no sense on a given surface. */
@@ -74,7 +76,10 @@ function isHiddenOn(id: VideoActionId, surface: VideoActionSurface): boolean {
     case "ignore":
       // Library pages: removal is the row's own affordance, not "hide from feeds".
       return (
-        surface === "queue" || surface === "history" || surface === "saved"
+        surface === "queue" ||
+        surface === "history" ||
+        surface === "saved" ||
+        surface === "playlist"
       );
     default:
       return false;

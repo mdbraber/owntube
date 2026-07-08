@@ -43,6 +43,7 @@ const SURFACE_PILL_OMIT: Partial<
 > = {
   queue: ["queued"],
   saved: ["saved"],
+  playlist: ["playlist"],
 };
 
 /**

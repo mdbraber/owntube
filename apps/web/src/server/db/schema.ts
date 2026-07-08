@@ -155,10 +155,36 @@ export const playlistItems = sqliteTable(
     videoId: text("video_id").notNull(),
     channelId: text("channel_id"),
     addedAt: integer("added_at").notNull(),
+    /** Manual order within the playlist (drag reorder); ties break on addedAt. */
+    position: integer("position").notNull().default(0),
   },
   (t) => [
     uniqueIndex("playlist_items_unique_video").on(t.playlistId, t.videoId),
     index("playlist_items_playlist_idx").on(t.playlistId),
+  ],
+);
+
+/** Per-user tags on playlists — same idea as channel_tags. */
+export const playlistTags = sqliteTable(
+  "playlist_tags",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    playlistId: integer("playlist_id")
+      .notNull()
+      .references(() => playlists.id, { onDelete: "cascade" }),
+    tag: text("tag").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("playlist_tags_user_playlist_tag_uidx").on(
+      t.userId,
+      t.playlistId,
+      t.tag,
+    ),
+    index("playlist_tags_user_tag_idx").on(t.userId, t.tag),
   ],
 );
 

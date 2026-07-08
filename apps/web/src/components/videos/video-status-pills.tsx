@@ -93,7 +93,7 @@ export function VideoStatusPills({
             playlistName,
             <PlaylistIcon className={iconClass} />,
             membership.playlistId != null
-              ? `/playlists?playlist=${membership.playlistId}`
+              ? `/playlists/${membership.playlistId}`
               : "/playlists",
             {
               title: `In playlist: ${playlistName} — open playlist`,

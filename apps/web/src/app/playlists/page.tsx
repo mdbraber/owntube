@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/layout/page-header";
-import { PlaylistsPanel } from "@/components/playlists/playlists-panel";
+import { PlaylistsOverview } from "@/components/playlists/playlists-overview";
 import { auth } from "@/server/auth";
 
 export default async function PlaylistsPage() {
@@ -10,12 +10,12 @@ export default async function PlaylistsPage() {
   }
 
   return (
-    <main className="ot-page max-w-5xl space-y-8">
+    <main className="ot-page space-y-8">
       <PageHeader
         title="Playlists"
         subtitle="Local playlists stored in your owntube database."
       />
-      <PlaylistsPanel />
+      <PlaylistsOverview />
     </main>
   );
 }
