@@ -51,17 +51,21 @@ type VideoActionsMenuProps = {
 
 type MenuView = "main" | "playlist";
 
-/** True on devices whose primary pointer can't hover (phones, tablets). */
-function useCoarsePointer(): boolean {
-  const [coarse, setCoarse] = useState(false);
+/**
+ * True when the menu should present as a bottom sheet: a touch-only device at
+ * phone width. Larger touch screens (iPad) have room for the popover — the
+ * kebab stays always-visible there, only the presentation differs.
+ */
+function useSheetPresentation(): boolean {
+  const [sheet, setSheet] = useState(false);
   useEffect(() => {
-    const mq = window.matchMedia("(hover: none), (pointer: coarse)");
-    setCoarse(mq.matches);
-    const onChange = (e: MediaQueryListEvent) => setCoarse(e.matches);
+    const mq = window.matchMedia("(hover: none) and (max-width: 767px)");
+    setSheet(mq.matches);
+    const onChange = (e: MediaQueryListEvent) => setSheet(e.matches);
     mq.addEventListener("change", onChange);
     return () => mq.removeEventListener("change", onChange);
   }, []);
-  return coarse;
+  return sheet;
 }
 
 function menuItemClass(active = false) {
@@ -219,7 +223,7 @@ export function VideoActionsMenu({
   const rootRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<MenuView>("main");
-  const coarse = useCoarsePointer();
+  const asSheet = useSheetPresentation();
 
   const actions = useVideoActions({
     videoId,
@@ -228,11 +232,11 @@ export function VideoActionsMenu({
     title,
     surface,
     withInteractionState: open,
-    loadPlaylists: open && (coarse || view !== "main"),
+    loadPlaylists: open && (asSheet || view !== "main"),
   });
 
   const settingsQuery = trpc.settings.get.useQuery(undefined, {
-    enabled: open && coarse,
+    enabled: open && asSheet,
     retry: false,
   });
   const quickActions: readonly QuickAction[] =
@@ -245,7 +249,7 @@ export function VideoActionsMenu({
 
   // Outside click / Escape for the popover variant.
   useEffect(() => {
-    if (!open || coarse) return;
+    if (!open || asSheet) return;
     const onPointerDown = (e: PointerEvent) => {
       if (!rootRef.current?.contains(e.target as Node)) close();
     };
@@ -258,11 +262,11 @@ export function VideoActionsMenu({
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [open, coarse, close]);
+  }, [open, asSheet, close]);
 
   // Body scroll lock + Escape for the sheet variant.
   useEffect(() => {
-    if (!open || !coarse) return;
+    if (!open || !asSheet) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const onKeyDown = (e: KeyboardEvent) => {
@@ -273,7 +277,7 @@ export function VideoActionsMenu({
       document.body.style.overflow = prev;
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [open, coarse, close]);
+  }, [open, asSheet, close]);
 
   const runAndClose = (id: Exclude<VideoActionId, "playlist">) => {
     actions.runAction(id);
@@ -282,7 +286,7 @@ export function VideoActionsMenu({
 
   const groups = videoActionGroupsForSurface(surface);
   // The sheet's chip row already covers its verbs — don't repeat them below.
-  const chipIds = coarse
+  const chipIds = asSheet
     ? new Set<VideoActionId>(quickActions.slice(0, 4))
     : new Set<VideoActionId>();
   const listGroups = groups
@@ -409,7 +413,7 @@ export function VideoActionsMenu({
         <MoreIcon className="h-5 w-5" />
       </Button>
 
-      {open && !coarse ? (
+      {open && !asSheet ? (
         <div
           id={menuId}
           role="menu"
@@ -428,7 +432,7 @@ export function VideoActionsMenu({
         </div>
       ) : null}
 
-      {open && coarse
+      {open && asSheet
         ? createPortal(
             <div className="fixed inset-0 z-[60]" id={menuId}>
               <button

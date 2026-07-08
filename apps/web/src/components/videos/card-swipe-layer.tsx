@@ -92,7 +92,7 @@ export function CardSwipeLayer({
       {pendingAction !== "none" && dx !== 0 ? (
         <div
           className={cn(
-            "absolute inset-y-0 z-10 flex items-center rounded-[var(--radius-card)] px-5",
+            "absolute inset-y-0 z-0 flex items-center rounded-[var(--radius-card)] px-5",
             dx < 0 ? "right-0 justify-end" : "left-0 justify-start",
             underlayTone(pendingAction),
           )}
@@ -114,6 +114,9 @@ export function CardSwipeLayer({
         </div>
       ) : null}
       <div
+        // Solid background + own stacking context so the card slides *over*
+        // the underlay and only uncovers it as it moves.
+        className="relative z-10 rounded-[var(--radius-card)] bg-[hsl(var(--background))]"
         style={{
           transform: dx
             ? `translateX(${Math.max(-MAX_TRANSLATE, Math.min(MAX_TRANSLATE, dx))}px)`
