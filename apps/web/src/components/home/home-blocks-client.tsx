@@ -13,7 +13,6 @@ import { useRowDrag } from "@/components/videos/use-row-drag";
 import { VideoGrid } from "@/components/videos/video-grid";
 import { VideoRow } from "@/components/videos/video-row";
 import { VideoThumbnailImg } from "@/components/videos/video-thumbnail-img";
-import { useLargeVideoGridColumnCount } from "@/hooks/use-large-video-grid-column-count";
 import {
   CARD_MIN_WIDTH_PX,
   DEFAULT_HOME_BLOCKS,
@@ -35,6 +34,29 @@ import type { VideoActionSurface } from "@/components/videos/video-action-regist
 import { trpc } from "@/trpc/react";
 
 /* ------------------------------ block data ------------------------------ */
+
+/**
+ * Columns an auto-fill grid would resolve at the container's width — same
+ * formula as CSS `repeat(auto-fill, minmax(min(100%, minPx), 1fr))`.
+ * Measured on the block wrapper (which always exists), so it also works when
+ * the narrow-screen fallback renders rows instead of the grid.
+ */
+function useAutoFillColumns(minWidthPx: number, gapPx = 28) {
+  const [element, setElement] = useState<HTMLElement | null>(null);
+  const [columns, setColumns] = useState(4);
+  useEffect(() => {
+    if (!element) return;
+    const update = () => {
+      const w = element.getBoundingClientRect().width;
+      setColumns(Math.max(1, Math.floor((w + gapPx) / (minWidthPx + gapPx))));
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [element, minWidthPx, gapPx]);
+  return { ref: setElement, columns };
+}
 
 type BlockVideo = {
   videoId: string;
@@ -71,10 +93,16 @@ function VideoBlockBody({
   surface: VideoActionSurface;
   isLoading: boolean;
 }) {
-  const layout = block.layout;
-  // Cards render full rows only: measured columns × configured rows, so the
-  // last row is never ragged regardless of viewport width.
-  const grid = useLargeVideoGridColumnCount();
+  // Cards render full rows only: computed columns × configured rows, so the
+  // last row is never ragged regardless of viewport width. At one column a
+  // "card" is just an oversized row — fall back to the compact rows layout
+  // with a doubled count (similar content, phone-appropriate density).
+  const grid = useAutoFillColumns(CARD_MIN_WIDTH_PX[block.size]);
+  const singleColumn = grid.columns <= 1;
+  const layout =
+    block.layout === "cards" && singleColumn ? "rows" : block.layout;
+  const rowCount =
+    block.layout === "cards" && singleColumn ? block.rows * 2 : block.limit;
   if (isLoading && videos.length === 0) {
     return (
       <p className="py-4 text-sm text-[hsl(var(--muted-foreground))]">
@@ -91,19 +119,20 @@ function VideoBlockBody({
   }
   if (layout === "cards") {
     return (
-      <VideoGrid
-        gridRef={grid.measureRef}
-        videos={videos.slice(0, grid.columnCount * block.rows).map(toUnified)}
-        size="large"
-        minColumnWidthPx={CARD_MIN_WIDTH_PX[block.size]}
-        enableSwipe
-        surface={surface}
-      />
+      <div ref={grid.ref}>
+        <VideoGrid
+          videos={videos.slice(0, grid.columns * block.rows).map(toUnified)}
+          size="large"
+          minColumnWidthPx={CARD_MIN_WIDTH_PX[block.size]}
+          enableSwipe
+          surface={surface}
+        />
+      </div>
     );
   }
   return (
-    <ul className="space-y-1">
-      {videos.map((v) => (
+    <ul ref={grid.ref} className="space-y-1">
+      {videos.slice(0, rowCount).map((v) => (
         <li key={v.videoId}>
           <VideoRow
             videoId={v.videoId}
@@ -115,7 +144,7 @@ function VideoBlockBody({
             progress={v.progress}
             progressComplete={v.progressComplete}
             surface={surface}
-            size={block.size}
+            size={singleColumn ? "sm" : block.size}
             enableSwipe
           />
         </li>
@@ -254,10 +283,16 @@ function PlaylistBlockBody({ block }: { block: HomeBlock }) {
 /** The playlists overview as a block: collage tiles (cards) or rows. */
 function PlaylistsBlockBody({ block }: { block: HomeBlock }) {
   const query = trpc.playlists.list.useQuery();
-  const grid = useLargeVideoGridColumnCount();
+  const grid = useAutoFillColumns(CARD_MIN_WIDTH_PX[block.size], 16);
+  const singleColumn = grid.columns <= 1;
+  const asCards = block.layout === "cards" && !singleColumn;
   const playlists = (query.data ?? []).slice(
     0,
-    block.layout === "cards" ? grid.columnCount * block.rows : block.limit,
+    block.layout === "cards"
+      ? singleColumn
+        ? block.rows * 2
+        : grid.columns * block.rows
+      : block.limit,
   );
   if (query.isPending) {
     return (
@@ -311,10 +346,10 @@ function PlaylistsBlockBody({ block }: { block: HomeBlock }) {
     </div>
   );
 
-  if (block.layout === "cards") {
+  if (asCards) {
     return (
       <ul
-        ref={grid.measureRef}
+        ref={grid.ref}
         className="grid gap-x-4 gap-y-6"
         style={{
           gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${CARD_MIN_WIDTH_PX[block.size]}px), 1fr))`,
@@ -334,7 +369,7 @@ function PlaylistsBlockBody({ block }: { block: HomeBlock }) {
     );
   }
   return (
-    <ul className="space-y-1">
+    <ul ref={grid.ref} className="space-y-1">
       {playlists.map((p) => (
         <li key={p.id}>
           <Link
