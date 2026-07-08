@@ -86,22 +86,25 @@ export function ShellSidebar({ open, onClose, isLoggedIn }: ShellSidebarProps) {
           <div className="mx-2.5 my-3.5 h-px bg-[hsl(var(--border))]" />
 
           <div className="flex flex-col gap-0.5">
-            {SECONDARY_NAV.map((n) => (
-              <Link
-                key={n.href}
-                href={n.href}
-                aria-current={pathname.startsWith(n.href) ? "page" : undefined}
-                className={cn(
-                  "ot-shell-nav-link",
-                  pathname.startsWith(n.href) && "ot-shell-nav-link--active",
-                )}
-              >
-                <span className="inline-flex h-5 w-5 shrink-0 [&_svg]:h-full [&_svg]:w-full">
-                  {n.icon}
-                </span>
-                <span className="ot-shell-nav-label">{n.label}</span>
-              </Link>
-            ))}
+            {SECONDARY_NAV.map((n) => {
+              const active = activeForPath(pathname, n.href, n.key);
+              return (
+                <Link
+                  key={n.key}
+                  href={n.href}
+                  aria-current={active ? "page" : undefined}
+                  className={cn(
+                    "ot-shell-nav-link",
+                    active && "ot-shell-nav-link--active",
+                  )}
+                >
+                  <span className="inline-flex h-5 w-5 shrink-0 [&_svg]:h-full [&_svg]:w-full">
+                    {active ? (n.iconActive ?? n.icon) : n.icon}
+                  </span>
+                  <span className="ot-shell-nav-label">{n.label}</span>
+                </Link>
+              );
+            })}
           </div>
 
           {isLoggedIn ? (

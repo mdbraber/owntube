@@ -7,6 +7,7 @@ export type NavKey =
   | "subs"
   | "library"
   | "algorithm"
+  | "playlists"
   | "queue"
   | "saved";
 
@@ -249,6 +250,15 @@ const QueueIcon = (
   </svg>
 );
 
+const SUBSCRIPTIONS_ITEM: NavItem = {
+  key: "subs",
+  href: "/subscriptions",
+  label: "Subscriptions",
+  icon: SubscriptionsIcon,
+  iconActive: SubscriptionsIconActive,
+};
+
+/** Browse group — above the sidebar divider. */
 export const SIDEBAR_NAV: NavItem[] = [
   {
     key: "home",
@@ -271,12 +281,22 @@ export const SIDEBAR_NAV: NavItem[] = [
     icon: ExploreIcon,
     iconActive: ExploreIconActive,
   },
+];
+
+/**
+ * Personal library group — below the divider. Settings and Algorithm live in
+ * the account menu (top-right avatar) only.
+ */
+export const SECONDARY_NAV: NavItem[] = [
+  // History stays outline when active: the glyph is an arc + arrow with no
+  // fillable body, so a filled variant would lose its identity.
+  { key: "library", href: "/history", label: "History", icon: HistoryIcon },
+  SUBSCRIPTIONS_ITEM,
   {
-    key: "subs",
-    href: "/subscriptions",
-    label: "Subscriptions",
-    icon: SubscriptionsIcon,
-    iconActive: SubscriptionsIconActive,
+    key: "playlists",
+    href: "/playlists",
+    label: "Playlists",
+    icon: PlaylistsIcon,
   },
   {
     key: "queue",
@@ -290,20 +310,10 @@ export const SIDEBAR_NAV: NavItem[] = [
     label: "Saved",
     icon: SavedIcon,
   },
-  // History stays outline when active: the glyph is an arc + arrow with no
-  // fillable body, so a filled variant would lose its identity.
-  { key: "library", href: "/history", label: "History", icon: HistoryIcon },
 ];
 
-/** Subset shown as tabs in the mobile bottom bar (account button is added separately). */
-export const BOTTOM_NAV: NavItem[] = SIDEBAR_NAV.filter((n) =>
-  (["home", "shorts", "explore", "subs"] as NavKey[]).includes(n.key),
-);
-
-/** Sidebar-only entries (live below the primary nav, above the divider). */
-export const SECONDARY_NAV: { href: string; label: string; icon: ReactNode }[] =
-  // Settings and Algorithm live in the account menu (top-right avatar) only.
-  [{ href: "/playlists", label: "Playlists", icon: PlaylistsIcon }];
+/** Tabs in the mobile bottom bar (account button is added separately). */
+export const BOTTOM_NAV: NavItem[] = [...SIDEBAR_NAV, SUBSCRIPTIONS_ITEM];
 
 /** Links surfaced inside the account menu (desktop dropdown + mobile sheet). */
 export const ACCOUNT_LINKS: { href: string; label: string; icon: ReactNode }[] =
