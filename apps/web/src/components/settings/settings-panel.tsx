@@ -19,6 +19,12 @@ import {
   toggleSponsorBlockCategory,
   writeSponsorBlockPrefs,
 } from "@/lib/sponsorblock-prefs";
+import {
+  DEFAULT_QUICK_ACTIONS,
+  type QuickAction,
+  QUICK_ACTION_LABELS,
+  QUICK_ACTION_VALUES,
+} from "@/lib/quick-actions";
 import { TRENDING_REGION_OPTIONS } from "@/lib/trending-regions";
 import { writeWatchMiniEnabled } from "@/lib/watch-mini-player-state";
 import type {
@@ -190,17 +196,15 @@ export function SettingsPanel({
     initial.enableSwipeGestures ?? true,
   );
   const [swipeGestures, setSwipeGestures] = useState<
-    Record<
-      "shortLeft" | "longLeft" | "shortRight" | "longRight",
-      "none" | "queue" | "saved" | "ignore" | "watched"
-    >
+    Record<"left" | "right", "none" | "queue" | "saved" | "ignore" | "watched">
   >(
     initial.swipeGestures ?? {
-      shortLeft: "ignore",
-      longLeft: "watched",
-      shortRight: "queue",
-      longRight: "saved",
+      left: "ignore",
+      right: "queue",
     },
+  );
+  const [quickActions, setQuickActions] = useState<QuickAction[]>(
+    initial.quickActions ?? DEFAULT_QUICK_ACTIONS,
   );
   const initialSponsorPrefs = sponsorBlockPrefsFromAppSettings(initial);
   const [sponsorBlockEnabled, setSponsorBlockEnabled] = useState(
@@ -406,6 +410,7 @@ export function SettingsPanel({
       sponsorBlockCategories,
       enableSwipeGestures,
       swipeGestures,
+      quickActions,
     });
   }
 
@@ -594,10 +599,8 @@ export function SettingsPanel({
             <div className="grid grid-cols-1 gap-2 pl-6 sm:grid-cols-2">
               {(
                 [
-                  ["shortLeft", "Short swipe left"],
-                  ["longLeft", "Long swipe left"],
-                  ["shortRight", "Short swipe right"],
-                  ["longRight", "Long swipe right"],
+                  ["left", "Swipe left"],
+                  ["right", "Swipe right"],
                 ] as const
               ).map(([key, label]) => (
                 <label
@@ -632,6 +635,65 @@ export function SettingsPanel({
               ))}
             </div>
           ) : null}
+          <div className="space-y-2">
+            <p className="text-sm">Quick actions</p>
+            <p className="text-xs text-[hsl(var(--muted-foreground))]">
+              The first two appear as hover buttons on video thumbnails
+              (desktop); the first four as the button row in the mobile action
+              sheet.
+            </p>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {[0, 1, 2, 3].map((slot) => (
+                <label
+                  key={slot}
+                  className="flex items-center justify-between gap-2 text-sm"
+                >
+                  <span className="text-[hsl(var(--muted-foreground))]">
+                    {slot < 2 ? `Slot ${slot + 1} (thumbnail)` : `Slot ${slot + 1}`}
+                  </span>
+                  <select
+                    className="rounded border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-2 py-1 text-sm"
+                    value={quickActions[slot] ?? "none"}
+                    onChange={(e) => {
+                      const value = e.currentTarget.value;
+                      setQuickActions((prev) => {
+                        const next = prev.slice(0, 4);
+                        if (value === "none") {
+                          return next.filter((_, i) => i !== slot);
+                        }
+                        const action = value as QuickAction;
+                        // One slot per verb: drop it elsewhere first.
+                        const cleaned = next.filter(
+                          (a, i) => i === slot || a !== action,
+                        );
+                        const idx = Math.min(slot, cleaned.length);
+                        if (cleaned[slot] !== undefined && idx === slot) {
+                          cleaned[slot] = action;
+                        } else {
+                          cleaned.splice(idx, 0, action);
+                        }
+                        return cleaned.slice(0, 4);
+                      });
+                    }}
+                  >
+                    <option value="none">None</option>
+                    {QUICK_ACTION_VALUES.map((a) => (
+                      <option key={a} value={a}>
+                        {QUICK_ACTION_LABELS[a]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ))}
+            </div>
+            <button
+              type="button"
+              className="text-xs text-[hsl(var(--muted-foreground))] underline-offset-2 hover:underline"
+              onClick={() => setQuickActions(DEFAULT_QUICK_ACTIONS)}
+            >
+              Reset to default (Queue, Save, Like, Dislike)
+            </button>
+          </div>
           <label className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"
