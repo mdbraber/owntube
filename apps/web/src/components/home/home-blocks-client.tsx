@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   DragHandleIcon,
+  MoreIcon,
   PlaylistIcon,
   XIcon,
 } from "@/components/videos/video-action-icons";
@@ -13,9 +14,12 @@ import { VideoGrid } from "@/components/videos/video-grid";
 import { VideoRow } from "@/components/videos/video-row";
 import { VideoThumbnailImg } from "@/components/videos/video-thumbnail-img";
 import {
+  CARD_MIN_WIDTH_PX,
   DEFAULT_HOME_BLOCKS,
   HOME_BLOCK_LABEL,
   HOME_BLOCK_LIMITS,
+  HOME_BLOCK_SIZE_LABEL,
+  HOME_BLOCK_SIZES,
   type HomeBlock,
   type HomeBlockType,
   homeBlockHref,
@@ -52,15 +56,16 @@ function toUnified(v: BlockVideo): UnifiedVideo {
 
 function VideoBlockBody({
   videos,
-  layout,
+  block,
   surface,
   isLoading,
 }: {
   videos: BlockVideo[];
-  layout: "cards" | "rows";
+  block: HomeBlock;
   surface: VideoActionSurface;
   isLoading: boolean;
 }) {
+  const layout = block.layout;
   if (isLoading && videos.length === 0) {
     return (
       <p className="py-4 text-sm text-[hsl(var(--muted-foreground))]">
@@ -76,7 +81,13 @@ function VideoBlockBody({
     );
   }
   if (layout === "cards") {
-    return <VideoGrid videos={videos.map(toUnified)} size="large" />;
+    return (
+      <VideoGrid
+        videos={videos.map(toUnified)}
+        size="large"
+        minColumnWidthPx={CARD_MIN_WIDTH_PX[block.size]}
+      />
+    );
   }
   return (
     <ul className="space-y-1">
@@ -92,6 +103,7 @@ function VideoBlockBody({
             progress={v.progress}
             progressComplete={v.progressComplete}
             surface={surface}
+            size={block.size}
           />
         </li>
       ))}
@@ -106,7 +118,7 @@ function SubscriptionsBlockBody({ block }: { block: HomeBlock }) {
   return (
     <VideoBlockBody
       videos={(query.data?.videos ?? []).slice(0, block.limit)}
-      layout={block.layout}
+      block={block}
       surface="subscriptions"
       isLoading={query.isPending}
     />
@@ -114,9 +126,14 @@ function SubscriptionsBlockBody({ block }: { block: HomeBlock }) {
 }
 
 function HistoryBlockBody({ block }: { block: HomeBlock }) {
+  // Shared "base": the same preference drives the History page's filter.
+  const hideCompleted =
+    trpc.settings.get.useQuery().data?.sectionPrefs.history.hideCompleted ??
+    false;
   const query = trpc.history.list.useQuery({
     page: 1,
     pageSize: Math.min(24, block.limit),
+    hideWatched: hideCompleted,
   });
   const videos: BlockVideo[] = (query.data ?? []).map((item) => ({
     videoId: item.videoId,
@@ -135,7 +152,7 @@ function HistoryBlockBody({ block }: { block: HomeBlock }) {
   return (
     <VideoBlockBody
       videos={videos}
-      layout={block.layout}
+      block={block}
       surface="history"
       isLoading={query.isPending}
     />
@@ -157,7 +174,7 @@ function QueueBlockBody({ block }: { block: HomeBlock }) {
   return (
     <VideoBlockBody
       videos={videos}
-      layout={block.layout}
+      block={block}
       surface="queue"
       isLoading={query.isPending}
     />
@@ -179,7 +196,7 @@ function SavedBlockBody({ block }: { block: HomeBlock }) {
   return (
     <VideoBlockBody
       videos={videos}
-      layout={block.layout}
+      block={block}
       surface="saved"
       isLoading={query.isPending}
     />
@@ -205,7 +222,7 @@ function PlaylistBlockBody({ block }: { block: HomeBlock }) {
   return (
     <VideoBlockBody
       videos={videos}
-      layout={block.layout}
+      block={block}
       surface="playlist"
       isLoading={query.isPending}
     />
@@ -270,7 +287,12 @@ function PlaylistsBlockBody({ block }: { block: HomeBlock }) {
 
   if (block.layout === "cards") {
     return (
-      <ul className="grid gap-x-4 gap-y-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      <ul
+        className="grid gap-x-4 gap-y-6"
+        style={{
+          gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${CARD_MIN_WIDTH_PX[block.size]}px), 1fr))`,
+        }}
+      >
         {playlists.map((p) => (
           <li key={p.id} className="group">
             <Link href={`/playlists/${p.id}`} className="block">
@@ -335,18 +357,97 @@ function BlockHeading({ block }: { block: HomeBlock }) {
   return (
     <Link
       href={homeBlockHref(block)}
-      className="group/h inline-flex items-center gap-1.5"
+      className="group/h inline-flex items-center gap-2"
     >
-      <h2 className="m-0 text-xl font-bold tracking-tight transition group-hover/h:text-[hsl(var(--primary))]">
+      <h2 className="m-0 text-2xl font-extrabold leading-tight tracking-tight transition group-hover/h:text-[hsl(var(--primary))]">
         {label}
       </h2>
       <span
         aria-hidden
-        className="text-lg text-[hsl(var(--muted-foreground))] transition group-hover/h:translate-x-0.5 group-hover/h:text-[hsl(var(--primary))]"
+        className="text-xl text-[hsl(var(--muted-foreground))] transition group-hover/h:translate-x-0.5 group-hover/h:text-[hsl(var(--primary))]"
       >
         ›
       </span>
     </Link>
+  );
+}
+
+/**
+ * Per-block options behind a dot menu (edit mode) — options live in the
+ * shared sectionPrefs "base", so the section's own page stays in sync.
+ */
+function BlockOptionsMenu({ block }: { block: HomeBlock }) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const utils = trpc.useUtils();
+  const settings = trpc.settings.get.useQuery();
+  const update = trpc.settings.update.useMutation({
+    onSettled: () => utils.settings.get.invalidate(),
+  });
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  if (block.type !== "history") return null;
+  const prefs = settings.data?.sectionPrefs ?? {
+    history: { hideCompleted: false },
+  };
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        className="flex h-7 w-7 items-center justify-center rounded-full text-[hsl(var(--muted-foreground))] transition hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))]"
+        title="Block options"
+        aria-label="Block options"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <MoreIcon className="h-4 w-4" />
+      </button>
+      {open ? (
+        <div
+          role="menu"
+          className="absolute right-0 top-full z-40 mt-1 w-64 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-1.5 text-sm shadow-lg"
+        >
+          <label className="flex cursor-pointer select-none items-center gap-2.5 rounded-lg px-2.5 py-2 transition hover:bg-[hsl(var(--muted)_/_0.65)]">
+            <input
+              type="checkbox"
+              className="h-4 w-4 accent-[hsl(var(--primary))]"
+              checked={prefs.history.hideCompleted}
+              onChange={(e) =>
+                update.mutate({
+                  sectionPrefs: {
+                    ...prefs,
+                    history: {
+                      ...prefs.history,
+                      hideCompleted: e.currentTarget.checked,
+                    },
+                  },
+                })
+              }
+            />
+            Hide completed videos
+          </label>
+          <p className="px-2.5 pb-1 pt-0.5 text-[11px] text-[hsl(var(--muted-foreground))]">
+            Also applies on the History page.
+          </p>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -388,6 +489,7 @@ function AddBlockMenu({ onAdd }: { onAdd: (block: HomeBlock) => void }) {
       playlistId,
       limit: type === "playlists" ? 4 : 8,
       layout: "cards",
+      size: "md",
     });
     setOpen(false);
   };
@@ -550,6 +652,26 @@ export function HomeBlocksClient() {
                 <span className="ml-auto" />
                 {editing ? (
                   <>
+                    {/* item size */}
+                    <div className="flex overflow-hidden rounded-full border border-[hsl(var(--border))] text-xs font-medium">
+                      {HOME_BLOCK_SIZES.map((size) => (
+                        <button
+                          key={size}
+                          type="button"
+                          aria-pressed={block.size === size}
+                          title={`Item size ${HOME_BLOCK_SIZE_LABEL[size]}`}
+                          className={cn(
+                            "px-2.5 py-1 transition",
+                            block.size === size
+                              ? "bg-[hsl(var(--primary))] text-white"
+                              : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]",
+                          )}
+                          onClick={() => patchBlock(block.id, { size })}
+                        >
+                          {HOME_BLOCK_SIZE_LABEL[size]}
+                        </button>
+                      ))}
+                    </div>
                     {/* cards ⇄ rows */}
                     <div className="flex overflow-hidden rounded-full border border-[hsl(var(--border))] text-xs font-medium">
                       {(["cards", "rows"] as const).map((layout) => (
@@ -585,6 +707,7 @@ export function HomeBlocksClient() {
                         </option>
                       ))}
                     </select>
+                    <BlockOptionsMenu block={block} />
                     <button
                       type="button"
                       className="flex h-7 w-7 items-center justify-center rounded-full text-[hsl(var(--muted-foreground))] transition hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))]"

@@ -119,10 +119,23 @@ export const appSettingsSchema = z.object({
         playlistId: z.number().int().positive().optional(),
         limit: z.number().int().min(1).max(24).default(8),
         layout: z.enum(["cards", "rows"]).default("cards"),
+        size: z.enum(["xs", "sm", "md", "lg"]).default("md"),
       }),
     )
     .max(16)
     .default(DEFAULT_HOME_BLOCKS),
+  /**
+   * Per-section preferences — the single "base" shared by a section's page
+   * and its home block (e.g. History's hide-completed filter), so the option
+   * stays in sync wherever the section renders.
+   */
+  sectionPrefs: z
+    .object({
+      history: z
+        .object({ hideCompleted: z.boolean().default(false) })
+        .default({ hideCompleted: false }),
+    })
+    .default({ history: { hideCompleted: false } }),
 });
 
 export type AppSettings = z.infer<typeof appSettingsSchema>;
@@ -160,6 +173,7 @@ const defaultSettings: AppSettings = {
   },
   quickActions: DEFAULT_QUICK_ACTIONS,
   homeBlocks: DEFAULT_HOME_BLOCKS,
+  sectionPrefs: { history: { hideCompleted: false } },
 };
 
 function nowUnix(): number {

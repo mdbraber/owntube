@@ -50,6 +50,18 @@ export function HistoryList({ initialItems }: HistoryListProps) {
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [hideWatched, setHideWatched] = useState(false);
+  // The filter lives in the shared sectionPrefs "base" (also drives the
+  // History block on the home page). Hydrate once, then write on toggle.
+  const settingsQuery = trpc.settings.get.useQuery();
+  const updateSettings = trpc.settings.update.useMutation({
+    onSettled: () => utils.settings.get.invalidate(),
+  });
+  const prefsHydrated = useRef(false);
+  useEffect(() => {
+    if (prefsHydrated.current || !settingsQuery.data) return;
+    prefsHydrated.current = true;
+    setHideWatched(settingsQuery.data.sectionPrefs.history.hideCompleted);
+  }, [settingsQuery.data]);
   const [page, setPage] = useState(1);
   const [items, setItems] = useState<HistoryItem[]>(initialItems);
   const appliedQueryRef = useRef("");
@@ -100,6 +112,15 @@ export function HistoryList({ initialItems }: HistoryListProps) {
     // Same as search: rows stay put until the refetched page-1 data replaces
     // them, so toggling doesn't flash the list.
     setPage(1);
+    const prefs = settingsQuery.data?.sectionPrefs ?? {
+      history: { hideCompleted: false },
+    };
+    updateSettings.mutate({
+      sectionPrefs: {
+        ...prefs,
+        history: { ...prefs.history, hideCompleted: next },
+      },
+    });
   };
 
   const hasMore = (listQuery.data?.length ?? 0) >= PAGE_SIZE;

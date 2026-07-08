@@ -36,6 +36,15 @@ type VideoRowProps = {
   removeDisabled?: boolean;
   /** Trims the kebab menu + suppresses the pill that restates this page. */
   surface: VideoActionSurface;
+  /** Thumbnail size preset (home block sizing); md is the library default. */
+  size?: "xs" | "sm" | "md" | "lg";
+};
+
+const ROW_THUMB_WIDTH: Record<"xs" | "sm" | "md" | "lg", string> = {
+  xs: "w-28 sm:w-36",
+  sm: "w-40 sm:w-48",
+  md: "w-[12.75rem] sm:w-60",
+  lg: "w-[16rem] sm:w-80",
 };
 
 const SURFACE_PILL_OMIT: Partial<
@@ -70,6 +79,7 @@ export function VideoRow({
   removeLabel = "Remove",
   removeDisabled,
   surface,
+  size = "md",
 }: VideoRowProps) {
   const target = `/watch/${encodeURIComponent(videoId)}`;
   const pct =
@@ -103,7 +113,12 @@ export function VideoRow({
 
       <div className="relative shrink-0">
         <Link href={target} className="block">
-          <div className="relative aspect-video w-[12.75rem] overflow-hidden rounded-xl bg-[hsl(var(--muted))] sm:w-60">
+          <div
+            className={cn(
+              "relative aspect-video overflow-hidden rounded-xl bg-[hsl(var(--muted))]",
+              ROW_THUMB_WIDTH[size],
+            )}
+          >
             {/* Derives the thumbnail from videoId when no explicit URL is given
                 (denormalized history/library rows omit it). */}
             <VideoThumbnailImg

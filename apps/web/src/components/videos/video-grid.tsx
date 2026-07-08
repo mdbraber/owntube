@@ -10,6 +10,11 @@ type VideoGridProps = {
   dimVideoIds?: ReadonlySet<string>;
   /** Enable mobile swipe gestures (Home/Explore/Subscriptions only). */
   enableSwipe?: boolean;
+  /**
+   * Override the auto-fill grid's minimum column width (home block sizes) —
+   * column count stays responsive, only the floor changes.
+   */
+  minColumnWidthPx?: number;
 };
 
 function videoCardProps(v: UnifiedVideo) {
@@ -40,7 +45,13 @@ export function VideoGrid({
   variant = "video",
   dimVideoIds,
   enableSwipe,
+  minColumnWidthPx,
 }: VideoGridProps) {
+  const gridStyle = minColumnWidthPx
+    ? {
+        gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${minColumnWidthPx}px), 1fr))`,
+      }
+    : undefined;
   if (videos.length === 0) {
     return (
       <p className="rounded-[var(--radius-card)] border border-dashed border-[hsl(var(--border))] bg-[hsl(var(--muted)_/_0.35)] py-14 text-center text-sm text-[hsl(var(--muted-foreground))]">
@@ -64,7 +75,7 @@ export function VideoGrid({
   const gridClass =
     size === "large" ? "ot-video-grid ot-video-grid--large" : "ot-video-grid";
   return (
-    <ul className={gridClass}>
+    <ul className={gridClass} style={gridStyle}>
       {videos.map((v) => (
         <li key={v.videoId}>
           <VideoCard
