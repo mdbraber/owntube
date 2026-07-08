@@ -26,6 +26,7 @@ export function DraggableVideoRows({
   surface,
   removeLabel,
   removeDisabled,
+  size,
   onMove,
   onDrop,
   onRemove,
@@ -34,6 +35,8 @@ export function DraggableVideoRows({
   surface: VideoActionSurface;
   removeLabel: string;
   removeDisabled?: boolean;
+  /** Thumbnail size preset (page setting). */
+  size?: "xs" | "sm" | "md" | "lg" | "xl";
   /** Splice from → to in the host's item state (live while dragging). */
   onMove: (from: number, to: number) => void;
   /** Persist the order once a drag completes. */
@@ -74,6 +77,7 @@ export function DraggableVideoRows({
               thumbnailUrl={item.thumbnailUrl}
               durationSeconds={item.durationSeconds}
               surface={surface}
+              size={size}
               leading={i + 1}
               dragHandle={
                 <button

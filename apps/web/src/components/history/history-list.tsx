@@ -1,6 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  SectionOptionsMenu,
+  useSectionPagePrefs,
+} from "@/components/library/section-options-menu";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { VideoRow } from "@/components/videos/video-row";
@@ -49,19 +53,17 @@ export function HistoryList({ initialItems }: HistoryListProps) {
   const utils = trpc.useUtils();
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [hideWatched, setHideWatched] = useState(false);
-  // The filter lives in the shared sectionPrefs "base" (also drives the
-  // History block on the home page). Hydrate once, then write on toggle.
-  const settingsQuery = trpc.settings.get.useQuery();
-  const updateSettings = trpc.settings.update.useMutation({
-    onSettled: () => utils.settings.get.invalidate(),
-  });
-  const prefsHydrated = useRef(false);
+  // Page prefs come from the shared sectionPrefs base (the ⋯ menu writes
+  // them); the query below reacts to changes directly.
+  const prefs = useSectionPagePrefs("history");
+  const hideWatched = prefs.hideCompleted;
+  // Back to page 1 whenever the filter flips (accumulated pages differ).
+  const prevHideWatched = useRef(hideWatched);
   useEffect(() => {
-    if (prefsHydrated.current || !settingsQuery.data) return;
-    prefsHydrated.current = true;
-    setHideWatched(settingsQuery.data.sectionPrefs.history.hideCompleted);
-  }, [settingsQuery.data]);
+    if (prevHideWatched.current === hideWatched) return;
+    prevHideWatched.current = hideWatched;
+    setPage(1);
+  }, [hideWatched]);
   const [page, setPage] = useState(1);
   const [items, setItems] = useState<HistoryItem[]>(initialItems);
   const appliedQueryRef = useRef("");
@@ -107,22 +109,6 @@ export function HistoryList({ initialItems }: HistoryListProps) {
     },
   });
 
-  const toggleHideWatched = (next: boolean) => {
-    setHideWatched(next);
-    // Same as search: rows stay put until the refetched page-1 data replaces
-    // them, so toggling doesn't flash the list.
-    setPage(1);
-    const prefs = settingsQuery.data?.sectionPrefs ?? {
-      history: { hideCompleted: false },
-    };
-    updateSettings.mutate({
-      sectionPrefs: {
-        ...prefs,
-        history: { ...prefs.history, hideCompleted: next },
-      },
-    });
-  };
-
   const hasMore = (listQuery.data?.length ?? 0) >= PAGE_SIZE;
   const isSearching = debouncedQuery.length > 0;
   const title = useMemo(() => {
@@ -134,16 +120,7 @@ export function HistoryList({ initialItems }: HistoryListProps) {
     <section className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <label className="flex cursor-pointer select-none items-center gap-2 text-sm text-[hsl(var(--muted-foreground))]">
-            <input
-              type="checkbox"
-              checked={hideWatched}
-              onChange={(e) => toggleHideWatched(e.currentTarget.checked)}
-              className="h-4 w-4 accent-[hsl(var(--primary))]"
-            />
-            Hide watched videos
-          </label>
+        <div className="flex items-center gap-2">
           <Input
             value={query}
             onChange={(e) => setQuery(e.currentTarget.value)}
@@ -151,6 +128,7 @@ export function HistoryList({ initialItems }: HistoryListProps) {
             className="sm:w-80"
             aria-label="Search history"
           />
+          <SectionOptionsMenu section="history" />
         </div>
       </div>
 
@@ -192,6 +170,7 @@ export function HistoryList({ initialItems }: HistoryListProps) {
                     : undefined
                 }
                 surface="history"
+                size={prefs.rowSize}
                 meta={
                   item.completed
                     ? "Watched"

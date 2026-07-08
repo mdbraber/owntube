@@ -6,6 +6,7 @@ import { CardSwipeLayer } from "@/components/videos/card-swipe-layer";
 import { XIcon } from "@/components/videos/video-action-icons";
 import type { VideoActionSurface } from "@/components/videos/video-action-registry";
 import { VideoActionsMenu } from "@/components/videos/video-actions-menu";
+import { VideoRowQuickActions } from "@/components/videos/video-row-quick-actions";
 import { VideoCardDurationBadge } from "@/components/videos/video-card-duration-badge";
 import { VideoStatusPills } from "@/components/videos/video-status-pills";
 import { VideoWatchProgress } from "@/components/videos/video-watch-progress";
@@ -35,7 +36,7 @@ type VideoRowProps = {
   /** Trims the kebab menu + suppresses the pill that restates this page. */
   surface: VideoActionSurface;
   /** Thumbnail size preset (home block sizing); md is the library default. */
-  size?: "xs" | "sm" | "md" | "lg";
+  size?: "xs" | "sm" | "md" | "lg" | "xl";
   /**
    * Touch swipe actions across the whole row (home blocks). Keep off on the
    * drag-reorderable pages — the gestures would fight.
@@ -43,11 +44,12 @@ type VideoRowProps = {
   enableSwipe?: boolean;
 };
 
-const ROW_THUMB_WIDTH: Record<"xs" | "sm" | "md" | "lg", string> = {
+const ROW_THUMB_WIDTH: Record<"xs" | "sm" | "md" | "lg" | "xl", string> = {
   xs: "w-28 sm:w-36",
   sm: "w-40 sm:w-48",
   md: "w-[12.75rem] sm:w-60",
   lg: "w-[16rem] sm:w-80",
+  xl: "w-[19rem] sm:w-[26rem]",
 };
 
 /**
@@ -164,6 +166,12 @@ export function VideoRow({
       </div>
 
       <div className="flex shrink-0 items-center gap-0.5">
+        <VideoRowQuickActions
+          videoId={videoId}
+          title={title}
+          channelId={channelId ?? undefined}
+          surface={surface}
+        />
         {onRemove ? (
           <button
             type="button"

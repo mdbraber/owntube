@@ -22,7 +22,7 @@ export type HomeBlockLayout = "cards" | "rows";
  * the *minimum column width* of an auto-fill grid (column count adapts to the
  * viewport); for rows it sets the thumbnail width.
  */
-export const HOME_BLOCK_SIZES = ["xs", "sm", "md", "lg"] as const;
+export const HOME_BLOCK_SIZES = ["xs", "sm", "md", "lg", "xl"] as const;
 export type HomeBlockSize = (typeof HOME_BLOCK_SIZES)[number];
 
 export const HOME_BLOCK_SIZE_LABEL: Record<HomeBlockSize, string> = {
@@ -30,6 +30,7 @@ export const HOME_BLOCK_SIZE_LABEL: Record<HomeBlockSize, string> = {
   sm: "S",
   md: "M",
   lg: "L",
+  xl: "XL",
 };
 
 /** Minimum card column width per size (cards layout). */
@@ -38,6 +39,7 @@ export const CARD_MIN_WIDTH_PX: Record<HomeBlockSize, number> = {
   sm: 230,
   md: 280,
   lg: 360,
+  xl: 440,
 };
 
 export type HomeBlock = {

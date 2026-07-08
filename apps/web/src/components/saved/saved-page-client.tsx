@@ -1,5 +1,10 @@
 "use client";
 
+import {
+  SectionOptionsMenu,
+  useSectionPagePrefs,
+} from "@/components/library/section-options-menu";
+import { useWatchProgressMap } from "@/components/videos/video-membership-context";
 import { VideoRow } from "@/components/videos/video-row";
 import { trpc } from "@/trpc/react";
 
@@ -25,7 +30,16 @@ export function SavedPageClient() {
       ]),
   });
 
-  const items = savedQuery.data ?? [];
+  const prefs = useSectionPagePrefs("saved");
+  const progressMap = useWatchProgressMap();
+  const allItems = savedQuery.data ?? [];
+  const items = prefs.hideCompleted
+    ? allItems.filter((item) => {
+        const p = progressMap.get(item.videoId);
+        // YouTube-style: near-finished (≥90%) counts as watched.
+        return !p || (!p.completed && p.fraction < 0.9);
+      })
+    : allItems;
 
   if (!savedQuery.isLoading && items.length === 0) {
     return (
@@ -37,29 +51,35 @@ export function SavedPageClient() {
   }
 
   return (
-    <ul className="space-y-1">
-      {items.map((item) => (
-        <li key={item.videoId}>
-          <VideoRow
-            videoId={item.videoId}
-            title={item.videoTitle}
-            channelId={item.channelId}
-            channelName={item.channelName}
-            thumbnailUrl={item.thumbnailUrl}
-            durationSeconds={item.durationSeconds}
-            surface="saved"
-            removeLabel="Remove from saved"
-            removeDisabled={unsave.isPending}
-            onRemove={() =>
-              unsave.mutate({
-                videoId: item.videoId,
-                type: "save",
-                active: false,
-              })
-            }
-          />
-        </li>
-      ))}
-    </ul>
+    <div className="space-y-3">
+      <div className="flex justify-end">
+        <SectionOptionsMenu section="saved" />
+      </div>
+      <ul className="space-y-1">
+        {items.map((item) => (
+          <li key={item.videoId}>
+            <VideoRow
+              videoId={item.videoId}
+              title={item.videoTitle}
+              channelId={item.channelId}
+              channelName={item.channelName}
+              thumbnailUrl={item.thumbnailUrl}
+              durationSeconds={item.durationSeconds}
+              surface="saved"
+              size={prefs.rowSize}
+              removeLabel="Remove from saved"
+              removeDisabled={unsave.isPending}
+              onRemove={() =>
+                unsave.mutate({
+                  videoId: item.videoId,
+                  type: "save",
+                  active: false,
+                })
+              }
+            />
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

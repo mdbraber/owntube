@@ -54,6 +54,18 @@ const swipeGesturesSchema = z.preprocess(
 
 export const quickActionSchema = z.enum(QUICK_ACTION_VALUES);
 
+/** Per-page prefs shared by the library pages (History / Queue / Saved). */
+const DEFAULT_SECTION_PAGE_PREFS = {
+  hideCompleted: false,
+  rowSize: "md",
+} as const;
+const sectionPagePrefsSchema = z
+  .object({
+    hideCompleted: z.boolean().default(false),
+    rowSize: z.enum(["xs", "sm", "md", "lg", "xl"]).default("md"),
+  })
+  .default(DEFAULT_SECTION_PAGE_PREFS);
+
 export const appSettingsSchema = z.object({
   theme: themeSchema.default("system"),
   visualTheme: visualThemeSchema.default("default"),
@@ -126,7 +138,7 @@ export const appSettingsSchema = z.object({
         limit: z.number().int().min(1).max(24).default(8),
         rows: z.number().int().min(1).max(4).default(2),
         layout: z.enum(["cards", "rows"]).default("cards"),
-        size: z.enum(["xs", "sm", "md", "lg"]).default("md"),
+        size: z.enum(["xs", "sm", "md", "lg", "xl"]).default("md"),
         /** Section-option values for this block (independent of the page's). */
         options: z.record(z.string(), z.boolean()).optional(),
       }),
@@ -140,11 +152,15 @@ export const appSettingsSchema = z.object({
    */
   sectionPrefs: z
     .object({
-      history: z
-        .object({ hideCompleted: z.boolean().default(false) })
-        .default({ hideCompleted: false }),
+      history: sectionPagePrefsSchema,
+      queue: sectionPagePrefsSchema,
+      saved: sectionPagePrefsSchema,
     })
-    .default({ history: { hideCompleted: false } }),
+    .default({
+      history: DEFAULT_SECTION_PAGE_PREFS,
+      queue: DEFAULT_SECTION_PAGE_PREFS,
+      saved: DEFAULT_SECTION_PAGE_PREFS,
+    }),
 });
 
 export type AppSettings = z.infer<typeof appSettingsSchema>;
@@ -182,7 +198,11 @@ const defaultSettings: AppSettings = {
   },
   quickActions: DEFAULT_QUICK_ACTIONS,
   homeBlocks: DEFAULT_HOME_BLOCKS,
-  sectionPrefs: { history: { hideCompleted: false } },
+  sectionPrefs: {
+    history: DEFAULT_SECTION_PAGE_PREFS,
+    queue: DEFAULT_SECTION_PAGE_PREFS,
+    saved: DEFAULT_SECTION_PAGE_PREFS,
+  },
 };
 
 function nowUnix(): number {
