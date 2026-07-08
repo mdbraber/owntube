@@ -18,11 +18,18 @@ export type VideoMembership = {
 
 type PlaylistRef = { id: number; name: string };
 
+export type WatchProgress = {
+  /** 0–1 of the video watched (resume position over duration). */
+  fraction: number;
+  completed: boolean;
+};
+
 type VideoMembershipValue = {
   savedIds: ReadonlySet<string>;
   queuedIds: ReadonlySet<string>;
   playlistByVideo: ReadonlyMap<string, PlaylistRef>;
   playlistIdsByVideo: ReadonlyMap<string, ReadonlySet<number>>;
+  progressByVideo: ReadonlyMap<string, WatchProgress>;
 };
 
 const EMPTY: VideoMembershipValue = {
@@ -30,6 +37,7 @@ const EMPTY: VideoMembershipValue = {
   queuedIds: new Set(),
   playlistByVideo: new Map(),
   playlistIdsByVideo: new Map(),
+  progressByVideo: new Map(),
 };
 
 const VideoMembershipContext = createContext<VideoMembershipValue>(EMPTY);
@@ -50,6 +58,9 @@ export function VideoMembershipProvider({ children }: { children: ReactNode }) {
   const playlistQuery = trpc.playlists.membership.useQuery(undefined, {
     enabled: authed,
   });
+  const progressQuery = trpc.history.progressAll.useQuery(undefined, {
+    enabled: authed,
+  });
 
   const value = useMemo<VideoMembershipValue>(() => {
     const savedIds = new Set(savedQuery.data ?? []);
@@ -68,8 +79,34 @@ export function VideoMembershipProvider({ children }: { children: ReactNode }) {
       ids.add(row.playlistId);
       playlistIdsByVideo.set(row.videoId, ids);
     }
-    return { savedIds, queuedIds, playlistByVideo, playlistIdsByVideo };
-  }, [savedQuery.data, queueQuery.data, playlistQuery.data]);
+    // Newest history row per video wins (rows arrive newest first).
+    const progressByVideo = new Map<string, WatchProgress>();
+    for (const row of progressQuery.data ?? []) {
+      if (progressByVideo.has(row.videoId)) continue;
+      const pos =
+        row.positionSeconds > 0 ? row.positionSeconds : row.durationWatched;
+      const fraction =
+        row.videoDurationSeconds > 0
+          ? Math.max(0, Math.min(1, pos / row.videoDurationSeconds))
+          : 0;
+      progressByVideo.set(row.videoId, {
+        fraction,
+        completed: Boolean(row.completed),
+      });
+    }
+    return {
+      savedIds,
+      queuedIds,
+      playlistByVideo,
+      playlistIdsByVideo,
+      progressByVideo,
+    };
+  }, [
+    savedQuery.data,
+    queueQuery.data,
+    playlistQuery.data,
+    progressQuery.data,
+  ]);
 
   return (
     <VideoMembershipContext.Provider value={value}>
@@ -94,4 +131,11 @@ export function useVideoMembership(videoId?: string): VideoMembership {
       playlistIds: playlistIdsByVideo.get(videoId) ?? EMPTY_ID_SET,
     };
   }, [videoId, savedIds, queuedIds, playlistByVideo, playlistIdsByVideo]);
+}
+
+/** Watch progress for one video from the shared page-level map. */
+export function useWatchProgress(videoId?: string): WatchProgress | null {
+  const { progressByVideo } = useContext(VideoMembershipContext);
+  if (!videoId) return null;
+  return progressByVideo.get(videoId) ?? null;
 }

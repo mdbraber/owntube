@@ -117,6 +117,7 @@ export const interactionsRouter = router({
             durationSeconds: detail.durationSeconds,
             channelId: r.channelId,
             channelName: detail.channelName ?? r.channelId,
+            channelAvatarUrl: detail.channelAvatarUrl,
             href: `/watch/${r.videoId}`,
           };
         } catch {
@@ -127,6 +128,7 @@ export const interactionsRouter = router({
             durationSeconds: undefined as number | undefined,
             channelId: r.channelId,
             channelName: r.channelId,
+            channelAvatarUrl: undefined as string | undefined,
             href: `/watch/${r.videoId}`,
           };
         }

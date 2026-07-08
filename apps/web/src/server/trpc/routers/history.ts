@@ -1,5 +1,6 @@
 import { and, desc, eq, like, or } from "drizzle-orm";
 import { z } from "zod";
+import { readChannelMetaByIds } from "@/server/channel-meta/store";
 import { watchHistory } from "@/server/db/schema";
 import { clearRecommendationCachesForUser } from "@/server/recommendation/engine";
 import { loadWatchedVideoIdsForRecommendations } from "@/server/recommendation/watched-videos";
@@ -135,6 +136,29 @@ export const historyRouter = router({
       }
       return { id: inserted.id, updated: false };
     }),
+  /**
+   * Lightweight watch-progress map source: newest row per video is resolved
+   * client-side (rows arrive newest first). Backs the thumbnail progress bars
+   * on cards/rows everywhere, so it stays id + numbers only.
+   */
+  progressAll: protectedProcedure.query(({ ctx }) => {
+    return ctx.db
+      .select({
+        videoId: watchHistory.videoId,
+        positionSeconds: watchHistory.positionSeconds,
+        durationWatched: watchHistory.durationWatched,
+        videoDurationSeconds: watchHistory.videoDurationSeconds,
+        completed: watchHistory.completed,
+      })
+      .from(watchHistory)
+      .where(
+        and(eq(watchHistory.userId, ctx.userId), eq(watchHistory.isDeleted, 0)),
+      )
+      .orderBy(desc(watchHistory.startedAt))
+      .limit(3000)
+      .all();
+  }),
+
   list: protectedProcedure
     .input(historyPageInputSchema)
     .query(async ({ ctx, input }) => {
@@ -175,8 +199,14 @@ export const historyRouter = router({
         .offset(offset)
         .all();
       const overrides = getUserProxyOverrides(ctx.db, ctx.userId);
+      // Channel avatars come from the local channel_meta cache in one read.
+      const metaById = readChannelMetaByIds(ctx.db, [
+        ...new Set(rows.map((r) => r.channelId)),
+      ]);
       const enriched = await Promise.all(
         rows.map(async (row) => {
+          const channelAvatarUrl =
+            metaById.get(row.channelId)?.avatarUrl ?? undefined;
           // Rows written since titles were denormalized need no upstream call;
           // the client derives the thumbnail from videoId.
           if (row.videoTitle) {
@@ -185,6 +215,7 @@ export const historyRouter = router({
               videoTitle: row.videoTitle,
               thumbnailUrl: undefined as string | undefined,
               channelName: row.channelName ?? row.channelId,
+              channelAvatarUrl,
             };
           }
           try {
@@ -198,6 +229,7 @@ export const historyRouter = router({
               videoTitle: detail.title,
               thumbnailUrl: detail.thumbnailUrl,
               channelName: detail.channelName ?? row.channelId,
+              channelAvatarUrl: detail.channelAvatarUrl ?? channelAvatarUrl,
             };
           } catch {
             return {
@@ -205,6 +237,7 @@ export const historyRouter = router({
               videoTitle: row.videoId,
               thumbnailUrl: undefined,
               channelName: row.channelId,
+              channelAvatarUrl,
             };
           }
         }),

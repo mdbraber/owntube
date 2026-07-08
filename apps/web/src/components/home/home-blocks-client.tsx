@@ -39,6 +39,7 @@ type BlockVideo = {
   title: string;
   channelId?: string | null;
   channelName?: string | null;
+  channelAvatarUrl?: string | null;
   thumbnailUrl?: string | null;
   durationSeconds?: number;
   progress?: number;
@@ -51,6 +52,7 @@ function toUnified(v: BlockVideo): UnifiedVideo {
     title: v.title,
     channelId: v.channelId ?? undefined,
     channelName: v.channelName ?? undefined,
+    channelAvatarUrl: v.channelAvatarUrl ?? undefined,
     thumbnailUrl: v.thumbnailUrl ?? undefined,
     durationSeconds: v.durationSeconds,
   } as UnifiedVideo;
@@ -89,6 +91,7 @@ function VideoBlockBody({
         size="large"
         minColumnWidthPx={CARD_MIN_WIDTH_PX[block.size]}
         enableSwipe
+        surface={surface}
       />
     );
   }
@@ -116,8 +119,10 @@ function VideoBlockBody({
 }
 
 function SubscriptionsBlockBody({ block }: { block: HomeBlock }) {
+  // Over-fetch: the feed strips shorts/restricted *after* the limit, so a
+  // page of exactly `limit` often arrives short.
   const query = trpc.subscriptions.mergedFeedInfinite.useQuery({
-    limit: Math.min(48, Math.max(8, block.limit)),
+    limit: Math.min(48, Math.max(8, block.limit * 2)),
   });
   return (
     <VideoBlockBody
@@ -142,6 +147,7 @@ function HistoryBlockBody({ block }: { block: HomeBlock }) {
     title: item.videoTitle ?? item.videoId,
     channelId: item.channelId,
     channelName: item.channelName,
+    channelAvatarUrl: item.channelAvatarUrl,
     thumbnailUrl: item.thumbnailUrl,
     durationSeconds:
       item.videoDurationSeconds > 0 ? item.videoDurationSeconds : undefined,
@@ -170,6 +176,7 @@ function QueueBlockBody({ block }: { block: HomeBlock }) {
       title: item.videoTitle,
       channelId: item.channelId,
       channelName: item.channelName,
+      channelAvatarUrl: item.channelAvatarUrl,
       thumbnailUrl: item.thumbnailUrl,
       durationSeconds: item.durationSeconds,
     }));
@@ -192,6 +199,7 @@ function SavedBlockBody({ block }: { block: HomeBlock }) {
       title: item.videoTitle,
       channelId: item.channelId,
       channelName: item.channelName,
+      channelAvatarUrl: item.channelAvatarUrl,
       thumbnailUrl: item.thumbnailUrl,
       durationSeconds: item.durationSeconds,
     }));
@@ -218,6 +226,7 @@ function PlaylistBlockBody({ block }: { block: HomeBlock }) {
       title: item.videoTitle,
       channelId: item.channelId,
       channelName: item.channelName,
+      channelAvatarUrl: item.channelAvatarUrl,
       thumbnailUrl: item.thumbnailUrl,
       durationSeconds: item.durationSeconds,
     }));

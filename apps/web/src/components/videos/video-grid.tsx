@@ -1,3 +1,4 @@
+import type { VideoActionSurface } from "@/components/videos/video-action-registry";
 import { VideoCard, VideoCardShort } from "@/components/videos/video-card";
 import type { UnifiedVideo } from "@/server/services/proxy.types";
 
@@ -15,6 +16,8 @@ type VideoGridProps = {
    * column count stays responsive, only the floor changes.
    */
   minColumnWidthPx?: number;
+  /** Card surface (pills omission + menu trimming). */
+  surface?: VideoActionSurface;
 };
 
 function videoCardProps(v: UnifiedVideo) {
@@ -46,6 +49,7 @@ export function VideoGrid({
   dimVideoIds,
   enableSwipe,
   minColumnWidthPx,
+  surface,
 }: VideoGridProps) {
   const gridStyle = minColumnWidthPx
     ? {
@@ -82,6 +86,7 @@ export function VideoGrid({
             {...videoCardProps(v)}
             dimmed={dimVideoIds?.has(v.videoId) ?? false}
             enableSwipe={enableSwipe}
+            surface={surface}
           />
         </li>
       ))}

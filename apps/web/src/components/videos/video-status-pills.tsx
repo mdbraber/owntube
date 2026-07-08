@@ -7,8 +7,18 @@ import {
   QueuedIcon,
   SavedIcon,
 } from "@/components/videos/video-action-icons";
+import type { VideoActionSurface } from "@/components/videos/video-action-registry";
 import { useVideoMembership } from "@/components/videos/video-membership-context";
 import { cn } from "@/lib/utils";
+
+/** Pills that restate their page get suppressed per surface. */
+export const SURFACE_PILL_OMIT: Partial<
+  Record<VideoActionSurface, readonly ("queued" | "saved" | "playlist")[]>
+> = {
+  queue: ["queued"],
+  saved: ["saved"],
+  playlist: ["playlist"],
+};
 
 type VideoStatusPillsProps = {
   videoId?: string;
@@ -17,6 +27,8 @@ type VideoStatusPillsProps = {
   size?: "default" | "sm";
   /** Suppress pills that restate the page (e.g. "Queued" on the queue page). */
   omit?: readonly ("queued" | "saved" | "playlist")[];
+  /** Derives `omit` from the rendering surface when set. */
+  surface?: VideoActionSurface;
 };
 
 /**
@@ -32,13 +44,16 @@ export function VideoStatusPills({
   videoId,
   className,
   size = "default",
-  omit = [],
+  omit,
+  surface,
 }: VideoStatusPillsProps) {
+  const effectiveOmit =
+    omit ?? (surface ? (SURFACE_PILL_OMIT[surface] ?? []) : []);
   const router = useRouter();
   const membership = useVideoMembership(videoId);
-  const queued = membership.queued && !omit.includes("queued");
-  const saved = membership.saved && !omit.includes("saved");
-  const playlistName = omit.includes("playlist")
+  const queued = membership.queued && !effectiveOmit.includes("queued");
+  const saved = membership.saved && !effectiveOmit.includes("saved");
+  const playlistName = effectiveOmit.includes("playlist")
     ? undefined
     : membership.playlistName;
   if (!saved && !queued && !playlistName) return null;

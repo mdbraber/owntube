@@ -8,6 +8,7 @@ import type { VideoActionSurface } from "@/components/videos/video-action-regist
 import { VideoActionsMenu } from "@/components/videos/video-actions-menu";
 import { VideoCardDurationBadge } from "@/components/videos/video-card-duration-badge";
 import { VideoStatusPills } from "@/components/videos/video-status-pills";
+import { VideoWatchProgress } from "@/components/videos/video-watch-progress";
 import { VideoThumbnailImg } from "@/components/videos/video-thumbnail-img";
 import { cn } from "@/lib/utils";
 
@@ -51,14 +52,6 @@ const ROW_THUMB_WIDTH: Record<"xs" | "sm" | "md" | "lg", string> = {
   sm: "w-40 sm:w-48",
   md: "w-[12.75rem] sm:w-60",
   lg: "w-[16rem] sm:w-80",
-};
-
-const SURFACE_PILL_OMIT: Partial<
-  Record<VideoActionSurface, readonly ("queued" | "saved" | "playlist")[]>
-> = {
-  queue: ["queued"],
-  saved: ["saved"],
-  playlist: ["playlist"],
 };
 
 /**
@@ -146,16 +139,16 @@ export function VideoRow({
                   style={{ width: `${progressComplete ? 100 : pct}%` }}
                 />
               </span>
-            ) : null}
+            ) : (
+              // No explicit progress from the host — fall back to the shared
+              // watch-progress map (queue/saved/playlist/home rows).
+              <VideoWatchProgress videoId={videoId} />
+            )}
           </div>
         </Link>
         {/* Outside the watch link: the status pills navigate on their own. */}
         <div className="pointer-events-none absolute inset-x-1 bottom-1 z-10 flex items-center justify-end gap-1">
-          <VideoStatusPills
-            videoId={videoId}
-            size="sm"
-            omit={SURFACE_PILL_OMIT[surface]}
-          />
+          <VideoStatusPills videoId={videoId} size="sm" surface={surface} />
           <VideoCardDurationBadge
             durationSeconds={durationSeconds}
             positioned={false}

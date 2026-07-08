@@ -295,6 +295,7 @@ export const playlistsRouter = router({
               durationSeconds: detail.durationSeconds,
               channelId: row.channelId,
               channelName: detail.channelName ?? row.channelId,
+              channelAvatarUrl: detail.channelAvatarUrl,
             };
           } catch {
             return {
@@ -304,6 +305,7 @@ export const playlistsRouter = router({
               durationSeconds: undefined as number | undefined,
               channelId: row.channelId,
               channelName: row.channelId,
+              channelAvatarUrl: undefined as string | undefined,
             };
           }
         }),

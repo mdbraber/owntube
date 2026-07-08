@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useInvidiousOrigins } from "@/components/videos/invidious-origin-context";
 import { VideoCardDurationBadge } from "@/components/videos/video-card-duration-badge";
+import type { VideoActionSurface } from "@/components/videos/video-action-registry";
 import { VideoStatusPills } from "@/components/videos/video-status-pills";
+import { VideoWatchProgress } from "@/components/videos/video-watch-progress";
 import {
   type CardPreviewPlayback,
   cardPreviewPlaybackFromDetail,
@@ -34,6 +36,7 @@ type VideoCardThumbnailInteractiveProps = {
   /** Outer card uses `group` for hover scale on the image */
   thumbClassName: string;
   imgClassName: string;
+  surface?: VideoActionSurface;
 };
 
 function waitForVideoPaint(
@@ -84,6 +87,7 @@ export function VideoCardThumbnailInteractive({
   disableHoverPreview = false,
   thumbClassName,
   imgClassName,
+  surface,
 }: VideoCardThumbnailInteractiveProps) {
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -389,9 +393,10 @@ export function VideoCardThumbnailInteractive({
           </div>
         ) : null}
       </Link>
+      <VideoWatchProgress videoId={videoId} />
       {/* Outside the watch link: the status pills navigate on their own. */}
       <div className="pointer-events-none absolute inset-x-2 bottom-2 z-10 flex items-center justify-end gap-1">
-        <VideoStatusPills videoId={videoId} />
+        <VideoStatusPills videoId={videoId} surface={surface} />
         <VideoCardDurationBadge
           durationSeconds={durationSeconds}
           isLive={isLive}

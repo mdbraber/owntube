@@ -64,6 +64,7 @@ export const queueRouter = router({
             durationSeconds: detail.durationSeconds,
             channelId: row.channelId,
             channelName: detail.channelName ?? row.channelId,
+            channelAvatarUrl: detail.channelAvatarUrl,
           };
         } catch {
           return {
@@ -74,6 +75,7 @@ export const queueRouter = router({
             durationSeconds: undefined as number | undefined,
             channelId: row.channelId,
             channelName: row.channelId,
+            channelAvatarUrl: undefined as string | undefined,
           };
         }
       }),

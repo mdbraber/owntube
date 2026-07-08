@@ -9,6 +9,7 @@ import { VideoCardQuickActions } from "@/components/videos/video-card-quick-acti
 import { VideoCardThumbnailImg } from "@/components/videos/video-card-thumbnail-img";
 import { VideoCardThumbnailInteractive } from "@/components/videos/video-card-thumbnail-interactive";
 import { VideoStatusPills } from "@/components/videos/video-status-pills";
+import { VideoWatchProgress } from "@/components/videos/video-watch-progress";
 import {
   formatPublishedAbsoluteLabel,
   formatPublishedDebugTitle,
@@ -135,6 +136,7 @@ export function VideoCard({
               disableHoverPreview={isLive === true}
               thumbClassName={thumbShell}
               imgClassName={thumbImg}
+              surface={surface}
             />
             <VideoCardQuickActions
               videoId={videoId}
@@ -348,9 +350,10 @@ export function VideoCardShort({
             </div>
           </div>
         </Link>
+        <VideoWatchProgress videoId={videoId} />
         {/* Outside the watch link: the status pills navigate on their own. */}
         <div className="pointer-events-none absolute inset-x-1.5 bottom-1.5 z-10 flex items-center justify-end gap-1">
-          <VideoStatusPills videoId={videoId} size="sm" />
+          <VideoStatusPills videoId={videoId} size="sm" surface={surface} />
           <VideoCardDurationBadge
             durationSeconds={durationSeconds}
             isLive={isLive}
@@ -502,9 +505,10 @@ export function VideoCardCompact({
               ) : null}
             </div>
           </Link>
+          <VideoWatchProgress videoId={videoId} />
           {/* Outside the watch link: the status pills navigate on their own. */}
           <div className="pointer-events-none absolute inset-x-1 bottom-1 z-10 flex items-center justify-end gap-1">
-            <VideoStatusPills videoId={videoId} size="sm" />
+            <VideoStatusPills videoId={videoId} size="sm" surface={surface} />
             <VideoCardDurationBadge
               durationSeconds={durationSeconds}
               isLive={isLive}
