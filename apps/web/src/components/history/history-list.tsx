@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { LibraryVideoRow } from "@/components/library/library-video-row";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { VideoRow } from "@/components/videos/video-row";
 import { formatDuration } from "@/lib/video-display";
 import { trpc } from "@/trpc/react";
 
@@ -25,6 +25,33 @@ type HistoryListProps = {
 };
 
 const PAGE_SIZE = 30;
+
+/** "Today" / "Yesterday" / a readable date — history rows group by day. */
+function dayLabel(startedAt: number): string {
+  const d = new Date(startedAt * 1000);
+  const startOfDay = new Date(d);
+  startOfDay.setHours(0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diffDays = Math.round(
+    (today.getTime() - startOfDay.getTime()) / 86_400_000,
+  );
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  return d.toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "long",
+    year:
+      d.getFullYear() === new Date().getFullYear() ? undefined : "numeric",
+  });
+}
+
+function timeLabel(startedAt: number): string {
+  return new Date(startedAt * 1000).toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 export function HistoryList({ initialItems }: HistoryListProps) {
   const utils = trpc.useUtils();
@@ -126,46 +153,48 @@ export function HistoryList({ initialItems }: HistoryListProps) {
         </p>
       ) : null}
 
-      <ul className="space-y-3">
-        {items.map((item) => (
-          <li key={item.id}>
-            <LibraryVideoRow
-              videoId={item.videoId}
-              title={item.videoTitle ?? item.videoId}
-              channelId={item.channelId}
-              channelName={item.channelName}
-              thumbnailUrl={item.thumbnailUrl}
-              progress={
-                item.videoDurationSeconds > 0
-                  ? item.durationWatched / item.videoDurationSeconds
-                  : undefined
-              }
-              meta={
-                <>
-                  <span>
-                    Watched: {formatDuration(item.durationWatched) ?? "0:00"}
-                    {item.videoDurationSeconds > 0
-                      ? ` / ${formatDuration(item.videoDurationSeconds)}`
-                      : ""}
-                    {item.completed ? " · Completed" : ""}
-                  </span>
-                  <span className="mt-0.5 block">
-                    {new Date(item.startedAt * 1000).toLocaleString()}
-                  </span>
-                </>
-              }
-              trailing={
-                <Button
-                  variant="outline"
-                  onClick={() => deleteMutation.mutate({ id: item.id })}
-                  disabled={deleteMutation.isPending}
-                >
-                  Remove
-                </Button>
-              }
-            />
-          </li>
-        ))}
+      <ul className="space-y-1">
+        {items.map((item, i) => {
+          const label = dayLabel(item.startedAt);
+          const prev = items[i - 1];
+          const showHeader = !prev || dayLabel(prev.startedAt) !== label;
+          return (
+            <li key={item.id}>
+              {showHeader ? (
+                <p className="px-2 pb-1.5 pt-4 font-mono text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))] first:pt-0">
+                  {label}
+                </p>
+              ) : null}
+              <VideoRow
+                videoId={item.videoId}
+                title={item.videoTitle ?? item.videoId}
+                channelId={item.channelId}
+                channelName={item.channelName}
+                thumbnailUrl={item.thumbnailUrl}
+                durationSeconds={
+                  item.videoDurationSeconds > 0
+                    ? item.videoDurationSeconds
+                    : undefined
+                }
+                surface="history"
+                leading={timeLabel(item.startedAt)}
+                progress={
+                  item.videoDurationSeconds > 0
+                    ? item.durationWatched / item.videoDurationSeconds
+                    : undefined
+                }
+                meta={
+                  item.completed
+                    ? "Completed"
+                    : `Watched ${formatDuration(item.durationWatched) ?? "0:00"}`
+                }
+                removeLabel="Remove from history"
+                removeDisabled={deleteMutation.isPending}
+                onRemove={() => deleteMutation.mutate({ id: item.id })}
+              />
+            </li>
+          );
+        })}
       </ul>
 
       {hasMore ? (

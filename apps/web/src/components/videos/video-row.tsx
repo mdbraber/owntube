@@ -1,0 +1,187 @@
+"use client";
+
+import Link from "next/link";
+import type { ReactNode } from "react";
+import { XIcon } from "@/components/videos/video-action-icons";
+import type { VideoActionSurface } from "@/components/videos/video-action-registry";
+import { VideoActionsMenu } from "@/components/videos/video-actions-menu";
+import { VideoCardDurationBadge } from "@/components/videos/video-card-duration-badge";
+import { VideoStatusPills } from "@/components/videos/video-status-pills";
+import { VideoThumbnailImg } from "@/components/videos/video-thumbnail-img";
+import { cn } from "@/lib/utils";
+
+type VideoRowProps = {
+  videoId: string;
+  title: string;
+  channelId?: string | null;
+  channelName?: string | null;
+  thumbnailUrl?: string | null;
+  durationSeconds?: number;
+  /** Extra byline content after the channel (dot-separated). */
+  meta?: ReactNode;
+  /** Progress fraction 0–1; renders a watch-progress bar across the thumbnail bottom. */
+  progress?: number;
+  /**
+   * Leading slot content (position number, time of day). When `dragHandle` is
+   * also given, the handle swaps in on hover, YouTube-playlist-style.
+   */
+  leading?: ReactNode;
+  /** Drag-to-reorder handle (queue); revealed on hover in the leading slot. */
+  dragHandle?: ReactNode;
+  /** One-click removal — the hover ✕ (always visible on touch). */
+  onRemove?: () => void;
+  removeLabel?: string;
+  removeDisabled?: boolean;
+  /** Trims the kebab menu + suppresses the pill that restates this page. */
+  surface: VideoActionSurface;
+};
+
+const SURFACE_PILL_OMIT: Partial<
+  Record<VideoActionSurface, readonly ("queued" | "saved" | "playlist")[]>
+> = {
+  queue: ["queued"],
+  saved: ["saved"],
+};
+
+/**
+ * Shared row for the linear pages — Queue, History, Saved, playlist detail —
+ * in the same visual language as the cards: borderless with a hover tint, the
+ * shared duration badge / status pills / progress bar on the thumbnail, and
+ * the same context-aware kebab. The leading slot carries the page's
+ * linearity (position, time); removal is a quiet hover ✕ instead of a boxed
+ * button.
+ */
+export function VideoRow({
+  videoId,
+  title,
+  channelId,
+  channelName,
+  thumbnailUrl,
+  durationSeconds,
+  meta,
+  progress,
+  leading,
+  dragHandle,
+  onRemove,
+  removeLabel = "Remove",
+  removeDisabled,
+  surface,
+}: VideoRowProps) {
+  const target = `/watch/${encodeURIComponent(videoId)}`;
+  const pct =
+    typeof progress === "number"
+      ? Math.max(0, Math.min(100, Math.round(progress * 100)))
+      : null;
+
+  return (
+    <div className="group flex items-center gap-3 rounded-[var(--radius-card)] p-2 transition hover:bg-[hsl(var(--muted)_/_0.45)]">
+      {leading || dragHandle ? (
+        <div className="flex min-w-6 shrink-0 items-center justify-center text-[hsl(var(--muted-foreground))]">
+          {dragHandle ? (
+            <>
+              <span
+                className={cn(
+                  "text-xs tabular-nums",
+                  "group-hover:hidden group-focus-within:hidden",
+                )}
+              >
+                {leading}
+              </span>
+              <span className="hidden group-hover:block group-focus-within:block">
+                {dragHandle}
+              </span>
+            </>
+          ) : (
+            <span className="text-xs tabular-nums">{leading}</span>
+          )}
+        </div>
+      ) : null}
+
+      <Link href={target} className="block shrink-0">
+        <div className="relative aspect-video w-[8.5rem] overflow-hidden rounded-xl bg-[hsl(var(--muted))] sm:w-40">
+          {/* Derives the thumbnail from videoId when no explicit URL is given
+              (denormalized history/library rows omit it). */}
+          <VideoThumbnailImg
+            url={thumbnailUrl ?? undefined}
+            videoId={videoId}
+            className="h-full w-full object-cover transition duration-500 ease-out group-hover:scale-105"
+            loading="lazy"
+          />
+          <div className="pointer-events-none absolute inset-x-1 bottom-1 z-10 flex items-center justify-end gap-1">
+            <VideoStatusPills
+              videoId={videoId}
+              size="sm"
+              omit={SURFACE_PILL_OMIT[surface]}
+            />
+            <VideoCardDurationBadge
+              durationSeconds={durationSeconds}
+              positioned={false}
+              className="px-1.5 py-px text-[10px]"
+            />
+          </div>
+          {pct !== null ? (
+            <span className="absolute inset-x-0 bottom-0 z-10 h-1 bg-black/40">
+              <span
+                className="block h-full bg-[hsl(var(--primary))]"
+                style={{ width: `${pct}%` }}
+              />
+            </span>
+          ) : null}
+        </div>
+      </Link>
+
+      <div className="min-w-0 flex-1">
+        <Link href={target} className="block min-w-0">
+          <p className="m-0 line-clamp-2 text-sm font-semibold leading-snug tracking-tight transition group-hover:text-[hsl(var(--primary))]">
+            {title}
+          </p>
+        </Link>
+        <p className="mt-0.5 line-clamp-1 text-xs text-[hsl(var(--muted-foreground))]">
+          {channelId ? (
+            <Link
+              href={`/channel/${encodeURIComponent(channelId)}`}
+              className="hover:text-[hsl(var(--foreground))] hover:underline"
+            >
+              {channelName ?? channelId}
+            </Link>
+          ) : (
+            channelName
+          )}
+          {meta ? (
+            <>
+              {channelId || channelName ? (
+                <span className="mx-1.5 text-[hsl(var(--muted-foreground))]/60">
+                  ·
+                </span>
+              ) : null}
+              {meta}
+            </>
+          ) : null}
+        </p>
+      </div>
+
+      <div className="flex shrink-0 items-center gap-0.5">
+        {onRemove ? (
+          <button
+            type="button"
+            className="flex h-8 w-8 items-center justify-center rounded-full text-[hsl(var(--muted-foreground))] opacity-0 transition hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))] focus-visible:opacity-100 group-hover:opacity-100 pointer-coarse:opacity-100 disabled:opacity-30"
+            title={removeLabel}
+            aria-label={removeLabel}
+            disabled={removeDisabled}
+            onClick={onRemove}
+          >
+            <XIcon className="h-4 w-4" />
+          </button>
+        ) : null}
+        <VideoActionsMenu
+          videoId={videoId}
+          title={title}
+          channelId={channelId ?? undefined}
+          channelName={channelName ?? undefined}
+          thumbnailUrl={thumbnailUrl ?? undefined}
+          surface={surface}
+        />
+      </div>
+    </div>
+  );
+}

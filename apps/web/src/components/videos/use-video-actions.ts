@@ -117,13 +117,19 @@ export function useVideoActions({
   const queueAdd = trpc.queue.add.useMutation({
     onSettled: () => {
       setQueuedOverride(null);
-      return utils.queue.list.invalidate();
+      return Promise.all([
+        utils.queue.list.invalidate(),
+        utils.queue.listDetailed.invalidate(),
+      ]);
     },
   });
   const queueRemove = trpc.queue.remove.useMutation({
     onSettled: () => {
       setQueuedOverride(null);
-      return utils.queue.list.invalidate();
+      return Promise.all([
+        utils.queue.list.invalidate(),
+        utils.queue.listDetailed.invalidate(),
+      ]);
     },
   });
   const markWatchedMutation = trpc.subscriptions.markWatched.useMutation({

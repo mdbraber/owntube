@@ -14,6 +14,8 @@ type VideoStatusPillsProps = {
   className?: string;
   /** Compact pill sizing for smaller cards (shorts/compact). */
   size?: "default" | "sm";
+  /** Suppress pills that restate the page (e.g. "Queued" on the queue page). */
+  omit?: readonly ("queued" | "saved" | "playlist")[];
 };
 
 /**
@@ -28,8 +30,14 @@ export function VideoStatusPills({
   videoId,
   className,
   size = "default",
+  omit = [],
 }: VideoStatusPillsProps) {
-  const { saved, queued, playlistName } = useVideoMembership(videoId);
+  const membership = useVideoMembership(videoId);
+  const queued = membership.queued && !omit.includes("queued");
+  const saved = membership.saved && !omit.includes("saved");
+  const playlistName = omit.includes("playlist")
+    ? undefined
+    : membership.playlistName;
   if (!saved && !queued && !playlistName) return null;
 
   const sizeClass =

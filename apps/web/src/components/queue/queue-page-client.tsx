@@ -6,8 +6,8 @@ import {
   useRef,
   useState,
 } from "react";
-import { LibraryVideoRow } from "@/components/library/library-video-row";
-import { Button } from "@/components/ui/button";
+import { DragHandleIcon } from "@/components/videos/video-action-icons";
+import { VideoRow } from "@/components/videos/video-row";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/trpc/react";
 
@@ -19,26 +19,6 @@ type Item = {
   channelId: string | null;
   channelName: string | null;
 };
-
-function DragHandle() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="18"
-      height="18"
-      fill="currentColor"
-      aria-hidden="true"
-      className="opacity-60"
-    >
-      <circle cx="9" cy="6" r="1.4" />
-      <circle cx="15" cy="6" r="1.4" />
-      <circle cx="9" cy="12" r="1.4" />
-      <circle cx="15" cy="12" r="1.4" />
-      <circle cx="9" cy="18" r="1.4" />
-      <circle cx="15" cy="18" r="1.4" />
-    </svg>
-  );
-}
 
 export function QueuePageClient() {
   const utils = trpc.useUtils();
@@ -124,7 +104,7 @@ export function QueuePageClient() {
         </div>
       ) : null}
       <ul
-        className="space-y-3"
+        className="space-y-1"
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
       >
@@ -136,36 +116,32 @@ export function QueuePageClient() {
             }}
             className={cn("transition", dragging === i ? "opacity-70" : "")}
           >
-            <LibraryVideoRow
+            <VideoRow
               videoId={item.videoId}
               title={item.videoTitle}
               channelId={item.channelId}
               channelName={item.channelName}
               thumbnailUrl={item.thumbnailUrl}
-              leading={
+              surface="queue"
+              leading={i + 1}
+              dragHandle={
                 <button
                   type="button"
-                  className="cursor-grab touch-none select-none px-1 py-2 active:cursor-grabbing"
+                  className="cursor-grab touch-none select-none px-1 py-2 text-[hsl(var(--muted-foreground))] transition hover:text-[hsl(var(--foreground))] active:cursor-grabbing"
                   onPointerDown={(e) => onPointerDown(e, i)}
                   aria-label="Drag to reorder"
                 >
-                  <DragHandle />
+                  <DragHandleIcon className="h-[18px] w-[18px]" />
                 </button>
               }
-              trailing={
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setItems((arr) =>
-                      arr.filter((x) => x.videoId !== item.videoId),
-                    );
-                    remove.mutate({ videoId: item.videoId });
-                  }}
-                  disabled={remove.isPending}
-                >
-                  Remove
-                </Button>
-              }
+              removeLabel="Remove from queue"
+              removeDisabled={remove.isPending}
+              onRemove={() => {
+                setItems((arr) =>
+                  arr.filter((x) => x.videoId !== item.videoId),
+                );
+                remove.mutate({ videoId: item.videoId });
+              }}
             />
           </li>
         ))}

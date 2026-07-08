@@ -1,7 +1,6 @@
 "use client";
 
-import { LibraryVideoRow } from "@/components/library/library-video-row";
-import { Button } from "@/components/ui/button";
+import { VideoRow } from "@/components/videos/video-row";
 import { trpc } from "@/trpc/react";
 
 export function SavedPageClient() {
@@ -38,29 +37,24 @@ export function SavedPageClient() {
   }
 
   return (
-    <ul className="space-y-3">
+    <ul className="space-y-1">
       {items.map((item) => (
         <li key={item.videoId}>
-          <LibraryVideoRow
+          <VideoRow
             videoId={item.videoId}
             title={item.videoTitle}
             channelId={item.channelId}
             channelName={item.channelName}
             thumbnailUrl={item.thumbnailUrl}
-            trailing={
-              <Button
-                variant="outline"
-                onClick={() =>
-                  unsave.mutate({
-                    videoId: item.videoId,
-                    type: "save",
-                    active: false,
-                  })
-                }
-                disabled={unsave.isPending}
-              >
-                Remove
-              </Button>
+            surface="saved"
+            removeLabel="Remove from saved"
+            removeDisabled={unsave.isPending}
+            onRemove={() =>
+              unsave.mutate({
+                videoId: item.videoId,
+                type: "save",
+                active: false,
+              })
             }
           />
         </li>
