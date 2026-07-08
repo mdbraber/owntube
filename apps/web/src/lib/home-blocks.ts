@@ -73,23 +73,23 @@ export type SectionOptionDef = {
  * automatically wherever that section renders (its page and its home
  * blocks) — while every surface keeps its own value.
  */
-const HIDE_COMPLETED: SectionOptionDef = {
+const HIDE_WATCHED: SectionOptionDef = {
   key: "hideFinished",
-  label: "Hide completed videos",
+  label: "Hide watched videos",
   defaultValue: false,
 };
 
 export const SECTION_OPTIONS: Partial<
   Record<HomeBlockType, SectionOptionDef[]>
 > = {
-  subscriptions: [HIDE_COMPLETED],
-  queue: [HIDE_COMPLETED],
-  saved: [HIDE_COMPLETED],
-  playlist: [HIDE_COMPLETED],
+  subscriptions: [HIDE_WATCHED],
+  queue: [HIDE_WATCHED],
+  saved: [HIDE_WATCHED],
+  playlist: [HIDE_WATCHED],
   history: [
     {
       key: "hideCompleted",
-      label: "Hide completed videos",
+      label: "Hide watched videos",
       defaultValue: false,
     },
   ],

@@ -190,7 +190,11 @@ function blockTagLists(block: HomeBlock): {
 function useHideFinished(block: HomeBlock, videos: BlockVideo[]): BlockVideo[] {
   const progressMap = useWatchProgressMap();
   if (!homeBlockOption(block, "hideFinished")) return videos;
-  return videos.filter((v) => !progressMap.get(v.videoId)?.completed);
+  return videos.filter((v) => {
+    const p = progressMap.get(v.videoId);
+    // YouTube-style: near-finished (≥90%) counts as watched.
+    return !p || (!p.completed && p.fraction < 0.9);
+  });
 }
 
 /** Items a block needs at most: full rows on wide screens, or the limit. */

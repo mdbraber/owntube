@@ -142,7 +142,7 @@ export function HistoryList({ initialItems }: HistoryListProps) {
               onChange={(e) => toggleHideWatched(e.currentTarget.checked)}
               className="h-4 w-4 accent-[hsl(var(--primary))]"
             />
-            Hide completed videos
+            Hide watched videos
           </label>
           <Input
             value={query}
@@ -163,7 +163,7 @@ export function HistoryList({ initialItems }: HistoryListProps) {
           {isSearching
             ? "No matches in history."
             : hideWatched
-              ? "No uncompleted videos in history."
+              ? "No unwatched videos in history."
               : "No history yet."}
         </p>
       ) : null}
@@ -194,8 +194,8 @@ export function HistoryList({ initialItems }: HistoryListProps) {
                 surface="history"
                 meta={
                   item.completed
-                    ? "Completed"
-                    : `Watched ${formatDuration(item.durationWatched) ?? "0:00"}`
+                    ? "Watched"
+                    : `${formatDuration(item.durationWatched) ?? "0:00"} watched`
                 }
                 removeLabel="Remove from history"
                 removeDisabled={deleteMutation.isPending}
