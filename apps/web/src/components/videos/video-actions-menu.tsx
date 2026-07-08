@@ -49,7 +49,33 @@ type VideoActionsMenuProps = {
   className?: string;
   /** Skip the hover-reveal treatment (watch page, standalone rows). */
   alwaysVisible?: boolean;
+  /**
+   * Actions the host surface already presents as its own controls (watch-page
+   * pills, a row's remove ✕) — omitted from the menu so nothing repeats.
+   */
+  visibleActions?: readonly VideoActionId[];
 };
+
+/** Surfaces whose cards render the thumbnail hover quick actions. */
+const CARD_SURFACES: ReadonlySet<VideoActionSurface> = new Set([
+  "feed",
+  "subscriptions",
+  "channel",
+  "related",
+]);
+
+/** True when the device can hover — thumbnail quick actions exist there. */
+function useHoverCapable(): boolean {
+  const [capable, setCapable] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(hover: hover)");
+    setCapable(mq.matches);
+    const onChange = (e: MediaQueryListEvent) => setCapable(e.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  return capable;
+}
 
 type MenuView = "main" | "playlist";
 
@@ -221,12 +247,15 @@ export function VideoActionsMenu({
   topItems,
   className,
   alwaysVisible = false,
+  visibleActions,
 }: VideoActionsMenuProps) {
   const menuId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<MenuView>("main");
   const asSheet = useSheetPresentation();
+  const hoverCapable = useHoverCapable();
+  const authed = trpc.auth.session.useQuery().data?.authed ?? false;
 
   const actions = useVideoActions({
     videoId,
@@ -239,7 +268,7 @@ export function VideoActionsMenu({
   });
 
   const settingsQuery = trpc.settings.get.useQuery(undefined, {
-    enabled: open && asSheet,
+    enabled: open && authed,
     retry: false,
   });
   const quickActions: readonly QuickAction[] =
@@ -288,12 +317,18 @@ export function VideoActionsMenu({
   };
 
   const groups = videoActionGroupsForSurface(surface);
-  // The sheet's chip row already covers its verbs — don't repeat them below.
-  const chipIds = asSheet
-    ? new Set<VideoActionId>(quickActions.slice(0, 4))
-    : new Set<VideoActionId>();
+  // Anything already visible on the surface stays out of the menu: the host's
+  // own controls, the sheet's chip row, and (on hover-capable card surfaces)
+  // the two thumbnail quick actions.
+  const hiddenIds = new Set<VideoActionId>(visibleActions ?? []);
+  const chipIds = quickActions.slice(0, 4).filter((id) => !hiddenIds.has(id));
+  if (asSheet) {
+    for (const id of chipIds) hiddenIds.add(id);
+  } else if (authed && hoverCapable && CARD_SURFACES.has(surface)) {
+    for (const id of quickActions.slice(0, 2)) hiddenIds.add(id);
+  }
   const listGroups = groups
-    .map((g) => g.filter((id) => !chipIds.has(id)))
+    .map((g) => g.filter((id) => !hiddenIds.has(id)))
     .filter((g) => g.length > 0);
 
   const mainList = (
@@ -481,11 +516,13 @@ export function VideoActionsMenu({
                         ) : null}
                       </div>
                     </div>
-                    <QuickActionChips
-                      ids={quickActions}
-                      actions={actions}
-                      className="border-b border-[hsl(var(--border))] px-3 py-3"
-                    />
+                    {chipIds.length > 0 ? (
+                      <QuickActionChips
+                        ids={chipIds}
+                        actions={actions}
+                        className="border-b border-[hsl(var(--border))] px-3 py-3"
+                      />
+                    ) : null}
                     {reasonLine}
                     <div className="px-1 py-1 [&_button]:py-2.5">
                       {mainList}

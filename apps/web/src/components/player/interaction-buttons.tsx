@@ -125,6 +125,8 @@ export function InteractionButtons({
         thumbnailUrl={thumbnailUrl}
         surface="watch"
         alwaysVisible
+        // These four are this row's own controls — the menu holds the rest.
+        visibleActions={["like", "dislike", "save", "queue"]}
       />
     </div>
   );

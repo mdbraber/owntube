@@ -180,6 +180,14 @@ export function VideoRow({
           channelName={channelName ?? undefined}
           thumbnailUrl={thumbnailUrl ?? undefined}
           surface={surface}
+          // The ✕ already covers removal here — keep it out of the menu.
+          visibleActions={
+            onRemove && surface === "queue"
+              ? ["queue"]
+              : onRemove && surface === "saved"
+                ? ["save"]
+                : undefined
+          }
         />
       </div>
     </div>
