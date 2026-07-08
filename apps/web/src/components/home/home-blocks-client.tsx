@@ -120,7 +120,7 @@ function HorizontalShelf({
 
   const cardWidth = CARD_MIN_WIDTH_PX[block.size];
   return (
-    <ul className="-mx-1 flex snap-x gap-4 overflow-x-auto px-1 pb-2">
+    <ul className="-mx-1 flex w-full min-w-0 max-w-full snap-x gap-4 overflow-x-auto px-1 pb-2">
       {videos.map((v) => (
         <li
           key={v.videoId}
@@ -177,6 +177,7 @@ function VideoBlockBody({
     block.layout === "cards" && singleColumn && !scrollRow
       ? "rows"
       : block.layout;
+  const effectiveLayout = scrollRow ? "cards" : layout;
   const rowCount =
     block.layout === "cards" && singleColumn ? block.rows * 2 : block.rows;
   if (isLoading && videos.length === 0) {
@@ -193,7 +194,7 @@ function VideoBlockBody({
       </p>
     );
   }
-  if (layout === "cards" && scrollRow) {
+  if (effectiveLayout === "cards" && scrollRow) {
     return (
       <HorizontalShelf
         videos={videos}
@@ -203,7 +204,7 @@ function VideoBlockBody({
       />
     );
   }
-  if (layout === "cards") {
+  if (effectiveLayout === "cards") {
     return (
       <div ref={grid.ref}>
         <VideoGrid
@@ -282,11 +283,7 @@ function useHideFinished(block: HomeBlock, videos: BlockVideo[]): BlockVideo[] {
 
 /** True when the block renders as one horizontally scrollable shelf. */
 export function isScrollRow(block: HomeBlock): boolean {
-  return (
-    block.layout === "cards" &&
-    block.rows === 1 &&
-    (block.options?.scrollRow ?? false)
-  );
+  return block.rows === 1 && (block.options?.scrollRow ?? false);
 }
 
 /** Items a block needs at most: full rows on wide screens, or N list rows. */
@@ -644,7 +641,7 @@ function BlockOptionsMenu({
     };
   }, [open]);
 
-  const scrollRowEligible = block.layout === "cards" && block.rows === 1;
+  const scrollRowEligible = block.rows === 1;
   if (defs.length === 0 && !withTags && !scrollRowEligible) return null;
 
   return (
@@ -893,7 +890,7 @@ export function HomeBlocksClient() {
       ) : null}
 
       <ul
-        className="select-none space-y-9"
+        className="min-w-0 max-w-full select-none space-y-12"
         {...(editing ? drag.listProps : {})}
       >
         {blocks.map((block, i) => {
@@ -908,7 +905,7 @@ export function HomeBlocksClient() {
                   : undefined
               }
               className={cn(
-                "space-y-3",
+                "min-w-0 max-w-full space-y-3",
                 isDragging &&
                   "relative z-10 rounded-[var(--radius-card)] bg-[hsl(var(--card))] p-3 shadow-lg ring-1 ring-[hsl(var(--border))]",
               )}
