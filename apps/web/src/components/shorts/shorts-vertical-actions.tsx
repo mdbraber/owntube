@@ -155,6 +155,8 @@ export function ShortsVerticalActions({
           <PlaylistPicker
             actions={actions}
             onBack={() => setPlaylistOpen(false)}
+            includeSaved
+            title="Save to"
           />
         </div>
       ) : null}
