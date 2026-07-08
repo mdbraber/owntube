@@ -10,6 +10,7 @@ import { FaviconSync } from "@/components/settings/favicon-sync";
 import { MiniPlayerSync } from "@/components/settings/mini-player-sync";
 import { SponsorBlockSync } from "@/components/settings/sponsorblock-sync";
 import { ThemeSync } from "@/components/settings/theme-sync";
+import { ActionToastProvider } from "@/components/videos/action-toast";
 import { IgnoredVideosProvider } from "@/components/videos/ignored-videos-context";
 import { InvidiousOriginProvider } from "@/components/videos/invidious-origin-context";
 import { VideoMembershipProvider } from "@/components/videos/video-membership-context";
@@ -63,11 +64,13 @@ export function Providers({
         <SponsorBlockSync />
         <QueueSync />
         <InvidiousOriginProvider origins={invidiousOrigins}>
-          <IgnoredVideosProvider>
-            <VideoMembershipProvider>
-              <PlayerProvider>{children}</PlayerProvider>
-            </VideoMembershipProvider>
-          </IgnoredVideosProvider>
+          <ActionToastProvider>
+            <IgnoredVideosProvider>
+              <VideoMembershipProvider>
+                <PlayerProvider>{children}</PlayerProvider>
+              </VideoMembershipProvider>
+            </IgnoredVideosProvider>
+          </ActionToastProvider>
         </InvidiousOriginProvider>
       </QueryClientProvider>
     </trpc.Provider>
