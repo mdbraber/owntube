@@ -51,25 +51,29 @@ export function QueuePageClient() {
   const suppressClick = useRef(false);
   const [dragging, setDragging] = useState<number | null>(null);
   const [dragY, setDragY] = useState(0);
+  /** Mirror of dragY for measurement (state lags inside event handlers). */
+  const dragYRef = useRef(0);
 
   function indexAtY(y: number): number {
     for (let i = 0; i < rowRefs.current.length; i++) {
       const el = rowRefs.current[i];
       if (!el) continue;
       const r = el.getBoundingClientRect();
-      if (y < r.top + r.height / 2) return i;
+      // The lifted row's rect includes its translateY — measure its *slot*
+      // instead, otherwise the target index chases the row and jitters.
+      const top = i === dragFrom.current ? r.top - dragYRef.current : r.top;
+      if (y < top + r.height / 2) return i;
     }
     return rowRefs.current.length - 1;
   }
 
   function startDrag(e: ReactPointerEvent, index: number) {
     const rowEl = rowRefs.current[index];
-    grabDy.current = rowEl
-      ? e.clientY - rowEl.getBoundingClientRect().top
-      : 0;
+    grabDy.current = rowEl ? e.clientY - rowEl.getBoundingClientRect().top : 0;
     rowEl?.setPointerCapture?.(e.pointerId);
     dragFrom.current = index;
     setDragging(index);
+    dragYRef.current = 0;
     setDragY(0);
   }
 
@@ -112,10 +116,14 @@ export function QueuePageClient() {
       dragFrom.current = target;
       setDragging(target);
     }
-    // Keep the lifted row under the cursor relative to its (possibly new) slot.
+    // Keep the lifted row under the cursor relative to its (possibly new)
+    // slot — subtract the current lift to read the slot's true position.
     const rowEl = rowRefs.current[dragFrom.current];
     if (rowEl) {
-      setDragY(e.clientY - grabDy.current - rowEl.getBoundingClientRect().top);
+      const slotTop = rowEl.getBoundingClientRect().top - dragYRef.current;
+      const nextY = e.clientY - grabDy.current - slotTop;
+      dragYRef.current = nextY;
+      setDragY(nextY);
     }
   }
 
@@ -124,6 +132,7 @@ export function QueuePageClient() {
     if (dragFrom.current === null) return;
     dragFrom.current = null;
     setDragging(null);
+    dragYRef.current = 0;
     setDragY(0);
     reorder.mutate({ videoIds: items.map((i) => i.videoId) });
     // Let the trailing click event fire (and be suppressed) first.
@@ -165,11 +174,14 @@ export function QueuePageClient() {
         </div>
       ) : null}
       <ul
-        className="space-y-1"
+        // select-none + suppressed native drag: grabbing a row must not start
+        // a text selection or the browser's link/image drag ghost.
+        className="select-none space-y-1"
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
         onClickCapture={onClickCapture}
+        onDragStart={(e) => e.preventDefault()}
       >
         {items.map((item, i) => {
           const isDragging = dragging === i;
