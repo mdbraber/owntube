@@ -315,18 +315,33 @@ export const SECONDARY_NAV: NavItem[] = [
 /** Tabs in the mobile bottom bar (account button is added separately). */
 export const BOTTOM_NAV: NavItem[] = [...SIDEBAR_NAV, SUBSCRIPTIONS_ITEM];
 
-/** Links surfaced inside the account menu (desktop dropdown + mobile sheet). */
+/**
+ * Links in the desktop avatar dropdown — only what the sidebar does *not*
+ * carry (plus Sign out, rendered by the menu itself).
+ */
 export const ACCOUNT_LINKS: { href: string; label: string; icon: ReactNode }[] =
   [
     { href: "/settings", label: "Settings", icon: SettingsIcon },
     { href: "/dashboard", label: "Algorithm", icon: AlgorithmIcon },
-    { href: "/history", label: "History", icon: HistoryIcon },
-    { href: "/playlists", label: "Playlists", icon: PlaylistsIcon },
-    { href: "/queue", label: "Queue", icon: QueueIcon },
-    { href: "/saved", label: "Saved", icon: SavedIcon },
-    { href: "/subscriptions", label: "Subscriptions", icon: SubscriptionsIcon },
-    { href: "/dashboard", label: "Algorithm", icon: AlgorithmIcon },
   ];
+
+/**
+ * The mobile account sheet doubles as the sidebar's stand-in (the sidebar is
+ * hidden under 901px): library group + account links. Subscriptions stays out
+ * — it has a bottom-bar tab.
+ */
+export const MOBILE_SHEET_LINKS: {
+  href: string;
+  label: string;
+  icon: ReactNode;
+}[] = [
+  ...SECONDARY_NAV.filter((n) => n.key !== "subs").map((n) => ({
+    href: n.href,
+    label: n.label,
+    icon: n.icon,
+  })),
+  ...ACCOUNT_LINKS,
+];
 
 export function activeForPath(
   pathname: string,

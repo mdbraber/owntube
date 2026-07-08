@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ACCOUNT_LINKS } from "@/components/shell/nav-config";
+import { MOBILE_SHEET_LINKS } from "@/components/shell/nav-config";
 
 type MobileAccountSheetProps = {
   isLoggedIn: boolean;
@@ -13,7 +13,7 @@ type MobileAccountSheetProps = {
 };
 
 // Subscriptions already has its own tab in the bottom bar, so drop it here.
-const SHEET_LINKS = ACCOUNT_LINKS.filter((l) => l.href !== "/subscriptions");
+const SHEET_LINKS = MOBILE_SHEET_LINKS;
 
 export function MobileAccountSheet({
   isLoggedIn,
