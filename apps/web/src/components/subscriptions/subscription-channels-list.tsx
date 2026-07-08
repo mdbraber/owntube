@@ -7,6 +7,7 @@ import { SubscriptionUnfollowButton } from "@/components/subscriptions/subscript
 import { ChannelAvatarCircle } from "@/components/videos/channel-avatar-circle";
 import { cn } from "@/lib/utils";
 import { formatPublishedLabel } from "@/lib/video-display";
+import { trpc } from "@/trpc/react";
 
 type Channel = {
   channelId: string;
@@ -52,35 +53,58 @@ export function SubscriptionChannelsList({
 }) {
   const [sortKey, setSortKey] = useState<SortKey>("subscribed");
   const [desc, setDesc] = useState(true);
+  const [groupByTag, setGroupByTag] = useState(false);
 
-  // Restore the persisted sort after hydration (server renders the default).
+  // Restore the persisted view after hydration (server renders the default).
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return;
-      const parsed = JSON.parse(raw) as { key?: SortKey; desc?: boolean };
+      const parsed = JSON.parse(raw) as {
+        key?: SortKey;
+        desc?: boolean;
+        group?: boolean;
+      };
       if (parsed.key && parsed.key in SORT_LABEL) {
         setSortKey(parsed.key);
         setDesc(parsed.desc ?? DEFAULT_DESC[parsed.key]);
       }
+      setGroupByTag(parsed.group ?? false);
     } catch {
       // ignore malformed storage
     }
   }, []);
 
-  const selectSort = (key: SortKey) => {
-    const nextDesc = key === sortKey ? !desc : DEFAULT_DESC[key];
-    setSortKey(key);
-    setDesc(nextDesc);
+  const persist = (key: SortKey, nextDesc: boolean, group: boolean) => {
     try {
       localStorage.setItem(
         STORAGE_KEY,
-        JSON.stringify({ key, desc: nextDesc }),
+        JSON.stringify({ key, desc: nextDesc, group }),
       );
     } catch {
       // storage unavailable
     }
   };
+
+  const selectSort = (key: SortKey) => {
+    const nextDesc = key === sortKey ? !desc : DEFAULT_DESC[key];
+    setSortKey(key);
+    setDesc(nextDesc);
+    persist(key, nextDesc, groupByTag);
+  };
+
+  const toggleGroup = () => {
+    setGroupByTag((g) => {
+      persist(sortKey, desc, !g);
+      return !g;
+    });
+  };
+
+  // Live (channelId, tag) pairs — tag edits made inline in any row invalidate
+  // this query, so every group updates immediately.
+  const assignments = trpc.channelTags.assignments.useQuery(undefined, {
+    enabled: groupByTag,
+  });
 
   const sorted = useMemo(() => {
     const copy = [...channels];
@@ -106,6 +130,35 @@ export function SubscriptionChannelsList({
     });
     return copy;
   }, [channels, sortKey, desc]);
+
+  /** Tag → sorted channels (a channel appears under each of its tags). */
+  const groups = useMemo(() => {
+    if (!groupByTag) return null;
+    const tagsByChannel = new Map<string, string[]>();
+    for (const row of assignments.data ?? []) {
+      const list = tagsByChannel.get(row.channelId) ?? [];
+      list.push(row.tag);
+      tagsByChannel.set(row.channelId, list);
+    }
+    const byTag = new Map<string, Channel[]>();
+    const untagged: Channel[] = [];
+    for (const c of sorted) {
+      const tags = tagsByChannel.get(c.channelId);
+      if (!tags || tags.length === 0) {
+        untagged.push(c);
+        continue;
+      }
+      for (const tag of tags) {
+        const list = byTag.get(tag) ?? [];
+        list.push(c);
+        byTag.set(tag, list);
+      }
+    }
+    const named = [...byTag.entries()].sort(([a], [b]) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" }),
+    );
+    return { named, untagged };
+  }, [groupByTag, assignments.data, sorted]);
 
   return (
     <div className="space-y-3">
@@ -142,51 +195,104 @@ export function SubscriptionChannelsList({
             </button>
           );
         })}
+        <span aria-hidden className="mx-1 h-4 w-px bg-[hsl(var(--border))]" />
+        <button
+          type="button"
+          onClick={toggleGroup}
+          aria-pressed={groupByTag}
+          className={cn(
+            "inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium transition",
+            groupByTag
+              ? "border-transparent bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]"
+              : "border-[hsl(var(--border))] bg-[hsl(var(--card))] text-[hsl(var(--foreground))] hover:border-[hsl(var(--primary)_/_0.5)] hover:text-[hsl(var(--primary))]",
+          )}
+        >
+          Group by tag
+        </button>
       </div>
 
-      <ul className="space-y-1">
-        {sorted.map((c) => {
-          const label = c.channelName || c.channelId;
-          const lastVideoLabel = formatPublishedLabel(
-            undefined,
-            c.latestVideoAt ?? undefined,
-          );
-          return (
-            <li key={c.channelId}>
-              <div className="group flex items-center gap-3 rounded-[var(--radius-card)] p-2 transition hover:bg-[hsl(var(--muted)_/_0.45)]">
-                <Link
-                  href={`/channel/${encodeURIComponent(c.channelId)}`}
-                  className="shrink-0"
-                >
-                  <ChannelAvatarCircle
-                    imageUrl={c.avatarUrl ?? undefined}
-                    label={label}
-                    size="lg"
-                  />
-                </Link>
-                <div className="min-w-0 flex-1">
-                  <Link
-                    href={`/channel/${encodeURIComponent(c.channelId)}`}
-                    className="block w-fit max-w-full truncate text-sm font-semibold text-[hsl(var(--foreground))] transition group-hover:text-[hsl(var(--primary))]"
-                  >
-                    {label}
-                  </Link>
-                  <div className="mt-1">
-                    <ChannelTags channelId={c.channelId} isAuthed tone="card" />
-                  </div>
-                </div>
-                <div className="hidden shrink-0 text-right text-xs text-[hsl(var(--muted-foreground))] sm:block">
-                  <p>Subscribed {formatSubscribedDate(c.subscribedAt)}</p>
-                  {lastVideoLabel ? (
-                    <p className="mt-0.5">Last video {lastVideoLabel}</p>
-                  ) : null}
-                </div>
-                <SubscriptionUnfollowButton channelId={c.channelId} />
-              </div>
-            </li>
-          );
-        })}
-      </ul>
+      {groups ? (
+        <div className="space-y-4">
+          {groups.named.map(([tag, list]) => (
+            <section key={tag}>
+              <h3 className="px-2 pb-1 font-mono text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
+                #{tag}{" "}
+                <span className="font-normal normal-case tracking-normal">
+                  · {list.length}
+                </span>
+              </h3>
+              <ul className="space-y-1">
+                {list.map((c) => (
+                  <ChannelRow key={c.channelId} channel={c} />
+                ))}
+              </ul>
+            </section>
+          ))}
+          {groups.untagged.length > 0 ? (
+            <section>
+              <h3 className="px-2 pb-1 font-mono text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
+                Untagged{" "}
+                <span className="font-normal normal-case tracking-normal">
+                  · {groups.untagged.length}
+                </span>
+              </h3>
+              <ul className="space-y-1">
+                {groups.untagged.map((c) => (
+                  <ChannelRow key={c.channelId} channel={c} />
+                ))}
+              </ul>
+            </section>
+          ) : null}
+        </div>
+      ) : (
+        <ul className="space-y-1">
+          {sorted.map((c) => (
+            <ChannelRow key={c.channelId} channel={c} />
+          ))}
+        </ul>
+      )}
     </div>
+  );
+}
+
+function ChannelRow({ channel: c }: { channel: Channel }) {
+  const label = c.channelName || c.channelId;
+  const lastVideoLabel = formatPublishedLabel(
+    undefined,
+    c.latestVideoAt ?? undefined,
+  );
+  return (
+    <li>
+      <div className="group flex items-center gap-3 rounded-[var(--radius-card)] p-2 transition hover:bg-[hsl(var(--muted)_/_0.45)]">
+        <Link
+          href={`/channel/${encodeURIComponent(c.channelId)}`}
+          className="shrink-0"
+        >
+          <ChannelAvatarCircle
+            imageUrl={c.avatarUrl ?? undefined}
+            label={label}
+            size="lg"
+          />
+        </Link>
+        <div className="min-w-0 flex-1">
+          <Link
+            href={`/channel/${encodeURIComponent(c.channelId)}`}
+            className="block w-fit max-w-full truncate text-sm font-semibold text-[hsl(var(--foreground))] transition group-hover:text-[hsl(var(--primary))]"
+          >
+            {label}
+          </Link>
+          <div className="mt-1">
+            <ChannelTags channelId={c.channelId} isAuthed tone="card" />
+          </div>
+        </div>
+        <div className="hidden shrink-0 text-right text-xs text-[hsl(var(--muted-foreground))] sm:block">
+          <p>Subscribed {formatSubscribedDate(c.subscribedAt)}</p>
+          {lastVideoLabel ? (
+            <p className="mt-0.5">Last video {lastVideoLabel}</p>
+          ) : null}
+        </div>
+        <SubscriptionUnfollowButton channelId={c.channelId} />
+      </div>
+    </li>
   );
 }

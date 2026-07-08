@@ -54,6 +54,16 @@ export const channelTagsRouter = router({
     return rows.map((r) => ({ tag: r.tag, count: Number(r.count) }));
   }),
 
+  /** Every (channelId, tag) pair — backs grouping on the channels list. */
+  assignments: protectedProcedure.query(({ ctx }) => {
+    return ctx.db
+      .select({ channelId: channelTags.channelId, tag: channelTags.tag })
+      .from(channelTags)
+      .where(eq(channelTags.userId, ctx.userId))
+      .orderBy(asc(channelTags.tag))
+      .all();
+  }),
+
   /** Channel IDs carrying a given tag (for feed filtering + `#tag` search). */
   channelsForTag: protectedProcedure
     .input(z.object({ tag: rawTagSchema }))
