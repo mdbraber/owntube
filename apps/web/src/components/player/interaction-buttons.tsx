@@ -7,27 +7,29 @@ import {
   VideoActionGlyph,
   videoActionShortLabel,
 } from "@/components/videos/video-action-registry";
+import { VideoActionsMenu } from "@/components/videos/video-actions-menu";
 import { cn } from "@/lib/utils";
 
 type InteractionButtonsProps = {
   videoId: string;
   channelId?: string;
+  channelName?: string;
   title: string;
+  thumbnailUrl?: string;
   isAuthenticated: boolean;
 };
 
 const pillBase =
-  "group relative flex items-center gap-2 overflow-hidden px-4 py-2 text-sm font-semibold shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50";
+  "flex h-9 items-center gap-2 text-sm font-semibold transition active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50";
 
 function pillTone(active: boolean) {
-  // App-wide active rule: neutral surface with a brand tint + filled glyph —
-  // never a per-verb hue.
+  // App-wide active rule: neutral surface with a brand tint + filled glyph.
   return active
-    ? "border-[hsl(var(--primary)_/_0.45)] bg-[hsl(var(--primary)_/_0.12)] text-[hsl(var(--primary))]"
-    : "border-[hsl(var(--border))] bg-[hsl(var(--card))] text-[hsl(var(--foreground))] hover:border-[hsl(var(--primary)_/_0.4)] hover:bg-[hsl(var(--primary)_/_0.08)]";
+    ? "bg-[hsl(var(--primary)_/_0.12)] text-[hsl(var(--primary))]"
+    : "bg-[hsl(var(--muted)_/_0.6)] text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))]";
 }
 
-function PillGlyph({
+function Glyph({
   id,
   active,
 }: {
@@ -36,10 +38,7 @@ function PillGlyph({
 }) {
   return (
     <span
-      className={cn(
-        "transition-transform duration-200 group-hover:scale-110",
-        active ? "animate-[ot-pop_250ms_ease-out]" : "",
-      )}
+      className={cn(active ? "animate-[ot-pop_250ms_ease-out]" : "")}
       aria-hidden="true"
     >
       <VideoActionGlyph id={id} active={active} />
@@ -48,20 +47,23 @@ function PillGlyph({
 }
 
 /**
- * Watch-page action row — labeled pills rendered from the shared registry:
- * a segmented like/dislike pair (mutually exclusive verbs share one pill),
- * then Save and Queue toggles. Same state hook, icons, and active treatment
- * as the cards, rows, and sheets.
+ * Watch-page action row in the shared system: an icon-only segmented
+ * like/dislike pair (either-or verbs share one pill; glyphs read without
+ * labels), Save and Queue toggles, and the complete context-aware kebab so
+ * every action (playlist, watched, ignore, block) is reachable here too.
  */
 export function InteractionButtons({
   videoId,
   channelId,
+  channelName,
   title,
+  thumbnailUrl,
   isAuthenticated,
 }: InteractionButtonsProps) {
   const actions = useVideoActions({
     videoId,
     channelId,
+    channelName,
     title,
     surface: "watch",
     withInteractionState: isAuthenticated,
@@ -73,18 +75,14 @@ export function InteractionButtons({
     return (
       <button
         type="button"
-        className={cn(
-          pillBase,
-          "rounded-none border-0 shadow-none",
-          pillTone(active),
-          "hover:translate-y-0 hover:shadow-none",
-        )}
+        className={cn(pillBase, "px-3.5", pillTone(active))}
         disabled={disabled}
         aria-pressed={active}
+        aria-label={actions.labelFor(id)}
+        title={actions.labelFor(id)}
         onClick={() => actions.runAction(id)}
       >
-        <PillGlyph id={id} active={active} />
-        <span>{videoActionShortLabel(id, actions.state)}</span>
+        <Glyph id={id} active={active} />
       </button>
     );
   };
@@ -94,27 +92,22 @@ export function InteractionButtons({
     return (
       <button
         type="button"
-        className={cn(pillBase, "rounded-full border", pillTone(active))}
+        className={cn(pillBase, "rounded-full px-4", pillTone(active))}
         disabled={disabled}
         aria-pressed={active}
+        title={actions.labelFor(id)}
         onClick={() => actions.runAction(id)}
       >
-        <PillGlyph id={id} active={active} />
+        <Glyph id={id} active={active} />
         <span>{videoActionShortLabel(id, actions.state)}</span>
       </button>
     );
   };
 
   return (
-    <div className="flex flex-wrap gap-2.5">
-      <div
-        className={cn(
-          "flex overflow-hidden rounded-full border shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md",
-          actions.state.liked || actions.state.disliked
-            ? "border-[hsl(var(--primary)_/_0.45)]"
-            : "border-[hsl(var(--border))]",
-        )}
-      >
+    <div className="flex flex-wrap items-center gap-2">
+      {/* Segmented either-or pair; each half carries its own aria-label. */}
+      <div className="flex overflow-hidden rounded-full">
         {reactionHalf("like")}
         <span
           aria-hidden
@@ -124,6 +117,15 @@ export function InteractionButtons({
       </div>
       {toggle("save")}
       {toggle("queue")}
+      <VideoActionsMenu
+        videoId={videoId}
+        title={title}
+        channelId={channelId}
+        channelName={channelName}
+        thumbnailUrl={thumbnailUrl}
+        surface="watch"
+        alwaysVisible
+      />
     </div>
   );
 }

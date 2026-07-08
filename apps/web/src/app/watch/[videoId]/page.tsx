@@ -383,8 +383,8 @@ export default async function WatchPage({
                   </span>
                 </p>
               </div>
-              <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[hsl(var(--border))] pb-4">
-                <div className="flex min-w-0 items-start gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-[hsl(var(--border))] pb-4">
+                <div className="flex min-w-0 items-center gap-3">
                   {detail?.channelId ? (
                     <Link
                       href={`/channel/${encodeURIComponent(detail.channelId)}`}
@@ -419,29 +419,30 @@ export default async function WatchPage({
                       {subscribersLabel ?? "Channel"}
                     </p>
                   </div>
+                  {detail?.channelId ? (
+                    <div className="ml-1 shrink-0">
+                      <ChannelSubscribeButton
+                        channelId={detail.channelId}
+                        isAuthed={isAuthed}
+                      />
+                    </div>
+                  ) : null}
                 </div>
-                {detail?.channelId ? (
-                  <div className="shrink-0 self-center">
-                    <ChannelSubscribeButton
-                      channelId={detail.channelId}
-                      isAuthed={isAuthed}
-                    />
-                  </div>
+                {detail ? (
+                  <InteractionButtons
+                    videoId={detail.videoId}
+                    channelId={detail.channelId}
+                    channelName={detail.channelName ?? undefined}
+                    title={detail.title}
+                    thumbnailUrl={poster ?? undefined}
+                    isAuthenticated={isAuthed}
+                  />
                 ) : null}
               </div>
               {detail?.warning ? (
                 <p className="text-sm text-amber-600">{detail.warning}</p>
               ) : null}
             </div>
-
-            {detail ? (
-              <InteractionButtons
-                videoId={detail.videoId}
-                channelId={detail.channelId}
-                title={detail.title}
-                isAuthenticated={isAuthed}
-              />
-            ) : null}
             {isAuthed && detail && !isUpcoming ? (
               <WatchTracker
                 videoId={detail.videoId}

@@ -41,6 +41,9 @@ function Chip({
   standalone?: boolean;
 }) {
   const active = isVideoActionActive(id, actions.state);
+  // Like/dislike are icon-only everywhere — the glyphs are universally read
+  // and the labels eat horizontal space.
+  const iconOnly = id === "like" || id === "dislike";
   return (
     <button
       type="button"
@@ -52,6 +55,7 @@ function Chip({
       )}
       disabled={actions.pending}
       aria-pressed={active}
+      aria-label={actions.labelFor(id)}
       title={actions.labelFor(id)}
       onClick={(e) => {
         e.preventDefault();
@@ -60,9 +64,11 @@ function Chip({
       }}
     >
       <VideoActionGlyph id={id} active={active} className="h-5 w-5" />
-      <span className="max-w-full truncate">
-        {videoActionShortLabel(id, actions.state)}
-      </span>
+      {!iconOnly ? (
+        <span className="max-w-full truncate">
+          {videoActionShortLabel(id, actions.state)}
+        </span>
+      ) : null}
     </button>
   );
 }

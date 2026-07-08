@@ -47,6 +47,8 @@ type VideoActionsMenuProps = {
   recommendationReason?: RecommendationReason;
   topItems?: VideoActionsMenuTopItem[];
   className?: string;
+  /** Skip the hover-reveal treatment (watch page, standalone rows). */
+  alwaysVisible?: boolean;
 };
 
 type MenuView = "main" | "playlist";
@@ -218,6 +220,7 @@ export function VideoActionsMenu({
   recommendationReason,
   topItems,
   className,
+  alwaysVisible = false,
 }: VideoActionsMenuProps) {
   const menuId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -397,7 +400,11 @@ export function VideoActionsMenu({
         type="button"
         variant="ghost"
         size="icon"
-        className="h-8 w-8 rounded-full text-[hsl(var(--muted-foreground))] opacity-100 transition-opacity duration-200 hover:bg-[hsl(var(--muted)_/_0.65)] hover:text-[hsl(var(--foreground))] [@media(hover:hover)]:opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
+        className={cn(
+          "h-8 w-8 rounded-full text-[hsl(var(--muted-foreground))] opacity-100 transition-opacity duration-200 hover:bg-[hsl(var(--muted)_/_0.65)] hover:text-[hsl(var(--foreground))] focus-visible:opacity-100 data-[state=open]:opacity-100",
+          !alwaysVisible &&
+            "[@media(hover:hover)]:opacity-0 group-hover:opacity-100",
+        )}
         aria-label="Video options"
         aria-haspopup="menu"
         aria-expanded={open}
