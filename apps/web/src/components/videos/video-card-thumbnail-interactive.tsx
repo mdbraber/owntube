@@ -4,8 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useInvidiousOrigins } from "@/components/videos/invidious-origin-context";
-import { VideoCardDurationBadge } from "@/components/videos/video-card-duration-badge";
 import type { VideoActionSurface } from "@/components/videos/video-action-registry";
+import { VideoCardDurationBadge } from "@/components/videos/video-card-duration-badge";
 import { useWatchProgress } from "@/components/videos/video-membership-context";
 import { VideoStatusPills } from "@/components/videos/video-status-pills";
 import { VideoWatchProgress } from "@/components/videos/video-watch-progress";
@@ -123,6 +123,13 @@ export function VideoCardThumbnailInteractive({
   pointerInsideRef.current = pointerInside;
   /** Live preview position for the thumbnail scrubber. */
   const [previewFraction, setPreviewFraction] = useState<number | null>(null);
+  /**
+   * The thumbnail only swaps out once the preview has a painted frame.
+   * Keying the crossfade on `playback` alone blanked the card grey while the
+   * stream was still connecting — and left it blank when the pointer moved
+   * away mid-load.
+   */
+  const [previewPainted, setPreviewPainted] = useState(false);
   const watchProgress = useWatchProgress(videoId);
   const resumeFractionRef = useRef<number | null>(null);
   resumeFractionRef.current =
@@ -382,6 +389,28 @@ export function VideoCardThumbnailInteractive({
     };
   }, [pointerInside, playback]);
 
+  // Flip the crossfade only once the preview video has decodable frames.
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!playback || !v) {
+      setPreviewPainted(false);
+      return;
+    }
+    const mark = () => {
+      if (v.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+        setPreviewPainted(true);
+      }
+    };
+    mark();
+    v.addEventListener("loadeddata", mark);
+    v.addEventListener("playing", mark);
+    return () => {
+      v.removeEventListener("loadeddata", mark);
+      v.removeEventListener("playing", mark);
+      setPreviewPainted(false);
+    };
+  }, [playback]);
+
   // Thumbnail scrubber follows the preview while it plays.
   useEffect(() => {
     const v = videoRef.current;
@@ -454,7 +483,13 @@ export function VideoCardThumbnailInteractive({
           <img
             src={displayThumbnailUrl}
             alt=""
-            className={cn(imgClassName, playback ? "opacity-0" : "opacity-100")}
+            className={cn(
+              imgClassName,
+              // Swap instantly (transition transform only): a slow opacity
+              // fade kept cards blank for ~500ms after the pointer left.
+              "transition-transform",
+              playback && previewPainted ? "opacity-0" : "opacity-100",
+            )}
             loading="lazy"
             onError={(e) => applyVideoThumbnailImgError(e.currentTarget)}
           />
@@ -465,11 +500,13 @@ export function VideoCardThumbnailInteractive({
           data-ot-preview={videoId}
           className={cn(
             "absolute inset-0 h-full w-full object-cover transition-opacity duration-200",
-            playback ? "opacity-100" : "pointer-events-none opacity-0",
+            playback && previewPainted
+              ? "opacity-100"
+              : "pointer-events-none opacity-0",
           )}
           playsInline
         />
-        {!playback ? (
+        {!(playback && previewPainted) ? (
           <div
             className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/35 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
             aria-hidden
