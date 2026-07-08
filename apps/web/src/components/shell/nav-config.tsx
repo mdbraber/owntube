@@ -187,26 +187,6 @@ const AlgorithmIcon = (
   </svg>
 );
 
-const AlgorithmIconActive = (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.8"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden
-  >
-    <title>Algorithm</title>
-    <path d="M5 3v6.2M5 13.8V21" />
-    <circle cx="5" cy="11.5" r="2.3" fill="currentColor" />
-    <path d="M12 3v3.2M12 10.8V21" />
-    <circle cx="12" cy="8.5" r="2.3" fill="currentColor" />
-    <path d="M19 3v9.2M19 16.8V21" />
-    <circle cx="19" cy="14.5" r="2.3" fill="currentColor" />
-  </svg>
-);
-
 const PlaylistsIcon = (
   <svg
     viewBox="0 0 24 24"
@@ -313,13 +293,6 @@ export const SIDEBAR_NAV: NavItem[] = [
   // History stays outline when active: the glyph is an arc + arrow with no
   // fillable body, so a filled variant would lose its identity.
   { key: "library", href: "/history", label: "History", icon: HistoryIcon },
-  {
-    key: "algorithm",
-    href: "/dashboard",
-    label: "Algorithm",
-    icon: AlgorithmIcon,
-    iconActive: AlgorithmIconActive,
-  },
 ];
 
 /** Subset shown as tabs in the mobile bottom bar (account button is added separately). */
@@ -329,15 +302,14 @@ export const BOTTOM_NAV: NavItem[] = SIDEBAR_NAV.filter((n) =>
 
 /** Sidebar-only entries (live below the primary nav, above the divider). */
 export const SECONDARY_NAV: { href: string; label: string; icon: ReactNode }[] =
-  [
-    { href: "/playlists", label: "Playlists", icon: PlaylistsIcon },
-    { href: "/settings", label: "Settings", icon: SettingsIcon },
-  ];
+  // Settings and Algorithm live in the account menu (top-right avatar) only.
+  [{ href: "/playlists", label: "Playlists", icon: PlaylistsIcon }];
 
 /** Links surfaced inside the account menu (desktop dropdown + mobile sheet). */
 export const ACCOUNT_LINKS: { href: string; label: string; icon: ReactNode }[] =
   [
     { href: "/settings", label: "Settings", icon: SettingsIcon },
+    { href: "/dashboard", label: "Algorithm", icon: AlgorithmIcon },
     { href: "/history", label: "History", icon: HistoryIcon },
     { href: "/playlists", label: "Playlists", icon: PlaylistsIcon },
     { href: "/queue", label: "Queue", icon: QueueIcon },
