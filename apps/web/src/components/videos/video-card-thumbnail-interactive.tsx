@@ -462,6 +462,7 @@ export function VideoCardThumbnailInteractive({
         {/* biome-ignore lint/a11y/useMediaCaption: silent card preview */}
         <video
           ref={videoRef}
+          data-ot-preview={videoId}
           className={cn(
             "absolute inset-0 h-full w-full object-cover transition-opacity duration-200",
             playback ? "opacity-100" : "pointer-events-none opacity-0",

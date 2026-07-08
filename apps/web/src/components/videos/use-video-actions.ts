@@ -5,6 +5,7 @@ import { getQueryKey } from "@trpc/react-query";
 import type { inferRouterOutputs } from "@trpc/server";
 import { useRouter } from "next/navigation";
 import { useCallback, useRef, useState } from "react";
+import { usePlayerContext } from "@/components/player/player-context";
 import { useActionToast } from "@/components/videos/action-toast";
 import { useIgnoredVideos } from "@/components/videos/ignored-videos-context";
 import {
@@ -57,6 +58,7 @@ export function useVideoActions({
   const router = useRouter();
   const utils = trpc.useUtils();
   const queryClient = useQueryClient();
+  const { active: activePlayer } = usePlayerContext();
   const { showToast } = useActionToast();
   const { ignore, unignore } = useIgnoredVideos();
   const membership = useVideoMembership(videoId);
@@ -403,6 +405,18 @@ export function useVideoActions({
   const markWatched = useCallback(async () => {
     if (watched || markWatchedMutation.isPending) return;
     setWatched(true);
+    // Watched means done — stop the video wherever it is playing: the
+    // persistent player (watch page / mini) and any hover preview of it.
+    if (activePlayer?.props.videoId === videoId) {
+      document
+        .querySelector<HTMLVideoElement>("[data-ot-player-root] video")
+        ?.pause();
+    }
+    for (const el of document.querySelectorAll<HTMLVideoElement>(
+      `video[data-ot-preview="${CSS.escape(videoId)}"]`,
+    )) {
+      el.pause();
+    }
     try {
       await runAuthed(async () => {
         await markWatchedMutation.mutateAsync({ videoId, channelId });
@@ -411,7 +425,15 @@ export function useVideoActions({
     } catch {
       setWatched(false);
     }
-  }, [watched, markWatchedMutation, runAuthed, videoId, channelId, showToast]);
+  }, [
+    watched,
+    markWatchedMutation,
+    runAuthed,
+    videoId,
+    channelId,
+    showToast,
+    activePlayer,
+  ]);
 
   const ignoreVideo = useCallback(() => {
     ignore(videoId, channelId);
