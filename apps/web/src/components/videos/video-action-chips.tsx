@@ -35,12 +35,19 @@ function Chip({
   id,
   actions,
   standalone = true,
+  onOpenPlaylistPicker,
 }: {
   id: Exclude<VideoActionId, "playlist">;
   actions: VideoActions;
   standalone?: boolean;
+  /** Split-save: playlist-only membership opens the picker instead. */
+  onOpenPlaylistPicker?: () => void;
 }) {
-  const active = isVideoActionActive(id, actions.state);
+  const inPlaylists = actions.playlistIds.size > 0;
+  const active =
+    id === "save"
+      ? actions.state.saved || inPlaylists
+      : isVideoActionActive(id, actions.state);
   // Like/dislike (and any segment inside the reaction pair) are icon-only —
   // the glyphs are universally read and the labels eat horizontal space.
   const iconOnly = id === "like" || id === "dislike" || !standalone;
@@ -60,6 +67,15 @@ function Chip({
       onClick={(e) => {
         e.preventDefault();
         e.stopPropagation();
+        if (
+          id === "save" &&
+          !actions.state.saved &&
+          inPlaylists &&
+          onOpenPlaylistPicker
+        ) {
+          onOpenPlaylistPicker();
+          return;
+        }
         actions.runAction(id);
       }}
     >
@@ -103,11 +119,13 @@ export function QuickActionChips({
   ids,
   actions,
   className,
+  onOpenPlaylistPicker,
 }: {
   /** Ordered quick-action verbs (user preference), max 4 rendered. */
   ids: readonly Exclude<VideoActionId, "playlist">[];
   actions: VideoActions;
   className?: string;
+  onOpenPlaylistPicker?: () => void;
 }) {
   const shown = ids.slice(0, 4);
   const nodes: React.ReactNode[] = [];
@@ -123,7 +141,14 @@ export function QuickActionChips({
       i++;
       continue;
     }
-    nodes.push(<Chip key={id} id={id} actions={actions} />);
+    nodes.push(
+      <Chip
+        key={id}
+        id={id}
+        actions={actions}
+        onOpenPlaylistPicker={onOpenPlaylistPicker}
+      />,
+    );
   }
   if (nodes.length === 0) return null;
   return <div className={cn("flex gap-2", className)}>{nodes}</div>;

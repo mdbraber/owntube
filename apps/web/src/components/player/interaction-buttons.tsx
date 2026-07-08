@@ -17,7 +17,6 @@ import {
   PlaylistPicker,
   VideoActionsMenu,
 } from "@/components/videos/video-actions-menu";
-import { VideoStatusPills } from "@/components/videos/video-status-pills";
 import { cn } from "@/lib/utils";
 
 type InteractionButtonsProps = {
@@ -202,8 +201,6 @@ export function InteractionButtons({
         open={shareOpen}
         onClose={() => setShareOpen(false)}
       />
-      {/* Playlist membership at a glance; queue/save state lives on the pills. */}
-      <VideoStatusPills videoId={videoId} omit={["queued", "saved"]} />
       <VideoActionsMenu
         videoId={videoId}
         title={title}
