@@ -77,7 +77,6 @@ export function InteractionButtons({
 
   const toggle = (id: "watched" | "save" | "queue") => {
     const active = isVideoActionActive(id, actions.state);
-    // Mark-watched has no inverse — the button stays on once used.
     const label =
       id === "watched"
         ? active
@@ -88,7 +87,7 @@ export function InteractionButtons({
       <button
         type="button"
         className={cn(pillBase, "rounded-full px-4", pillTone(active))}
-        disabled={disabled || (id === "watched" && active)}
+        disabled={disabled}
         aria-pressed={active}
         title={actions.labelFor(id)}
         onClick={() => actions.runAction(id)}

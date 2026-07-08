@@ -9,6 +9,7 @@ import {
   QueueIcon,
   SavedIcon,
   SaveIcon,
+  WatchedFilledIcon,
   WatchedIcon,
 } from "@/components/videos/video-action-icons";
 
@@ -67,9 +68,6 @@ const BASE_GROUPS: VideoActionId[][] = [
 /** Actions that make no sense on a given surface. */
 function isHiddenOn(id: VideoActionId, surface: VideoActionSurface): boolean {
   switch (id) {
-    case "watched":
-      // Already watched (history) or being watched (watch page).
-      return surface === "history" || surface === "watch";
     case "block-channel":
       // The user deliberately follows this channel here.
       return surface === "subscriptions" || surface === "channel";
@@ -112,7 +110,7 @@ export function videoActionLabel(
     case "dislike":
       return state.disliked ? "Disliked" : "Dislike";
     case "watched":
-      return state.watched ? "Marked as watched" : "Mark as watched";
+      return state.watched ? "Mark as unwatched" : "Mark as watched";
     case "ignore":
       return "Ignore this video";
     case "block-channel":
@@ -199,7 +197,11 @@ export function VideoActionGlyph({
       icon = <DislikeIcon {...props} />;
       break;
     case "watched":
-      icon = <WatchedIcon {...props} />;
+      icon = active ? (
+        <WatchedFilledIcon {...props} />
+      ) : (
+        <WatchedIcon {...props} />
+      );
       break;
     case "ignore":
       icon = <IgnoreIcon {...props} />;

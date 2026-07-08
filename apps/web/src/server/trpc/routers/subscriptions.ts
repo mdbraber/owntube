@@ -937,6 +937,23 @@ export const subscriptionsRouter = router({
       return { ok: true as const };
     }),
 
+  /** Inverse of markWatched: clears the video's watch progress entirely. */
+  unmarkWatched: protectedProcedure
+    .input(z.object({ videoId: videoIdSchema }))
+    .mutation(({ ctx, input }) => {
+      ctx.db
+        .update(watchHistory)
+        .set({ completed: 0, durationWatched: 0, positionSeconds: 0 })
+        .where(
+          and(
+            eq(watchHistory.userId, ctx.userId),
+            eq(watchHistory.videoId, input.videoId),
+          ),
+        )
+        .run();
+      return { ok: true as const };
+    }),
+
   markManyWatched: protectedProcedure
     .input(
       z.object({

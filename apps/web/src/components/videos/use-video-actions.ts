@@ -15,7 +15,10 @@ import {
   type VideoActionSurface,
   videoActionLabel,
 } from "@/components/videos/video-action-registry";
-import { useVideoMembership } from "@/components/videos/video-membership-context";
+import {
+  useVideoMembership,
+  useWatchProgress,
+} from "@/components/videos/video-membership-context";
 import type { AppRouter } from "@/server/trpc/root";
 import { trpc } from "@/trpc/react";
 
@@ -62,11 +65,13 @@ export function useVideoActions({
   const { showToast } = useActionToast();
   const { ignore, unignore } = useIgnoredVideos();
   const membership = useVideoMembership(videoId);
+  const watchProgress = useWatchProgress(videoId);
 
   // Optimistic overrides so a click reflects instantly before queries settle.
   const [savedOverride, setSavedOverride] = useState<boolean | null>(null);
   const [queuedOverride, setQueuedOverride] = useState<boolean | null>(null);
-  const [watched, setWatched] = useState(false);
+  const [watchedOverride, setWatchedOverride] = useState<boolean | null>(null);
+  const watched = watchedOverride ?? watchProgress?.completed ?? false;
   const [likedOverride, setLikedOverride] = useState<boolean | null>(null);
   const [dislikedOverride, setDislikedOverride] = useState<boolean | null>(
     null,
@@ -162,7 +167,38 @@ export function useVideoActions({
         utils.video.related.invalidate(),
         utils.history.list.invalidate(),
       ]),
-    onSettled: () => utils.history.progressAll.invalidate(),
+    onSettled: () => {
+      setWatchedOverride(null);
+      return utils.history.progressAll.invalidate();
+    },
+  });
+  const unmarkWatchedMutation = trpc.subscriptions.unmarkWatched.useMutation({
+    onMutate: async (vars) => {
+      // Optimistic: drop the video's progress so bars/filters revert at once.
+      await utils.history.progressAll.cancel();
+      const prev = utils.history.progressAll.getData();
+      utils.history.progressAll.setData(undefined, (old) =>
+        (old ?? []).map((row) =>
+          row.videoId === vars.videoId
+            ? {
+                ...row,
+                completed: 0,
+                positionSeconds: 0,
+                durationWatched: 0,
+              }
+            : row,
+        ),
+      );
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) utils.history.progressAll.setData(undefined, ctx.prev);
+    },
+    onSuccess: () => utils.history.list.invalidate(),
+    onSettled: () => {
+      setWatchedOverride(null);
+      return utils.history.progressAll.invalidate();
+    },
   });
   const blockChannelMutation =
     trpc.interactions.blockRecommendationChannel.useMutation({
@@ -403,8 +439,23 @@ export function useVideoActions({
   toggleDislikeRef.current = toggleDislike;
 
   const markWatched = useCallback(async () => {
-    if (watched || markWatchedMutation.isPending) return;
-    setWatched(true);
+    if (markWatchedMutation.isPending || unmarkWatchedMutation.isPending) {
+      return;
+    }
+    if (watched) {
+      // Toggle off: clear the watch progress.
+      setWatchedOverride(false);
+      try {
+        await runAuthed(async () => {
+          await unmarkWatchedMutation.mutateAsync({ videoId });
+          showToast("Marked as unwatched");
+        });
+      } catch {
+        setWatchedOverride(null);
+      }
+      return;
+    }
+    setWatchedOverride(true);
     // Watched means done — stop the video wherever it is playing: the
     // persistent player (watch page / mini) and any hover preview of it.
     if (activePlayer?.props.videoId === videoId) {
@@ -420,14 +471,20 @@ export function useVideoActions({
     try {
       await runAuthed(async () => {
         await markWatchedMutation.mutateAsync({ videoId, channelId });
-        showToast("Marked as watched");
+        showToast("Marked as watched", {
+          undo: () => {
+            setWatchedOverride(false);
+            unmarkWatchedMutation.mutate({ videoId });
+          },
+        });
       });
     } catch {
-      setWatched(false);
+      setWatchedOverride(null);
     }
   }, [
     watched,
     markWatchedMutation,
+    unmarkWatchedMutation,
     runAuthed,
     videoId,
     channelId,

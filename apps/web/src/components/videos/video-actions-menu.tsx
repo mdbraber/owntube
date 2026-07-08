@@ -56,16 +56,12 @@ type VideoActionsMenuProps = {
   visibleActions?: readonly VideoActionId[];
 };
 
-/** Surfaces whose cards render the thumbnail hover quick actions (3). */
+/** Surfaces whose thumbnails render the overlay quick actions (first 3). */
 const CARD_SURFACES: ReadonlySet<VideoActionSurface> = new Set([
   "feed",
   "subscriptions",
   "channel",
   "related",
-]);
-
-/** Surfaces whose rows render the full quick-action cluster on hover. */
-const ROW_SURFACES: ReadonlySet<VideoActionSurface> = new Set([
   "queue",
   "history",
   "saved",
@@ -344,9 +340,6 @@ export function VideoActionsMenu({
   } else if (authed && hoverCapable && CARD_SURFACES.has(surface)) {
     // Thumbnails carry the first three quick actions.
     for (const id of quickActions.slice(0, 3)) hiddenIds.add(id);
-  } else if (authed && hoverCapable && ROW_SURFACES.has(surface)) {
-    // Rows carry the whole preset in their trailing cluster.
-    for (const id of quickActions) hiddenIds.add(id);
   }
   const listGroups = groups
     .map((g) => g.filter((id) => !hiddenIds.has(id)))
@@ -408,8 +401,7 @@ export function VideoActionsMenu({
                 disabled={
                   actions.pending ||
                   (id === "block-channel" &&
-                    (!channelId || actions.state.channelBlocked)) ||
-                  (id === "watched" && actions.state.watched)
+                    (!channelId || actions.state.channelBlocked))
                 }
                 onClick={() => runAndClose(id)}
               >

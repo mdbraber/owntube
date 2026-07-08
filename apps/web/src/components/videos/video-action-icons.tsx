@@ -119,6 +119,19 @@ export function WatchedIcon(props: IconProps) {
   );
 }
 
+export function WatchedFilledIcon(props: IconProps) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+      {...base(props)}
+    >
+      <path d="M12 5C5 5 2 12 2 12s3 7 10 7 10-7 10-7-3-7-10-7zm0 10.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" />
+    </svg>
+  );
+}
+
 export function IgnoreIcon(props: IconProps) {
   return (
     <svg

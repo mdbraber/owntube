@@ -6,7 +6,7 @@ import { CardSwipeLayer } from "@/components/videos/card-swipe-layer";
 import { XIcon } from "@/components/videos/video-action-icons";
 import type { VideoActionSurface } from "@/components/videos/video-action-registry";
 import { VideoActionsMenu } from "@/components/videos/video-actions-menu";
-import { VideoRowQuickActions } from "@/components/videos/video-row-quick-actions";
+import { VideoCardQuickActions } from "@/components/videos/video-card-quick-actions";
 import { VideoCardDurationBadge } from "@/components/videos/video-card-duration-badge";
 import { VideoStatusPills } from "@/components/videos/video-status-pills";
 import { VideoWatchProgress } from "@/components/videos/video-watch-progress";
@@ -136,17 +136,18 @@ export function VideoRow({
             className="px-1.5 py-px text-[10px]"
           />
         </div>
-      </div>
-
-      <div className="min-w-0 flex-1">
-        {/* Quick actions sit right above the title (desktop hover reveal). */}
-        <VideoRowQuickActions
+        {/* Quick actions as overlay buttons, same as cards (tap-reveal on
+            touch, hover on desktop). */}
+        <VideoCardQuickActions
           videoId={videoId}
           title={title}
           channelId={channelId ?? undefined}
           surface={surface}
-          className="mb-0.5 -ml-2"
+          className="absolute right-1.5 top-1.5 z-20"
         />
+      </div>
+
+      <div className="min-w-0 flex-1">
         <div className="flex items-start gap-1">
           {/* Phone: the position/drag handle rides the title line. */}
           {leading || dragHandle ? (

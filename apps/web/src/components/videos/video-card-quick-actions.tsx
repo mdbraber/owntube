@@ -38,6 +38,33 @@ export function VideoCardQuickActions({
 }: VideoCardQuickActionsProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  // Plex-style on touch: the first tap on the thumbnail reveals the overlay
+  // (and is swallowed); the next tap acts — a button, or the link itself.
+  const [revealed, setRevealed] = useState(false);
+  const revealedRef = useRef(revealed);
+  revealedRef.current = revealed;
+
+  useEffect(() => {
+    const mq = window.matchMedia("(hover: none)");
+    if (!mq.matches) return;
+    const parent = rootRef.current?.parentElement;
+    if (!parent) return;
+    const onParentClick = (e: MouseEvent) => {
+      if (revealedRef.current) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setRevealed(true);
+    };
+    const onDocPointerDown = (e: PointerEvent) => {
+      if (!parent.contains(e.target as Node)) setRevealed(false);
+    };
+    parent.addEventListener("click", onParentClick, true);
+    document.addEventListener("pointerdown", onDocPointerDown);
+    return () => {
+      parent.removeEventListener("click", onParentClick, true);
+      document.removeEventListener("pointerdown", onDocPointerDown);
+    };
+  }, []);
 
   const authed = trpc.auth.session.useQuery().data?.authed ?? false;
   const settings = trpc.settings.get.useQuery(undefined, {
@@ -89,10 +116,11 @@ export function VideoCardQuickActions({
     <div
       ref={rootRef}
       className={cn(
-        // pointer-fine only: on touch the kebab/bottom sheet is the path.
-        "hidden flex-col gap-1.5 [@media(hover:hover)]:flex",
-        "opacity-0 transition-opacity duration-150 focus-within:opacity-100 group-hover:opacity-100",
-        pickerOpen && "opacity-100",
+        "flex flex-col gap-1.5",
+        // Hidden at rest; hover reveals on desktop, first tap on touch.
+        "pointer-events-none opacity-0 transition-opacity duration-150",
+        "focus-within:pointer-events-auto focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100",
+        (pickerOpen || revealed) && "pointer-events-auto opacity-100",
         className,
       )}
     >
