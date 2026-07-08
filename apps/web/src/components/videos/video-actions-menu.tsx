@@ -208,7 +208,6 @@ export function PlaylistPicker({
             onChange={(e) => setName(e.currentTarget.value)}
             placeholder="Playlist name"
             maxLength={120}
-            // biome-ignore lint/a11y/noAutofocus: user just chose "New playlist"
             autoFocus
             onKeyDown={(e) => {
               if (e.key === "Enter") submitCreate();

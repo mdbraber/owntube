@@ -119,7 +119,6 @@ export function PlaylistFormModal({
             onChange={(e) => setName(e.currentTarget.value)}
             placeholder="Playlist name"
             maxLength={120}
-            // biome-ignore lint/a11y/noAutofocus: the dialog exists for this field
             autoFocus
             onKeyDown={(e) => {
               if (e.key === "Enter") submit();
