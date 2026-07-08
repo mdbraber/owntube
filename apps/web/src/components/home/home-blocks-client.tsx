@@ -10,6 +10,7 @@ import {
   XIcon,
 } from "@/components/videos/video-action-icons";
 import { useRowDrag } from "@/components/videos/use-row-drag";
+import { VideoCard } from "@/components/videos/video-card";
 import { VideoGrid } from "@/components/videos/video-grid";
 import {
   SubscriptionTagFilter,
@@ -22,7 +23,6 @@ import {
   CARD_MIN_WIDTH_PX,
   DEFAULT_HOME_BLOCKS,
   HOME_BLOCK_LABEL,
-  HOME_BLOCK_LIMITS,
   HOME_BLOCK_ROWS,
   HOME_BLOCK_SIZE_LABEL,
   HOME_BLOCK_SIZES,
@@ -85,16 +85,86 @@ function toUnified(v: BlockVideo): UnifiedVideo {
   } as UnifiedVideo;
 }
 
+/**
+ * One horizontally scrollable row of cards ("Scrollable row" option on
+ * single-row blocks). A sentinel at the end asks the host for more when an
+ * infinite source backs the block.
+ */
+function HorizontalShelf({
+  videos,
+  block,
+  surface,
+  onEndReached,
+}: {
+  videos: BlockVideo[];
+  block: HomeBlock;
+  surface: VideoActionSurface;
+  onEndReached?: () => void;
+}) {
+  const sentinelRef = useRef<HTMLLIElement | null>(null);
+  const onEndReachedRef = useRef(onEndReached);
+  onEndReachedRef.current = onEndReached;
+
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) onEndReachedRef.current?.();
+      },
+      { rootMargin: "0px 600px 0px 0px", threshold: 0 },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
+  const cardWidth = CARD_MIN_WIDTH_PX[block.size];
+  return (
+    <ul className="-mx-1 flex snap-x gap-4 overflow-x-auto px-1 pb-2">
+      {videos.map((v) => (
+        <li
+          key={v.videoId}
+          className="shrink-0 snap-start"
+          style={{ width: cardWidth }}
+        >
+          <VideoCard
+            href={`/watch/${v.videoId}`}
+            videoId={v.videoId}
+            title={v.title}
+            channelId={v.channelId ?? undefined}
+            channelName={v.channelName ?? undefined}
+            channelHref={
+              v.channelId
+                ? `/channel/${encodeURIComponent(v.channelId)}`
+                : undefined
+            }
+            channelAvatarUrl={v.channelAvatarUrl ?? undefined}
+            thumbnailUrl={v.thumbnailUrl ?? undefined}
+            durationSeconds={v.durationSeconds}
+            surface={surface}
+          />
+        </li>
+      ))}
+      {onEndReached ? (
+        <li ref={sentinelRef} aria-hidden className="w-px shrink-0" />
+      ) : null}
+    </ul>
+  );
+}
+
 function VideoBlockBody({
   videos,
   block,
   surface,
   isLoading,
+  onEndReached,
 }: {
   videos: BlockVideo[];
   block: HomeBlock;
   surface: VideoActionSurface;
   isLoading: boolean;
+  /** Scroll shelf hit its end — load more (infinite feeds). */
+  onEndReached?: () => void;
 }) {
   // Cards render full rows only: computed columns × configured rows, so the
   // last row is never ragged regardless of viewport width. At one column a
@@ -102,10 +172,13 @@ function VideoBlockBody({
   // with a doubled count (similar content, phone-appropriate density).
   const grid = useAutoFillColumns(CARD_MIN_WIDTH_PX[block.size]);
   const singleColumn = grid.columns <= 1;
+  const scrollRow = isScrollRow(block);
   const layout =
-    block.layout === "cards" && singleColumn ? "rows" : block.layout;
+    block.layout === "cards" && singleColumn && !scrollRow
+      ? "rows"
+      : block.layout;
   const rowCount =
-    block.layout === "cards" && singleColumn ? block.rows * 2 : block.limit;
+    block.layout === "cards" && singleColumn ? block.rows * 2 : block.rows;
   if (isLoading && videos.length === 0) {
     return (
       <p className="py-4 text-sm text-[hsl(var(--muted-foreground))]">
@@ -118,6 +191,16 @@ function VideoBlockBody({
       <p className="rounded-[var(--radius-card)] border border-dashed border-[hsl(var(--border))] bg-[hsl(var(--muted)_/_0.35)] py-8 text-center text-sm text-[hsl(var(--muted-foreground))]">
         Nothing here yet.
       </p>
+    );
+  }
+  if (layout === "cards" && scrollRow) {
+    return (
+      <HorizontalShelf
+        videos={videos}
+        block={block}
+        surface={surface}
+        onEndReached={onEndReached}
+      />
     );
   }
   if (layout === "cards") {
@@ -197,30 +280,50 @@ function useHideFinished(block: HomeBlock, videos: BlockVideo[]): BlockVideo[] {
   });
 }
 
-/** Items a block needs at most: full rows on wide screens, or the limit. */
+/** True when the block renders as one horizontally scrollable shelf. */
+export function isScrollRow(block: HomeBlock): boolean {
+  return (
+    block.layout === "cards" &&
+    block.rows === 1 &&
+    (block.options?.scrollRow ?? false)
+  );
+}
+
+/** Items a block needs at most: full rows on wide screens, or N list rows. */
 function blockFetchCount(block: HomeBlock): number {
-  return block.layout === "cards" ? block.rows * 8 : block.limit;
+  if (isScrollRow(block)) return 48;
+  return block.layout === "cards" ? block.rows * 8 : block.rows;
 }
 
 function SubscriptionsBlockBody({ block }: { block: HomeBlock }) {
   const { includeTags, excludeTags } = blockTagLists(block);
   // Over-fetch: the feed strips shorts/restricted *after* the limit, so a
-  // page of exactly `limit` often arrives short.
-  const query = trpc.subscriptions.mergedFeedInfinite.useQuery({
-    limit: Math.min(48, Math.max(8, blockFetchCount(block) * 2)),
-    includeTags,
-    excludeTags,
-  });
+  // page of exactly `limit` often arrives short. Infinite so the scrollable
+  // shelf can keep pulling pages.
+  const query = trpc.subscriptions.mergedFeedInfinite.useInfiniteQuery(
+    {
+      limit: Math.min(48, Math.max(8, blockFetchCount(block) * 2)),
+      includeTags,
+      excludeTags,
+    },
+    { getNextPageParam: (last) => last.nextCursor ?? undefined },
+  );
   const videos = useHideFinished(
     block,
-    (query.data?.videos ?? []) as BlockVideo[],
+    (query.data?.pages.flatMap((p) => p.videos) ?? []) as BlockVideo[],
   );
+  const scrollable = isScrollRow(block);
   return (
     <VideoBlockBody
-      videos={videos.slice(0, blockFetchCount(block))}
+      videos={scrollable ? videos : videos.slice(0, blockFetchCount(block))}
       block={block}
       surface="subscriptions"
       isLoading={query.isPending}
+      onEndReached={
+        scrollable && query.hasNextPage && !query.isFetchingNextPage
+          ? () => void query.fetchNextPage()
+          : undefined
+      }
     />
   );
 }
@@ -541,7 +644,8 @@ function BlockOptionsMenu({
     };
   }, [open]);
 
-  if (defs.length === 0 && !withTags) return null;
+  const scrollRowEligible = block.layout === "cards" && block.rows === 1;
+  if (defs.length === 0 && !withTags && !scrollRowEligible) return null;
 
   return (
     <div ref={rootRef} className="relative">
@@ -581,6 +685,24 @@ function BlockOptionsMenu({
               {def.label}
             </label>
           ))}
+          {scrollRowEligible ? (
+            <label className="flex cursor-pointer select-none items-center gap-2.5 rounded-lg px-2.5 py-2 transition hover:bg-[hsl(var(--muted)_/_0.65)]">
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-[hsl(var(--primary))]"
+                checked={block.options?.scrollRow ?? false}
+                onChange={(e) =>
+                  onPatch({
+                    options: {
+                      ...block.options,
+                      scrollRow: e.currentTarget.checked,
+                    },
+                  })
+                }
+              />
+              Scrollable row
+            </label>
+          ) : null}
           {withTags && (allTags.data ?? []).length > 0 ? (
             <div
               className={cn(
@@ -845,7 +967,7 @@ export function HomeBlocksClient() {
                         </button>
                       ))}
                     </div>
-                    {block.layout === "cards" ? (
+                    {
                       <select
                         className="rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-2.5 py-1 text-xs"
                         value={block.rows}
@@ -862,24 +984,7 @@ export function HomeBlocksClient() {
                           </option>
                         ))}
                       </select>
-                    ) : (
-                      <select
-                        className="rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-2.5 py-1 text-xs"
-                        value={block.limit}
-                        aria-label="Number of items"
-                        onChange={(e) =>
-                          patchBlock(block.id, {
-                            limit: Number(e.currentTarget.value),
-                          })
-                        }
-                      >
-                        {HOME_BLOCK_LIMITS.map((n) => (
-                          <option key={n} value={n}>
-                            {n} items
-                          </option>
-                        ))}
-                      </select>
-                    )}
+                    }
                     <BlockOptionsMenu
                       block={block}
                       onPatch={(patch) => patchBlock(block.id, patch)}

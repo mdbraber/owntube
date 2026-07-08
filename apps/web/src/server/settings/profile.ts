@@ -136,7 +136,7 @@ export const appSettingsSchema = z.object({
         type: z.enum(HOME_BLOCK_TYPES),
         playlistId: z.number().int().positive().optional(),
         limit: z.number().int().min(1).max(24).default(8),
-        rows: z.number().int().min(1).max(4).default(2),
+        rows: z.number().int().min(1).max(8).default(2),
         layout: z.enum(["cards", "rows"]).default("cards"),
         size: z.enum(["xs", "sm", "md", "lg", "xl"]).default("md"),
         /** Section-option values for this block (independent of the page's). */

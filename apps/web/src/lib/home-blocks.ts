@@ -131,8 +131,7 @@ export function homeBlockHref(block: HomeBlock): string {
   }
 }
 
-export const HOME_BLOCK_LIMITS = [4, 8, 12, 16] as const;
-export const HOME_BLOCK_ROWS = [1, 2, 3, 4] as const;
+export const HOME_BLOCK_ROWS = [1, 2, 3, 4, 6, 8] as const;
 
 export const DEFAULT_HOME_BLOCKS: HomeBlock[] = [
   {
@@ -147,7 +146,7 @@ export const DEFAULT_HOME_BLOCKS: HomeBlock[] = [
     id: "default-queue",
     type: "queue",
     limit: 4,
-    rows: 1,
+    rows: 4,
     layout: "rows",
     size: "md",
   },
@@ -155,7 +154,7 @@ export const DEFAULT_HOME_BLOCKS: HomeBlock[] = [
     id: "default-history",
     type: "history",
     limit: 4,
-    rows: 1,
+    rows: 4,
     layout: "rows",
     size: "md",
   },
