@@ -55,7 +55,6 @@ export function PlaylistsOverview() {
                           />
                         ) : (
                           <span
-                            // biome-ignore lint/suspicious/noArrayIndexKey: fixed 4-slot collage
                             key={`empty-${slot}`}
                             className="block h-full w-full bg-[hsl(var(--muted))]"
                           />
