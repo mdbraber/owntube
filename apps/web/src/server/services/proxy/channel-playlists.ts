@@ -170,6 +170,9 @@ export async function fetchYtPlaylist(
 ): Promise<YtPlaylistResult> {
   const { pipedBases, invidiousBases } = resolveProxyBaseCandidates(overrides);
   const errors: string[] = [];
+  // Invidious sometimes serves playlist metadata with a broken (empty) video
+  // list — keep it as a last resort and let Piped try for the real items.
+  let metadataOnly: YtPlaylistResult | null = null;
 
   for (const base of invidiousBases) {
     if (invidiousPortCollidesWithNextApp(base)) {
@@ -178,12 +181,12 @@ export async function fetchYtPlaylist(
     }
     try {
       acquireUpstreamSlot();
-      const json = await fetchJson(
-        new URL(
-          `/api/v1/playlists/${encodeURIComponent(input.playlistId)}`,
-          `${normalizeBaseUrl(base)}/`,
-        ).toString(),
+      const url = new URL(
+        `/api/v1/playlists/${encodeURIComponent(input.playlistId)}`,
+        `${normalizeBaseUrl(base)}/`,
       );
+      url.searchParams.set("page", "1");
+      const json = await fetchJson(url.toString());
       const p = json as Record<string, unknown>;
       const rawVideos = Array.isArray(p.videos) ? p.videos : [];
       const videos: UnifiedVideo[] = [];
@@ -197,7 +200,7 @@ export async function fetchYtPlaylist(
         const v = mapInvidiousItem(item, base);
         if (v) videos.push(v);
       }
-      return {
+      const result: YtPlaylistResult = {
         playlistId: input.playlistId,
         title: typeof p.title === "string" ? p.title : input.playlistId,
         channelId: typeof p.authorId === "string" ? p.authorId : null,
@@ -205,6 +208,9 @@ export async function fetchYtPlaylist(
         videos,
         sourceUsed: "invidious",
       };
+      if (videos.length > 0) return result;
+      metadataOnly = metadataOnly ?? result;
+      errors.push("invidious:playlist returned no videos");
     } catch (e) {
       recordUpstreamFailure(e, "invidious", errors, base);
     }
@@ -243,5 +249,6 @@ export async function fetchYtPlaylist(
     }
   }
 
+  if (metadataOnly) return metadataOnly;
   throwIfUpstreamFailed(errors, "No upstream could load this playlist.");
 }
