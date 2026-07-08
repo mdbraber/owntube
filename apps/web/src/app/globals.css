@@ -734,9 +734,9 @@ body {
      that lets the cue text scale with the *player* width (mini player,
      inline, cinema) instead of the viewport. */
   container-type: inline-size;
-  /* Cues start at ~25% of the player width; with the box capped at ~50% of
-     the width the block reads centered while the text stays left-aligned. */
-  padding-inline: max(0.75rem, 25cqw) 0.75rem;
+  /* Cues start ~12.5% into the player, nudged toward center while the text
+     stays left-aligned inside the box. */
+  padding-inline: max(0.75rem, 12.5cqw) 0.75rem;
   bottom: 0.25rem; /* resting: sits low, near the bottom edge */
   transition: bottom 200ms ease-out;
 }
@@ -748,8 +748,6 @@ body {
 
 .ot-caption__box {
   display: inline-block;
-  /* At most half the player width (40rem cap for very wide cinema panes). */
-  max-width: min(40rem, 50cqw);
   /* Cancel the box's own padding so the text (not the padded box) sits at the
      inset edge. */
   margin-left: -0.5rem;
@@ -762,22 +760,22 @@ body {
   background-color: rgb(0 0 0 / 0.55);
   text-shadow: 0 1px 2px rgb(0 0 0 / 0.9);
   /* Scales with the player width (cqw via the .ot-caption container):
-     ~24px on a 900px player, down to ~11px in the mini player. */
-  font-size: clamp(0.7rem, 2.75cqw, 1.5rem);
+     ~29px on a 900px player, down to ~12px in the mini player. */
+  font-size: clamp(0.75rem, 3.2cqw, 1.75rem);
 }
 
 /* Fullscreen: more canvas, larger cues — ~32px on a 1440px screen, capped for
    4K. (:fullscreen matches any fullscreen ancestor of the caption strip.) */
 :fullscreen .ot-caption__box {
-  font-size: clamp(1.1rem, 2.2cqw, 2.25rem);
-  max-width: 50cqw;
+  font-size: clamp(1.1rem, 2.4cqw, 2.5rem);
 }
 *:-webkit-full-screen .ot-caption__box {
-  font-size: clamp(1.1rem, 2.2cqw, 2.25rem);
-  max-width: 50cqw;
+  font-size: clamp(1.1rem, 2.4cqw, 2.5rem);
 }
 
-/* Roll-up: every line renders at full brightness. */
+/* Roll-up: every line renders at full brightness and keeps its authored
+   break — cue lines never rewrap. */
 .ot-caption__line {
   display: block;
+  white-space: nowrap;
 }
