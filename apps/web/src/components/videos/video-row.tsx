@@ -102,7 +102,7 @@ export function VideoRow({
 
       <div className="relative shrink-0">
         <Link href={target} className="block">
-          <div className="relative aspect-video w-[8.5rem] overflow-hidden rounded-xl bg-[hsl(var(--muted))] sm:w-40">
+          <div className="relative aspect-video w-[12.75rem] overflow-hidden rounded-xl bg-[hsl(var(--muted))] sm:w-60">
             {/* Derives the thumbnail from videoId when no explicit URL is given
                 (denormalized history/library rows omit it). */}
             <VideoThumbnailImg
@@ -143,7 +143,7 @@ export function VideoRow({
 
       <div className="min-w-0 flex-1">
         <Link href={target} className="block min-w-0">
-          <p className="m-0 line-clamp-2 text-sm font-semibold leading-snug tracking-tight transition group-hover:text-[hsl(var(--primary))]">
+          <p className="m-0 line-clamp-2 text-[15px] font-semibold leading-snug tracking-tight transition group-hover:text-[hsl(var(--primary))]">
             {title}
           </p>
         </Link>
