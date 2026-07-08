@@ -456,17 +456,26 @@ export function useVideoActions({
       return;
     }
     setWatchedOverride(true);
-    // Watched means done — stop the video wherever it is playing: the
-    // persistent player (watch page / mini) and any hover preview of it.
+    // Watched means done — jump the video to its end and stop it wherever it
+    // plays (persistent player, hover previews). Scrubbers track the seek and
+    // read fully watched. Stops just shy of the end so no 'ended' event fires
+    // (auto-advance must not trigger).
+    const finishPlayback = (el: HTMLVideoElement) => {
+      el.pause();
+      if (Number.isFinite(el.duration) && el.duration > 0) {
+        el.currentTime = Math.max(0, el.duration - 0.1);
+      }
+    };
     if (activePlayer?.props.videoId === videoId) {
-      document
-        .querySelector<HTMLVideoElement>("[data-ot-player-root] video")
-        ?.pause();
+      const el = document.querySelector<HTMLVideoElement>(
+        "[data-ot-player-root] video",
+      );
+      if (el) finishPlayback(el);
     }
     for (const el of document.querySelectorAll<HTMLVideoElement>(
       `video[data-ot-preview="${CSS.escape(videoId)}"]`,
     )) {
-      el.pause();
+      finishPlayback(el);
     }
     try {
       await runAuthed(async () => {
