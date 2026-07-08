@@ -62,9 +62,15 @@ export function WatchTracker({
     const onVisibilityChange = () => {
       if (document.visibilityState === "visible") {
         visibleSince ??= Date.now();
-      } else if (visibleSince !== null) {
-        visibleAccumMs += Date.now() - visibleSince;
-        visibleSince = null;
+      } else {
+        if (visibleSince !== null) {
+          visibleAccumMs += Date.now() - visibleSince;
+          visibleSince = null;
+        }
+        // Losing focus is the moment most likely to precede the tab being
+        // throttled or killed — persist immediately. Background playback
+        // afterwards is covered by the (browser-throttled) interval.
+        m(buildEvent());
       }
     };
     document.addEventListener("visibilitychange", onVisibilityChange);
