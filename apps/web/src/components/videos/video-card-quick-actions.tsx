@@ -125,40 +125,6 @@ export function VideoCardQuickActions({
       )}
     >
       {quick.map((id) => {
-        if (id === "save") {
-          // Split-save semantics: active when in Saved or any playlist;
-          // press saves/unsaves, or opens the picker when playlist-only.
-          const inPlaylists = actions.playlistIds.size > 0;
-          const active = actions.state.saved || inPlaylists;
-          return (
-            <button
-              key={id}
-              type="button"
-              className={buttonClass(active)}
-              title={
-                actions.state.saved
-                  ? "Saved — click to remove"
-                  : inPlaylists
-                    ? "In playlists — choose where"
-                    : "Save"
-              }
-              aria-label="Save"
-              aria-pressed={active}
-              disabled={actions.pending}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (actions.state.saved || !inPlaylists) {
-                  actions.runAction("save");
-                } else {
-                  setPickerOpen(true);
-                }
-              }}
-            >
-              <VideoActionGlyph id="save" active={active} className="h-4 w-4" />
-            </button>
-          );
-        }
         if (id === "playlist") {
           return (
             <button

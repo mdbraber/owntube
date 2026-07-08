@@ -528,23 +528,53 @@ export function useVideoActions({
   const togglePlaylist = useCallback(
     async (playlistId: number, playlistName: string) => {
       const isIn = membership.playlistIds.has(playlistId);
+      const wasSaved = savedOverride ?? membership.saved;
       await runAuthed(async () => {
         if (isIn) {
           await removeFromPlaylist.mutateAsync({ playlistId, videoId });
           showToast(`Removed from "${playlistName}"`);
+          return;
+        }
+        await addToPlaylist.mutateAsync({ playlistId, videoId, channelId });
+        if (wasSaved) {
+          // Saved is the inbox — filing into a playlist moves the video out.
+          setSavedOverride(false);
+          await saveMutation.mutateAsync({
+            videoId,
+            channelId,
+            type: "save",
+            active: false,
+            title,
+          });
+          showToast(`Moved to "${playlistName}"`, {
+            undo: () => {
+              setSavedOverride(true);
+              saveMutation.mutate({
+                videoId,
+                channelId,
+                type: "save",
+                active: true,
+                title,
+              });
+              removeFromPlaylist.mutate({ playlistId, videoId });
+            },
+          });
         } else {
-          await addToPlaylist.mutateAsync({ playlistId, videoId, channelId });
           showToast(`Added to "${playlistName}"`);
         }
       });
     },
     [
       membership.playlistIds,
+      membership.saved,
+      savedOverride,
       runAuthed,
       removeFromPlaylist,
       addToPlaylist,
+      saveMutation,
       videoId,
       channelId,
+      title,
       showToast,
     ],
   );
@@ -553,6 +583,7 @@ export function useVideoActions({
     async (name: string) => {
       const trimmed = name.trim();
       if (!trimmed) return;
+      const wasSaved = savedOverride ?? membership.saved;
       await runAuthed(async () => {
         const created = await createPlaylist.mutateAsync({ name: trimmed });
         await addToPlaylist.mutateAsync({
@@ -560,10 +591,34 @@ export function useVideoActions({
           videoId,
           channelId,
         });
-        showToast(`Added to "${trimmed}"`);
+        if (wasSaved) {
+          // Filing moves the video out of the Saved inbox.
+          setSavedOverride(false);
+          await saveMutation.mutateAsync({
+            videoId,
+            channelId,
+            type: "save",
+            active: false,
+            title,
+          });
+          showToast(`Moved to "${trimmed}"`);
+        } else {
+          showToast(`Added to "${trimmed}"`);
+        }
       });
     },
-    [runAuthed, createPlaylist, addToPlaylist, videoId, channelId, showToast],
+    [
+      runAuthed,
+      createPlaylist,
+      addToPlaylist,
+      saveMutation,
+      membership.saved,
+      savedOverride,
+      videoId,
+      channelId,
+      title,
+      showToast,
+    ],
   );
 
   /** Dispatch by registry id — lets list surfaces render generically. */

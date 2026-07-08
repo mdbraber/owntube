@@ -2,18 +2,22 @@
 
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
-import { QueuedIcon, SavedIcon } from "@/components/videos/video-action-icons";
+import {
+  PlaylistIcon,
+  QueuedIcon,
+  SavedIcon,
+} from "@/components/videos/video-action-icons";
 import type { VideoActionSurface } from "@/components/videos/video-action-registry";
 import { useVideoMembership } from "@/components/videos/video-membership-context";
 import { cn } from "@/lib/utils";
 
 /** Pills that restate their page get suppressed per surface. */
 export const SURFACE_PILL_OMIT: Partial<
-  Record<VideoActionSurface, readonly ("queued" | "saved")[]>
+  Record<VideoActionSurface, readonly ("queued" | "saved" | "playlist")[]>
 > = {
   queue: ["queued"],
   saved: ["saved"],
-  playlist: ["saved"],
+  playlist: ["playlist"],
 };
 
 type VideoStatusPillsProps = {
@@ -22,7 +26,7 @@ type VideoStatusPillsProps = {
   /** Compact pill sizing for smaller cards (shorts/compact). */
   size?: "default" | "sm";
   /** Suppress pills that restate the page (e.g. "Queued" on the queue page). */
-  omit?: readonly ("queued" | "saved")[];
+  omit?: readonly ("queued" | "saved" | "playlist")[];
   /** Derives `omit` from the rendering surface when set. */
   surface?: VideoActionSurface;
 };
@@ -48,11 +52,13 @@ export function VideoStatusPills({
   const router = useRouter();
   const membership = useVideoMembership(videoId);
   const queued = membership.queued && !effectiveOmit.includes("queued");
-  // Saved is basically a playlist: membership anywhere lights the pill.
-  const saved =
-    (membership.saved || membership.playlistIds.size > 0) &&
-    !effectiveOmit.includes("saved");
-  if (!saved && !queued) return null;
+  // Saved is the *inbox* — the pill means "not filed yet". Playlist
+  // membership gets its own named pill below.
+  const saved = membership.saved && !effectiveOmit.includes("saved");
+  const playlistName = effectiveOmit.includes("playlist")
+    ? undefined
+    : membership.playlistName;
+  if (!saved && !queued && !playlistName) return null;
 
   const sizeClass =
     size === "sm"
@@ -95,18 +101,20 @@ export function VideoStatusPills({
           })
         : null}
       {saved
+        ? pill("Saved", <SavedIcon className={iconClass} />, "/saved", {
+            title: "Saved — go to saved videos",
+          })
+        : null}
+      {playlistName
         ? pill(
-            "Saved",
-            <SavedIcon className={iconClass} />,
-            membership.saved
-              ? "/saved"
-              : membership.playlistId != null
-                ? `/playlists/${membership.playlistId}`
-                : "/saved",
+            playlistName,
+            <PlaylistIcon className={iconClass} />,
+            membership.playlistId != null
+              ? `/playlists/${membership.playlistId}`
+              : "/playlists",
             {
-              title: membership.saved
-                ? "Saved — go to saved videos"
-                : `Saved — in "${membership.playlistName ?? "playlist"}"`,
+              title: `In playlist: ${playlistName} — open playlist`,
+              className: "max-w-[9rem]",
             },
           )
         : null}

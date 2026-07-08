@@ -17,6 +17,7 @@ import {
   PlaylistPicker,
   VideoActionsMenu,
 } from "@/components/videos/video-actions-menu";
+import { VideoStatusPills } from "@/components/videos/video-status-pills";
 import { cn } from "@/lib/utils";
 
 type InteractionButtonsProps = {
@@ -101,16 +102,11 @@ export function InteractionButtons({
     };
   }, [saveMenuOpen]);
 
-  // "Saved" is basically a playlist: the button reads active when the video
-  // sits in Saved *or* any playlist. Main press: save when nowhere yet;
-  // unsave when in Saved; when only in playlists, open the selector instead
-  // of blindly removing anything.
-  const inPlaylists = actions.playlistIds.size > 0;
-  const saveActive = actions.state.saved || inPlaylists;
-  const onSaveMainPress = () => {
-    if (actions.state.saved || !inPlaylists) actions.toggleSave();
-    else setSaveMenuOpen(true);
-  };
+  // Saved is the *inbox*: the main button is a pure capture toggle. Filing
+  // into playlists happens via the chevron picker (which moves it out of
+  // the inbox); the playlist pill next to the row shows where it lives.
+  const saveActive = actions.state.saved;
+  const onSaveMainPress = () => actions.toggleSave();
 
   const toggle = (id: "watched" | "save" | "queue") => {
     const active = isVideoActionActive(id, actions.state);
@@ -152,13 +148,7 @@ export function InteractionButtons({
             className={cn(pillBase, "pl-4 pr-3", pillTone(saveActive))}
             disabled={disabled}
             aria-pressed={saveActive}
-            title={
-              actions.state.saved
-                ? "Saved — click to remove"
-                : inPlaylists
-                  ? "In playlists — choose where"
-                  : "Save"
-            }
+            title={saveActive ? "Saved — click to remove" : "Save"}
             onClick={onSaveMainPress}
           >
             <Glyph id="save" active={saveActive} />
@@ -201,6 +191,8 @@ export function InteractionButtons({
         open={shareOpen}
         onClose={() => setShareOpen(false)}
       />
+      {/* Where it lives long-term, at a glance. */}
+      <VideoStatusPills videoId={videoId} omit={["queued", "saved"]} />
       <VideoActionsMenu
         videoId={videoId}
         title={title}
