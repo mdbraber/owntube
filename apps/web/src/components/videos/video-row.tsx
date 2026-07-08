@@ -21,10 +21,6 @@ type VideoRowProps = {
   durationSeconds?: number;
   /** Extra byline content after the channel (dot-separated). */
   meta?: ReactNode;
-  /** Progress fraction 0–1; renders a watch-progress bar across the thumbnail bottom. */
-  progress?: number;
-  /** Completed videos show the bar in green instead of the brand color. */
-  progressComplete?: boolean;
   /**
    * Leading slot content (position number, time of day). When `dragHandle` is
    * also given, the handle swaps in on hover, YouTube-playlist-style.
@@ -70,8 +66,6 @@ export function VideoRow({
   thumbnailUrl,
   durationSeconds,
   meta,
-  progress,
-  progressComplete = false,
   leading,
   dragHandle,
   onRemove,
@@ -82,10 +76,6 @@ export function VideoRow({
   enableSwipe = false,
 }: VideoRowProps) {
   const target = `/watch/${encodeURIComponent(videoId)}`;
-  const pct =
-    typeof progress === "number"
-      ? Math.max(0, Math.min(100, Math.round(progress * 100)))
-      : null;
 
   const row = (
     <div className="group flex items-center gap-3 rounded-[var(--radius-card)] p-2 transition hover:bg-[hsl(var(--muted)_/_0.45)]">
@@ -127,23 +117,9 @@ export function VideoRow({
               className="h-full w-full object-cover transition duration-500 ease-out group-hover:scale-105"
               loading="lazy"
             />
-            {pct !== null ? (
-              <span className="absolute inset-x-0 bottom-0 z-10 h-1 bg-black/40">
-                <span
-                  className={cn(
-                    "block h-full",
-                    progressComplete
-                      ? "bg-emerald-500"
-                      : "bg-[hsl(var(--primary))]",
-                  )}
-                  style={{ width: `${progressComplete ? 100 : pct}%` }}
-                />
-              </span>
-            ) : (
-              // No explicit progress from the host — fall back to the shared
-              // watch-progress map (queue/saved/playlist/home rows).
-              <VideoWatchProgress videoId={videoId} />
-            )}
+            {/* One standard: the shared watch-progress component (live map,
+                optimistic on mark-watched — full green when completed). */}
+            <VideoWatchProgress videoId={videoId} />
           </div>
         </Link>
         {/* Outside the watch link: the status pills navigate on their own. */}

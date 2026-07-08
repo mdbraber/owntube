@@ -192,12 +192,6 @@ export function HistoryList({ initialItems }: HistoryListProps) {
                     : undefined
                 }
                 surface="history"
-                progress={
-                  item.videoDurationSeconds > 0
-                    ? item.durationWatched / item.videoDurationSeconds
-                    : undefined
-                }
-                progressComplete={Boolean(item.completed)}
                 meta={
                   item.completed
                     ? "Completed"

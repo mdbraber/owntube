@@ -71,8 +71,6 @@ type BlockVideo = {
   channelAvatarUrl?: string | null;
   thumbnailUrl?: string | null;
   durationSeconds?: number;
-  progress?: number;
-  progressComplete?: boolean;
 };
 
 function toUnified(v: BlockVideo): UnifiedVideo {
@@ -146,8 +144,6 @@ function VideoBlockBody({
             channelName={v.channelName}
             thumbnailUrl={v.thumbnailUrl}
             durationSeconds={v.durationSeconds}
-            progress={v.progress}
-            progressComplete={v.progressComplete}
             surface={surface}
             size={singleColumn ? "sm" : block.size}
             enableSwipe
@@ -242,11 +238,6 @@ function HistoryBlockBody({ block }: { block: HomeBlock }) {
     thumbnailUrl: item.thumbnailUrl,
     durationSeconds:
       item.videoDurationSeconds > 0 ? item.videoDurationSeconds : undefined,
-    progress:
-      item.videoDurationSeconds > 0
-        ? item.durationWatched / item.videoDurationSeconds
-        : undefined,
-    progressComplete: Boolean(item.completed),
   }));
   return (
     <VideoBlockBody
