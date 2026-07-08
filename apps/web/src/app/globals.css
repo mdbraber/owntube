@@ -734,9 +734,9 @@ body {
      that lets the cue text scale with the *player* width (mini player,
      inline, cinema) instead of the viewport. */
   container-type: inline-size;
-  /* Nudged toward the center (≈9% of the player width per side) while the
-     text itself stays left-aligned inside the box. */
-  padding-inline: max(0.75rem, 9cqw);
+  /* Cues start at ~25% of the player width; with the box capped at ~50% of
+     the width the block reads centered while the text stays left-aligned. */
+  padding-inline: max(0.75rem, 25cqw) 0.75rem;
   bottom: 0.25rem; /* resting: sits low, near the bottom edge */
   transition: bottom 200ms ease-out;
 }
@@ -748,7 +748,8 @@ body {
 
 .ot-caption__box {
   display: inline-block;
-  max-width: 40rem;
+  /* At most half the player width (40rem cap for very wide cinema panes). */
+  max-width: min(40rem, 50cqw);
   /* Cancel the box's own padding so the text (not the padded box) sits at the
      inset edge. */
   margin-left: -0.5rem;
@@ -769,11 +770,11 @@ body {
    4K. (:fullscreen matches any fullscreen ancestor of the caption strip.) */
 :fullscreen .ot-caption__box {
   font-size: clamp(1.1rem, 2.2cqw, 2.25rem);
-  max-width: 60rem;
+  max-width: 50cqw;
 }
 *:-webkit-full-screen .ot-caption__box {
   font-size: clamp(1.1rem, 2.2cqw, 2.25rem);
-  max-width: 60rem;
+  max-width: 50cqw;
 }
 
 /* Roll-up: every line renders at full brightness. */
