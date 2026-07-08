@@ -40,36 +40,35 @@ export function DislikeIcon(props: IconProps) {
   );
 }
 
+/**
+ * Queue = "play next": two lines + a play triangle (YouTube's queue motif),
+ * clearly distinct from PlaylistIcon's lines + plus.
+ */
 export function QueueIcon(props: IconProps) {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      {...base(props)}
-    >
-      <path d="M4 6h11M4 12h11M4 18h7M17 15v6M20 18h-6" />
+    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" {...base(props)}>
+      <path
+        d="M4 6h16M4 12h16M12 18h8"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+      <path d="M4 15.4v5.2l4.6-2.6z" fill="currentColor" />
     </svg>
   );
 }
 
 export function QueuedIcon(props: IconProps) {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      {...base(props)}
-    >
-      <path d="M4 6h11M4 12h11M4 18h7M15 18l2 2 4-4" />
+    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" {...base(props)}>
+      <path
+        d="M4 6h16M4 12h16M12.5 18l2.5 2.5 5-5"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M4 15.4v5.2l4.6-2.6z" fill="currentColor" />
     </svg>
   );
 }

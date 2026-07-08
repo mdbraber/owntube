@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import {
   PlaylistIcon,
@@ -20,11 +21,12 @@ type VideoStatusPillsProps = {
 
 /**
  * State pills for a video thumbnail's bottom row: Queued, Saved, and playlist
- * membership (glyph + playlist name). State is rendered here — next to the
+ * membership (glyph + playlist name). State renders here — next to the
  * duration badge, in the metadata zone — never as a lingering overlay button.
- * The glyph identifies the kind of membership; brand color marks the icon,
- * the chip itself stays neutral. Reads shared membership state from context,
- * so any card can drop it in without wiring its own query.
+ * Each pill navigates to its collection (queue / saved / that playlist), so
+ * hosts must place this row *outside* any wrapping link. Reads shared
+ * membership state from context, so any card can drop it in without wiring
+ * its own query.
  */
 export function VideoStatusPills({
   videoId,
@@ -32,6 +34,7 @@ export function VideoStatusPills({
   size = "default",
   omit = [],
 }: VideoStatusPillsProps) {
+  const router = useRouter();
   const membership = useVideoMembership(videoId);
   const queued = membership.queued && !omit.includes("queued");
   const saved = membership.saved && !omit.includes("saved");
@@ -49,32 +52,54 @@ export function VideoStatusPills({
   const pill = (
     label: string,
     icon: ReactNode,
+    href: string,
     options?: { title?: string; className?: string },
   ) => (
-    <span
+    <button
+      type="button"
       className={cn(
-        "pointer-events-none inline-flex min-w-0 items-center rounded-full border border-white/15 bg-black/75 font-semibold text-white shadow-sm",
+        "pointer-events-auto inline-flex min-w-0 cursor-pointer items-center rounded-full border border-white/15 bg-black/75 font-semibold text-white shadow-sm transition hover:bg-black/90",
         sizeClass,
         options?.className,
       )}
       title={options?.title ?? label}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        router.push(href);
+      }}
     >
       <span className={cn("shrink-0 text-[hsl(var(--primary))]", iconClass)}>
         {icon}
       </span>
       <span className="truncate">{label}</span>
-    </span>
+    </button>
   );
 
   return (
     <span className={cn("flex min-w-0 items-center gap-1", className)}>
-      {queued ? pill("Queued", <QueuedIcon className={iconClass} />) : null}
-      {saved ? pill("Saved", <SavedIcon className={iconClass} />) : null}
-      {playlistName
-        ? pill(playlistName, <PlaylistIcon className={iconClass} />, {
-            title: `In playlist: ${playlistName}`,
-            className: "max-w-[9rem]",
+      {queued
+        ? pill("Queued", <QueuedIcon className={iconClass} />, "/queue", {
+            title: "Queued — go to queue",
           })
+        : null}
+      {saved
+        ? pill("Saved", <SavedIcon className={iconClass} />, "/saved", {
+            title: "Saved — go to saved videos",
+          })
+        : null}
+      {playlistName
+        ? pill(
+            playlistName,
+            <PlaylistIcon className={iconClass} />,
+            membership.playlistId != null
+              ? `/playlists?playlist=${membership.playlistId}`
+              : "/playlists",
+            {
+              title: `In playlist: ${playlistName} — open playlist`,
+              className: "max-w-[9rem]",
+            },
+          )
         : null}
     </span>
   );

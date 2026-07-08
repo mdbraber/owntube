@@ -97,38 +97,41 @@ export function VideoRow({
         </div>
       ) : null}
 
-      <Link href={target} className="block shrink-0">
-        <div className="relative aspect-video w-[8.5rem] overflow-hidden rounded-xl bg-[hsl(var(--muted))] sm:w-40">
-          {/* Derives the thumbnail from videoId when no explicit URL is given
-              (denormalized history/library rows omit it). */}
-          <VideoThumbnailImg
-            url={thumbnailUrl ?? undefined}
-            videoId={videoId}
-            className="h-full w-full object-cover transition duration-500 ease-out group-hover:scale-105"
-            loading="lazy"
-          />
-          <div className="pointer-events-none absolute inset-x-1 bottom-1 z-10 flex items-center justify-end gap-1">
-            <VideoStatusPills
+      <div className="relative shrink-0">
+        <Link href={target} className="block">
+          <div className="relative aspect-video w-[8.5rem] overflow-hidden rounded-xl bg-[hsl(var(--muted))] sm:w-40">
+            {/* Derives the thumbnail from videoId when no explicit URL is given
+                (denormalized history/library rows omit it). */}
+            <VideoThumbnailImg
+              url={thumbnailUrl ?? undefined}
               videoId={videoId}
-              size="sm"
-              omit={SURFACE_PILL_OMIT[surface]}
+              className="h-full w-full object-cover transition duration-500 ease-out group-hover:scale-105"
+              loading="lazy"
             />
-            <VideoCardDurationBadge
-              durationSeconds={durationSeconds}
-              positioned={false}
-              className="px-1.5 py-px text-[10px]"
-            />
+            {pct !== null ? (
+              <span className="absolute inset-x-0 bottom-0 z-10 h-1 bg-black/40">
+                <span
+                  className="block h-full bg-[hsl(var(--primary))]"
+                  style={{ width: `${pct}%` }}
+                />
+              </span>
+            ) : null}
           </div>
-          {pct !== null ? (
-            <span className="absolute inset-x-0 bottom-0 z-10 h-1 bg-black/40">
-              <span
-                className="block h-full bg-[hsl(var(--primary))]"
-                style={{ width: `${pct}%` }}
-              />
-            </span>
-          ) : null}
+        </Link>
+        {/* Outside the watch link: the status pills navigate on their own. */}
+        <div className="pointer-events-none absolute inset-x-1 bottom-1 z-10 flex items-center justify-end gap-1">
+          <VideoStatusPills
+            videoId={videoId}
+            size="sm"
+            omit={SURFACE_PILL_OMIT[surface]}
+          />
+          <VideoCardDurationBadge
+            durationSeconds={durationSeconds}
+            positioned={false}
+            className="px-1.5 py-px text-[10px]"
+          />
         </div>
-      </Link>
+      </div>
 
       <div className="min-w-0 flex-1">
         <Link href={target} className="block min-w-0">

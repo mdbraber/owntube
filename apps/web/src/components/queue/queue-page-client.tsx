@@ -16,6 +16,7 @@ type Item = {
   position: number;
   videoTitle: string;
   thumbnailUrl?: string;
+  durationSeconds?: number;
   channelId: string | null;
   channelName: string | null;
 };
@@ -122,6 +123,7 @@ export function QueuePageClient() {
               channelId={item.channelId}
               channelName={item.channelName}
               thumbnailUrl={item.thumbnailUrl}
+              durationSeconds={item.durationSeconds}
               surface="queue"
               leading={i + 1}
               dragHandle={

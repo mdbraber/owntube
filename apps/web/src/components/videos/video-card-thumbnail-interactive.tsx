@@ -388,17 +388,18 @@ export function VideoCardThumbnailInteractive({
             </svg>
           </div>
         ) : null}
-        <div className="pointer-events-none absolute inset-x-2 bottom-2 z-10 flex items-center justify-end gap-1">
-          <VideoStatusPills videoId={videoId} />
-          <VideoCardDurationBadge
-            durationSeconds={durationSeconds}
-            isLive={isLive}
-            isUpcoming={isUpcoming}
-            positioned={false}
-            className="px-2 py-0.5 text-[11px]"
-          />
-        </div>
       </Link>
+      {/* Outside the watch link: the status pills navigate on their own. */}
+      <div className="pointer-events-none absolute inset-x-2 bottom-2 z-10 flex items-center justify-end gap-1">
+        <VideoStatusPills videoId={videoId} />
+        <VideoCardDurationBadge
+          durationSeconds={durationSeconds}
+          isLive={isLive}
+          isUpcoming={isUpcoming}
+          positioned={false}
+          className="px-2 py-0.5 text-[11px]"
+        />
+      </div>
       {/* biome-ignore lint/a11y/useMediaCaption: split preview companion */}
       <audio ref={audioRef} className="hidden" preload="none" />
       {showMute ? (

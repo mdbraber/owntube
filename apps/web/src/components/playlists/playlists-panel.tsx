@@ -81,9 +81,15 @@ export function PlaylistsPanel() {
     list.data?.find((p) => p.id === selectedPlaylistId) ?? null;
 
   useEffect(() => {
-    if (selectedPlaylistId == null && list.data && list.data.length > 0) {
-      setSelectedPlaylistId(list.data[0].id);
+    if (selectedPlaylistId != null || !list.data || list.data.length === 0) {
+      return;
     }
+    // Deep link from a status pill: /playlists?playlist=<id>.
+    const fromUrl = Number(
+      new URLSearchParams(window.location.search).get("playlist"),
+    );
+    const match = list.data.find((p) => p.id === fromUrl);
+    setSelectedPlaylistId(match?.id ?? list.data[0].id);
   }, [list.data, selectedPlaylistId]);
 
   return (

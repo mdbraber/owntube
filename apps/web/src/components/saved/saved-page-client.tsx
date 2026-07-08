@@ -46,6 +46,7 @@ export function SavedPageClient() {
             channelId={item.channelId}
             channelName={item.channelName}
             thumbnailUrl={item.thumbnailUrl}
+            durationSeconds={item.durationSeconds}
             surface="saved"
             removeLabel="Remove from saved"
             removeDisabled={unsave.isPending}

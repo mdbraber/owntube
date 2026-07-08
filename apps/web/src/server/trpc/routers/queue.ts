@@ -61,6 +61,7 @@ export const queueRouter = router({
             position: row.position,
             videoTitle: detail.title ?? row.title,
             thumbnailUrl: detail.thumbnailUrl,
+            durationSeconds: detail.durationSeconds,
             channelId: row.channelId,
             channelName: detail.channelName ?? row.channelId,
           };
@@ -70,6 +71,7 @@ export const queueRouter = router({
             position: row.position,
             videoTitle: row.title,
             thumbnailUrl: undefined as string | undefined,
+            durationSeconds: undefined as number | undefined,
             channelId: row.channelId,
             channelName: row.channelId,
           };

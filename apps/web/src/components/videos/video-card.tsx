@@ -346,18 +346,19 @@ export function VideoCardShort({
                 <polygon points="6 4 20 12 6 20 6 4" />
               </svg>
             </div>
-            <div className="pointer-events-none absolute inset-x-1.5 bottom-1.5 z-10 flex items-center justify-end gap-1">
-              <VideoStatusPills videoId={videoId} size="sm" />
-              <VideoCardDurationBadge
-                durationSeconds={durationSeconds}
-                isLive={isLive}
-                isUpcoming={isUpcoming}
-                positioned={false}
-                className="px-1.5 py-px text-[10px]"
-              />
-            </div>
           </div>
         </Link>
+        {/* Outside the watch link: the status pills navigate on their own. */}
+        <div className="pointer-events-none absolute inset-x-1.5 bottom-1.5 z-10 flex items-center justify-end gap-1">
+          <VideoStatusPills videoId={videoId} size="sm" />
+          <VideoCardDurationBadge
+            durationSeconds={durationSeconds}
+            isLive={isLive}
+            isUpcoming={isUpcoming}
+            positioned={false}
+            className="px-1.5 py-px text-[10px]"
+          />
+        </div>
         {videoId ? (
           <VideoCardQuickActions
             videoId={videoId}
@@ -487,38 +488,41 @@ export function VideoCardCompact({
   return (
     <article className="ot-video-card ot-video-card--compact group rounded-xl p-2 transition hover:bg-[hsl(var(--muted)_/_0.45)]">
       <div className="flex items-start gap-3 text-left">
-        <Link href={href} className="block shrink-0">
-          <div
-            className={`ot-video-card-thumbnail relative aspect-video overflow-hidden rounded-xl bg-[hsl(var(--muted))] ${thumbSizeClass}`}
-          >
-            {thumbnailUrl ? (
-              <VideoCardThumbnailImg
-                url={thumbnailUrl}
-                videoId={videoId}
-                className="h-full w-full object-cover transition duration-500 ease-out group-hover:scale-105"
-              />
-            ) : null}
-            <div className="pointer-events-none absolute inset-x-1 bottom-1 z-10 flex items-center justify-end gap-1">
-              <VideoStatusPills videoId={videoId} size="sm" />
-              <VideoCardDurationBadge
-                durationSeconds={durationSeconds}
-                isLive={isLive}
-                isUpcoming={isUpcoming}
-                positioned={false}
-                className="px-1 py-px text-[10px]"
-              />
+        <div className="relative shrink-0">
+          <Link href={href} className="block">
+            <div
+              className={`ot-video-card-thumbnail relative aspect-video overflow-hidden rounded-xl bg-[hsl(var(--muted))] ${thumbSizeClass}`}
+            >
+              {thumbnailUrl ? (
+                <VideoCardThumbnailImg
+                  url={thumbnailUrl}
+                  videoId={videoId}
+                  className="h-full w-full object-cover transition duration-500 ease-out group-hover:scale-105"
+                />
+              ) : null}
             </div>
-            {videoId ? (
-              <VideoCardQuickActions
-                videoId={videoId}
-                title={title}
-                channelId={channelId}
-                surface={surface}
-                className="absolute right-1.5 top-1.5 z-20"
-              />
-            ) : null}
+          </Link>
+          {/* Outside the watch link: the status pills navigate on their own. */}
+          <div className="pointer-events-none absolute inset-x-1 bottom-1 z-10 flex items-center justify-end gap-1">
+            <VideoStatusPills videoId={videoId} size="sm" />
+            <VideoCardDurationBadge
+              durationSeconds={durationSeconds}
+              isLive={isLive}
+              isUpcoming={isUpcoming}
+              positioned={false}
+              className="px-1 py-px text-[10px]"
+            />
           </div>
-        </Link>
+          {videoId ? (
+            <VideoCardQuickActions
+              videoId={videoId}
+              title={title}
+              channelId={channelId}
+              surface={surface}
+              className="absolute right-1.5 top-1.5 z-20"
+            />
+          ) : null}
+        </div>
         <div className="flex min-w-0 flex-1 flex-col gap-0.5 py-0.5 pr-1">
           <div
             className={

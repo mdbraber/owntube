@@ -10,14 +10,18 @@ export type VideoMembership = {
   queued: boolean;
   /** Name of a playlist the video belongs to, if any. */
   playlistName?: string;
+  /** Id of that playlist — lets the status pill link to it. */
+  playlistId?: number;
   /** Every playlist (id) the video belongs to — backs the picker checklist. */
   playlistIds: ReadonlySet<number>;
 };
 
+type PlaylistRef = { id: number; name: string };
+
 type VideoMembershipValue = {
   savedIds: ReadonlySet<string>;
   queuedIds: ReadonlySet<string>;
-  playlistByVideo: ReadonlyMap<string, string>;
+  playlistByVideo: ReadonlyMap<string, PlaylistRef>;
   playlistIdsByVideo: ReadonlyMap<string, ReadonlySet<number>>;
 };
 
@@ -50,12 +54,15 @@ export function VideoMembershipProvider({ children }: { children: ReactNode }) {
   const value = useMemo<VideoMembershipValue>(() => {
     const savedIds = new Set(savedQuery.data ?? []);
     const queuedIds = new Set((queueQuery.data ?? []).map((i) => i.videoId));
-    const playlistByVideo = new Map<string, string>();
+    const playlistByVideo = new Map<string, PlaylistRef>();
     const playlistIdsByVideo = new Map<string, Set<number>>();
     // Rows arrive most-recently-added first; keep the first name seen per video.
     for (const row of playlistQuery.data ?? []) {
       if (!playlistByVideo.has(row.videoId)) {
-        playlistByVideo.set(row.videoId, row.playlistName);
+        playlistByVideo.set(row.videoId, {
+          id: row.playlistId,
+          name: row.playlistName,
+        });
       }
       const ids = playlistIdsByVideo.get(row.videoId) ?? new Set<number>();
       ids.add(row.playlistId);
@@ -78,10 +85,12 @@ export function useVideoMembership(videoId?: string): VideoMembership {
     if (!videoId) {
       return { saved: false, queued: false, playlistIds: EMPTY_ID_SET };
     }
+    const playlist = playlistByVideo.get(videoId);
     return {
       saved: savedIds.has(videoId),
       queued: queuedIds.has(videoId),
-      playlistName: playlistByVideo.get(videoId),
+      playlistName: playlist?.name,
+      playlistId: playlist?.id,
       playlistIds: playlistIdsByVideo.get(videoId) ?? EMPTY_ID_SET,
     };
   }, [videoId, savedIds, queuedIds, playlistByVideo, playlistIdsByVideo]);
