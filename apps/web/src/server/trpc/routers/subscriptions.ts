@@ -121,6 +121,8 @@ type SubscriptionChannelDetail = {
   subscribedAt: number;
   channelName: string;
   avatarUrl: string | null;
+  /** Unix seconds of the channel's newest known upload (channel_meta). */
+  latestVideoAt: number | null;
 };
 
 function sleepMs(ms: number): Promise<void> {
@@ -139,6 +141,7 @@ async function fetchSubscriptionChannelDetail(
     subscribedAt,
     channelName: meta.channelName,
     avatarUrl: meta.avatarUrl,
+    latestVideoAt: null,
   };
 }
 
@@ -163,7 +166,15 @@ async function listDetailedChannelRows(
     );
     out.push(...part);
   }
-  return out;
+  // Enrich with the newest-upload timestamp in one channel_meta read.
+  const metaById = readChannelMetaByIds(
+    db,
+    out.map((c) => c.channelId),
+  );
+  return out.map((c) => ({
+    ...c,
+    latestVideoAt: metaById.get(c.channelId)?.latestVideoAt ?? null,
+  }));
 }
 
 function markWatchedRows(
