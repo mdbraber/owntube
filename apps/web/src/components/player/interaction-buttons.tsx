@@ -11,6 +11,7 @@ import {
   videoActionShortLabel,
 } from "@/components/videos/video-action-registry";
 import { VideoActionsMenu } from "@/components/videos/video-actions-menu";
+import { VideoStatusPills } from "@/components/videos/video-status-pills";
 import { cn } from "@/lib/utils";
 
 type InteractionButtonsProps = {
@@ -74,7 +75,7 @@ export function InteractionButtons({
   const disabled = !isAuthenticated || actions.pending;
   const [shareOpen, setShareOpen] = useState(false);
 
-  const reactionHalf = (id: "like" | "dislike") => {
+  const reactionHalf = (id: "like" | "ignore" | "dislike") => {
     const active = isVideoActionActive(id, actions.state);
     return (
       <button
@@ -110,9 +111,14 @@ export function InteractionButtons({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {/* Segmented either-or pair; each half carries its own aria-label. */}
+      {/* Segmented reactions — like | ignore | dislike; icon-only halves. */}
       <div className="flex overflow-hidden rounded-full">
         {reactionHalf("like")}
+        <span
+          aria-hidden
+          className="my-2 w-px shrink-0 bg-[hsl(var(--border))]"
+        />
+        {reactionHalf("ignore")}
         <span
           aria-hidden
           className="my-2 w-px shrink-0 bg-[hsl(var(--border))]"
@@ -136,6 +142,8 @@ export function InteractionButtons({
         open={shareOpen}
         onClose={() => setShareOpen(false)}
       />
+      {/* Playlist membership at a glance; queue/save state lives on the pills. */}
+      <VideoStatusPills videoId={videoId} omit={["queued", "saved"]} />
       <VideoActionsMenu
         videoId={videoId}
         title={title}
@@ -144,8 +152,8 @@ export function InteractionButtons({
         thumbnailUrl={thumbnailUrl}
         surface="watch"
         alwaysVisible
-        // These four are this row's own controls — the menu holds the rest.
-        visibleActions={["like", "dislike", "save", "queue"]}
+        // These are this row's own controls — the menu holds the rest.
+        visibleActions={["like", "ignore", "dislike", "save", "queue"]}
       />
     </div>
   );

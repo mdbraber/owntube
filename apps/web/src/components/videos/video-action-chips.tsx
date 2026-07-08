@@ -41,9 +41,9 @@ function Chip({
   standalone?: boolean;
 }) {
   const active = isVideoActionActive(id, actions.state);
-  // Like/dislike are icon-only everywhere — the glyphs are universally read
-  // and the labels eat horizontal space.
-  const iconOnly = id === "like" || id === "dislike";
+  // Like/dislike (and any segment inside the reaction pair) are icon-only —
+  // the glyphs are universally read and the labels eat horizontal space.
+  const iconOnly = id === "like" || id === "dislike" || !standalone;
   return (
     <button
       type="button"
@@ -73,7 +73,7 @@ function Chip({
   );
 }
 
-/** One pill, two halves — like and dislike are mutually exclusive. */
+/** One pill — like | ignore | dislike (reactions are mutually exclusive). */
 function ReactionPairChip({ actions }: { actions: VideoActions }) {
   const anyActive = actions.state.liked || actions.state.disliked;
   return (
@@ -85,6 +85,11 @@ function ReactionPairChip({ actions }: { actions: VideoActions }) {
       )}
     >
       <Chip id="like" actions={actions} standalone={false} />
+      <span
+        aria-hidden
+        className="my-2 w-px shrink-0 bg-[hsl(var(--border))]"
+      />
+      <Chip id="ignore" actions={actions} standalone={false} />
       <span
         aria-hidden
         className="my-2 w-px shrink-0 bg-[hsl(var(--border))]"

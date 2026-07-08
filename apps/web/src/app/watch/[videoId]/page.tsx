@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import Link from "next/link";
 import { ChannelSubscribeButton } from "@/components/channel/channel-subscribe-button";
 import { InteractionButtons } from "@/components/player/interaction-buttons";
+import { WatchChannelTags } from "@/components/player/watch-channel-tags";
 import { WatchTracker } from "@/components/player/watch-tracker";
 import { ChannelAvatarCircle } from "@/components/videos/channel-avatar-circle";
 import { VideoCardCompact } from "@/components/videos/video-card";
@@ -418,6 +419,14 @@ export default async function WatchPage({
                     <p className="text-xs text-[hsl(var(--muted-foreground))]">
                       {subscribersLabel ?? "Channel"}
                     </p>
+                    {detail?.channelId ? (
+                      <div className="mt-1">
+                        <WatchChannelTags
+                          channelId={detail.channelId}
+                          isAuthenticated={isAuthed}
+                        />
+                      </div>
+                    ) : null}
                   </div>
                   {detail?.channelId ? (
                     <div className="ml-1 shrink-0">
