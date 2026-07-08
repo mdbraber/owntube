@@ -320,7 +320,12 @@ export function VideoActionsMenu({
   // own controls, the sheet's chip row, and (on hover-capable card surfaces)
   // the two thumbnail quick actions.
   const hiddenIds = new Set<VideoActionId>(visibleActions ?? []);
-  const chipIds = quickActions.slice(0, 4).filter((id) => !hiddenIds.has(id));
+  const chipIds = quickActions
+    .slice(0, 4)
+    .filter(
+      (id): id is Exclude<QuickAction, "playlist"> =>
+        id !== "playlist" && !hiddenIds.has(id),
+    );
   if (asSheet) {
     for (const id of chipIds) hiddenIds.add(id);
     // The like/dislike chip renders as the segmented pair with ignore in the

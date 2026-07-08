@@ -1,5 +1,6 @@
 "use client";
 
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useVideoActions } from "@/components/videos/use-video-actions";
 import {
   isVideoActionActive,
@@ -7,6 +8,7 @@ import {
   VideoActionGlyph,
   videoActionShortLabel,
 } from "@/components/videos/video-action-registry";
+import { PlaylistPicker } from "@/components/videos/video-actions-menu";
 import { DEFAULT_QUICK_ACTIONS, type QuickAction } from "@/lib/quick-actions";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/trpc/react";
@@ -21,12 +23,11 @@ type VideoCardQuickActionsProps = {
 };
 
 /**
- * The two thumbnail hover buttons (user's first two quick-action verbs;
- * defaults: Queue, Save). Desktop-only — hidden on coarse pointers, where the
- * always-visible kebab and its bottom sheet take over. Membership state shows
- * as pills in the thumbnail's bottom row, so these buttons never persist
- * un-hovered; the active treatment is a filled brand glyph on the same
- * neutral scrim chip.
+ * The thumbnail hover buttons — the user's first three quick-action verbs
+ * (defaults: Save, Ignore, Mark watched). Desktop-only: hidden on coarse
+ * pointers, where the always-visible kebab and its bottom sheet take over.
+ * "Add to playlist" opens the shared picker in a popover; membership state
+ * shows as pills, so these buttons never persist un-hovered.
  */
 export function VideoCardQuickActions({
   videoId,
@@ -35,6 +36,9 @@ export function VideoCardQuickActions({
   surface = "feed",
   className,
 }: VideoCardQuickActionsProps) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+
   const authed = trpc.auth.session.useQuery().data?.authed ?? false;
   const settings = trpc.settings.get.useQuery(undefined, {
     enabled: authed,
@@ -42,13 +46,7 @@ export function VideoCardQuickActions({
   });
   const quick: readonly QuickAction[] = (
     settings.data?.quickActions ?? DEFAULT_QUICK_ACTIONS
-  ).slice(0, 2);
-  // Discovery feeds (Recommended/Trending/Search) get Ignore on top of the
-  // stack — triage is the primary gesture there.
-  const stack: readonly QuickAction[] =
-    surface === "feed" && !quick.includes("ignore")
-      ? ["ignore", ...quick]
-      : quick;
+  ).slice(0, 3);
 
   const needsInteractionState = quick.some(
     (id) => id === "like" || id === "dislike",
@@ -59,29 +57,71 @@ export function VideoCardQuickActions({
     title,
     surface,
     withInteractionState: authed && needsInteractionState,
+    loadPlaylists: pickerOpen,
   });
+
+  const closePicker = useCallback(() => setPickerOpen(false), []);
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) closePicker();
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closePicker();
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [pickerOpen, closePicker]);
 
   if (!authed || quick.length === 0) return null;
 
+  const buttonClass = (active: boolean) =>
+    cn(
+      "flex h-8 w-8 items-center justify-center rounded-lg border border-white/20 bg-black/65 shadow-sm backdrop-blur-sm transition hover:bg-black/85 focus-visible:opacity-100 disabled:opacity-50",
+      active ? "text-[hsl(var(--primary))]" : "text-white",
+    );
+
   return (
     <div
+      ref={rootRef}
       className={cn(
         // pointer-fine only: on touch the kebab/bottom sheet is the path.
         "hidden flex-col gap-1.5 [@media(hover:hover)]:flex",
-        "opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-within:opacity-100",
+        "opacity-0 transition-opacity duration-150 focus-within:opacity-100 group-hover:opacity-100",
+        pickerOpen && "opacity-100",
         className,
       )}
     >
-      {stack.map((id) => {
+      {quick.map((id) => {
+        if (id === "playlist") {
+          return (
+            <button
+              key={id}
+              type="button"
+              className={buttonClass(pickerOpen)}
+              title="Add to playlist"
+              aria-label="Add to playlist"
+              aria-expanded={pickerOpen}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setPickerOpen((o) => !o);
+              }}
+            >
+              <VideoActionGlyph id="playlist" className="h-4 w-4" />
+            </button>
+          );
+        }
         const active = isVideoActionActive(id, actions.state);
         return (
           <button
             key={id}
             type="button"
-            className={cn(
-              "flex h-8 w-8 items-center justify-center rounded-lg border border-white/20 bg-black/65 shadow-sm backdrop-blur-sm transition hover:bg-black/85 focus-visible:opacity-100 disabled:opacity-50",
-              active ? "text-[hsl(var(--primary))]" : "text-white",
-            )}
+            className={buttonClass(active)}
             title={actions.labelFor(id)}
             aria-label={actions.labelFor(id)}
             aria-pressed={active}
@@ -99,6 +139,20 @@ export function VideoCardQuickActions({
           </button>
         );
       })}
+      {pickerOpen ? (
+        <div
+          role="dialog"
+          aria-label="Add to playlist"
+          className="absolute right-0 top-full z-40 mt-1.5 w-60 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] pt-2 text-sm shadow-lg"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
+          <PlaylistPicker actions={actions} onBack={closePicker} />
+        </div>
+      ) : null}
     </div>
   );
 }

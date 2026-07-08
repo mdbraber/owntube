@@ -4,6 +4,7 @@ import { defaultPlaybackQualitySchema } from "@/lib/default-playback-quality";
 import { DEFAULT_HOME_BLOCKS, HOME_BLOCK_TYPES } from "@/lib/home-blocks";
 import {
   DEFAULT_QUICK_ACTIONS,
+  LEGACY_DEFAULT_QUICK_ACTIONS,
   QUICK_ACTION_VALUES,
 } from "@/lib/quick-actions";
 import {
@@ -106,10 +107,15 @@ export const appSettingsSchema = z.object({
    * Ordered quick-action verbs: the first two surface as thumbnail hover
    * buttons on desktop, the first four as the chip row atop the mobile sheet.
    */
-  quickActions: z
-    .array(quickActionSchema)
-    .max(4)
-    .default(DEFAULT_QUICK_ACTIONS),
+  quickActions: z.preprocess(
+    (value) =>
+      // Profiles that stored the old default verbatim follow the new default.
+      Array.isArray(value) &&
+      value.join(",") === LEGACY_DEFAULT_QUICK_ACTIONS.join(",")
+        ? DEFAULT_QUICK_ACTIONS
+        : value,
+    z.array(quickActionSchema).max(4).default(DEFAULT_QUICK_ACTIONS),
+  ),
   /** Ordered blocks of the modular home page. */
   homeBlocks: z
     .array(

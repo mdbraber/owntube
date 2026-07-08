@@ -638,9 +638,8 @@ export function SettingsPanel({
           <div className="space-y-2">
             <p className="text-sm">Quick actions</p>
             <p className="text-xs text-[hsl(var(--muted-foreground))]">
-              The first two appear as hover buttons on video thumbnails
-              (desktop); the first four as the button row in the mobile action
-              sheet.
+              The first three appear as hover buttons on video thumbnails
+              (desktop); all four as the button row in the mobile action sheet.
             </p>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {[0, 1, 2, 3].map((slot) => (
