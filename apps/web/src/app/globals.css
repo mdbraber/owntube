@@ -734,16 +734,11 @@ body {
      that lets the cue text scale with the *player* width (mini player,
      inline, cinema) instead of the viewport. */
   container-type: inline-size;
-  /* Left inset matches the scrubber's (px-3, and px-4 ≥640px) so the text lines
-     up with the start of the scrubber. */
-  padding-inline: 0.75rem;
+  /* Nudged toward the center (≈9% of the player width per side) while the
+     text itself stays left-aligned inside the box. */
+  padding-inline: max(0.75rem, 9cqw);
   bottom: 0.25rem; /* resting: sits low, near the bottom edge */
   transition: bottom 200ms ease-out;
-}
-@media (min-width: 640px) {
-  .ot-caption {
-    padding-inline: 1rem;
-  }
 }
 .ot-caption[data-raised="true"] {
   /* Lifted clear of the scrubber while the chrome is shown; width-relative so
@@ -754,8 +749,8 @@ body {
 .ot-caption__box {
   display: inline-block;
   max-width: 40rem;
-  /* Cancel the box's own padding so the text (not the padded box) aligns with
-     the scrubber's left edge. */
+  /* Cancel the box's own padding so the text (not the padded box) sits at the
+     inset edge. */
   margin-left: -0.5rem;
   border-radius: 0.25rem;
   padding: 0.25rem 0.5rem;
@@ -768,6 +763,17 @@ body {
   /* Scales with the player width (cqw via the .ot-caption container):
      ~24px on a 900px player, down to ~11px in the mini player. */
   font-size: clamp(0.7rem, 2.75cqw, 1.5rem);
+}
+
+/* Fullscreen: more canvas, larger cues — ~32px on a 1440px screen, capped for
+   4K. (:fullscreen matches any fullscreen ancestor of the caption strip.) */
+:fullscreen .ot-caption__box {
+  font-size: clamp(1.1rem, 2.2cqw, 2.25rem);
+  max-width: 60rem;
+}
+*:-webkit-full-screen .ot-caption__box {
+  font-size: clamp(1.1rem, 2.2cqw, 2.25rem);
+  max-width: 60rem;
 }
 
 /* Roll-up: the last line is currently building (bright); lines above it are
