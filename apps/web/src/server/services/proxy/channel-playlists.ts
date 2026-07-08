@@ -15,7 +15,9 @@ import {
   pipedListItemsFromPayload,
 } from "@/server/services/proxy/mappers/piped";
 import { normalizeBaseUrl } from "@/server/services/proxy/normalize";
+import { unifiedVideoSchema } from "@/server/services/proxy.types";
 import { acquireUpstreamSlot } from "@/server/services/rate-limiter";
+import { upstreamGetText } from "@/server/services/upstream-get";
 
 export type ChannelPlaylistSummary = {
   playlistId: string;
@@ -37,6 +39,45 @@ export type YtPlaylistResult = {
   videos: UnifiedVideo[];
   sourceUsed: "piped" | "invidious";
 };
+
+function decodeXmlEntities(value: string): string {
+  return value
+    .replaceAll("&amp;", "&")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&quot;", '"')
+    .replaceAll("&#39;", "'");
+}
+
+/**
+ * Invidious playlist RSS entries (used when the JSON API's playlist scraper
+ * is broken and returns an empty video list). RSS caps at ~15 newest items.
+ */
+function parsePlaylistRssVideos(xml: string): UnifiedVideo[] {
+  const out: UnifiedVideo[] = [];
+  const entries = xml.split("<entry>").slice(1);
+  for (const entry of entries) {
+    const videoId = entry.match(/<yt:videoId>([^<]+)<\/yt:videoId>/)?.[1];
+    const rawTitle = entry.match(/<title>([^<]*)<\/title>/)?.[1];
+    if (!videoId || !rawTitle) continue;
+    const channelId = entry.match(/<yt:channelId>([^<]+)<\/yt:channelId>/)?.[1];
+    const channelName = entry.match(/<name>([^<]*)<\/name>/)?.[1];
+    const publishedIso = entry.match(/<published>([^<]+)<\/published>/)?.[1];
+    const publishedMs = publishedIso ? Date.parse(publishedIso) : Number.NaN;
+    const parsed = unifiedVideoSchema.safeParse({
+      videoId,
+      title: decodeXmlEntities(rawTitle),
+      channelId,
+      channelName: channelName ? decodeXmlEntities(channelName) : undefined,
+      thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+      publishedAt: Number.isFinite(publishedMs)
+        ? Math.floor(publishedMs / 1000)
+        : undefined,
+    });
+    if (parsed.success) out.push(parsed.data);
+  }
+  return out;
+}
 
 function ytPlaylistIdFromUrl(url: unknown): string | null {
   if (typeof url !== "string") return null;
@@ -209,6 +250,24 @@ export async function fetchYtPlaylist(
         sourceUsed: "invidious",
       };
       if (videos.length > 0) return result;
+      // Broken playlist scraper — the RSS feed uses a different code path
+      // and usually still works (capped at ~15 newest items).
+      try {
+        acquireUpstreamSlot();
+        const rss = await upstreamGetText(
+          new URL(
+            `/feed/playlist/${encodeURIComponent(input.playlistId)}`,
+            `${normalizeBaseUrl(base)}/`,
+          ).toString(),
+          15_000,
+        );
+        if (rss.ok) {
+          const rssVideos = parsePlaylistRssVideos(rss.text);
+          if (rssVideos.length > 0) return { ...result, videos: rssVideos };
+        }
+      } catch {
+        // fall through to the metadata-only result
+      }
       metadataOnly = metadataOnly ?? result;
       errors.push("invidious:playlist returned no videos");
     } catch (e) {
