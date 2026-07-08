@@ -575,6 +575,7 @@ export function VideoActionsMenu({
                         ids={chipIds}
                         actions={actions}
                         className="border-b border-[hsl(var(--border))] px-3 py-3"
+                        onOpenPlaylistPicker={() => setView("playlist")}
                       />
                     ) : null}
                     {reasonLine}

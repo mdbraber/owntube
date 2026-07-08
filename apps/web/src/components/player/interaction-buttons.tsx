@@ -2,11 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ShareDialog } from "@/components/player/share-dialog";
+import { useActionToast } from "@/components/videos/action-toast";
 import { useVideoActions } from "@/components/videos/use-video-actions";
-import {
-  ChevronDownIcon,
-  ShareIcon,
-} from "@/components/videos/video-action-icons";
+import { ShareIcon } from "@/components/videos/video-action-icons";
 import {
   isVideoActionActive,
   type VideoActionId,
@@ -17,7 +15,7 @@ import {
   PlaylistPicker,
   VideoActionsMenu,
 } from "@/components/videos/video-actions-menu";
-import { VideoStatusPills } from "@/components/videos/video-status-pills";
+import { saveMembershipLabel } from "@/lib/save-membership";
 import { cn } from "@/lib/utils";
 
 type InteractionButtonsProps = {
@@ -102,11 +100,27 @@ export function InteractionButtons({
     };
   }, [saveMenuOpen]);
 
-  // Saved is the *inbox*: the main button is a pure capture toggle. Filing
-  // into playlists happens via the chevron picker (which moves it out of
-  // the inbox); the playlist pill next to the row shows where it lives.
-  const saveActive = actions.state.saved;
-  const onSaveMainPress = () => actions.toggleSave();
+  // One cue: the button label encodes membership (Save / Saved / <playlist
+  // name> / Saved (n)). Inactive press = instant save to the inbox; active
+  // press opens the picker where Saved + playlists are plain checkboxes.
+  const membership = saveMembershipLabel(
+    actions.state.saved,
+    actions.playlistIds.size,
+    actions.playlistName,
+  );
+  const { showToast } = useActionToast();
+  const onSaveMainPress = () => {
+    if (membership.active) {
+      setSaveMenuOpen((o) => !o);
+    } else {
+      actions.toggleSave();
+      // Quick capture confirmed; "Change" jumps straight into filing.
+      showToast("Saved", {
+        undo: () => setSaveMenuOpen(true),
+        undoLabel: "Change",
+      });
+    }
+  };
 
   const toggle = (id: "watched" | "save" | "queue") => {
     const active = isVideoActionActive(id, actions.state);
@@ -135,41 +149,26 @@ export function InteractionButtons({
     <div className="flex flex-wrap items-center gap-2">
       {toggle("watched")}
       <div ref={saveMenuRef} className="relative">
-        <div
+        <button
+          type="button"
           className={cn(
-            "flex overflow-hidden rounded-full",
-            saveActive
-              ? "bg-[hsl(var(--primary)_/_0.12)]"
-              : "bg-[hsl(var(--muted)_/_0.6)]",
+            pillBase,
+            "max-w-56 rounded-full px-4",
+            pillTone(membership.active),
           )}
+          disabled={disabled}
+          aria-pressed={membership.active}
+          aria-expanded={saveMenuOpen}
+          title={
+            membership.active
+              ? "Saved — click to choose where"
+              : "Save for later"
+          }
+          onClick={onSaveMainPress}
         >
-          <button
-            type="button"
-            className={cn(pillBase, "pl-4 pr-3", pillTone(saveActive))}
-            disabled={disabled}
-            aria-pressed={saveActive}
-            title={saveActive ? "Saved — click to remove" : "Save"}
-            onClick={onSaveMainPress}
-          >
-            <Glyph id="save" active={saveActive} />
-            <span>{saveActive ? "Saved" : "Save"}</span>
-          </button>
-          <span
-            aria-hidden
-            className="my-2 w-px shrink-0 bg-[hsl(var(--border))]"
-          />
-          <button
-            type="button"
-            className={cn(pillBase, "px-2.5", pillTone(saveActive))}
-            disabled={disabled}
-            aria-label="Choose playlists"
-            aria-expanded={saveMenuOpen}
-            title="Save to Saved or playlists"
-            onClick={() => setSaveMenuOpen((o) => !o)}
-          >
-            <ChevronDownIcon className="h-4 w-4" />
-          </button>
-        </div>
+          <Glyph id="save" active={membership.active} />
+          <span className="truncate">{membership.label}</span>
+        </button>
         {saveMenuOpen ? (
           <div
             role="dialog"
@@ -191,8 +190,6 @@ export function InteractionButtons({
         open={shareOpen}
         onClose={() => setShareOpen(false)}
       />
-      {/* Where it lives long-term, at a glance. */}
-      <VideoStatusPills videoId={videoId} omit={["queued", "saved"]} />
       <VideoActionsMenu
         videoId={videoId}
         title={title}

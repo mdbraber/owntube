@@ -125,6 +125,31 @@ export function VideoCardQuickActions({
       )}
     >
       {quick.map((id) => {
+        if (id === "save") {
+          // One-cue save: active when in Saved or any playlist; inactive
+          // press captures to the inbox, active press opens the picker.
+          const active = actions.state.saved || actions.playlistIds.size > 0;
+          return (
+            <button
+              key={id}
+              type="button"
+              className={buttonClass(active || pickerOpen)}
+              title={active ? "Saved — click to choose where" : "Save"}
+              aria-label="Save"
+              aria-pressed={active}
+              aria-expanded={pickerOpen}
+              disabled={actions.pending}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (active) setPickerOpen((o) => !o);
+                else actions.runAction("save");
+              }}
+            >
+              <VideoActionGlyph id="save" active={active} className="h-4 w-4" />
+            </button>
+          );
+        }
         if (id === "playlist") {
           return (
             <button

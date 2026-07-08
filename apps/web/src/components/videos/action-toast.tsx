@@ -12,8 +12,10 @@ import {
 } from "react";
 
 type ToastOptions = {
-  /** Renders an Undo button that runs this and dismisses the toast. */
+  /** Renders an action button that runs this and dismisses the toast. */
   undo?: () => void;
+  /** Label for the action button (default "Undo"). */
+  undoLabel?: string;
 };
 
 type ActionToastValue = {
@@ -37,6 +39,7 @@ export function ActionToastProvider({ children }: { children: ReactNode }) {
   const [toast, setToast] = useState<{
     message: string;
     undo?: () => void;
+    undoLabel?: string;
     key: number;
   } | null>(null);
   const timerRef = useRef<number | null>(null);
@@ -51,7 +54,12 @@ export function ActionToastProvider({ children }: { children: ReactNode }) {
   const showToast = useCallback(
     (message: string, options?: ToastOptions) => {
       clearTimer();
-      setToast({ message, undo: options?.undo, key: Date.now() });
+      setToast({
+        message,
+        undo: options?.undo,
+        undoLabel: options?.undoLabel,
+        key: Date.now(),
+      });
     },
     [clearTimer],
   );
@@ -91,7 +99,7 @@ export function ActionToastProvider({ children }: { children: ReactNode }) {
                   setToast(null);
                 }}
               >
-                Undo
+                {toast.undoLabel ?? "Undo"}
               </button>
             ) : null}
           </div>
