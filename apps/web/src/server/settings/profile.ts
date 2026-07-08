@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { defaultPlaybackQualitySchema } from "@/lib/default-playback-quality";
+import { DEFAULT_HOME_BLOCKS, HOME_BLOCK_TYPES } from "@/lib/home-blocks";
 import {
   DEFAULT_QUICK_ACTIONS,
   QUICK_ACTION_VALUES,
@@ -109,6 +110,19 @@ export const appSettingsSchema = z.object({
     .array(quickActionSchema)
     .max(4)
     .default(DEFAULT_QUICK_ACTIONS),
+  /** Ordered blocks of the modular home page. */
+  homeBlocks: z
+    .array(
+      z.object({
+        id: z.string().min(1).max(64),
+        type: z.enum(HOME_BLOCK_TYPES),
+        playlistId: z.number().int().positive().optional(),
+        limit: z.number().int().min(1).max(24).default(8),
+        layout: z.enum(["cards", "rows"]).default("cards"),
+      }),
+    )
+    .max(16)
+    .default(DEFAULT_HOME_BLOCKS),
 });
 
 export type AppSettings = z.infer<typeof appSettingsSchema>;
@@ -145,6 +159,7 @@ const defaultSettings: AppSettings = {
     right: "queue",
   },
   quickActions: DEFAULT_QUICK_ACTIONS,
+  homeBlocks: DEFAULT_HOME_BLOCKS,
 };
 
 function nowUnix(): number {

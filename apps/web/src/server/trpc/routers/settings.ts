@@ -49,6 +49,7 @@ const settingsPatchSchema = z.object({
   enableSwipeGestures: appSettingsSchema.shape.enableSwipeGestures.optional(),
   swipeGestures: appSettingsSchema.shape.swipeGestures.optional(),
   quickActions: appSettingsSchema.shape.quickActions.optional(),
+  homeBlocks: appSettingsSchema.shape.homeBlocks.optional(),
 });
 
 const healthCheckInputSchema = z.object({

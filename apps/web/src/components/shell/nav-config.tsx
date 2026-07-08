@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 export type NavKey =
   | "home"
+  | "recommended"
   | "shorts"
   | "explore"
   | "subs"
@@ -258,6 +259,30 @@ const SUBSCRIPTIONS_ITEM: NavItem = {
   iconActive: SubscriptionsIconActive,
 };
 
+const RecommendedIcon = (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <title>Recommended</title>
+    <path d="M12 3l2.1 5.4L20 10.5l-5.9 2.1L12 18l-2.1-5.4L4 10.5l5.9-2.1z" />
+    <path d="M19 15.5l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9z" />
+  </svg>
+);
+
+const RecommendedIconActive = (
+  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <title>Recommended</title>
+    <path d="M12 3l2.1 5.4L20 10.5l-5.9 2.1L12 18l-2.1-5.4L4 10.5l5.9-2.1z" />
+    <path d="M19 15.5l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9z" />
+  </svg>
+);
+
 /** Browse group — above the sidebar divider. */
 export const SIDEBAR_NAV: NavItem[] = [
   {
@@ -266,6 +291,13 @@ export const SIDEBAR_NAV: NavItem[] = [
     label: "Home",
     icon: HomeIcon,
     iconActive: HomeIconActive,
+  },
+  {
+    key: "recommended",
+    href: "/recommended",
+    label: "Recommended",
+    icon: RecommendedIcon,
+    iconActive: RecommendedIconActive,
   },
   {
     key: "shorts",

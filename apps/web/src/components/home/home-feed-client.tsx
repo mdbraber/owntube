@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import { HomeHero } from "@/components/home/home-hero";
 import { HomeShortsShelf } from "@/components/home/home-shorts-shelf";
 import { Button } from "@/components/ui/button";
 import { useIgnoredVideos } from "@/components/videos/ignored-videos-context";
@@ -183,7 +182,7 @@ export function HomeFeedClient({ region, isAuthed }: HomeFeedClientProps) {
     }`;
   }, [lastPage, isAuthed]);
 
-  const [first, ...gridVideos] = merged;
+  const gridVideos = merged;
   const isInitialLoading = feed.isPending && merged.length === 0;
   const isLoadingMore = feed.isFetchingNextPage;
 
@@ -262,8 +261,6 @@ export function HomeFeedClient({ region, isAuthed }: HomeFeedClientProps) {
         </div>
       ) : null}
 
-      {first ? <HomeHero video={first} /> : null}
-
       {gridVideos.length > 0 ? (
         <>
           <div className="flex flex-wrap items-baseline justify-between gap-4">
@@ -305,10 +302,6 @@ export function HomeFeedClient({ region, isAuthed }: HomeFeedClientProps) {
             ) : null}
           </div>
         </>
-      ) : first ? (
-        <p className="text-sm text-[hsl(var(--muted-foreground))]">
-          Scroll to load more rows.
-        </p>
       ) : !isInitialLoading ? (
         <p className="rounded-[var(--radius-card)] border border-dashed border-[hsl(var(--border))] bg-[hsl(var(--muted)_/_0.35)] py-14 text-center text-sm text-[hsl(var(--muted-foreground))]">
           No videos for now.

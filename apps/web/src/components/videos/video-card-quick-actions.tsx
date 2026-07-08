@@ -43,6 +43,12 @@ export function VideoCardQuickActions({
   const quick: readonly QuickAction[] = (
     settings.data?.quickActions ?? DEFAULT_QUICK_ACTIONS
   ).slice(0, 2);
+  // Discovery feeds (Recommended/Trending/Search) get Ignore on top of the
+  // stack — triage is the primary gesture there.
+  const stack: readonly QuickAction[] =
+    surface === "feed" && !quick.includes("ignore")
+      ? ["ignore", ...quick]
+      : quick;
 
   const needsInteractionState = quick.some(
     (id) => id === "like" || id === "dislike",
@@ -66,7 +72,7 @@ export function VideoCardQuickActions({
         className,
       )}
     >
-      {quick.map((id) => {
+      {stack.map((id) => {
         const active = isVideoActionActive(id, actions.state);
         return (
           <button

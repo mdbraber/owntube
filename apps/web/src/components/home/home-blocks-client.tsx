@@ -1,0 +1,609 @@
+"use client";
+
+import Link from "next/link";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
+import {
+  DragHandleIcon,
+  PlaylistIcon,
+  XIcon,
+} from "@/components/videos/video-action-icons";
+import { useRowDrag } from "@/components/videos/use-row-drag";
+import { VideoGrid } from "@/components/videos/video-grid";
+import { VideoRow } from "@/components/videos/video-row";
+import { VideoThumbnailImg } from "@/components/videos/video-thumbnail-img";
+import {
+  DEFAULT_HOME_BLOCKS,
+  HOME_BLOCK_LABEL,
+  HOME_BLOCK_LIMITS,
+  type HomeBlock,
+  type HomeBlockType,
+  homeBlockHref,
+  newHomeBlockId,
+} from "@/lib/home-blocks";
+import { cn } from "@/lib/utils";
+import type { UnifiedVideo } from "@/server/services/proxy.types";
+import type { VideoActionSurface } from "@/components/videos/video-action-registry";
+import { trpc } from "@/trpc/react";
+
+/* ------------------------------ block data ------------------------------ */
+
+type BlockVideo = {
+  videoId: string;
+  title: string;
+  channelId?: string | null;
+  channelName?: string | null;
+  thumbnailUrl?: string | null;
+  durationSeconds?: number;
+  progress?: number;
+  progressComplete?: boolean;
+};
+
+function toUnified(v: BlockVideo): UnifiedVideo {
+  return {
+    videoId: v.videoId,
+    title: v.title,
+    channelId: v.channelId ?? undefined,
+    channelName: v.channelName ?? undefined,
+    thumbnailUrl: v.thumbnailUrl ?? undefined,
+    durationSeconds: v.durationSeconds,
+  } as UnifiedVideo;
+}
+
+function VideoBlockBody({
+  videos,
+  layout,
+  surface,
+  isLoading,
+}: {
+  videos: BlockVideo[];
+  layout: "cards" | "rows";
+  surface: VideoActionSurface;
+  isLoading: boolean;
+}) {
+  if (isLoading && videos.length === 0) {
+    return (
+      <p className="py-4 text-sm text-[hsl(var(--muted-foreground))]">
+        Loading…
+      </p>
+    );
+  }
+  if (videos.length === 0) {
+    return (
+      <p className="rounded-[var(--radius-card)] border border-dashed border-[hsl(var(--border))] bg-[hsl(var(--muted)_/_0.35)] py-8 text-center text-sm text-[hsl(var(--muted-foreground))]">
+        Nothing here yet.
+      </p>
+    );
+  }
+  if (layout === "cards") {
+    return <VideoGrid videos={videos.map(toUnified)} size="large" />;
+  }
+  return (
+    <ul className="space-y-1">
+      {videos.map((v) => (
+        <li key={v.videoId}>
+          <VideoRow
+            videoId={v.videoId}
+            title={v.title}
+            channelId={v.channelId}
+            channelName={v.channelName}
+            thumbnailUrl={v.thumbnailUrl}
+            durationSeconds={v.durationSeconds}
+            progress={v.progress}
+            progressComplete={v.progressComplete}
+            surface={surface}
+          />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function SubscriptionsBlockBody({ block }: { block: HomeBlock }) {
+  const query = trpc.subscriptions.mergedFeedInfinite.useQuery({
+    limit: Math.min(48, Math.max(8, block.limit)),
+  });
+  return (
+    <VideoBlockBody
+      videos={(query.data?.videos ?? []).slice(0, block.limit)}
+      layout={block.layout}
+      surface="subscriptions"
+      isLoading={query.isPending}
+    />
+  );
+}
+
+function HistoryBlockBody({ block }: { block: HomeBlock }) {
+  const query = trpc.history.list.useQuery({
+    page: 1,
+    pageSize: Math.min(24, block.limit),
+  });
+  const videos: BlockVideo[] = (query.data ?? []).map((item) => ({
+    videoId: item.videoId,
+    title: item.videoTitle ?? item.videoId,
+    channelId: item.channelId,
+    channelName: item.channelName,
+    thumbnailUrl: item.thumbnailUrl,
+    durationSeconds:
+      item.videoDurationSeconds > 0 ? item.videoDurationSeconds : undefined,
+    progress:
+      item.videoDurationSeconds > 0
+        ? item.durationWatched / item.videoDurationSeconds
+        : undefined,
+    progressComplete: Boolean(item.completed),
+  }));
+  return (
+    <VideoBlockBody
+      videos={videos}
+      layout={block.layout}
+      surface="history"
+      isLoading={query.isPending}
+    />
+  );
+}
+
+function QueueBlockBody({ block }: { block: HomeBlock }) {
+  const query = trpc.queue.listDetailed.useQuery();
+  const videos: BlockVideo[] = (query.data ?? [])
+    .slice(0, block.limit)
+    .map((item) => ({
+      videoId: item.videoId,
+      title: item.videoTitle,
+      channelId: item.channelId,
+      channelName: item.channelName,
+      thumbnailUrl: item.thumbnailUrl,
+      durationSeconds: item.durationSeconds,
+    }));
+  return (
+    <VideoBlockBody
+      videos={videos}
+      layout={block.layout}
+      surface="queue"
+      isLoading={query.isPending}
+    />
+  );
+}
+
+function SavedBlockBody({ block }: { block: HomeBlock }) {
+  const query = trpc.interactions.listSaved.useQuery();
+  const videos: BlockVideo[] = (query.data ?? [])
+    .slice(0, block.limit)
+    .map((item) => ({
+      videoId: item.videoId,
+      title: item.videoTitle,
+      channelId: item.channelId,
+      channelName: item.channelName,
+      thumbnailUrl: item.thumbnailUrl,
+      durationSeconds: item.durationSeconds,
+    }));
+  return (
+    <VideoBlockBody
+      videos={videos}
+      layout={block.layout}
+      surface="saved"
+      isLoading={query.isPending}
+    />
+  );
+}
+
+function PlaylistBlockBody({ block }: { block: HomeBlock }) {
+  const playlistId = block.playlistId ?? 0;
+  const query = trpc.playlists.itemsDetailed.useQuery(
+    { playlistId },
+    { enabled: playlistId > 0 },
+  );
+  const videos: BlockVideo[] = (query.data ?? [])
+    .slice(0, block.limit)
+    .map((item) => ({
+      videoId: item.videoId,
+      title: item.videoTitle,
+      channelId: item.channelId,
+      channelName: item.channelName,
+      thumbnailUrl: item.thumbnailUrl,
+      durationSeconds: item.durationSeconds,
+    }));
+  return (
+    <VideoBlockBody
+      videos={videos}
+      layout={block.layout}
+      surface="playlist"
+      isLoading={query.isPending}
+    />
+  );
+}
+
+/** The playlists overview as a block: collage tiles (cards) or rows. */
+function PlaylistsBlockBody({ block }: { block: HomeBlock }) {
+  const query = trpc.playlists.list.useQuery();
+  const playlists = (query.data ?? []).slice(0, block.limit);
+  if (query.isPending) {
+    return (
+      <p className="py-4 text-sm text-[hsl(var(--muted-foreground))]">
+        Loading…
+      </p>
+    );
+  }
+  if (playlists.length === 0) {
+    return (
+      <p className="rounded-[var(--radius-card)] border border-dashed border-[hsl(var(--border))] bg-[hsl(var(--muted)_/_0.35)] py-8 text-center text-sm text-[hsl(var(--muted-foreground))]">
+        No playlists yet.
+      </p>
+    );
+  }
+
+  const collage = (p: (typeof playlists)[number], compact: boolean) => (
+    <div
+      className={cn(
+        "relative aspect-video shrink-0 overflow-hidden rounded-xl bg-[hsl(var(--muted))]",
+        compact ? "w-[12.75rem] sm:w-60" : "w-full",
+      )}
+    >
+      {p.previewVideoIds.length > 0 ? (
+        <div className="grid h-full w-full grid-cols-2 grid-rows-2 gap-px">
+          {[0, 1, 2, 3].map((slot) => {
+            const videoId = p.previewVideoIds[slot];
+            return videoId ? (
+              <VideoThumbnailImg
+                key={videoId}
+                videoId={videoId}
+                className="h-full w-full object-cover"
+                loading="lazy"
+              />
+            ) : (
+              <span
+                key={`empty-${slot}`}
+                className="block h-full w-full bg-[hsl(var(--muted))]"
+              />
+            );
+          })}
+        </div>
+      ) : (
+        <div className="flex h-full w-full items-center justify-center text-[hsl(var(--muted-foreground))]">
+          <PlaylistIcon className="h-8 w-8" />
+        </div>
+      )}
+      <span className="absolute bottom-1 right-1 z-10 rounded-md bg-black/78 px-1.5 py-px font-mono text-[10px] font-semibold text-white">
+        {p.itemCount} {p.itemCount === 1 ? "video" : "videos"}
+      </span>
+    </div>
+  );
+
+  if (block.layout === "cards") {
+    return (
+      <ul className="grid gap-x-4 gap-y-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {playlists.map((p) => (
+          <li key={p.id} className="group">
+            <Link href={`/playlists/${p.id}`} className="block">
+              {collage(p, false)}
+              <p className="mt-2 line-clamp-1 text-[15px] font-semibold leading-snug tracking-tight transition group-hover:text-[hsl(var(--primary))]">
+                {p.name}
+              </p>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    );
+  }
+  return (
+    <ul className="space-y-1">
+      {playlists.map((p) => (
+        <li key={p.id}>
+          <Link
+            href={`/playlists/${p.id}`}
+            className="group flex items-center gap-3 rounded-[var(--radius-card)] p-2 transition hover:bg-[hsl(var(--muted)_/_0.45)]"
+          >
+            {collage(p, true)}
+            <p className="m-0 line-clamp-2 min-w-0 flex-1 text-[15px] font-semibold leading-snug tracking-tight transition group-hover:text-[hsl(var(--primary))]">
+              {p.name}
+            </p>
+          </Link>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function BlockBody({ block }: { block: HomeBlock }) {
+  switch (block.type) {
+    case "subscriptions":
+      return <SubscriptionsBlockBody block={block} />;
+    case "history":
+      return <HistoryBlockBody block={block} />;
+    case "queue":
+      return <QueueBlockBody block={block} />;
+    case "saved":
+      return <SavedBlockBody block={block} />;
+    case "playlists":
+      return <PlaylistsBlockBody block={block} />;
+    case "playlist":
+      return <PlaylistBlockBody block={block} />;
+  }
+}
+
+/* ------------------------------ block chrome ----------------------------- */
+
+function BlockHeading({ block }: { block: HomeBlock }) {
+  const playlistName = trpc.playlists.list
+    .useQuery(undefined, {
+      enabled: block.type === "playlist",
+    })
+    .data?.find((p) => p.id === block.playlistId)?.name;
+  const label =
+    block.type === "playlist"
+      ? (playlistName ?? "Playlist")
+      : HOME_BLOCK_LABEL[block.type];
+  return (
+    <Link
+      href={homeBlockHref(block)}
+      className="group/h inline-flex items-center gap-1.5"
+    >
+      <h2 className="m-0 text-xl font-bold tracking-tight transition group-hover/h:text-[hsl(var(--primary))]">
+        {label}
+      </h2>
+      <span
+        aria-hidden
+        className="text-lg text-[hsl(var(--muted-foreground))] transition group-hover/h:translate-x-0.5 group-hover/h:text-[hsl(var(--primary))]"
+      >
+        ›
+      </span>
+    </Link>
+  );
+}
+
+/* ----------------------------- add-block menu ---------------------------- */
+
+const ADDABLE_TYPES: Exclude<HomeBlockType, "playlist">[] = [
+  "subscriptions",
+  "history",
+  "queue",
+  "saved",
+  "playlists",
+];
+
+function AddBlockMenu({ onAdd }: { onAdd: (block: HomeBlock) => void }) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const playlists = trpc.playlists.list.useQuery(undefined, { enabled: open });
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  const add = (type: HomeBlockType, playlistId?: number) => {
+    onAdd({
+      id: newHomeBlockId(),
+      type,
+      playlistId,
+      limit: type === "playlists" ? 4 : 8,
+      layout: "cards",
+    });
+    setOpen(false);
+  };
+
+  return (
+    <div ref={rootRef} className="relative">
+      <Button type="button" size="sm" onClick={() => setOpen((o) => !o)}>
+        Add block
+      </Button>
+      {open ? (
+        <div
+          role="menu"
+          className="absolute right-0 top-full z-40 mt-1 max-h-80 w-60 overflow-y-auto rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] py-1 text-sm shadow-lg"
+        >
+          {ADDABLE_TYPES.map((type) => (
+            <button
+              key={type}
+              type="button"
+              role="menuitem"
+              className="flex w-full items-center px-3 py-2 text-left transition hover:bg-[hsl(var(--muted)_/_0.65)]"
+              onClick={() => add(type)}
+            >
+              {HOME_BLOCK_LABEL[type]}
+            </button>
+          ))}
+          {(playlists.data ?? []).length > 0 ? (
+            <>
+              <p className="border-t border-[hsl(var(--border))] px-3 pb-1 pt-2 font-mono text-[10px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
+                Specific playlist
+              </p>
+              {(playlists.data ?? []).map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  role="menuitem"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left transition hover:bg-[hsl(var(--muted)_/_0.65)]"
+                  onClick={() => add("playlist", p.id)}
+                >
+                  <PlaylistIcon className="h-4 w-4 shrink-0 text-[hsl(var(--muted-foreground))]" />
+                  <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                </button>
+              ))}
+            </>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/* --------------------------------- page ---------------------------------- */
+
+/**
+ * The modular home page: user-configured blocks mirroring the sidebar
+ * sections, reorderable in edit mode with per-block layout and size.
+ * Configuration persists in the settings profile (homeBlocks).
+ */
+export function HomeBlocksClient() {
+  const utils = trpc.useUtils();
+  const settings = trpc.settings.get.useQuery();
+  const update = trpc.settings.update.useMutation({
+    onSettled: () => utils.settings.get.invalidate(),
+  });
+
+  const [blocks, setBlocks] = useState<HomeBlock[]>(DEFAULT_HOME_BLOCKS);
+  const [editing, setEditing] = useState(false);
+  const hydratedRef = useRef(false);
+  useEffect(() => {
+    if (settings.data?.homeBlocks && !hydratedRef.current) {
+      hydratedRef.current = true;
+      setBlocks(settings.data.homeBlocks);
+    }
+  }, [settings.data?.homeBlocks]);
+
+  const persist = useCallback(
+    (next: HomeBlock[]) => {
+      setBlocks(next);
+      update.mutate({ homeBlocks: next });
+    },
+    [update],
+  );
+
+  const drag = useRowDrag({
+    count: blocks.length,
+    onMove: (from, to) =>
+      setBlocks((arr) => {
+        const next = [...arr];
+        const [m] = next.splice(from, 1);
+        next.splice(to, 0, m);
+        return next;
+      }),
+    onDrop: () =>
+      setBlocks((current) => {
+        update.mutate({ homeBlocks: current });
+        return current;
+      }),
+  });
+
+  const patchBlock = (id: string, patch: Partial<HomeBlock>) =>
+    persist(blocks.map((b) => (b.id === id ? { ...b, ...patch } : b)));
+
+  return (
+    <div className="space-y-8">
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="m-0 text-2xl font-extrabold tracking-tight">Home</h1>
+        <div className="flex items-center gap-2">
+          {editing ? (
+            <AddBlockMenu onAdd={(b) => persist([...blocks, b])} />
+          ) : null}
+          <Button
+            type="button"
+            size="sm"
+            variant={editing ? "default" : "outline"}
+            onClick={() => setEditing((e) => !e)}
+          >
+            {editing ? "Done" : "Edit"}
+          </Button>
+        </div>
+      </div>
+
+      {blocks.length === 0 ? (
+        <p className="rounded-[var(--radius-card)] border border-dashed border-[hsl(var(--border))] bg-[hsl(var(--muted)_/_0.35)] py-14 text-center text-sm text-[hsl(var(--muted-foreground))]">
+          Your home is empty — hit <strong>Edit</strong> and add a block.
+        </p>
+      ) : null}
+
+      <ul
+        className="select-none space-y-9"
+        {...(editing ? drag.listProps : {})}
+      >
+        {blocks.map((block, i) => {
+          const isDragging = editing && drag.dragging === i;
+          return (
+            <li
+              key={block.id}
+              ref={editing ? drag.setRowRef(i) : undefined}
+              style={
+                isDragging
+                  ? { transform: `translateY(${drag.dragY}px)` }
+                  : undefined
+              }
+              className={cn(
+                "space-y-3",
+                isDragging &&
+                  "relative z-10 rounded-[var(--radius-card)] bg-[hsl(var(--card))] p-3 shadow-lg ring-1 ring-[hsl(var(--border))]",
+              )}
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                {editing ? (
+                  <button
+                    type="button"
+                    className="cursor-grab touch-none select-none py-1 pr-1 text-[hsl(var(--muted-foreground))] transition hover:text-[hsl(var(--foreground))] active:cursor-grabbing"
+                    onPointerDown={(e) => drag.handlePointerDown(e, i)}
+                    aria-label="Drag to reorder block"
+                  >
+                    <DragHandleIcon className="h-[18px] w-[18px]" />
+                  </button>
+                ) : null}
+                <BlockHeading block={block} />
+                <span className="ml-auto" />
+                {editing ? (
+                  <>
+                    {/* cards ⇄ rows */}
+                    <div className="flex overflow-hidden rounded-full border border-[hsl(var(--border))] text-xs font-medium">
+                      {(["cards", "rows"] as const).map((layout) => (
+                        <button
+                          key={layout}
+                          type="button"
+                          aria-pressed={block.layout === layout}
+                          className={cn(
+                            "px-3 py-1 transition",
+                            block.layout === layout
+                              ? "bg-[hsl(var(--primary))] text-white"
+                              : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]",
+                          )}
+                          onClick={() => patchBlock(block.id, { layout })}
+                        >
+                          {layout === "cards" ? "Cards" : "Rows"}
+                        </button>
+                      ))}
+                    </div>
+                    <select
+                      className="rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-2.5 py-1 text-xs"
+                      value={block.limit}
+                      aria-label="Number of items"
+                      onChange={(e) =>
+                        patchBlock(block.id, {
+                          limit: Number(e.currentTarget.value),
+                        })
+                      }
+                    >
+                      {HOME_BLOCK_LIMITS.map((n) => (
+                        <option key={n} value={n}>
+                          {n} items
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      className="flex h-7 w-7 items-center justify-center rounded-full text-[hsl(var(--muted-foreground))] transition hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))]"
+                      title="Remove block"
+                      aria-label="Remove block"
+                      onClick={() =>
+                        persist(blocks.filter((b) => b.id !== block.id))
+                      }
+                    >
+                      <XIcon className="h-4 w-4" />
+                    </button>
+                  </>
+                ) : null}
+              </div>
+              <BlockBody block={block} />
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
