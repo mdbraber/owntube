@@ -649,7 +649,9 @@ export function SettingsPanel({
                   className="flex items-center justify-between gap-2 text-sm"
                 >
                   <span className="text-[hsl(var(--muted-foreground))]">
-                    {slot < 2 ? `Slot ${slot + 1} (thumbnail)` : `Slot ${slot + 1}`}
+                    {slot < 2
+                      ? `Slot ${slot + 1} (thumbnail)`
+                      : `Slot ${slot + 1}`}
                   </span>
                   <select
                     className="rounded border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-2 py-1 text-sm"

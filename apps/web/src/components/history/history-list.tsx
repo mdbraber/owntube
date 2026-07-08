@@ -41,8 +41,7 @@ function dayLabel(startedAt: number): string {
   return d.toLocaleDateString(undefined, {
     day: "numeric",
     month: "long",
-    year:
-      d.getFullYear() === new Date().getFullYear() ? undefined : "numeric",
+    year: d.getFullYear() === new Date().getFullYear() ? undefined : "numeric",
   });
 }
 

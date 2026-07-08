@@ -73,7 +73,11 @@ export function CardSwipeLayer({
   if (!enabled) return <>{children}</>;
 
   const pendingAction: SwipeAction =
-    dx > 0 ? (gestures?.right ?? "none") : dx < 0 ? (gestures?.left ?? "none") : "none";
+    dx > 0
+      ? (gestures?.right ?? "none")
+      : dx < 0
+        ? (gestures?.left ?? "none")
+        : "none";
   const armed = Math.abs(dx) >= COMMIT_PX && pendingAction !== "none";
 
   function run(action: SwipeAction) {
@@ -137,7 +141,11 @@ export function CardSwipeLayer({
         onTouchEnd={() => {
           const delta = dx;
           if (horizontal.current && Math.abs(delta) >= COMMIT_PX) {
-            run(delta > 0 ? (gestures?.right ?? "none") : (gestures?.left ?? "none"));
+            run(
+              delta > 0
+                ? (gestures?.right ?? "none")
+                : (gestures?.left ?? "none"),
+            );
           }
           startX.current = null;
           horizontal.current = false;
