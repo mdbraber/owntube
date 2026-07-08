@@ -212,15 +212,10 @@ export function SubscriptionChannelsList({
       </div>
 
       {groups ? (
-        <div className="space-y-4">
+        <div className="space-y-7">
           {groups.named.map(([tag, list]) => (
             <section key={tag}>
-              <h3 className="px-2 pb-1 font-mono text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
-                #{tag}{" "}
-                <span className="font-normal normal-case tracking-normal">
-                  · {list.length}
-                </span>
-              </h3>
+              <GroupHeader tag={tag} count={list.length} />
               <ul className="space-y-1">
                 {list.map((c) => (
                   <ChannelRow key={c.channelId} channel={c} />
@@ -230,12 +225,7 @@ export function SubscriptionChannelsList({
           ))}
           {groups.untagged.length > 0 ? (
             <section>
-              <h3 className="px-2 pb-1 font-mono text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
-                Untagged{" "}
-                <span className="font-normal normal-case tracking-normal">
-                  · {groups.untagged.length}
-                </span>
-              </h3>
+              <GroupHeader count={groups.untagged.length} />
               <ul className="space-y-1">
                 {groups.untagged.map((c) => (
                   <ChannelRow key={c.channelId} channel={c} />
@@ -251,6 +241,40 @@ export function SubscriptionChannelsList({
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+/**
+ * Group heading in the app's tag-pill language: the tag as a brand-tinted
+ * pill (linking to the subscriptions feed filtered to it), a channel count,
+ * and a hairline rule carrying the eye across the row. Untagged gets the
+ * neutral variant.
+ */
+function GroupHeader({ tag, count }: { tag?: string; count: number }) {
+  const pillClass = cn(
+    "inline-flex items-center rounded-full border px-3 py-1 text-sm font-semibold",
+    tag
+      ? "border-[hsl(var(--primary)_/_0.4)] bg-[hsl(var(--primary)_/_0.1)] text-[hsl(var(--primary))] transition hover:bg-[hsl(var(--primary)_/_0.18)]"
+      : "border-[hsl(var(--border))] bg-[hsl(var(--muted)_/_0.5)] text-[hsl(var(--muted-foreground))]",
+  );
+  return (
+    <div className="mb-2 flex items-center gap-3 px-1">
+      {tag ? (
+        <Link
+          href={`/subscriptions?tag=${encodeURIComponent(tag)}`}
+          className={pillClass}
+          title={`Show subscriptions tagged "${tag}"`}
+        >
+          #{tag}
+        </Link>
+      ) : (
+        <span className={pillClass}>Untagged</span>
+      )}
+      <span className="text-xs tabular-nums text-[hsl(var(--muted-foreground))]">
+        {count} {count === 1 ? "channel" : "channels"}
+      </span>
+      <span aria-hidden className="h-px flex-1 bg-[hsl(var(--border))]" />
     </div>
   );
 }
