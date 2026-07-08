@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { CardSwipeLayer } from "@/components/videos/card-swipe-layer";
 import { XIcon } from "@/components/videos/video-action-icons";
 import type { VideoActionSurface } from "@/components/videos/video-action-registry";
 import { VideoActionsMenu } from "@/components/videos/video-actions-menu";
@@ -38,6 +39,11 @@ type VideoRowProps = {
   surface: VideoActionSurface;
   /** Thumbnail size preset (home block sizing); md is the library default. */
   size?: "xs" | "sm" | "md" | "lg";
+  /**
+   * Touch swipe actions across the whole row (home blocks). Keep off on the
+   * drag-reorderable pages — the gestures would fight.
+   */
+  enableSwipe?: boolean;
 };
 
 const ROW_THUMB_WIDTH: Record<"xs" | "sm" | "md" | "lg", string> = {
@@ -80,6 +86,7 @@ export function VideoRow({
   removeDisabled,
   surface,
   size = "md",
+  enableSwipe = false,
 }: VideoRowProps) {
   const target = `/watch/${encodeURIComponent(videoId)}`;
   const pct =
@@ -87,7 +94,7 @@ export function VideoRow({
       ? Math.max(0, Math.min(100, Math.round(progress * 100)))
       : null;
 
-  return (
+  const row = (
     <div className="group flex items-center gap-3 rounded-[var(--radius-card)] p-2 transition hover:bg-[hsl(var(--muted)_/_0.45)]">
       {leading || dragHandle ? (
         <div className="flex min-w-6 shrink-0 items-center justify-center text-[hsl(var(--muted-foreground))]">
@@ -218,5 +225,17 @@ export function VideoRow({
         />
       </div>
     </div>
+  );
+
+  if (!enableSwipe) return row;
+  return (
+    <CardSwipeLayer
+      videoId={videoId}
+      title={title}
+      channelId={channelId ?? undefined}
+      surface={surface}
+    >
+      {row}
+    </CardSwipeLayer>
   );
 }

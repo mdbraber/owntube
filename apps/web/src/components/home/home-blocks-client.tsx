@@ -88,6 +88,7 @@ function VideoBlockBody({
         videos={videos.map(toUnified)}
         size="large"
         minColumnWidthPx={CARD_MIN_WIDTH_PX[block.size]}
+        enableSwipe
       />
     );
   }
@@ -106,6 +107,7 @@ function VideoBlockBody({
             progressComplete={v.progressComplete}
             surface={surface}
             size={block.size}
+            enableSwipe
           />
         </li>
       ))}
