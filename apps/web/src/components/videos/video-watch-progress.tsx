@@ -11,14 +11,25 @@ import { cn } from "@/lib/utils";
  */
 export function VideoWatchProgress({
   videoId,
+  liveFraction,
   className,
 }: {
   videoId?: string;
+  /** Live playback position (hover preview) — overrides the stored value. */
+  liveFraction?: number | null;
   className?: string;
 }) {
-  const progress = useWatchProgress(videoId);
-  if (!progress) return null;
-  if (!progress.completed && progress.fraction < 0.01) return null;
+  const stored = useWatchProgress(videoId);
+  const live = liveFraction ?? null;
+  if (live == null && !stored) return null;
+  if (live == null && stored && !stored.completed && stored.fraction < 0.01) {
+    return null;
+  }
+
+  const fraction = live ?? stored?.fraction ?? 0;
+  const completed =
+    (stored?.completed ?? false) || (live != null && live >= 0.985);
+  const progress = { fraction, completed };
 
   return (
     <span

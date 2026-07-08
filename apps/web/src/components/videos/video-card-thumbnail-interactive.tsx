@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useInvidiousOrigins } from "@/components/videos/invidious-origin-context";
 import { VideoCardDurationBadge } from "@/components/videos/video-card-duration-badge";
 import type { VideoActionSurface } from "@/components/videos/video-action-registry";
+import { useWatchProgress } from "@/components/videos/video-membership-context";
 import { VideoStatusPills } from "@/components/videos/video-status-pills";
 import { VideoWatchProgress } from "@/components/videos/video-watch-progress";
 import {
@@ -23,6 +24,24 @@ import { trpc } from "@/trpc/react";
 
 const DWELL_MS = 400;
 const PREVIEW_VOLUME = 0.42;
+/** Sticky preview-sound preference — unmute once, stays unmuted. */
+const PREVIEW_MUTED_KEY = "ot:preview-muted";
+
+function readPreviewMutedPref(): boolean {
+  try {
+    return localStorage.getItem(PREVIEW_MUTED_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
+
+function writePreviewMutedPref(muted: boolean): void {
+  try {
+    localStorage.setItem(PREVIEW_MUTED_KEY, muted ? "1" : "0");
+  } catch {
+    // storage unavailable
+  }
+}
 
 type VideoCardThumbnailInteractiveProps = {
   href: string;
@@ -102,6 +121,23 @@ export function VideoCardThumbnailInteractive({
   previewMutedRef.current = previewMuted;
   const pointerInsideRef = useRef(pointerInside);
   pointerInsideRef.current = pointerInside;
+  /** Live preview position for the thumbnail scrubber. */
+  const [previewFraction, setPreviewFraction] = useState<number | null>(null);
+  const watchProgress = useWatchProgress(videoId);
+  const resumeFractionRef = useRef<number | null>(null);
+  resumeFractionRef.current =
+    watchProgress &&
+    !watchProgress.completed &&
+    watchProgress.fraction > 0.01 &&
+    watchProgress.fraction < 0.95
+      ? watchProgress.fraction
+      : null;
+
+  // Hydrate the sticky sound preference after mount (previews are
+  // client-only, so there is no SSR mismatch to worry about).
+  useEffect(() => {
+    if (!readPreviewMutedPref()) setPreviewMuted(false);
+  }, []);
 
   useEffect(() => {
     if (!pointerInside) {
@@ -162,6 +198,16 @@ export function VideoCardThumbnailInteractive({
       v.preload = "metadata";
       v.volume = PREVIEW_VOLUME;
 
+      // Resume where the viewer left off (watch history position).
+      const seekToResume = () => {
+        const fraction = resumeFractionRef.current;
+        if (fraction != null && Number.isFinite(v.duration) && v.duration > 0) {
+          v.currentTime = fraction * v.duration;
+        }
+      };
+      if (v.readyState >= HTMLMediaElement.HAVE_METADATA) seekToResume();
+      else v.addEventListener("loadedmetadata", seekToResume, { once: true });
+
       if (playback.kind === "muxed") {
         v.src = playback.src;
         v.muted = previewMutedRef.current;
@@ -171,6 +217,20 @@ export function VideoCardThumbnailInteractive({
             previewActiveRef.current = true;
           }
         } catch {
+          // Unmuted autoplay can be blocked before any page gesture — retry
+          // muted rather than showing a frozen preview.
+          if (!v.muted) {
+            v.muted = true;
+            try {
+              await v.play();
+              if (!cancelled && pointerInsideRef.current) {
+                previewActiveRef.current = true;
+              }
+              return;
+            } catch {
+              // fall through
+            }
+          }
           previewActiveRef.current = false;
         }
         return;
@@ -247,6 +307,18 @@ export function VideoCardThumbnailInteractive({
               previewActiveRef.current = true;
             }
           } catch {
+            if (!v.muted) {
+              v.muted = true;
+              try {
+                await v.play();
+                if (!cancelled && pointerInsideRef.current) {
+                  previewActiveRef.current = true;
+                }
+                return;
+              } catch {
+                // fall through
+              }
+            }
             previewActiveRef.current = false;
           }
           return;
@@ -305,6 +377,25 @@ export function VideoCardThumbnailInteractive({
     };
   }, [pointerInside, playback]);
 
+  // Thumbnail scrubber follows the preview while it plays.
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!playback || !v) {
+      setPreviewFraction(null);
+      return;
+    }
+    const onTime = () => {
+      if (Number.isFinite(v.duration) && v.duration > 0) {
+        setPreviewFraction(Math.min(1, v.currentTime / v.duration));
+      }
+    };
+    v.addEventListener("timeupdate", onTime);
+    return () => {
+      v.removeEventListener("timeupdate", onTime);
+      setPreviewFraction(null);
+    };
+  }, [playback]);
+
   useEffect(() => {
     const v = videoRef.current;
     const a = audioRef.current;
@@ -346,10 +437,7 @@ export function VideoCardThumbnailInteractive({
       aria-label="Video thumbnail"
       className={thumbClassName}
       onMouseEnter={() => setPointerInside(true)}
-      onMouseLeave={() => {
-        setPointerInside(false);
-        setPreviewMuted(true);
-      }}
+      onMouseLeave={() => setPointerInside(false)}
     >
       <Link
         href={href}
@@ -393,7 +481,7 @@ export function VideoCardThumbnailInteractive({
           </div>
         ) : null}
       </Link>
-      <VideoWatchProgress videoId={videoId} />
+      <VideoWatchProgress videoId={videoId} liveFraction={previewFraction} />
       {/* Outside the watch link: the status pills navigate on their own. */}
       <div className="pointer-events-none absolute inset-x-2 bottom-2 z-10 flex items-center justify-end gap-1">
         <VideoStatusPills videoId={videoId} surface={surface} />
@@ -416,7 +504,11 @@ export function VideoCardThumbnailInteractive({
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            setPreviewMuted((m) => !m);
+            setPreviewMuted((m) => {
+              const next = !m;
+              writePreviewMutedPref(next);
+              return next;
+            });
           }}
         >
           {previewMuted ? (
