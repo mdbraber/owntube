@@ -512,7 +512,6 @@ export default async function WatchPage({
                     publishedText={video.publishedText}
                     showChannelAvatar={false}
                     size="large"
-                    showAddToQueue
                   />
                 </li>
               ))}

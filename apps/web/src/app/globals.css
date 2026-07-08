@@ -590,6 +590,16 @@ body {
   }
 }
 
+/* Bottom action sheet sliding up (touch devices). */
+@keyframes ot-sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
 /* Action toast entering from the viewport bottom. */
 @keyframes ot-toast-in {
   from {

@@ -240,7 +240,9 @@ export function useVideoActions({
       setQueuedOverride(target);
       if (target) {
         queueAdd.mutate({ videoId, title: title ?? videoId, channelId });
-        showToast("Added to queue", { undo: () => toggleQueueRef.current(false) });
+        showToast("Added to queue", {
+          undo: () => toggleQueueRef.current(false),
+        });
       } else {
         queueRemove.mutate({ videoId });
         showToast("Removed from queue", {
@@ -489,14 +491,9 @@ export function useVideoActions({
     ],
   );
 
-  const isActive = useCallback(
-    (id: VideoActionId) => isVideoActionActive(id, state),
-    [state],
-  );
-  const labelFor = useCallback(
-    (id: VideoActionId) => videoActionLabel(id, state, surface),
-    [state, surface],
-  );
+  // Plain closures — `state` is rebuilt every render anyway.
+  const isActive = (id: VideoActionId) => isVideoActionActive(id, state);
+  const labelFor = (id: VideoActionId) => videoActionLabel(id, state, surface);
 
   return {
     surface,

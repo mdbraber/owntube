@@ -2,6 +2,10 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { defaultPlaybackQualitySchema } from "@/lib/default-playback-quality";
 import {
+  DEFAULT_QUICK_ACTIONS,
+  QUICK_ACTION_VALUES,
+} from "@/lib/quick-actions";
+import {
   DEFAULT_SPONSORBLOCK_CATEGORIES,
   normalizeSponsorBlockCategories,
   sponsorBlockCategorySchema,
@@ -46,22 +50,7 @@ const swipeGesturesSchema = z.preprocess(
   }),
 );
 
-export const quickActionSchema = z.enum([
-  "queue",
-  "save",
-  "like",
-  "dislike",
-  "watched",
-  "ignore",
-]);
-export type QuickAction = z.infer<typeof quickActionSchema>;
-
-export const DEFAULT_QUICK_ACTIONS: QuickAction[] = [
-  "queue",
-  "save",
-  "like",
-  "dislike",
-];
+export const quickActionSchema = z.enum(QUICK_ACTION_VALUES);
 
 export const appSettingsSchema = z.object({
   theme: themeSchema.default("system"),

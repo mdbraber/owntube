@@ -41,17 +41,20 @@ export function ActionToastProvider({ children }: { children: ReactNode }) {
   } | null>(null);
   const timerRef = useRef<number | null>(null);
 
-  const clearTimer = () => {
+  const clearTimer = useCallback(() => {
     if (timerRef.current !== null) {
       window.clearTimeout(timerRef.current);
       timerRef.current = null;
     }
-  };
-
-  const showToast = useCallback((message: string, options?: ToastOptions) => {
-    clearTimer();
-    setToast({ message, undo: options?.undo, key: Date.now() });
   }, []);
+
+  const showToast = useCallback(
+    (message: string, options?: ToastOptions) => {
+      clearTimer();
+      setToast({ message, undo: options?.undo, key: Date.now() });
+    },
+    [clearTimer],
+  );
 
   useEffect(() => {
     if (!toast) return;
@@ -60,7 +63,7 @@ export function ActionToastProvider({ children }: { children: ReactNode }) {
       toast.undo ? DISMISS_WITH_UNDO_MS : DISMISS_MS,
     );
     return clearTimer;
-  }, [toast]);
+  }, [toast, clearTimer]);
 
   const value = useMemo(() => ({ showToast }), [showToast]);
 

@@ -1,16 +1,30 @@
 "use client";
 
-import { type ReactNode, useEffect, useId, useRef } from "react";
-import { useVideoCardActions } from "@/components/videos/use-video-card-actions";
-import { VideoCardActionsPlaylistPanel } from "@/components/videos/video-card-actions-playlist-panel";
+import { type ReactNode, useEffect, useId, useRef, useState } from "react";
+import { useVideoActions } from "@/components/videos/use-video-actions";
+import {
+  isVideoActionActive,
+  type VideoActionId,
+  VideoActionGlyph,
+  videoActionShortLabel,
+} from "@/components/videos/video-action-registry";
+import { PlaylistPicker } from "@/components/videos/video-actions-menu";
 import { cn } from "@/lib/utils";
 
 type ShortsVerticalActionsProps = {
   videoId: string;
   channelId?: string;
   channelName?: string;
+  title?: string;
   className?: string;
 };
+
+/** Verbs on the shorts rail, top to bottom (TikTok-style vertical stack). */
+const RAIL_ACTIONS: Exclude<VideoActionId, "playlist">[] = [
+  "like",
+  "dislike",
+  "block-channel",
+];
 
 function RailButton({
   label,
@@ -51,93 +65,40 @@ function RailButton({
   );
 }
 
-function PlaylistIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      className="h-5 w-5"
-      aria-hidden
-    >
-      <title>Playlist</title>
-      <path d="M4 6h16M4 12h10M4 18h6" />
-      <path d="M17 10v8M13 14h8" />
-    </svg>
-  );
-}
-
-function LikeIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      className="h-5 w-5"
-      aria-hidden
-    >
-      <title>Like</title>
-      <path d="M2 21h4V9H2v12zm20-11a2 2 0 0 0-2-2h-6.31l.95-4.57.03-.32a1 1 0 0 0-.29-.7L13.17 1 7.59 6.59A2 2 0 0 0 7 8v10a2 2 0 0 0 2 2h8a2 2 0 0 0 1.9-1.37l3-9c.07-.2.1-.41.1-.63V10z" />
-    </svg>
-  );
-}
-
-function DislikeIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      className="h-5 w-5"
-      aria-hidden
-    >
-      <title>Dislike</title>
-      <path d="M22 3h-4v12h4V3zM2 14a2 2 0 0 0 2 2h6.31l-.95 4.57-.03.32c0 .26.11.52.29.7L10.83 23l5.58-5.59A2 2 0 0 0 17 16V6a2 2 0 0 0-2-2H7a2 2 0 0 0-1.9 1.37l-3 9c-.07.2-.1.41-.1.63z" />
-    </svg>
-  );
-}
-
-function BlockIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      className="h-5 w-5"
-      aria-hidden
-    >
-      <title>Hide</title>
-      <circle cx="12" cy="12" r="9" />
-      <path d="M5 5l14 14" />
-    </svg>
-  );
-}
-
+/**
+ * Vertical action rail on the shorts player, rendered from the shared action
+ * registry (same verbs, icons, and active treatment as cards and menus).
+ */
 export function ShortsVerticalActions({
   videoId,
   channelId,
   channelName,
+  title,
   className,
 }: ShortsVerticalActionsProps) {
   const panelId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
-  const actions = useVideoCardActions({
+  const [playlistOpen, setPlaylistOpen] = useState(false);
+
+  const actions = useVideoActions({
     videoId,
     channelId,
     channelName,
-    loadPlaylists: true,
+    title,
+    surface: "shorts",
+    withInteractionState: true,
+    loadPlaylists: playlistOpen,
   });
-  const { playlistOpen, closePanels, setView, setPlaylistOpen } = actions;
 
   useEffect(() => {
     if (!playlistOpen) return;
     const onPointerDown = (e: PointerEvent) => {
       if (!rootRef.current?.contains(e.target as Node)) {
-        closePanels();
+        setPlaylistOpen(false);
       }
     };
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closePanels();
+      if (e.key === "Escape") setPlaylistOpen(false);
     };
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
@@ -145,18 +106,7 @@ export function ShortsVerticalActions({
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [playlistOpen, closePanels]);
-
-  const openPlaylist = () => {
-    setPlaylistOpen((open) => {
-      if (open) {
-        closePanels();
-        return false;
-      }
-      setView("playlist");
-      return true;
-    });
-  };
+  }, [playlistOpen]);
 
   return (
     <aside
@@ -167,66 +117,44 @@ export function ShortsVerticalActions({
       )}
       aria-label="Actions"
     >
-      {actions.feedback ? (
-        <span className="pointer-events-none absolute right-full top-2 z-40 mr-2 max-w-[11rem] truncate rounded-md bg-black/85 px-2 py-1 text-[11px] font-medium text-white shadow-md">
-          {actions.feedback}
-        </span>
-      ) : null}
-
       <RailButton
         label="Playlist"
-        active={actions.playlistOpen}
+        active={playlistOpen}
         disabled={actions.pending}
-        onClick={openPlaylist}
+        onClick={() => setPlaylistOpen((open) => !open)}
       >
-        <PlaylistIcon />
+        <VideoActionGlyph id="playlist" className="h-5 w-5" />
       </RailButton>
 
-      <RailButton
-        label={actions.liked ? "Liked" : "Like"}
-        active={actions.liked}
-        disabled={actions.pending}
-        onClick={() => void actions.toggleLike()}
-      >
-        <LikeIcon />
-      </RailButton>
+      {RAIL_ACTIONS.map((id) => {
+        if (id === "block-channel" && !channelId) return null;
+        const active = isVideoActionActive(id, actions.state);
+        return (
+          <RailButton
+            key={id}
+            label={videoActionShortLabel(id, actions.state)}
+            active={active}
+            disabled={
+              actions.pending ||
+              (id === "block-channel" && actions.state.channelBlocked)
+            }
+            onClick={() => actions.runAction(id)}
+          >
+            <VideoActionGlyph id={id} active={active} className="h-5 w-5" />
+          </RailButton>
+        );
+      })}
 
-      <RailButton
-        label={actions.disliked ? "Disliked" : "Dislike"}
-        active={actions.disliked}
-        disabled={actions.pending}
-        onClick={() => void actions.toggleDislike()}
-      >
-        <DislikeIcon />
-      </RailButton>
-
-      {channelId ? (
-        <RailButton
-          label="Hide"
-          active={actions.channelBlocked}
-          disabled={actions.pending || actions.channelBlocked}
-          onClick={() => void actions.blockRecommendationChannel()}
-        >
-          <BlockIcon />
-        </RailButton>
-      ) : null}
-
-      {actions.playlistOpen && actions.view !== "main" ? (
+      {playlistOpen ? (
         <div
           id={panelId}
-          className="absolute right-full top-0 z-40 mr-2"
+          className="absolute right-full top-0 z-40 mr-2 w-60 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] pt-2 shadow-lg"
           role="dialog"
           aria-label="Playlists"
         >
-          <VideoCardActionsPlaylistPanel
-            view={actions.view}
-            setView={actions.setView}
-            playlists={actions.playlists}
-            newPlaylistName={actions.newPlaylistName}
-            setNewPlaylistName={actions.setNewPlaylistName}
-            pending={actions.pending}
-            onAddToPlaylist={(id) => void actions.addVideoToPlaylist(id)}
-            onSubmitNewPlaylist={() => void actions.submitNewPlaylist()}
+          <PlaylistPicker
+            actions={actions}
+            onBack={() => setPlaylistOpen(false)}
           />
         </div>
       ) : null}

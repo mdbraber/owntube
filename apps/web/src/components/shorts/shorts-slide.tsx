@@ -218,6 +218,7 @@ export function ShortsSlide({
             videoId={video.videoId}
             channelId={video.channelId}
             channelName={video.channelName}
+            title={video.title}
             className="absolute bottom-0 right-0 z-30 pr-2 sm:static sm:right-auto sm:bottom-auto sm:self-end sm:pr-0 sm:pb-6"
           />
         ) : null}

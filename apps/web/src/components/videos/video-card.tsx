@@ -1,9 +1,9 @@
 import Link from "next/link";
-import { QueueToggleButton } from "@/components/queue/queue-toggle-button";
 import { ChannelAvatarCircle } from "@/components/videos/channel-avatar-circle";
-import { VideoCardActionsMenu } from "@/components/videos/video-card-actions-menu";
+import type { VideoActionSurface } from "@/components/videos/video-action-registry";
+import { VideoActionsMenu } from "@/components/videos/video-actions-menu";
 import { VideoCardDurationBadge } from "@/components/videos/video-card-duration-badge";
-import { VideoCardOverlayActions } from "@/components/videos/video-card-overlay-actions";
+import { VideoCardQuickActions } from "@/components/videos/video-card-quick-actions";
 import { VideoCardThumbnailImg } from "@/components/videos/video-card-thumbnail-img";
 import { VideoCardThumbnailInteractive } from "@/components/videos/video-card-thumbnail-interactive";
 import { VideoStatusPills } from "@/components/videos/video-status-pills";
@@ -37,6 +37,8 @@ type VideoCardProps = {
   recommendationReason?: RecommendationReason;
   /** Render dimmed (ignored video on a channel page). */
   dimmed?: boolean;
+  /** Where the card renders — trims the action menu per context. */
+  surface?: VideoActionSurface;
 };
 
 export function VideoCard({
@@ -56,6 +58,7 @@ export function VideoCard({
   publishedAt,
   recommendationReason,
   dimmed,
+  surface = "feed",
 }: VideoCardProps) {
   const viewsLabel = formatViews(viewCount);
   const publishedLabel = formatPublishedLabel(publishedText, publishedAt);
@@ -90,11 +93,12 @@ export function VideoCard({
             thumbClassName={thumbShell}
             imgClassName={thumbImg}
           />
-          <VideoCardOverlayActions
+          <VideoCardQuickActions
             videoId={videoId}
             title={title}
             channelId={channelId}
-            className="absolute inset-x-2 top-2 z-20 flex items-start justify-between gap-1"
+            surface={surface}
+            className="absolute right-2 top-2 z-20"
           />
         </div>
       ) : (
@@ -128,12 +132,6 @@ export function VideoCard({
               isUpcoming={isUpcoming}
               className="bottom-2 right-2 px-2 py-0.5 text-[11px]"
             />
-            <VideoCardOverlayActions
-              videoId={videoId}
-              title={title}
-              channelId={channelId}
-              className="absolute inset-x-2 top-2 z-20 flex items-start justify-between gap-1"
-            />
           </div>
         </Link>
       )}
@@ -161,10 +159,13 @@ export function VideoCard({
               </h2>
             </Link>
             {videoId ? (
-              <VideoCardActionsMenu
+              <VideoActionsMenu
                 videoId={videoId}
+                title={title}
                 channelId={channelId}
                 channelName={channelName}
+                thumbnailUrl={thumbnailUrl}
+                surface={surface}
                 recommendationReason={recommendationReason}
                 className="absolute -right-1 -top-1"
               />
@@ -232,6 +233,8 @@ type VideoCardShortProps = {
   showChannelMeta?: boolean;
   /** Full-width card for the home Shorts shelf (no 210px cap). */
   layout?: "default" | "shelf";
+  /** Where the card renders — trims the action menu per context. */
+  surface?: VideoActionSurface;
 };
 
 export function VideoCardShort({
@@ -251,6 +254,7 @@ export function VideoCardShort({
   recommendationReason,
   showChannelMeta = false,
   layout = "default",
+  surface = "feed",
 }: VideoCardShortProps) {
   const viewsLabel = formatViews(viewCount);
   const publishedLabel = formatPublishedLabel(publishedText, publishedAt);
@@ -310,12 +314,15 @@ export function VideoCardShort({
             </div>
           </div>
         </Link>
-        <VideoCardOverlayActions
-          videoId={videoId}
-          title={title}
-          channelId={channelId}
-          className="absolute inset-x-1.5 top-1.5 z-20 flex items-start justify-between gap-1"
-        />
+        {videoId ? (
+          <VideoCardQuickActions
+            videoId={videoId}
+            title={title}
+            channelId={channelId}
+            surface={surface}
+            className="absolute right-1.5 top-1.5 z-20"
+          />
+        ) : null}
       </div>
       <div className="px-0.5">
         <div className="relative min-w-0 pr-8">
@@ -323,10 +330,13 @@ export function VideoCardShort({
             <p className={titleClass}>{title}</p>
           </Link>
           {videoId ? (
-            <VideoCardActionsMenu
+            <VideoActionsMenu
               videoId={videoId}
+              title={title}
               channelId={channelId}
               channelName={channelName}
+              thumbnailUrl={thumbnailUrl}
+              surface={surface}
               recommendationReason={recommendationReason}
               className="absolute -right-1 -top-1"
             />
@@ -393,7 +403,8 @@ type VideoCardCompactProps = {
   publishedAt?: number;
   showChannelAvatar?: boolean;
   size?: "default" | "large";
-  showAddToQueue?: boolean;
+  /** Where the card renders — trims the action menu per context. */
+  surface?: VideoActionSurface;
 };
 
 export function VideoCardCompact({
@@ -412,7 +423,7 @@ export function VideoCardCompact({
   publishedAt,
   showChannelAvatar = true,
   size = "default",
-  showAddToQueue = false,
+  surface = "related",
 }: VideoCardCompactProps) {
   const publishedLabel = formatPublishedLabel(publishedText, publishedAt);
   const publishedAbsoluteLabel = formatPublishedAbsoluteLabel(publishedAt);
@@ -453,12 +464,15 @@ export function VideoCardCompact({
                 className="px-1 py-px text-[10px]"
               />
             </div>
-            <VideoCardOverlayActions
-              videoId={videoId}
-              title={title}
-              channelId={channelId}
-              className="absolute inset-x-1.5 top-1.5 z-20 flex items-start justify-between gap-1"
-            />
+            {videoId ? (
+              <VideoCardQuickActions
+                videoId={videoId}
+                title={title}
+                channelId={channelId}
+                surface={surface}
+                className="absolute right-1.5 top-1.5 z-20"
+              />
+            ) : null}
           </div>
         </Link>
         <div className="flex min-w-0 flex-1 flex-col gap-0.5 py-0.5 pr-1">
@@ -492,10 +506,13 @@ export function VideoCardCompact({
               <p className={titleClass}>{title}</p>
             </Link>
             {videoId ? (
-              <VideoCardActionsMenu
+              <VideoActionsMenu
                 videoId={videoId}
+                title={title}
                 channelId={channelId}
                 channelName={channelName}
+                thumbnailUrl={thumbnailUrl}
+                surface={surface}
                 className="absolute -right-1 -top-1"
               />
             ) : null}
@@ -529,15 +546,6 @@ export function VideoCardCompact({
               </>
             ) : null}
           </p>
-          {showAddToQueue ? (
-            <div className={metaPadClass}>
-              <QueueToggleButton
-                videoId={href.split("/watch/")[1]?.split("?")[0] ?? ""}
-                title={title}
-                variant="card"
-              />
-            </div>
-          ) : null}
         </div>
       </div>
     </article>
