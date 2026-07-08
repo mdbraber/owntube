@@ -136,15 +136,31 @@ function pickPreviewProxiedVariant(
 }
 
 /**
+ * A `/yt-hls?url=…` src is our server fetching googlevideo directly. Those
+ * stream URLs are IP-bound to the upstream instance that resolved them, so the
+ * server-IP replay 403s (see the buildWatchPlayback note preferring the
+ * synthesized `/hls` manifest over native `hlsUrl` for the same reason).
+ */
+function isYouTubeHopSrc(src: string): boolean {
+  return src.includes("/yt-hls?");
+}
+
+/**
  * Resolves playback URLs for in-card hover preview. Progressive: prefer muxed
  * ≤360p (single URL); otherwise split under cap, then lowest muxed, then lowest
  * rung. HLS: full adaptive manifest.
+ *
+ * Picks that would stream through the 403-prone `/yt-hls` hop are demoted to a
+ * last resort — the watch player's source decision (synthesized `/hls`
+ * manifest with companion-backed segments) takes their place.
  */
 export function cardPreviewPlaybackFromDetail(
   detail: VideoDetail,
   appOrigin: string,
   requestHost: string,
 ): CardPreviewPlayback | null {
+  let ytHopFallback: CardPreviewPlayback | null = null;
+
   const directMuxed = findPreviewMuxedUrl(detail);
   if (directMuxed) {
     const src = toProxiedOrDirectPlayback(
@@ -153,7 +169,8 @@ export function cardPreviewPlaybackFromDetail(
       requestHost,
       detail,
     );
-    return { kind: "muxed", src };
+    if (!isYouTubeHopSrc(src)) return { kind: "muxed", src };
+    ytHopFallback = { kind: "muxed", src };
   }
 
   const silentVideo = findPreviewVideoOnlyUrl(detail);
@@ -164,32 +181,39 @@ export function cardPreviewPlaybackFromDetail(
       requestHost,
       detail,
     );
-    return { kind: "muxed", src };
+    if (!isYouTubeHopSrc(src)) return { kind: "muxed", src };
+    ytHopFallback ??= { kind: "muxed", src };
   }
 
   const raw = buildWatchPlayback(detail);
-  if (raw.kind === "none") return null;
   if (raw.kind === "hls") {
-    const src = toProxiedOrDirectPlayback(
-      raw.url,
+    // The synthesized `/hls/<id>/master.m3u8` is app-relative — use as is.
+    const src = raw.url.startsWith("/")
+      ? raw.url
+      : toProxiedOrDirectPlayback(raw.url, appOrigin, requestHost, detail);
+    return { kind: "hls", src };
+  }
+  if (raw.kind === "progressive") {
+    const variants = toProxiedOrDirectVariants(
+      raw.variants,
       appOrigin,
       requestHost,
       detail,
     );
-    return { kind: "hls", src };
+    const pick = pickPreviewProxiedVariant(variants);
+    if (pick?.t === "muxed") {
+      if (!isYouTubeHopSrc(pick.src)) return { kind: "muxed", src: pick.src };
+      ytHopFallback ??= { kind: "muxed", src: pick.src };
+    } else if (pick) {
+      if (!isYouTubeHopSrc(pick.video)) {
+        return { kind: "split", videoSrc: pick.video, audioSrc: pick.audio };
+      }
+      ytHopFallback ??= {
+        kind: "split",
+        videoSrc: pick.video,
+        audioSrc: pick.audio,
+      };
+    }
   }
-  const variants = toProxiedOrDirectVariants(
-    raw.variants,
-    appOrigin,
-    requestHost,
-    detail,
-  );
-  const pick = pickPreviewProxiedVariant(variants);
-  if (!pick) return null;
-  if (pick.t === "muxed") return { kind: "muxed", src: pick.src };
-  return {
-    kind: "split",
-    videoSrc: pick.video,
-    audioSrc: pick.audio,
-  };
+  return ytHopFallback;
 }
