@@ -149,6 +149,22 @@ export function PlayerHost() {
     if (shouldClear) clearActive();
   }, [shouldClear, clearActive]);
 
+  // Leaving the watch page while playback is paused → nothing to keep
+  // hearing, so don't launch the mini; tear down instead. Checked only on
+  // the watch→away transition (pausing *inside* the mini must not close it).
+  // Layout effect so the mini never paints for a frame first.
+  const prevOnWatchRef = useRef(onWatch);
+  useIsoLayoutEffect(() => {
+    const was = prevOnWatchRef.current;
+    prevOnWatchRef.current = onWatch;
+    if (was && !onWatch && active !== null) {
+      const el = document.querySelector<HTMLVideoElement>(
+        "[data-ot-player-root] video",
+      );
+      if (el?.paused) clearActive();
+    }
+  }, [onWatch, active, clearActive]);
+
   // Full mode: position the overlay over the watch-page slot in the scroll
   // container's *content* coordinates. Because PlayerHost renders inside
   // `.ot-app-scroll` (position:relative) and this box is position:absolute, the
