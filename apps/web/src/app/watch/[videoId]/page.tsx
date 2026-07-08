@@ -37,7 +37,10 @@ import { auth } from "@/server/auth";
 import { getDb } from "@/server/db/client";
 import { UpstreamAgeRestrictedError } from "@/server/errors/upstream-age-restricted";
 import { UpstreamLiveUpcomingError } from "@/server/errors/upstream-live-upcoming";
-import { getWatchResumeSeconds } from "@/server/history/watch-resume";
+import {
+  getWatchResumeSeconds,
+  isVideoWatched,
+} from "@/server/history/watch-resume";
 import { getRecommendations } from "@/server/recommendation/engine";
 import {
   fetchRelatedVideos,
@@ -165,6 +168,13 @@ export default async function WatchPage({
       ? getWatchResumeSeconds(db, userId, videoId, detail.durationSeconds)
       : null;
   const effectiveStartAtSeconds = startAtSeconds ?? resumeSeconds ?? undefined;
+
+  // Already-watched videos open at rest: poster + chrome, no autoplay
+  // (whatever the setting says), position back at the start.
+  const videoWatched =
+    Number.isFinite(userId) && userId > 0
+      ? isVideoWatched(db, userId, videoId)
+      : false;
 
   // The detail payload usually already carries related videos; only spend the
   // extra upstream round-trip when it doesn't have enough to fill the sidebar.
@@ -341,7 +351,9 @@ export default async function WatchPage({
                 defaultPlaybackQuality={
                   userSettings?.defaultPlaybackQuality ?? "1080p"
                 }
-                autoplayOnWatch={userSettings?.autoplayOnWatch ?? true}
+                autoplayOnWatch={
+                  (userSettings?.autoplayOnWatch ?? true) && !videoWatched
+                }
                 sponsorBlockPrefs={
                   userSettings && !isLive
                     ? sponsorBlockPrefsFromAppSettings(userSettings)

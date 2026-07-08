@@ -13,6 +13,28 @@ const RESUME_MAX_RATIO = 0.95;
  * started, or effectively finished). Uses recorded watch progress, so it is an
  * approximation of the exact playback position.
  */
+/** True when the user has a completed watch of this video. */
+export function isVideoWatched(
+  db: AppDb,
+  userId: number,
+  videoId: string,
+): boolean {
+  const row = db
+    .select({ completed: watchHistory.completed })
+    .from(watchHistory)
+    .where(
+      and(
+        eq(watchHistory.userId, userId),
+        eq(watchHistory.videoId, videoId),
+        eq(watchHistory.isDeleted, 0),
+        eq(watchHistory.completed, 1),
+      ),
+    )
+    .limit(1)
+    .all()[0];
+  return Boolean(row);
+}
+
 export function getWatchResumeSeconds(
   db: AppDb,
   userId: number,
