@@ -21,6 +21,8 @@ type VideoRowProps = {
   meta?: ReactNode;
   /** Progress fraction 0–1; renders a watch-progress bar across the thumbnail bottom. */
   progress?: number;
+  /** Completed videos show the bar in green instead of the brand color. */
+  progressComplete?: boolean;
   /**
    * Leading slot content (position number, time of day). When `dragHandle` is
    * also given, the handle swaps in on hover, YouTube-playlist-style.
@@ -60,6 +62,7 @@ export function VideoRow({
   durationSeconds,
   meta,
   progress,
+  progressComplete = false,
   leading,
   dragHandle,
   onRemove,
@@ -111,8 +114,13 @@ export function VideoRow({
             {pct !== null ? (
               <span className="absolute inset-x-0 bottom-0 z-10 h-1 bg-black/40">
                 <span
-                  className="block h-full bg-[hsl(var(--primary))]"
-                  style={{ width: `${pct}%` }}
+                  className={cn(
+                    "block h-full",
+                    progressComplete
+                      ? "bg-emerald-500"
+                      : "bg-[hsl(var(--primary))]",
+                  )}
+                  style={{ width: `${progressComplete ? 100 : pct}%` }}
                 />
               </span>
             ) : null}

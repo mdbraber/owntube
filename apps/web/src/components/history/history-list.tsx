@@ -45,13 +45,6 @@ function dayLabel(startedAt: number): string {
   });
 }
 
-function timeLabel(startedAt: number): string {
-  return new Date(startedAt * 1000).toLocaleTimeString(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
 export function HistoryList({ initialItems }: HistoryListProps) {
   const utils = trpc.useUtils();
   const [query, setQuery] = useState("");
@@ -126,7 +119,7 @@ export function HistoryList({ initialItems }: HistoryListProps) {
               onChange={(e) => toggleHideWatched(e.currentTarget.checked)}
               className="h-4 w-4 accent-[hsl(var(--primary))]"
             />
-            Hide watched videos
+            Hide completed videos
           </label>
           <Input
             value={query}
@@ -147,7 +140,7 @@ export function HistoryList({ initialItems }: HistoryListProps) {
           {isSearching
             ? "No matches in history."
             : hideWatched
-              ? "No unwatched videos in history."
+              ? "No uncompleted videos in history."
               : "No history yet."}
         </p>
       ) : null}
@@ -176,12 +169,12 @@ export function HistoryList({ initialItems }: HistoryListProps) {
                     : undefined
                 }
                 surface="history"
-                leading={timeLabel(item.startedAt)}
                 progress={
                   item.videoDurationSeconds > 0
                     ? item.durationWatched / item.videoDurationSeconds
                     : undefined
                 }
+                progressComplete={Boolean(item.completed)}
                 meta={
                   item.completed
                     ? "Completed"
