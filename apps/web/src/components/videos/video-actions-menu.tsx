@@ -323,6 +323,11 @@ export function VideoActionsMenu({
   const chipIds = quickActions.slice(0, 4).filter((id) => !hiddenIds.has(id));
   if (asSheet) {
     for (const id of chipIds) hiddenIds.add(id);
+    // The like/dislike chip renders as the segmented pair with ignore in the
+    // middle — don't repeat ignore in the list below it.
+    if (chipIds.includes("like") && chipIds.includes("dislike")) {
+      hiddenIds.add("ignore");
+    }
   } else if (authed && hoverCapable && CARD_SURFACES.has(surface)) {
     for (const id of quickActions.slice(0, 2)) hiddenIds.add(id);
   }

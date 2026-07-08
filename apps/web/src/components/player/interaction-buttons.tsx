@@ -75,66 +75,33 @@ export function InteractionButtons({
   const disabled = !isAuthenticated || actions.pending;
   const [shareOpen, setShareOpen] = useState(false);
 
-  const reactionHalf = (id: "like" | "ignore" | "dislike") => {
+  const toggle = (id: "watched" | "save" | "queue") => {
     const active = isVideoActionActive(id, actions.state);
-    return (
-      <button
-        type="button"
-        className={cn(pillBase, "px-3.5", pillTone(active))}
-        disabled={disabled}
-        aria-pressed={active}
-        aria-label={actions.labelFor(id)}
-        title={actions.labelFor(id)}
-        onClick={() => actions.runAction(id)}
-      >
-        <Glyph id={id} active={active} />
-      </button>
-    );
-  };
-
-  const toggle = (id: "save" | "queue") => {
-    const active = isVideoActionActive(id, actions.state);
+    // Mark-watched has no inverse — the button stays on once used.
+    const label =
+      id === "watched"
+        ? active
+          ? "Watched"
+          : "Mark watched"
+        : videoActionShortLabel(id, actions.state);
     return (
       <button
         type="button"
         className={cn(pillBase, "rounded-full px-4", pillTone(active))}
-        disabled={disabled}
+        disabled={disabled || (id === "watched" && active)}
         aria-pressed={active}
         title={actions.labelFor(id)}
         onClick={() => actions.runAction(id)}
       >
         <Glyph id={id} active={active} />
-        <span>{videoActionShortLabel(id, actions.state)}</span>
+        <span>{label}</span>
       </button>
     );
   };
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {/* Segmented reactions — like | ignore | dislike; icon-only halves. */}
-      <div className="flex overflow-hidden rounded-full">
-        {reactionHalf("like")}
-        <span
-          aria-hidden
-          className="my-2 w-px shrink-0 bg-[hsl(var(--border))]"
-        />
-        {reactionHalf("ignore")}
-        <span
-          aria-hidden
-          className="my-2 w-px shrink-0 bg-[hsl(var(--border))]"
-        />
-        {reactionHalf("dislike")}
-      </div>
-      {/* Sharing needs no account — never disabled with the rest. */}
-      <button
-        type="button"
-        className={cn(pillBase, "rounded-full px-4", pillTone(false))}
-        title="Share"
-        onClick={() => setShareOpen(true)}
-      >
-        <ShareIcon />
-        <span>Share</span>
-      </button>
+      {toggle("watched")}
       {toggle("save")}
       {toggle("queue")}
       <ShareDialog
@@ -152,8 +119,16 @@ export function InteractionButtons({
         thumbnailUrl={thumbnailUrl}
         surface="watch"
         alwaysVisible
-        // These are this row's own controls — the menu holds the rest.
-        visibleActions={["like", "ignore", "dislike", "save", "queue"]}
+        // These are this row's own controls; reactions + Share live in the menu.
+        visibleActions={["watched", "save", "queue"]}
+        topItems={[
+          {
+            key: "share",
+            label: "Share",
+            icon: <ShareIcon />,
+            onSelect: () => setShareOpen(true),
+          },
+        ]}
       />
     </div>
   );
