@@ -445,12 +445,6 @@ export function PlayerChrome({
 
               <span className="ml-auto" />
 
-              {miniMode ? (
-                <span className="rounded bg-black/35 px-2 py-0.5 text-[10px] uppercase tracking-wide text-white/80">
-                  Mini
-                </span>
-              ) : null}
-
               {nextUp && !miniMode && !shortsMode ? (
                 <>
                   <button
