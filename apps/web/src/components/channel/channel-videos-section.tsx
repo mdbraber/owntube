@@ -1,12 +1,16 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { PlaylistIcon } from "@/components/videos/video-action-icons";
 import { useIgnoredVideos } from "@/components/videos/ignored-videos-context";
 import { VideoGrid } from "@/components/videos/video-grid";
 import { mergeVideosNewestFirst } from "@/lib/published-sort-key";
 import type { ChannelTab, UnifiedVideo } from "@/server/services/proxy.types";
 import { trpc } from "@/trpc/react";
+
+type SectionTab = ChannelTab | "playlists";
 
 type ChannelVideosSectionProps = {
   channelId: string;
@@ -17,9 +21,10 @@ type ChannelVideosSectionProps = {
   stale?: boolean;
 };
 
-const TABS: { id: ChannelTab; label: string }[] = [
+const TABS: { id: SectionTab; label: string }[] = [
   { id: "videos", label: "Videos" },
   { id: "shorts", label: "Shorts" },
+  { id: "playlists", label: "Playlists" },
 ];
 
 export function ChannelVideosSection({
@@ -30,12 +35,19 @@ export function ChannelVideosSection({
   sourceUsed,
   stale,
 }: ChannelVideosSectionProps) {
-  const [tab, setTab] = useState<ChannelTab>(initialTab);
+  const [tab, setTab] = useState<SectionTab>(initialTab);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const videoTab: ChannelTab = tab === "playlists" ? "videos" : tab;
+
+  const playlistsQuery = trpc.channel.playlists.useQuery(
+    { channelId },
+    { enabled: tab === "playlists", staleTime: 10 * 60_000 },
+  );
 
   const query = trpc.channel.page.useInfiniteQuery(
-    { channelId, tab },
+    { channelId, tab: videoTab },
     {
+      enabled: tab !== "playlists",
       getNextPageParam: (last) => last.continuation ?? undefined,
       initialData:
         tab === initialTab
@@ -91,7 +103,7 @@ export function ChannelVideosSection({
     return () => obs.disconnect();
   }, [query]);
 
-  const onTabChange = (next: ChannelTab) => {
+  const onTabChange = (next: SectionTab) => {
     if (next === tab) return;
     setTab(next);
   };
@@ -121,61 +133,151 @@ export function ChannelVideosSection({
           })}
         </div>
         <p className="rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 py-1.5 font-mono text-xs text-[hsl(var(--muted-foreground))]">
-          {activeSource}
-          {activeStale ? " · stale cache" : ""}
+          {tab === "playlists"
+            ? (playlistsQuery.data?.sourceUsed ?? "…")
+            : `${activeSource}${activeStale ? " · stale cache" : ""}`}
         </p>
       </div>
 
-      <p className="text-xs text-[hsl(var(--muted-foreground))]">
-        {videos.length} result{videos.length === 1 ? "" : "s"}
-        {query.hasNextPage ? " · more available" : ""}
-      </p>
-
-      {query.isPending && videos.length === 0 ? (
-        <p className="text-sm text-[hsl(var(--muted-foreground))]">Loading…</p>
-      ) : null}
-
-      {query.isError && videos.length === 0 ? (
-        <p className="rounded-[var(--radius-card)] border border-[hsl(var(--border))] bg-[hsl(var(--muted)_/_0.35)] py-8 text-center text-sm text-[hsl(var(--muted-foreground))]">
-          Could not load {tab === "shorts" ? "shorts" : "videos"}. Try again
-          later.
-        </p>
-      ) : null}
-
-      {videos.length > 0 ? (
-        <VideoGrid
-          videos={videos}
-          size="large"
-          variant={tab === "shorts" ? "short" : "video"}
-          dimVideoIds={dimVideoIds}
+      {tab === "playlists" ? (
+        <ChannelPlaylistsGrid
+          playlists={playlistsQuery.data?.playlists ?? []}
+          isPending={playlistsQuery.isPending}
+          isError={playlistsQuery.isError}
         />
-      ) : !query.isPending && !query.isError ? (
-        <p className="rounded-[var(--radius-card)] border border-dashed border-[hsl(var(--border))] bg-[hsl(var(--muted)_/_0.35)] py-14 text-center text-sm text-[hsl(var(--muted-foreground))]">
-          No {tab === "shorts" ? "shorts" : "videos"} found for this channel.
-        </p>
-      ) : null}
+      ) : (
+        <>
+          <p className="text-xs text-[hsl(var(--muted-foreground))]">
+            {videos.length} result{videos.length === 1 ? "" : "s"}
+            {query.hasNextPage ? " · more available" : ""}
+          </p>
 
-      {query.hasNextPage ? (
-        <div ref={sentinelRef} className="h-1 w-full shrink-0" aria-hidden />
-      ) : null}
+          {query.isPending && videos.length === 0 ? (
+            <p className="text-sm text-[hsl(var(--muted-foreground))]">
+              Loading…
+            </p>
+          ) : null}
 
-      {query.isFetchingNextPage ? (
-        <p className="text-center text-sm text-[hsl(var(--muted-foreground))]">
-          Loading more…
-        </p>
-      ) : null}
+          {query.isError && videos.length === 0 ? (
+            <p className="rounded-[var(--radius-card)] border border-[hsl(var(--border))] bg-[hsl(var(--muted)_/_0.35)] py-8 text-center text-sm text-[hsl(var(--muted-foreground))]">
+              Could not load {tab === "shorts" ? "shorts" : "videos"}. Try again
+              later.
+            </p>
+          ) : null}
 
-      {query.hasNextPage && !query.isFetchingNextPage ? (
-        <div className="flex justify-center pt-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => void query.fetchNextPage()}
-          >
-            Load more
-          </Button>
-        </div>
-      ) : null}
+          {videos.length > 0 ? (
+            <VideoGrid
+              videos={videos}
+              size="large"
+              variant={tab === "shorts" ? "short" : "video"}
+              dimVideoIds={dimVideoIds}
+            />
+          ) : !query.isPending && !query.isError ? (
+            <p className="rounded-[var(--radius-card)] border border-dashed border-[hsl(var(--border))] bg-[hsl(var(--muted)_/_0.35)] py-14 text-center text-sm text-[hsl(var(--muted-foreground))]">
+              No {tab === "shorts" ? "shorts" : "videos"} found for this
+              channel.
+            </p>
+          ) : null}
+
+          {query.hasNextPage ? (
+            <div
+              ref={sentinelRef}
+              className="h-1 w-full shrink-0"
+              aria-hidden
+            />
+          ) : null}
+
+          {query.isFetchingNextPage ? (
+            <p className="text-center text-sm text-[hsl(var(--muted-foreground))]">
+              Loading more…
+            </p>
+          ) : null}
+
+          {query.hasNextPage && !query.isFetchingNextPage ? (
+            <div className="flex justify-center pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void query.fetchNextPage()}
+              >
+                Load more
+              </Button>
+            </div>
+          ) : null}
+        </>
+      )}
     </section>
+  );
+}
+
+/** The channel's public YouTube playlists as collage-free thumbnail cards. */
+function ChannelPlaylistsGrid({
+  playlists,
+  isPending,
+  isError,
+}: {
+  playlists: {
+    playlistId: string;
+    title: string;
+    thumbnailUrl: string | null;
+    videoCount: number | null;
+  }[];
+  isPending: boolean;
+  isError: boolean;
+}) {
+  if (isPending) {
+    return (
+      <p className="text-sm text-[hsl(var(--muted-foreground))]">Loading…</p>
+    );
+  }
+  if (isError) {
+    return (
+      <p className="rounded-[var(--radius-card)] border border-[hsl(var(--border))] bg-[hsl(var(--muted)_/_0.35)] py-8 text-center text-sm text-[hsl(var(--muted-foreground))]">
+        Could not load playlists. Try again later.
+      </p>
+    );
+  }
+  if (playlists.length === 0) {
+    return (
+      <p className="rounded-[var(--radius-card)] border border-dashed border-[hsl(var(--border))] bg-[hsl(var(--muted)_/_0.35)] py-14 text-center text-sm text-[hsl(var(--muted-foreground))]">
+        No public playlists on this channel.
+      </p>
+    );
+  }
+  return (
+    <ul className="grid gap-x-4 gap-y-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      {playlists.map((p) => (
+        <li key={p.playlistId} className="group">
+          <Link
+            href={`/playlist/${encodeURIComponent(p.playlistId)}`}
+            className="block"
+          >
+            <div className="relative aspect-video w-full overflow-hidden rounded-[var(--radius-card)] bg-[hsl(var(--muted))] transition duration-300 group-hover:-translate-y-0.5 group-hover:shadow-[var(--shadow-card-hover)]">
+              {p.thumbnailUrl ? (
+                // biome-ignore lint/performance/noImgElement: third-party playlist thumbnail
+                <img
+                  src={p.thumbnailUrl}
+                  alt=""
+                  loading="lazy"
+                  className="h-full w-full object-cover transition duration-500 ease-out group-hover:scale-[1.04]"
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-[hsl(var(--muted-foreground))]">
+                  <PlaylistIcon className="h-10 w-10" />
+                </div>
+              )}
+              {p.videoCount != null ? (
+                <span className="absolute bottom-2 right-2 z-10 rounded-md bg-black/78 px-2 py-0.5 font-mono text-[11px] font-semibold text-white">
+                  {p.videoCount} {p.videoCount === 1 ? "video" : "videos"}
+                </span>
+              ) : null}
+            </div>
+            <p className="mt-2 line-clamp-2 text-[15px] font-semibold leading-snug tracking-tight transition group-hover:text-[hsl(var(--primary))]">
+              {p.title}
+            </p>
+          </Link>
+        </li>
+      ))}
+    </ul>
   );
 }

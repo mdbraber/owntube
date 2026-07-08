@@ -3,6 +3,10 @@ import { z } from "zod";
 import { RateLimitExceededError } from "@/server/errors/rate-limit-exceeded";
 import { UpstreamUnavailableError } from "@/server/errors/upstream-unavailable";
 import { fetchChannelPage } from "@/server/services/proxy";
+import {
+  fetchChannelPlaylists,
+  fetchYtPlaylist,
+} from "@/server/services/proxy/channel-playlists";
 import { channelPageInputSchema } from "@/server/services/proxy.types";
 import { getUserProxyOverrides } from "@/server/settings/profile";
 import { publicProcedure, router } from "@/server/trpc/init";
@@ -26,6 +30,54 @@ export const channelRouter = router({
             tab,
             continuation: continuation ?? cursor ?? undefined,
           },
+          overrides,
+        );
+      } catch (e) {
+        if (e instanceof UpstreamUnavailableError) {
+          throw new TRPCError({ code: "BAD_GATEWAY", message: e.message });
+        }
+        if (e instanceof RateLimitExceededError) {
+          throw new TRPCError({
+            code: "TOO_MANY_REQUESTS",
+            message: e.message,
+          });
+        }
+        throw e;
+      }
+    }),
+
+  /** The channel's public YouTube playlists (Playlists tab). */
+  playlists: publicProcedure
+    .input(z.object({ channelId: z.string().min(3).max(128) }))
+    .query(async ({ ctx, input }) => {
+      try {
+        const overrides = getUserProxyOverrides(ctx.db, ctx.userId);
+        return await fetchChannelPlaylists(
+          { channelId: input.channelId },
+          overrides,
+        );
+      } catch (e) {
+        if (e instanceof UpstreamUnavailableError) {
+          throw new TRPCError({ code: "BAD_GATEWAY", message: e.message });
+        }
+        if (e instanceof RateLimitExceededError) {
+          throw new TRPCError({
+            code: "TOO_MANY_REQUESTS",
+            message: e.message,
+          });
+        }
+        throw e;
+      }
+    }),
+
+  /** A public YouTube playlist (metadata + first page of videos). */
+  ytPlaylist: publicProcedure
+    .input(z.object({ playlistId: z.string().min(5).max(128) }))
+    .query(async ({ ctx, input }) => {
+      try {
+        const overrides = getUserProxyOverrides(ctx.db, ctx.userId);
+        return await fetchYtPlaylist(
+          { playlistId: input.playlistId },
           overrides,
         );
       } catch (e) {
