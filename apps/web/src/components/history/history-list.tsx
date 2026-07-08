@@ -60,8 +60,9 @@ export function HistoryList({ initialItems }: HistoryListProps) {
       if (appliedQueryRef.current === nextQuery) return;
       appliedQueryRef.current = nextQuery;
       setDebouncedQuery(nextQuery);
+      // Keep current rows while the filtered fetch runs (placeholderData) —
+      // clearing here made the whole list flash empty and back.
       setPage(1);
-      setItems([]);
     }, 250);
     return () => window.clearTimeout(t);
   }, [query]);
@@ -96,8 +97,9 @@ export function HistoryList({ initialItems }: HistoryListProps) {
 
   const toggleHideWatched = (next: boolean) => {
     setHideWatched(next);
+    // Same as search: rows stay put until the refetched page-1 data replaces
+    // them, so toggling doesn't flash the list.
     setPage(1);
-    setItems([]);
   };
 
   const hasMore = (listQuery.data?.length ?? 0) >= PAGE_SIZE;
