@@ -44,12 +44,13 @@ type VideoRowProps = {
   enableSwipe?: boolean;
 };
 
-const ROW_THUMB_WIDTH: Record<"xs" | "sm" | "md" | "lg" | "xl", string> = {
-  xs: "w-28 sm:w-36",
-  sm: "w-40 sm:w-48",
-  md: "w-[12.75rem] sm:w-60",
-  lg: "w-[16rem] sm:w-80",
-  xl: "w-[19rem] sm:w-[26rem]",
+/** Thumb width at ≥sm (below sm the row stacks and the thumb is full width). */
+const ROW_THUMB_WIDTH_SM: Record<"xs" | "sm" | "md" | "lg" | "xl", string> = {
+  xs: "sm:w-36",
+  sm: "sm:w-48",
+  md: "sm:w-60",
+  lg: "sm:w-80",
+  xl: "sm:w-[26rem]",
 };
 
 /**
@@ -80,9 +81,11 @@ export function VideoRow({
   const target = `/watch/${encodeURIComponent(videoId)}`;
 
   const row = (
-    <div className="group flex items-center gap-3 rounded-[var(--radius-card)] p-2 transition hover:bg-[hsl(var(--muted)_/_0.45)]">
+    <div className="group flex flex-col gap-2 rounded-[var(--radius-card)] p-2 transition hover:bg-[hsl(var(--muted)_/_0.45)] sm:flex-row sm:items-center sm:gap-3">
+      {/* Desktop leading slot (position ⇄ drag handle); on phones it joins
+          the title line below, so nothing sits beside the stacked thumb. */}
       {leading || dragHandle ? (
-        <div className="flex min-w-6 shrink-0 items-center justify-center text-[hsl(var(--muted-foreground))]">
+        <div className="hidden min-w-6 shrink-0 items-center justify-center text-[hsl(var(--muted-foreground))] sm:flex">
           {dragHandle ? (
             <>
               <span
@@ -103,12 +106,12 @@ export function VideoRow({
         </div>
       ) : null}
 
-      <div className="relative shrink-0">
+      <div className="relative w-full shrink-0 sm:w-auto">
         <Link href={target} className="block">
           <div
             className={cn(
-              "relative aspect-video overflow-hidden rounded-xl bg-[hsl(var(--muted))]",
-              ROW_THUMB_WIDTH[size],
+              "relative aspect-video w-full overflow-hidden rounded-xl bg-[hsl(var(--muted))]",
+              ROW_THUMB_WIDTH_SM[size],
             )}
           >
             {/* Derives the thumbnail from videoId when no explicit URL is given
@@ -136,11 +139,57 @@ export function VideoRow({
       </div>
 
       <div className="min-w-0 flex-1">
-        <Link href={target} className="block min-w-0">
-          <p className="m-0 line-clamp-2 text-[15px] font-semibold leading-snug tracking-tight transition group-hover:text-[hsl(var(--primary))]">
-            {title}
-          </p>
-        </Link>
+        {/* Quick actions sit right above the title (desktop hover reveal). */}
+        <VideoRowQuickActions
+          videoId={videoId}
+          title={title}
+          channelId={channelId ?? undefined}
+          surface={surface}
+          className="mb-0.5 -ml-2"
+        />
+        <div className="flex items-start gap-1">
+          {/* Phone: the position/drag handle rides the title line. */}
+          {leading || dragHandle ? (
+            <span className="flex h-8 shrink-0 items-center pr-1 text-xs tabular-nums text-[hsl(var(--muted-foreground))] sm:hidden">
+              {dragHandle ?? leading}
+            </span>
+          ) : null}
+          <Link href={target} className="mt-1 block min-w-0 flex-1">
+            <p className="m-0 line-clamp-2 text-[15px] font-semibold leading-snug tracking-tight transition group-hover:text-[hsl(var(--primary))]">
+              {title}
+            </p>
+          </Link>
+          <div className="flex shrink-0 items-center gap-0.5">
+            {onRemove ? (
+              <button
+                type="button"
+                className="flex h-8 w-8 items-center justify-center rounded-full text-[hsl(var(--muted-foreground))] opacity-100 transition hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))] [@media(hover:hover)]:opacity-0 group-hover:opacity-100 focus-visible:opacity-100 disabled:opacity-30"
+                title={removeLabel}
+                aria-label={removeLabel}
+                disabled={removeDisabled}
+                onClick={onRemove}
+              >
+                <XIcon className="h-4 w-4" />
+              </button>
+            ) : null}
+            <VideoActionsMenu
+              videoId={videoId}
+              title={title}
+              channelId={channelId ?? undefined}
+              channelName={channelName ?? undefined}
+              thumbnailUrl={thumbnailUrl ?? undefined}
+              surface={surface}
+              // The ✕ already covers removal here — keep it out of the menu.
+              visibleActions={
+                onRemove && surface === "queue"
+                  ? ["queue"]
+                  : onRemove && surface === "saved"
+                    ? ["save"]
+                    : undefined
+              }
+            />
+          </div>
+        </div>
         <p className="mt-0.5 line-clamp-1 text-xs text-[hsl(var(--muted-foreground))]">
           {channelId ? (
             <Link
@@ -163,43 +212,6 @@ export function VideoRow({
             </>
           ) : null}
         </p>
-      </div>
-
-      <div className="flex shrink-0 items-center gap-0.5">
-        <VideoRowQuickActions
-          videoId={videoId}
-          title={title}
-          channelId={channelId ?? undefined}
-          surface={surface}
-        />
-        {onRemove ? (
-          <button
-            type="button"
-            className="flex h-8 w-8 items-center justify-center rounded-full text-[hsl(var(--muted-foreground))] opacity-100 transition hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))] [@media(hover:hover)]:opacity-0 group-hover:opacity-100 focus-visible:opacity-100 disabled:opacity-30"
-            title={removeLabel}
-            aria-label={removeLabel}
-            disabled={removeDisabled}
-            onClick={onRemove}
-          >
-            <XIcon className="h-4 w-4" />
-          </button>
-        ) : null}
-        <VideoActionsMenu
-          videoId={videoId}
-          title={title}
-          channelId={channelId ?? undefined}
-          channelName={channelName ?? undefined}
-          thumbnailUrl={thumbnailUrl ?? undefined}
-          surface={surface}
-          // The ✕ already covers removal here — keep it out of the menu.
-          visibleActions={
-            onRemove && surface === "queue"
-              ? ["queue"]
-              : onRemove && surface === "saved"
-                ? ["save"]
-                : undefined
-          }
-        />
       </div>
     </div>
   );
