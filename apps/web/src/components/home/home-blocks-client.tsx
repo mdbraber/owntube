@@ -13,11 +13,13 @@ import { useRowDrag } from "@/components/videos/use-row-drag";
 import { VideoGrid } from "@/components/videos/video-grid";
 import { VideoRow } from "@/components/videos/video-row";
 import { VideoThumbnailImg } from "@/components/videos/video-thumbnail-img";
+import { useLargeVideoGridColumnCount } from "@/hooks/use-large-video-grid-column-count";
 import {
   CARD_MIN_WIDTH_PX,
   DEFAULT_HOME_BLOCKS,
   HOME_BLOCK_LABEL,
   HOME_BLOCK_LIMITS,
+  HOME_BLOCK_ROWS,
   HOME_BLOCK_SIZE_LABEL,
   HOME_BLOCK_SIZES,
   type HomeBlock,
@@ -70,6 +72,9 @@ function VideoBlockBody({
   isLoading: boolean;
 }) {
   const layout = block.layout;
+  // Cards render full rows only: measured columns × configured rows, so the
+  // last row is never ragged regardless of viewport width.
+  const grid = useLargeVideoGridColumnCount();
   if (isLoading && videos.length === 0) {
     return (
       <p className="py-4 text-sm text-[hsl(var(--muted-foreground))]">
@@ -87,7 +92,8 @@ function VideoBlockBody({
   if (layout === "cards") {
     return (
       <VideoGrid
-        videos={videos.map(toUnified)}
+        gridRef={grid.measureRef}
+        videos={videos.slice(0, grid.columnCount * block.rows).map(toUnified)}
         size="large"
         minColumnWidthPx={CARD_MIN_WIDTH_PX[block.size]}
         enableSwipe
@@ -118,15 +124,20 @@ function VideoBlockBody({
   );
 }
 
+/** Items a block needs at most: full rows on wide screens, or the limit. */
+function blockFetchCount(block: HomeBlock): number {
+  return block.layout === "cards" ? block.rows * 8 : block.limit;
+}
+
 function SubscriptionsBlockBody({ block }: { block: HomeBlock }) {
   // Over-fetch: the feed strips shorts/restricted *after* the limit, so a
   // page of exactly `limit` often arrives short.
   const query = trpc.subscriptions.mergedFeedInfinite.useQuery({
-    limit: Math.min(48, Math.max(8, block.limit * 2)),
+    limit: Math.min(48, Math.max(8, blockFetchCount(block) * 2)),
   });
   return (
     <VideoBlockBody
-      videos={(query.data?.videos ?? []).slice(0, block.limit)}
+      videos={(query.data?.videos ?? []).slice(0, blockFetchCount(block))}
       block={block}
       surface="subscriptions"
       isLoading={query.isPending}
@@ -139,7 +150,7 @@ function HistoryBlockBody({ block }: { block: HomeBlock }) {
   // the History page's filter.
   const query = trpc.history.list.useQuery({
     page: 1,
-    pageSize: Math.min(24, block.limit),
+    pageSize: Math.min(24, blockFetchCount(block)),
     hideWatched: homeBlockOption(block, "hideCompleted"),
   });
   const videos: BlockVideo[] = (query.data ?? []).map((item) => ({
@@ -170,7 +181,7 @@ function HistoryBlockBody({ block }: { block: HomeBlock }) {
 function QueueBlockBody({ block }: { block: HomeBlock }) {
   const query = trpc.queue.listDetailed.useQuery();
   const videos: BlockVideo[] = (query.data ?? [])
-    .slice(0, block.limit)
+    .slice(0, blockFetchCount(block))
     .map((item) => ({
       videoId: item.videoId,
       title: item.videoTitle,
@@ -193,7 +204,7 @@ function QueueBlockBody({ block }: { block: HomeBlock }) {
 function SavedBlockBody({ block }: { block: HomeBlock }) {
   const query = trpc.interactions.listSaved.useQuery();
   const videos: BlockVideo[] = (query.data ?? [])
-    .slice(0, block.limit)
+    .slice(0, blockFetchCount(block))
     .map((item) => ({
       videoId: item.videoId,
       title: item.videoTitle,
@@ -220,7 +231,7 @@ function PlaylistBlockBody({ block }: { block: HomeBlock }) {
     { enabled: playlistId > 0 },
   );
   const videos: BlockVideo[] = (query.data ?? [])
-    .slice(0, block.limit)
+    .slice(0, blockFetchCount(block))
     .map((item) => ({
       videoId: item.videoId,
       title: item.videoTitle,
@@ -243,7 +254,11 @@ function PlaylistBlockBody({ block }: { block: HomeBlock }) {
 /** The playlists overview as a block: collage tiles (cards) or rows. */
 function PlaylistsBlockBody({ block }: { block: HomeBlock }) {
   const query = trpc.playlists.list.useQuery();
-  const playlists = (query.data ?? []).slice(0, block.limit);
+  const grid = useLargeVideoGridColumnCount();
+  const playlists = (query.data ?? []).slice(
+    0,
+    block.layout === "cards" ? grid.columnCount * block.rows : block.limit,
+  );
   if (query.isPending) {
     return (
       <p className="py-4 text-sm text-[hsl(var(--muted-foreground))]">
@@ -299,6 +314,7 @@ function PlaylistsBlockBody({ block }: { block: HomeBlock }) {
   if (block.layout === "cards") {
     return (
       <ul
+        ref={grid.measureRef}
         className="grid gap-x-4 gap-y-6"
         style={{
           gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${CARD_MIN_WIDTH_PX[block.size]}px), 1fr))`,
@@ -497,6 +513,7 @@ function AddBlockMenu({ onAdd }: { onAdd: (block: HomeBlock) => void }) {
       type,
       playlistId,
       limit: type === "playlists" ? 4 : 8,
+      rows: type === "playlists" ? 1 : 2,
       layout: "cards",
       size: "md",
     });
@@ -700,22 +717,41 @@ export function HomeBlocksClient() {
                         </button>
                       ))}
                     </div>
-                    <select
-                      className="rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-2.5 py-1 text-xs"
-                      value={block.limit}
-                      aria-label="Number of items"
-                      onChange={(e) =>
-                        patchBlock(block.id, {
-                          limit: Number(e.currentTarget.value),
-                        })
-                      }
-                    >
-                      {HOME_BLOCK_LIMITS.map((n) => (
-                        <option key={n} value={n}>
-                          {n} items
-                        </option>
-                      ))}
-                    </select>
+                    {block.layout === "cards" ? (
+                      <select
+                        className="rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-2.5 py-1 text-xs"
+                        value={block.rows}
+                        aria-label="Number of rows"
+                        onChange={(e) =>
+                          patchBlock(block.id, {
+                            rows: Number(e.currentTarget.value),
+                          })
+                        }
+                      >
+                        {HOME_BLOCK_ROWS.map((n) => (
+                          <option key={n} value={n}>
+                            {n} {n === 1 ? "row" : "rows"}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <select
+                        className="rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-2.5 py-1 text-xs"
+                        value={block.limit}
+                        aria-label="Number of items"
+                        onChange={(e) =>
+                          patchBlock(block.id, {
+                            limit: Number(e.currentTarget.value),
+                          })
+                        }
+                      >
+                        {HOME_BLOCK_LIMITS.map((n) => (
+                          <option key={n} value={n}>
+                            {n} items
+                          </option>
+                        ))}
+                      </select>
+                    )}
                     <BlockOptionsMenu
                       block={block}
                       onPatch={(patch) => patchBlock(block.id, patch)}

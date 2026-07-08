@@ -46,8 +46,13 @@ export type HomeBlock = {
   type: HomeBlockType;
   /** Only for type "playlist" — the local playlist to show. */
   playlistId?: number;
-  /** Max items shown. */
+  /** Max items shown (rows layout). */
   limit: number;
+  /**
+   * Full grid rows shown (cards layout): items = measured columns × rows, so
+   * the last row is never ragged at any viewport width.
+   */
+  rows: number;
   layout: HomeBlockLayout;
   size: HomeBlockSize;
   /**
@@ -115,20 +120,30 @@ export function homeBlockHref(block: HomeBlock): string {
 }
 
 export const HOME_BLOCK_LIMITS = [4, 8, 12, 16] as const;
+export const HOME_BLOCK_ROWS = [1, 2, 3, 4] as const;
 
 export const DEFAULT_HOME_BLOCKS: HomeBlock[] = [
   {
     id: "default-subs",
     type: "subscriptions",
     limit: 8,
+    rows: 2,
     layout: "cards",
     size: "md",
   },
-  { id: "default-queue", type: "queue", limit: 4, layout: "rows", size: "md" },
+  {
+    id: "default-queue",
+    type: "queue",
+    limit: 4,
+    rows: 1,
+    layout: "rows",
+    size: "md",
+  },
   {
     id: "default-history",
     type: "history",
     limit: 4,
+    rows: 1,
     layout: "rows",
     size: "md",
   },

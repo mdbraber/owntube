@@ -18,6 +18,8 @@ type VideoGridProps = {
   minColumnWidthPx?: number;
   /** Card surface (pills omission + menu trimming). */
   surface?: VideoActionSurface;
+  /** Measures the resolved grid (column counting for full-row blocks). */
+  gridRef?: (element: HTMLElement | null) => void;
 };
 
 function videoCardProps(v: UnifiedVideo) {
@@ -50,6 +52,7 @@ export function VideoGrid({
   enableSwipe,
   minColumnWidthPx,
   surface,
+  gridRef,
 }: VideoGridProps) {
   const gridStyle = minColumnWidthPx
     ? {
@@ -79,7 +82,7 @@ export function VideoGrid({
   const gridClass =
     size === "large" ? "ot-video-grid ot-video-grid--large" : "ot-video-grid";
   return (
-    <ul className={gridClass} style={gridStyle}>
+    <ul ref={gridRef} className={gridClass} style={gridStyle}>
       {videos.map((v) => (
         <li key={v.videoId}>
           <VideoCard
