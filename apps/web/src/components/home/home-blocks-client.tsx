@@ -2,20 +2,21 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  SubscriptionTagFilter,
+  type TagState,
+} from "@/components/subscriptions/subscription-tag-filter";
 import { Button } from "@/components/ui/button";
+import { useRowDrag } from "@/components/videos/use-row-drag";
 import {
   DragHandleIcon,
   MoreIcon,
   PlaylistIcon,
   XIcon,
 } from "@/components/videos/video-action-icons";
-import { useRowDrag } from "@/components/videos/use-row-drag";
+import type { VideoActionSurface } from "@/components/videos/video-action-registry";
 import { VideoCard } from "@/components/videos/video-card";
 import { VideoGrid } from "@/components/videos/video-grid";
-import {
-  SubscriptionTagFilter,
-  type TagState,
-} from "@/components/subscriptions/subscription-tag-filter";
 import { useWatchProgressMap } from "@/components/videos/video-membership-context";
 import { VideoRow } from "@/components/videos/video-row";
 import { VideoThumbnailImg } from "@/components/videos/video-thumbnail-img";
@@ -35,7 +36,6 @@ import {
 } from "@/lib/home-blocks";
 import { cn } from "@/lib/utils";
 import type { UnifiedVideo } from "@/server/services/proxy.types";
-import type { VideoActionSurface } from "@/components/videos/video-action-registry";
 import { trpc } from "@/trpc/react";
 
 /* ------------------------------ block data ------------------------------ */

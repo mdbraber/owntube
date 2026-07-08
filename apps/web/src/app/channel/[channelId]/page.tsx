@@ -1,6 +1,6 @@
 import { unstable_noStore as noStore } from "next/cache";
-import { ChannelSubscribeButton } from "@/components/channel/channel-subscribe-button";
 import { ChannelBlockedBadge } from "@/components/channel/channel-blocked-badge";
+import { ChannelSubscribeButton } from "@/components/channel/channel-subscribe-button";
 import { ChannelTags } from "@/components/channel/channel-tags";
 import { ChannelVideosSection } from "@/components/channel/channel-videos-section";
 import { ChannelAvatarCircle } from "@/components/videos/channel-avatar-circle";

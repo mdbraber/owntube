@@ -1,5 +1,4 @@
 import { invidiousPortCollidesWithNextApp } from "@/lib/invidious-port-collision";
-import type { UnifiedVideo } from "@/server/services/proxy.types";
 import {
   type ProxySourceOverrides,
   resolveProxyBaseCandidates,
@@ -15,6 +14,7 @@ import {
   pipedListItemsFromPayload,
 } from "@/server/services/proxy/mappers/piped";
 import { normalizeBaseUrl } from "@/server/services/proxy/normalize";
+import type { UnifiedVideo } from "@/server/services/proxy.types";
 import { unifiedVideoSchema } from "@/server/services/proxy.types";
 import { acquireUpstreamSlot } from "@/server/services/rate-limiter";
 import { upstreamGetText } from "@/server/services/upstream-get";

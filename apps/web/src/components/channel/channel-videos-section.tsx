@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { PlaylistIcon } from "@/components/videos/video-action-icons";
 import { useIgnoredVideos } from "@/components/videos/ignored-videos-context";
+import { PlaylistIcon } from "@/components/videos/video-action-icons";
 import { VideoGrid } from "@/components/videos/video-grid";
 import { mergeVideosNewestFirst } from "@/lib/published-sort-key";
 import type { ChannelTab, UnifiedVideo } from "@/server/services/proxy.types";

@@ -1,8 +1,8 @@
 "use client";
 
+import { useRowDrag } from "@/components/videos/use-row-drag";
 import { DragHandleIcon } from "@/components/videos/video-action-icons";
 import type { VideoActionSurface } from "@/components/videos/video-action-registry";
-import { useRowDrag } from "@/components/videos/use-row-drag";
 import { VideoRow } from "@/components/videos/video-row";
 import { cn } from "@/lib/utils";
 

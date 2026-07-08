@@ -7,8 +7,8 @@ import { useVideoActions } from "@/components/videos/use-video-actions";
 import { ShareIcon } from "@/components/videos/video-action-icons";
 import {
   isVideoActionActive,
-  type VideoActionId,
   VideoActionGlyph,
+  type VideoActionId,
   videoActionShortLabel,
 } from "@/components/videos/video-action-registry";
 import {

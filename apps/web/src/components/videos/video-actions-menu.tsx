@@ -12,14 +12,14 @@ import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useVideoActions } from "@/components/videos/use-video-actions";
+import { QuickActionChips } from "@/components/videos/video-action-chips";
 import { CheckIcon, MoreIcon } from "@/components/videos/video-action-icons";
 import {
+  VideoActionGlyph,
   type VideoActionId,
   type VideoActionSurface,
-  VideoActionGlyph,
   videoActionGroupsForSurface,
 } from "@/components/videos/video-action-registry";
-import { QuickActionChips } from "@/components/videos/video-action-chips";
 import { VideoThumbnailImg } from "@/components/videos/video-thumbnail-img";
 import { DEFAULT_QUICK_ACTIONS, type QuickAction } from "@/lib/quick-actions";
 import { formatRecommendationReason } from "@/lib/recommendation-reason";

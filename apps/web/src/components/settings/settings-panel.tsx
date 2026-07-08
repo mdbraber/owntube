@@ -10,6 +10,12 @@ import {
   writeDefaultPlaybackQuality,
 } from "@/lib/default-playback-quality";
 import {
+  DEFAULT_QUICK_ACTIONS,
+  QUICK_ACTION_LABELS,
+  QUICK_ACTION_VALUES,
+  type QuickAction,
+} from "@/lib/quick-actions";
+import {
   SPONSORBLOCK_ALL_CATEGORIES,
   SPONSORBLOCK_CATEGORY_LABELS,
   type SponsorBlockCategory,
@@ -19,12 +25,6 @@ import {
   toggleSponsorBlockCategory,
   writeSponsorBlockPrefs,
 } from "@/lib/sponsorblock-prefs";
-import {
-  DEFAULT_QUICK_ACTIONS,
-  type QuickAction,
-  QUICK_ACTION_LABELS,
-  QUICK_ACTION_VALUES,
-} from "@/lib/quick-actions";
 import { TRENDING_REGION_OPTIONS } from "@/lib/trending-regions";
 import { writeWatchMiniEnabled } from "@/lib/watch-mini-player-state";
 import type {

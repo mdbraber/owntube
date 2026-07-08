@@ -3,8 +3,8 @@
 import { type ReactNode, useRef, useState } from "react";
 import { useVideoActions } from "@/components/videos/use-video-actions";
 import {
-  type VideoActionSurface,
   VideoActionGlyph,
+  type VideoActionSurface,
 } from "@/components/videos/video-action-registry";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/trpc/react";

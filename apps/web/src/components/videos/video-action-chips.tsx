@@ -3,8 +3,8 @@
 import type { VideoActions } from "@/components/videos/use-video-actions";
 import {
   isVideoActionActive,
-  type VideoActionId,
   VideoActionGlyph,
+  type VideoActionId,
   videoActionShortLabel,
 } from "@/components/videos/video-action-registry";
 import { saveMembershipLabel } from "@/lib/save-membership";

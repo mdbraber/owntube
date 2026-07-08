@@ -4,8 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useVideoActions } from "@/components/videos/use-video-actions";
 import {
   isVideoActionActive,
-  type VideoActionSurface,
   VideoActionGlyph,
+  type VideoActionSurface,
   videoActionShortLabel,
 } from "@/components/videos/video-action-registry";
 import { PlaylistPicker } from "@/components/videos/video-actions-menu";

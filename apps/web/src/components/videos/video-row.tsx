@@ -6,11 +6,11 @@ import { CardSwipeLayer } from "@/components/videos/card-swipe-layer";
 import { XIcon } from "@/components/videos/video-action-icons";
 import type { VideoActionSurface } from "@/components/videos/video-action-registry";
 import { VideoActionsMenu } from "@/components/videos/video-actions-menu";
-import { VideoCardQuickActions } from "@/components/videos/video-card-quick-actions";
 import { VideoCardDurationBadge } from "@/components/videos/video-card-duration-badge";
+import { VideoCardQuickActions } from "@/components/videos/video-card-quick-actions";
 import { VideoStatusPills } from "@/components/videos/video-status-pills";
-import { VideoWatchProgress } from "@/components/videos/video-watch-progress";
 import { VideoThumbnailImg } from "@/components/videos/video-thumbnail-img";
+import { VideoWatchProgress } from "@/components/videos/video-watch-progress";
 import { cn } from "@/lib/utils";
 
 type VideoRowProps = {
