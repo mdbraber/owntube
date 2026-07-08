@@ -172,4 +172,17 @@ export const interactionsRouter = router({
       clearRecommendationCachesForUser(ctx.userId);
       return { ok: true as const };
     }),
+  /** Inverse of blockRecommendationChannel — backs the toast's Undo. */
+  unblockRecommendationChannel: protectedProcedure
+    .input(z.object({ channelId: z.string().min(1).max(128) }))
+    .mutation(({ ctx, input }) => {
+      const settings = getUserSettings(ctx.db, ctx.userId);
+      const blocked = new Set(settings.blockedRecommendationChannels);
+      blocked.delete(input.channelId.trim());
+      upsertUserSettings(ctx.db, ctx.userId, {
+        blockedRecommendationChannels: [...blocked],
+      });
+      clearRecommendationCachesForUser(ctx.userId);
+      return { ok: true as const };
+    }),
 });

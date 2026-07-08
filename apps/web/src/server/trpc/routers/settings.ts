@@ -48,6 +48,7 @@ const settingsPatchSchema = z.object({
   sponsorBlockCategories: z.array(sponsorBlockCategorySchema).optional(),
   enableSwipeGestures: appSettingsSchema.shape.enableSwipeGestures.optional(),
   swipeGestures: appSettingsSchema.shape.swipeGestures.optional(),
+  quickActions: appSettingsSchema.shape.quickActions.optional(),
 });
 
 const healthCheckInputSchema = z.object({

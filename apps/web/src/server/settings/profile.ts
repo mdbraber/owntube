@@ -27,6 +27,42 @@ const swipeActionSchema = z.enum([
   "watched",
 ]);
 
+/**
+ * One action per swipe direction. Older profiles stored four slots
+ * (short/long × left/right); the preprocess step migrates them by keeping the
+ * short-swipe mapping, which was the reachable one in practice.
+ */
+const swipeGesturesSchema = z.preprocess(
+  (value) => {
+    if (value && typeof value === "object" && "shortLeft" in value) {
+      const legacy = value as Record<string, unknown>;
+      return { left: legacy.shortLeft, right: legacy.shortRight };
+    }
+    return value;
+  },
+  z.object({
+    left: swipeActionSchema.default("ignore"),
+    right: swipeActionSchema.default("queue"),
+  }),
+);
+
+export const quickActionSchema = z.enum([
+  "queue",
+  "save",
+  "like",
+  "dislike",
+  "watched",
+  "ignore",
+]);
+export type QuickAction = z.infer<typeof quickActionSchema>;
+
+export const DEFAULT_QUICK_ACTIONS: QuickAction[] = [
+  "queue",
+  "save",
+  "like",
+  "dislike",
+];
+
 export const appSettingsSchema = z.object({
   theme: themeSchema.default("system"),
   visualTheme: visualThemeSchema.default("default"),
@@ -71,20 +107,19 @@ export const appSettingsSchema = z.object({
     .default(DEFAULT_SPONSORBLOCK_CATEGORIES),
   /** Enable mobile swipe gestures on Home/Explore/Subscriptions cards. */
   enableSwipeGestures: z.boolean().default(true),
-  /** Action mapping for short/long swipes left/right. */
-  swipeGestures: z
-    .object({
-      shortLeft: swipeActionSchema.default("ignore"),
-      longLeft: swipeActionSchema.default("watched"),
-      shortRight: swipeActionSchema.default("queue"),
-      longRight: swipeActionSchema.default("saved"),
-    })
-    .default({
-      shortLeft: "ignore",
-      longLeft: "watched",
-      shortRight: "queue",
-      longRight: "saved",
-    }),
+  /** Action mapping for a swipe left / right (one action per direction). */
+  swipeGestures: swipeGesturesSchema.default({
+    left: "ignore",
+    right: "queue",
+  }),
+  /**
+   * Ordered quick-action verbs: the first two surface as thumbnail hover
+   * buttons on desktop, the first four as the chip row atop the mobile sheet.
+   */
+  quickActions: z
+    .array(quickActionSchema)
+    .max(4)
+    .default(DEFAULT_QUICK_ACTIONS),
 });
 
 export type AppSettings = z.infer<typeof appSettingsSchema>;
@@ -117,11 +152,10 @@ const defaultSettings: AppSettings = {
   sponsorBlockCategories: DEFAULT_SPONSORBLOCK_CATEGORIES,
   enableSwipeGestures: true,
   swipeGestures: {
-    shortLeft: "ignore",
-    longLeft: "watched",
-    shortRight: "queue",
-    longRight: "saved",
+    left: "ignore",
+    right: "queue",
   },
+  quickActions: DEFAULT_QUICK_ACTIONS,
 };
 
 function nowUnix(): number {

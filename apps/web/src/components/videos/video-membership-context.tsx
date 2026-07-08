@@ -3,23 +3,29 @@
 import { createContext, type ReactNode, useContext, useMemo } from "react";
 import { trpc } from "@/trpc/react";
 
+const EMPTY_ID_SET: ReadonlySet<number> = new Set();
+
 export type VideoMembership = {
   saved: boolean;
   queued: boolean;
   /** Name of a playlist the video belongs to, if any. */
   playlistName?: string;
+  /** Every playlist (id) the video belongs to — backs the picker checklist. */
+  playlistIds: ReadonlySet<number>;
 };
 
 type VideoMembershipValue = {
   savedIds: ReadonlySet<string>;
   queuedIds: ReadonlySet<string>;
   playlistByVideo: ReadonlyMap<string, string>;
+  playlistIdsByVideo: ReadonlyMap<string, ReadonlySet<number>>;
 };
 
 const EMPTY: VideoMembershipValue = {
   savedIds: new Set(),
   queuedIds: new Set(),
   playlistByVideo: new Map(),
+  playlistIdsByVideo: new Map(),
 };
 
 const VideoMembershipContext = createContext<VideoMembershipValue>(EMPTY);
@@ -45,13 +51,17 @@ export function VideoMembershipProvider({ children }: { children: ReactNode }) {
     const savedIds = new Set(savedQuery.data ?? []);
     const queuedIds = new Set((queueQuery.data ?? []).map((i) => i.videoId));
     const playlistByVideo = new Map<string, string>();
+    const playlistIdsByVideo = new Map<string, Set<number>>();
     // Rows arrive most-recently-added first; keep the first name seen per video.
     for (const row of playlistQuery.data ?? []) {
       if (!playlistByVideo.has(row.videoId)) {
         playlistByVideo.set(row.videoId, row.playlistName);
       }
+      const ids = playlistIdsByVideo.get(row.videoId) ?? new Set<number>();
+      ids.add(row.playlistId);
+      playlistIdsByVideo.set(row.videoId, ids);
     }
-    return { savedIds, queuedIds, playlistByVideo };
+    return { savedIds, queuedIds, playlistByVideo, playlistIdsByVideo };
   }, [savedQuery.data, queueQuery.data, playlistQuery.data]);
 
   return (
@@ -62,15 +72,17 @@ export function VideoMembershipProvider({ children }: { children: ReactNode }) {
 }
 
 export function useVideoMembership(videoId?: string): VideoMembership {
-  const { savedIds, queuedIds, playlistByVideo } = useContext(
-    VideoMembershipContext,
-  );
+  const { savedIds, queuedIds, playlistByVideo, playlistIdsByVideo } =
+    useContext(VideoMembershipContext);
   return useMemo(() => {
-    if (!videoId) return { saved: false, queued: false };
+    if (!videoId) {
+      return { saved: false, queued: false, playlistIds: EMPTY_ID_SET };
+    }
     return {
       saved: savedIds.has(videoId),
       queued: queuedIds.has(videoId),
       playlistName: playlistByVideo.get(videoId),
+      playlistIds: playlistIdsByVideo.get(videoId) ?? EMPTY_ID_SET,
     };
-  }, [videoId, savedIds, queuedIds, playlistByVideo]);
+  }, [videoId, savedIds, queuedIds, playlistByVideo, playlistIdsByVideo]);
 }

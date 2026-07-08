@@ -58,6 +58,7 @@ export const playlistsRouter = router({
     return ctx.db
       .select({
         videoId: playlistItems.videoId,
+        playlistId: playlistItems.playlistId,
         playlistName: playlists.name,
       })
       .from(playlistItems)

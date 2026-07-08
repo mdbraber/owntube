@@ -14,11 +14,14 @@ type IgnoredVideosValue = {
   /** Videos ignored during this session — used for instant hide/dim. */
   sessionIgnored: ReadonlySet<string>;
   ignore: (videoId: string, channelId?: string) => void;
+  /** Inverse of ignore — backs the action toast's Undo. */
+  unignore: (videoId: string, channelId?: string) => void;
 };
 
 const IgnoredVideosContext = createContext<IgnoredVideosValue>({
   sessionIgnored: new Set(),
   ignore: () => {},
+  unignore: () => {},
 });
 
 /**
@@ -51,9 +54,26 @@ export function IgnoredVideosProvider({ children }: { children: ReactNode }) {
     [setInteraction],
   );
 
+  const unignore = useCallback(
+    (videoId: string, channelId?: string) => {
+      setSessionIgnored((prev) => {
+        const next = new Set(prev);
+        next.delete(videoId);
+        return next;
+      });
+      setInteraction.mutate({
+        videoId,
+        channelId,
+        type: "ignore",
+        active: false,
+      });
+    },
+    [setInteraction],
+  );
+
   const value = useMemo(
-    () => ({ sessionIgnored, ignore }),
-    [sessionIgnored, ignore],
+    () => ({ sessionIgnored, ignore, unignore }),
+    [sessionIgnored, ignore, unignore],
   );
   return (
     <IgnoredVideosContext.Provider value={value}>
