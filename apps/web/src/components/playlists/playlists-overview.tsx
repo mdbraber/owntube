@@ -9,8 +9,9 @@ import { VideoThumbnailImg } from "@/components/videos/video-thumbnail-img";
 import { trpc } from "@/trpc/react";
 
 /**
- * Playlists overview: video-card-sized frames with a 2×2 collage of the first
- * four items, count badge, name, and tags. "New playlist" opens the shared
+ * Playlists overview: one row per playlist in the shared row language — a
+ * video-row-sized frame with a 2×2 collage of the first four items and count
+ * badge, then name, description, and tags. "New playlist" opens the shared
  * form modal.
  */
 export function PlaylistsOverview() {
@@ -32,12 +33,15 @@ export function PlaylistsOverview() {
           on any video.
         </p>
       ) : (
-        <ul className="grid gap-x-4 gap-y-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <ul className="space-y-1">
           {playlists.map((p) => (
-            <li key={p.id} className="group">
-              <Link href={`/playlists/${p.id}`} className="block">
-                {/* Video-card-sized frame with a 2×2 collage of items 1–4. */}
-                <div className="relative aspect-video w-full overflow-hidden rounded-[var(--radius-card)] bg-[hsl(var(--muted))] transition duration-300 group-hover:-translate-y-0.5 group-hover:shadow-[var(--shadow-card-hover)]">
+            <li key={p.id}>
+              <Link
+                href={`/playlists/${p.id}`}
+                className="group flex items-center gap-3 rounded-[var(--radius-card)] p-2 transition hover:bg-[hsl(var(--muted)_/_0.45)]"
+              >
+                {/* Video-row-sized frame with a 2×2 collage of items 1–4. */}
+                <div className="relative aspect-video w-[12.75rem] shrink-0 overflow-hidden rounded-xl bg-[hsl(var(--muted))] sm:w-60">
                   {p.previewVideoIds.length > 0 ? (
                     <div className="grid h-full w-full grid-cols-2 grid-rows-2 gap-px">
                       {[0, 1, 2, 3].map((slot) => {
@@ -60,27 +64,29 @@ export function PlaylistsOverview() {
                     </div>
                   ) : (
                     <div className="flex h-full w-full items-center justify-center text-[hsl(var(--muted-foreground))]">
-                      <PlaylistIcon className="h-10 w-10" />
+                      <PlaylistIcon className="h-8 w-8" />
                     </div>
                   )}
-                  <span className="absolute bottom-2 right-2 z-10 rounded-md bg-black/78 px-2 py-0.5 font-mono text-[11px] font-semibold text-white">
+                  <span className="absolute bottom-1 right-1 z-10 rounded-md bg-black/78 px-1.5 py-px font-mono text-[10px] font-semibold text-white">
                     {p.itemCount} {p.itemCount === 1 ? "video" : "videos"}
                   </span>
                 </div>
-                <p className="mt-2 line-clamp-1 text-[15px] font-semibold leading-snug tracking-tight transition group-hover:text-[hsl(var(--primary))]">
-                  {p.name}
-                </p>
-                {p.description ? (
-                  <p className="mt-0.5 line-clamp-1 text-xs text-[hsl(var(--muted-foreground))]">
-                    {p.description}
+                <div className="min-w-0 flex-1">
+                  <p className="m-0 line-clamp-1 text-[15px] font-semibold leading-snug tracking-tight transition group-hover:text-[hsl(var(--primary))]">
+                    {p.name}
                   </p>
-                ) : null}
+                  {p.description ? (
+                    <p className="mt-0.5 line-clamp-2 text-xs text-[hsl(var(--muted-foreground))]">
+                      {p.description}
+                    </p>
+                  ) : null}
+                  {p.tags.length > 0 ? (
+                    <p className="mt-1 line-clamp-1 text-xs text-[hsl(var(--muted-foreground))]">
+                      {p.tags.map((tag) => `#${tag}`).join("  ")}
+                    </p>
+                  ) : null}
+                </div>
               </Link>
-              {p.tags.length > 0 ? (
-                <p className="mt-1 line-clamp-1 text-xs text-[hsl(var(--muted-foreground))]">
-                  {p.tags.map((tag) => `#${tag}`).join("  ")}
-                </p>
-              ) : null}
             </li>
           ))}
         </ul>
