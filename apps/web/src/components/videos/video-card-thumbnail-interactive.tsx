@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { usePlayerContext } from "@/components/player/player-context";
 import { useInvidiousOrigins } from "@/components/videos/invidious-origin-context";
 import { VideoCardDurationBadge } from "@/components/videos/video-card-duration-badge";
 import type { VideoActionSurface } from "@/components/videos/video-action-registry";
@@ -15,6 +16,7 @@ import {
 } from "@/lib/card-preview-playback";
 import { toBrowserUpstreamImageUrl } from "@/lib/channel-avatar-proxy";
 import { buildHlsSameOriginConfig } from "@/lib/hls-same-origin";
+import { buildVideoPlayerPayloadFromDetail } from "@/lib/watch-player-payload";
 import { cn } from "@/lib/utils";
 import {
   applyVideoThumbnailImgError,
@@ -109,6 +111,8 @@ export function VideoCardThumbnailInteractive({
   surface,
 }: VideoCardThumbnailInteractiveProps) {
   const router = useRouter();
+  const { setActive } = usePlayerContext();
+  const isAuthed = trpc.auth.session.useQuery().data?.authed ?? false;
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const hlsDestroyRef = useRef<(() => void) | null>(null);
@@ -422,12 +426,43 @@ export function VideoCardThumbnailInteractive({
       const v = videoRef.current;
       if (!v || !previewActiveRef.current) return;
       const sec = Math.floor(v.currentTime);
-      if (sec <= 0) return;
       e.preventDefault();
+
+      // Fluent handoff: activate the persistent player with the preview's
+      // detail + position *before* navigating. The watch page re-activates
+      // the same videoId, which keeps this payload/position — so playback
+      // continues instead of remounting from scratch.
+      const detail = detailQuery.data;
+      if (detail) {
+        try {
+          const built = buildVideoPlayerPayloadFromDetail(
+            detail,
+            window.location.origin,
+            window.location.host ?? "",
+          );
+          if (built.payload) {
+            setActive({
+              isAuthed,
+              props: {
+                videoId,
+                payload: built.payload,
+                title: detail.title ?? "",
+                poster: built.poster,
+                startAtSeconds: sec > 0 ? sec : undefined,
+                durationSeconds: detail.durationSeconds,
+                autoplayOnWatch: true,
+              },
+            });
+          }
+        } catch {
+          // payload building is best-effort; plain navigation still works
+        }
+      }
+
       const base = href.split("?")[0] ?? href;
-      router.push(`${base}?t=${sec}`);
+      router.push(sec > 0 ? `${base}?t=${sec}` : base);
     },
-    [href, router],
+    [href, router, detailQuery.data, setActive, isAuthed, videoId],
   );
 
   const showMute = Boolean(playback);

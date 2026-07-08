@@ -44,14 +44,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const setActive = useCallback((next: ActivePlayer) => {
     setActiveState((prev) => {
-      // Re-adopting the same, already-playing video (e.g. mini → its watch page)
-      // must not swap in fresh server props: a new payload / startAtSeconds would
-      // make the live player re-init and re-seek (a hitch). Keep its props and
-      // only refresh the still-live bits — the cinema bridge and auth.
+      // Re-adopting the same, already-playing video (e.g. mini → its watch
+      // page, or a card-preview handoff → watch) must not swap in a new
+      // payload / startAtSeconds — that re-inits and re-seeks the live player
+      // (a hitch). Keep those, but adopt the richer server extras (captions,
+      // chapters, storyboard, SponsorBlock…) the first activation may lack.
       if (prev && prev.props.videoId === next.props.videoId) {
         return {
           isAuthed: next.isAuthed,
-          props: { ...prev.props, cinema: next.props.cinema },
+          props: {
+            ...next.props,
+            payload: prev.props.payload,
+            startAtSeconds: prev.props.startAtSeconds,
+            cinema: next.props.cinema,
+          },
         };
       }
       return next;
