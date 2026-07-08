@@ -410,7 +410,7 @@ export function VideoCardThumbnailInteractive({
       {showMute ? (
         <button
           type="button"
-          className="absolute right-2 top-2 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-black/75 text-white shadow-md backdrop-blur-sm transition hover:bg-black/90"
+          className="absolute left-2 top-2 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-black/75 text-white shadow-md backdrop-blur-sm transition hover:bg-black/90"
           aria-pressed={!previewMuted}
           aria-label={previewMuted ? "Unmute preview" : "Mute preview"}
           onClick={(e) => {
