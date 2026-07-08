@@ -1,6 +1,9 @@
 "use client";
 
+import { useState } from "react";
+import { ShareDialog } from "@/components/player/share-dialog";
 import { useVideoActions } from "@/components/videos/use-video-actions";
+import { ShareIcon } from "@/components/videos/video-action-icons";
 import {
   isVideoActionActive,
   type VideoActionId,
@@ -69,6 +72,7 @@ export function InteractionButtons({
     withInteractionState: isAuthenticated,
   });
   const disabled = !isAuthenticated || actions.pending;
+  const [shareOpen, setShareOpen] = useState(false);
 
   const reactionHalf = (id: "like" | "dislike") => {
     const active = isVideoActionActive(id, actions.state);
@@ -115,8 +119,23 @@ export function InteractionButtons({
         />
         {reactionHalf("dislike")}
       </div>
+      {/* Sharing needs no account — never disabled with the rest. */}
+      <button
+        type="button"
+        className={cn(pillBase, "rounded-full px-4", pillTone(false))}
+        title="Share"
+        onClick={() => setShareOpen(true)}
+      >
+        <ShareIcon />
+        <span>Share</span>
+      </button>
       {toggle("save")}
       {toggle("queue")}
+      <ShareDialog
+        videoId={videoId}
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+      />
       <VideoActionsMenu
         videoId={videoId}
         title={title}
