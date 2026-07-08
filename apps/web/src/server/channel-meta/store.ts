@@ -31,6 +31,7 @@ function isMissingChannelMetaTableError(error: unknown): boolean {
 export type ChannelMetaRow = {
   channelName: string;
   avatarUrl: string | null;
+  description: string | null;
   updatedAt: number;
 };
 
@@ -42,6 +43,7 @@ export function readChannelMetaRow(
     | {
         channelName: string;
         avatarUrl: string | null;
+        description: string | null;
         updatedAt: number;
       }
     | undefined;
@@ -50,6 +52,7 @@ export function readChannelMetaRow(
       .select({
         channelName: channelMeta.channelName,
         avatarUrl: channelMeta.avatarUrl,
+        description: channelMeta.description,
         updatedAt: channelMeta.updatedAt,
       })
       .from(channelMeta)
@@ -64,13 +67,19 @@ export function readChannelMetaRow(
   return {
     channelName: row.channelName,
     avatarUrl: row.avatarUrl ?? null,
+    description: row.description ?? null,
     updatedAt: row.updatedAt,
   };
 }
 
 export function upsertChannelMetaRow(
   db: AppDb,
-  input: { channelId: string; channelName: string; avatarUrl: string | null },
+  input: {
+    channelId: string;
+    channelName: string;
+    avatarUrl: string | null;
+    description?: string | null;
+  },
 ): void {
   const channelName = input.channelName.trim();
   if (!channelName) return;
@@ -80,6 +89,7 @@ export function upsertChannelMetaRow(
         channelId: input.channelId,
         channelName,
         avatarUrl: input.avatarUrl,
+        description: input.description ?? null,
         updatedAt: nowUnix(),
       })
       .onConflictDoUpdate({
@@ -87,6 +97,7 @@ export function upsertChannelMetaRow(
         set: {
           channelName,
           avatarUrl: input.avatarUrl,
+          description: input.description ?? null,
           updatedAt: nowUnix(),
         },
       })
@@ -100,6 +111,7 @@ export function upsertChannelMetaRow(
 export type ChannelMetaLite = {
   channelName: string;
   avatarUrl: string | null;
+  description: string | null;
   latestVideoAt: number | null;
 };
 
@@ -113,6 +125,7 @@ export function readChannelMetaByIds(
     channelId: string;
     channelName: string;
     avatarUrl: string | null;
+    description: string | null;
     latestVideoAt: number | null;
   }[] = [];
   try {
@@ -121,6 +134,7 @@ export function readChannelMetaByIds(
         channelId: channelMeta.channelId,
         channelName: channelMeta.channelName,
         avatarUrl: channelMeta.avatarUrl,
+        description: channelMeta.description,
         latestVideoAt: channelMeta.latestVideoAt,
       })
       .from(channelMeta)
@@ -136,6 +150,7 @@ export function readChannelMetaByIds(
     out.set(r.channelId, {
       channelName: name,
       avatarUrl: r.avatarUrl ?? null,
+      description: r.description ?? null,
       latestVideoAt: r.latestVideoAt ?? null,
     });
   }
@@ -204,10 +219,13 @@ export async function refreshChannelMetaIfStale(
       const resolvedName =
         page.name?.trim() || cachedMeta?.channelName || channelId;
       const resolvedAvatar = page.avatarUrl ?? cachedMeta?.avatarUrl ?? null;
+      const resolvedDescription =
+        page.description?.trim() || cachedMeta?.description || null;
       upsertChannelMetaRow(db, {
         channelId,
         channelName: resolvedName,
         avatarUrl: resolvedAvatar,
+        description: resolvedDescription,
       });
       return {
         channelId,

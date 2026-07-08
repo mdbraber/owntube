@@ -123,6 +123,8 @@ export const channelMeta = sqliteTable(
     channelId: text("channel_id").primaryKey(),
     channelName: text("channel_name").notNull(),
     avatarUrl: text("avatar_url"),
+    /** Channel "about" text (first line shown on the channels list). */
+    description: text("description"),
     /** Unix seconds of the channel's newest known upload; orders the sidebar. */
     latestVideoAt: integer("latest_video_at"),
     updatedAt: integer("updated_at").notNull(),

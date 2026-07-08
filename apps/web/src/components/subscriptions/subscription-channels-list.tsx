@@ -14,6 +14,7 @@ type Channel = {
   subscribedAt: number;
   channelName: string;
   avatarUrl: string | null;
+  description: string | null;
   latestVideoAt: number | null;
 };
 
@@ -305,6 +306,11 @@ function ChannelRow({ channel: c }: { channel: Channel }) {
           >
             {label}
           </Link>
+          {c.description ? (
+            <p className="mt-0.5 line-clamp-1 text-xs text-[hsl(var(--muted-foreground))]">
+              {c.description}
+            </p>
+          ) : null}
           <div className="mt-1">
             <ChannelTags channelId={c.channelId} isAuthed tone="card" />
           </div>
