@@ -11,6 +11,10 @@ import {
 } from "@/components/videos/video-action-icons";
 import { useRowDrag } from "@/components/videos/use-row-drag";
 import { VideoGrid } from "@/components/videos/video-grid";
+import {
+  SubscriptionTagFilter,
+  type TagState,
+} from "@/components/subscriptions/subscription-tag-filter";
 import { useWatchProgressMap } from "@/components/videos/video-membership-context";
 import { VideoRow } from "@/components/videos/video-row";
 import { VideoThumbnailImg } from "@/components/videos/video-thumbnail-img";
@@ -154,6 +158,38 @@ function VideoBlockBody({
   );
 }
 
+/**
+ * Tag filters for a subscriptions block, stored in the options record as
+ * `tag:<name>` keys — true = include ("only these"), false = exclude, absent
+ * = off. Mirrors the tri-state filter on the subscriptions page.
+ */
+const TAG_OPTION_PREFIX = "tag:";
+
+function blockTagState(block: HomeBlock, tag: string): TagState {
+  const value = block.options?.[`${TAG_OPTION_PREFIX}${tag}`];
+  if (value === true) return "include";
+  if (value === false) return "exclude";
+  return "off";
+}
+
+function blockTagLists(block: HomeBlock): {
+  includeTags: string[] | undefined;
+  excludeTags: string[] | undefined;
+} {
+  const include: string[] = [];
+  const exclude: string[] = [];
+  for (const [key, value] of Object.entries(block.options ?? {})) {
+    if (!key.startsWith(TAG_OPTION_PREFIX)) continue;
+    const tag = key.slice(TAG_OPTION_PREFIX.length);
+    if (value === true) include.push(tag);
+    else if (value === false) exclude.push(tag);
+  }
+  return {
+    includeTags: include.length > 0 ? include : undefined,
+    excludeTags: exclude.length > 0 ? exclude : undefined,
+  };
+}
+
 /** Drops completed videos when the block's hide-finished option is on. */
 function useHideFinished(block: HomeBlock, videos: BlockVideo[]): BlockVideo[] {
   const progressMap = useWatchProgressMap();
@@ -167,10 +203,13 @@ function blockFetchCount(block: HomeBlock): number {
 }
 
 function SubscriptionsBlockBody({ block }: { block: HomeBlock }) {
+  const { includeTags, excludeTags } = blockTagLists(block);
   // Over-fetch: the feed strips shorts/restricted *after* the limit, so a
   // page of exactly `limit` often arrives short.
   const query = trpc.subscriptions.mergedFeedInfinite.useQuery({
     limit: Math.min(48, Math.max(8, blockFetchCount(block) * 2)),
+    includeTags,
+    excludeTags,
   });
   const videos = useHideFinished(
     block,
@@ -463,6 +502,33 @@ function BlockOptionsMenu({
   const rootRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const defs = SECTION_OPTIONS[block.type] ?? [];
+  const withTags = block.type === "subscriptions";
+  const allTags = trpc.channelTags.listAll.useQuery(undefined, {
+    enabled: open && withTags,
+  });
+
+  const cycleTag = (tag: string) => {
+    const key = `${TAG_OPTION_PREFIX}${tag}`;
+    const state = blockTagState(block, tag);
+    const next = { ...block.options };
+    if (state === "off") next[key] = true;
+    else if (state === "include") next[key] = false;
+    else delete next[key];
+    onPatch({ options: next });
+  };
+
+  const setAllTags = (state: "off" | "exclude") => {
+    const next = { ...block.options };
+    for (const key of Object.keys(next)) {
+      if (key.startsWith(TAG_OPTION_PREFIX)) delete next[key];
+    }
+    if (state === "exclude") {
+      for (const { tag } of allTags.data ?? []) {
+        next[`${TAG_OPTION_PREFIX}${tag}`] = false;
+      }
+    }
+    onPatch({ options: next });
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -480,7 +546,7 @@ function BlockOptionsMenu({
     };
   }, [open]);
 
-  if (defs.length === 0) return null;
+  if (defs.length === 0 && !withTags) return null;
 
   return (
     <div ref={rootRef} className="relative">
@@ -497,7 +563,7 @@ function BlockOptionsMenu({
       {open ? (
         <div
           role="menu"
-          className="absolute right-0 top-full z-40 mt-1 w-64 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-1.5 text-sm shadow-lg"
+          className="absolute right-0 top-full z-40 mt-1 w-72 max-w-[85vw] rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-1.5 text-sm shadow-lg"
         >
           {defs.map((def) => (
             <label
@@ -520,6 +586,23 @@ function BlockOptionsMenu({
               {def.label}
             </label>
           ))}
+          {withTags && (allTags.data ?? []).length > 0 ? (
+            <div
+              className={cn(
+                "px-2.5 py-2",
+                defs.length > 0 &&
+                  "mt-1 border-t border-[hsl(var(--border))] pt-2.5",
+              )}
+            >
+              <SubscriptionTagFilter
+                tags={allTags.data ?? []}
+                stateFor={(tag) => blockTagState(block, tag)}
+                onCycle={cycleTag}
+                onShowAll={() => setAllTags("off")}
+                onHideAll={() => setAllTags("exclude")}
+              />
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>
