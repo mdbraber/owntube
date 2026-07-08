@@ -53,7 +53,6 @@ import {
   writePlayerVolumeOnly,
 } from "@/lib/player-media-prefs";
 import type { SponsorBlockPrefs } from "@/lib/sponsorblock-prefs";
-import { useWatchProgress } from "@/components/videos/video-membership-context";
 import { cn } from "@/lib/utils";
 import type { VideoChapter } from "@/lib/video-chapters";
 import type { VideoStoryboard } from "@/server/services/proxy.types";
@@ -136,9 +135,6 @@ export function VideoPlayer({
   playbackSourceUsed,
 }: VideoPlayerProps) {
   const playerMediaRootRef = useRef<HTMLDivElement>(null);
-  // Watched videos tint the seek bar green (same standard as thumbnails);
-  // scoped via data attribute so all timeline variants pick it up in CSS.
-  const watchedVideo = useWatchProgress(videoId)?.completed ?? false;
   // Autoplay on the full watch page only (never in the mini player or Shorts,
   // which have their own autoplay semantics).
   const watchAutoplay = autoplayOnWatch && !miniMode && !shortsMode;
@@ -485,7 +481,6 @@ export function VideoPlayer({
       <div
         ref={playerMediaRootRef}
         data-ot-player-root=""
-        data-ot-watched={watchedVideo ? "true" : undefined}
         className={cn(
           "relative w-full",
           shortsMode ? "h-full min-h-0" : undefined,

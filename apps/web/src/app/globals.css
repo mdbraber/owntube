@@ -215,12 +215,6 @@
   background: hsl(var(--primary));
 }
 
-/* Watched video: the player's seek fill goes green, matching the completed
-   state on thumbnail progress bars. */
-[data-ot-watched="true"] .ot-brand-gradient {
-  background: #10b981;
-}
-
 .ot-brand-gradient-text {
   color: hsl(var(--primary));
 }
