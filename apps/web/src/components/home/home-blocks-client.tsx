@@ -23,7 +23,9 @@ import {
   type HomeBlock,
   type HomeBlockType,
   homeBlockHref,
+  homeBlockOption,
   newHomeBlockId,
+  SECTION_OPTIONS,
 } from "@/lib/home-blocks";
 import { cn } from "@/lib/utils";
 import type { UnifiedVideo } from "@/server/services/proxy.types";
@@ -126,14 +128,12 @@ function SubscriptionsBlockBody({ block }: { block: HomeBlock }) {
 }
 
 function HistoryBlockBody({ block }: { block: HomeBlock }) {
-  // Shared "base": the same preference drives the History page's filter.
-  const hideCompleted =
-    trpc.settings.get.useQuery().data?.sectionPrefs.history.hideCompleted ??
-    false;
+  // The block's own value for the shared option definition — independent of
+  // the History page's filter.
   const query = trpc.history.list.useQuery({
     page: 1,
     pageSize: Math.min(24, block.limit),
-    hideWatched: hideCompleted,
+    hideWatched: homeBlockOption(block, "hideCompleted"),
   });
   const videos: BlockVideo[] = (query.data ?? []).map((item) => ({
     videoId: item.videoId,
@@ -376,14 +376,16 @@ function BlockHeading({ block }: { block: HomeBlock }) {
  * Per-block options behind a dot menu (edit mode) — options live in the
  * shared sectionPrefs "base", so the section's own page stays in sync.
  */
-function BlockOptionsMenu({ block }: { block: HomeBlock }) {
+function BlockOptionsMenu({
+  block,
+  onPatch,
+}: {
+  block: HomeBlock;
+  onPatch: (patch: Partial<HomeBlock>) => void;
+}) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
-  const utils = trpc.useUtils();
-  const settings = trpc.settings.get.useQuery();
-  const update = trpc.settings.update.useMutation({
-    onSettled: () => utils.settings.get.invalidate(),
-  });
+  const defs = SECTION_OPTIONS[block.type] ?? [];
 
   useEffect(() => {
     if (!open) return;
@@ -401,10 +403,7 @@ function BlockOptionsMenu({ block }: { block: HomeBlock }) {
     };
   }, [open]);
 
-  if (block.type !== "history") return null;
-  const prefs = settings.data?.sectionPrefs ?? {
-    history: { hideCompleted: false },
-  };
+  if (defs.length === 0) return null;
 
   return (
     <div ref={rootRef} className="relative">
@@ -423,28 +422,27 @@ function BlockOptionsMenu({ block }: { block: HomeBlock }) {
           role="menu"
           className="absolute right-0 top-full z-40 mt-1 w-64 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-1.5 text-sm shadow-lg"
         >
-          <label className="flex cursor-pointer select-none items-center gap-2.5 rounded-lg px-2.5 py-2 transition hover:bg-[hsl(var(--muted)_/_0.65)]">
-            <input
-              type="checkbox"
-              className="h-4 w-4 accent-[hsl(var(--primary))]"
-              checked={prefs.history.hideCompleted}
-              onChange={(e) =>
-                update.mutate({
-                  sectionPrefs: {
-                    ...prefs,
-                    history: {
-                      ...prefs.history,
-                      hideCompleted: e.currentTarget.checked,
+          {defs.map((def) => (
+            <label
+              key={def.key}
+              className="flex cursor-pointer select-none items-center gap-2.5 rounded-lg px-2.5 py-2 transition hover:bg-[hsl(var(--muted)_/_0.65)]"
+            >
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-[hsl(var(--primary))]"
+                checked={homeBlockOption(block, def.key)}
+                onChange={(e) =>
+                  onPatch({
+                    options: {
+                      ...block.options,
+                      [def.key]: e.currentTarget.checked,
                     },
-                  },
-                })
-              }
-            />
-            Hide completed videos
-          </label>
-          <p className="px-2.5 pb-1 pt-0.5 text-[11px] text-[hsl(var(--muted-foreground))]">
-            Also applies on the History page.
-          </p>
+                  })
+                }
+              />
+              {def.label}
+            </label>
+          ))}
         </div>
       ) : null}
     </div>
@@ -707,7 +705,10 @@ export function HomeBlocksClient() {
                         </option>
                       ))}
                     </select>
-                    <BlockOptionsMenu block={block} />
+                    <BlockOptionsMenu
+                      block={block}
+                      onPatch={(patch) => patchBlock(block.id, patch)}
+                    />
                     <button
                       type="button"
                       className="flex h-7 w-7 items-center justify-center rounded-full text-[hsl(var(--muted-foreground))] transition hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))]"

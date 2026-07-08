@@ -120,6 +120,8 @@ export const appSettingsSchema = z.object({
         limit: z.number().int().min(1).max(24).default(8),
         layout: z.enum(["cards", "rows"]).default("cards"),
         size: z.enum(["xs", "sm", "md", "lg"]).default("md"),
+        /** Section-option values for this block (independent of the page's). */
+        options: z.record(z.string(), z.boolean()).optional(),
       }),
     )
     .max(16)

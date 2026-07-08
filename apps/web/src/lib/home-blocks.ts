@@ -50,7 +50,40 @@ export type HomeBlock = {
   limit: number;
   layout: HomeBlockLayout;
   size: HomeBlockSize;
+  /**
+   * Values for this block's section options (keys from SECTION_OPTIONS).
+   * Independent from the section page's own value for the same option.
+   */
+  options?: Record<string, boolean>;
 };
+
+export type SectionOptionDef = {
+  key: string;
+  label: string;
+  defaultValue: boolean;
+};
+
+/**
+ * The single *definition* base: options declared once per section appear
+ * automatically wherever that section renders (its page and its home
+ * blocks) — while every surface keeps its own value.
+ */
+export const SECTION_OPTIONS: Partial<
+  Record<HomeBlockType, SectionOptionDef[]>
+> = {
+  history: [
+    {
+      key: "hideCompleted",
+      label: "Hide completed videos",
+      defaultValue: false,
+    },
+  ],
+};
+
+export function homeBlockOption(block: HomeBlock, key: string): boolean {
+  const def = SECTION_OPTIONS[block.type]?.find((o) => o.key === key);
+  return block.options?.[key] ?? def?.defaultValue ?? false;
+}
 
 export const HOME_BLOCK_LABEL: Record<HomeBlockType, string> = {
   subscriptions: "Subscriptions",
