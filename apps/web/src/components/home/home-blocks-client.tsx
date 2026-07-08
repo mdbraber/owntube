@@ -11,6 +11,7 @@ import {
 } from "@/components/videos/video-action-icons";
 import { useRowDrag } from "@/components/videos/use-row-drag";
 import { VideoGrid } from "@/components/videos/video-grid";
+import { useWatchProgressMap } from "@/components/videos/video-membership-context";
 import { VideoRow } from "@/components/videos/video-row";
 import { VideoThumbnailImg } from "@/components/videos/video-thumbnail-img";
 import {
@@ -153,6 +154,13 @@ function VideoBlockBody({
   );
 }
 
+/** Drops completed videos when the block's hide-finished option is on. */
+function useHideFinished(block: HomeBlock, videos: BlockVideo[]): BlockVideo[] {
+  const progressMap = useWatchProgressMap();
+  if (!homeBlockOption(block, "hideFinished")) return videos;
+  return videos.filter((v) => !progressMap.get(v.videoId)?.completed);
+}
+
 /** Items a block needs at most: full rows on wide screens, or the limit. */
 function blockFetchCount(block: HomeBlock): number {
   return block.layout === "cards" ? block.rows * 8 : block.limit;
@@ -164,9 +172,13 @@ function SubscriptionsBlockBody({ block }: { block: HomeBlock }) {
   const query = trpc.subscriptions.mergedFeedInfinite.useQuery({
     limit: Math.min(48, Math.max(8, blockFetchCount(block) * 2)),
   });
+  const videos = useHideFinished(
+    block,
+    (query.data?.videos ?? []) as BlockVideo[],
+  );
   return (
     <VideoBlockBody
-      videos={(query.data?.videos ?? []).slice(0, blockFetchCount(block))}
+      videos={videos.slice(0, blockFetchCount(block))}
       block={block}
       surface="subscriptions"
       isLoading={query.isPending}
@@ -220,9 +232,10 @@ function QueueBlockBody({ block }: { block: HomeBlock }) {
       thumbnailUrl: item.thumbnailUrl,
       durationSeconds: item.durationSeconds,
     }));
+  const visible = useHideFinished(block, videos);
   return (
     <VideoBlockBody
-      videos={videos}
+      videos={visible}
       block={block}
       surface="queue"
       isLoading={query.isPending}
@@ -243,9 +256,10 @@ function SavedBlockBody({ block }: { block: HomeBlock }) {
       thumbnailUrl: item.thumbnailUrl,
       durationSeconds: item.durationSeconds,
     }));
+  const visible = useHideFinished(block, videos);
   return (
     <VideoBlockBody
-      videos={videos}
+      videos={visible}
       block={block}
       surface="saved"
       isLoading={query.isPending}
@@ -270,9 +284,10 @@ function PlaylistBlockBody({ block }: { block: HomeBlock }) {
       thumbnailUrl: item.thumbnailUrl,
       durationSeconds: item.durationSeconds,
     }));
+  const visible = useHideFinished(block, videos);
   return (
     <VideoBlockBody
-      videos={videos}
+      videos={visible}
       block={block}
       surface="playlist"
       isLoading={query.isPending}

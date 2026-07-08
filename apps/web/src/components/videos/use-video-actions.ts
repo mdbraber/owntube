@@ -133,6 +133,26 @@ export function useVideoActions({
     },
   });
   const markWatchedMutation = trpc.subscriptions.markWatched.useMutation({
+    onMutate: async (vars) => {
+      // Optimistic: flip the shared progress map so hide-finished sections
+      // drop the video immediately.
+      await utils.history.progressAll.cancel();
+      const prev = utils.history.progressAll.getData();
+      utils.history.progressAll.setData(undefined, (old) => [
+        {
+          videoId: vars.videoId,
+          positionSeconds: 0,
+          durationWatched: 0,
+          videoDurationSeconds: 1,
+          completed: 1,
+        },
+        ...(old ?? []),
+      ]);
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) utils.history.progressAll.setData(undefined, ctx.prev);
+    },
     onSuccess: () =>
       Promise.all([
         utils.subscriptions.mergedFeedInfinite.invalidate(),
@@ -140,6 +160,7 @@ export function useVideoActions({
         utils.video.related.invalidate(),
         utils.history.list.invalidate(),
       ]),
+    onSettled: () => utils.history.progressAll.invalidate(),
   });
   const blockChannelMutation =
     trpc.interactions.blockRecommendationChannel.useMutation({

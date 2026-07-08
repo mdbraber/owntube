@@ -133,6 +133,11 @@ export function useVideoMembership(videoId?: string): VideoMembership {
   }, [videoId, savedIds, queuedIds, playlistByVideo, playlistIdsByVideo]);
 }
 
+/** The full per-video progress map (list filtering, e.g. hide-finished). */
+export function useWatchProgressMap(): ReadonlyMap<string, WatchProgress> {
+  return useContext(VideoMembershipContext).progressByVideo;
+}
+
 /** Watch progress for one video from the shared page-level map. */
 export function useWatchProgress(videoId?: string): WatchProgress | null {
   const { progressByVideo } = useContext(VideoMembershipContext);
