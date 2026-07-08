@@ -40,11 +40,13 @@ function underlayTone(action: Exclude<SwipeAction, "none">): string {
 }
 
 /**
- * Wraps a video card with one swipe action per direction on touch devices
- * (Home / Explore / Subscriptions); the mapping comes from user settings.
- * Solid underlay with a fixed edge icon that pops at the commit threshold —
- * gestures stay shortcuts: every swipe verb also lives in the kebab menu.
- * `touch-action: pan-y` keeps vertical scrolling intact.
+ * Wraps a card's *thumbnail* with one swipe action per direction on touch
+ * devices (Home / Explore / Subscriptions); the mapping comes from user
+ * settings. Only the video frame slides — the solid underlay is revealed
+ * behind it with square inner edges (the wrapper clips the outer corners) and
+ * the icon + label centered in the revealed strip, popping at the commit
+ * threshold. Gestures stay shortcuts: every swipe verb also lives in the
+ * kebab menu. `touch-action: pan-y` keeps vertical scrolling intact.
  */
 export function CardSwipeLayer({
   videoId,
@@ -68,17 +70,18 @@ export function CardSwipeLayer({
   const startX = useRef<number | null>(null);
   const startY = useRef(0);
   const horizontal = useRef(false);
+  // Direction survives release so the underlay keeps its tone while the
+  // thumbnail animates back over it.
+  const lastDir = useRef<1 | -1>(1);
   const [dx, setDx] = useState(0);
 
   if (!enabled) return <>{children}</>;
 
+  const dir: 1 | -1 = dx !== 0 ? (dx > 0 ? 1 : -1) : lastDir.current;
   const pendingAction: SwipeAction =
-    dx > 0
-      ? (gestures?.right ?? "none")
-      : dx < 0
-        ? (gestures?.left ?? "none")
-        : "none";
+    dir > 0 ? (gestures?.right ?? "none") : (gestures?.left ?? "none");
   const armed = Math.abs(dx) >= COMMIT_PX && pendingAction !== "none";
+  const revealPx = Math.min(Math.abs(dx), MAX_TRANSLATE);
 
   function run(action: SwipeAction) {
     if (action === "queue") actions.toggleQueue(true);
@@ -89,14 +92,18 @@ export function CardSwipeLayer({
 
   return (
     <div className="relative touch-pan-y overflow-hidden rounded-[var(--radius-card)]">
-      {pendingAction !== "none" && dx !== 0 ? (
+      {pendingAction !== "none" ? (
         <div
           className={cn(
-            "absolute inset-y-0 z-0 flex items-center rounded-[var(--radius-card)] px-5",
-            dx < 0 ? "right-0 justify-end" : "left-0 justify-start",
+            // Square edges — the wrapper's rounding clips the outer corners.
+            "absolute inset-y-0 z-0 flex items-center justify-center overflow-hidden",
+            dir < 0 ? "right-0" : "left-0",
             underlayTone(pendingAction),
           )}
-          style={{ width: MAX_TRANSLATE }}
+          style={{
+            width: revealPx,
+            transition: dx ? "none" : "width 160ms ease-out",
+          }}
           aria-hidden
         >
           <span
@@ -114,9 +121,10 @@ export function CardSwipeLayer({
         </div>
       ) : null}
       <div
-        // Solid background + own stacking context so the card slides *over*
-        // the underlay and only uncovers it as it moves.
-        className="relative z-10 rounded-[var(--radius-card)] bg-[hsl(var(--background))]"
+        // Solid background + own stacking context so the frame slides *over*
+        // the underlay and only uncovers it as it moves; square so the edge
+        // against the underlay is straight.
+        className="relative z-10 bg-[hsl(var(--background))]"
         style={{
           transform: dx
             ? `translateX(${Math.max(-MAX_TRANSLATE, Math.min(MAX_TRANSLATE, dx))}px)`
@@ -139,7 +147,10 @@ export function CardSwipeLayer({
           if (!horizontal.current && Math.abs(ddx) > Math.abs(ddy) + 6) {
             horizontal.current = true;
           }
-          if (horizontal.current) setDx(ddx);
+          if (horizontal.current) {
+            if (ddx !== 0) lastDir.current = ddx > 0 ? 1 : -1;
+            setDx(ddx);
+          }
         }}
         onTouchEnd={() => {
           const delta = dx;

@@ -397,7 +397,7 @@ export function VideoActionsMenu({
         type="button"
         variant="ghost"
         size="icon"
-        className="h-8 w-8 rounded-full text-[hsl(var(--muted-foreground))] opacity-0 transition-opacity duration-200 hover:bg-[hsl(var(--muted)_/_0.65)] hover:text-[hsl(var(--foreground))] group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100 data-[state=open]:opacity-100"
+        className="h-8 w-8 rounded-full text-[hsl(var(--muted-foreground))] opacity-100 transition-opacity duration-200 hover:bg-[hsl(var(--muted)_/_0.65)] hover:text-[hsl(var(--foreground))] [@media(hover:hover)]:opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
         aria-label="Video options"
         aria-haspopup="menu"
         aria-expanded={open}

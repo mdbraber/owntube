@@ -1,4 +1,6 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
+import { CardSwipeLayer } from "@/components/videos/card-swipe-layer";
 import { ChannelAvatarCircle } from "@/components/videos/channel-avatar-circle";
 import type { VideoActionSurface } from "@/components/videos/video-action-registry";
 import { VideoActionsMenu } from "@/components/videos/video-actions-menu";
@@ -39,7 +41,38 @@ type VideoCardProps = {
   dimmed?: boolean;
   /** Where the card renders — trims the action menu per context. */
   surface?: VideoActionSurface;
+  /** Touch swipe actions on the thumbnail (Home/Explore/Subscriptions). */
+  enableSwipe?: boolean;
 };
+
+/** Wraps children in the swipe layer only when enabled. */
+function MaybeSwipe({
+  enabled,
+  videoId,
+  title,
+  channelId,
+  surface,
+  children,
+}: {
+  enabled: boolean;
+  videoId: string;
+  title: string;
+  channelId?: string;
+  surface: VideoActionSurface;
+  children: ReactNode;
+}) {
+  if (!enabled) return <>{children}</>;
+  return (
+    <CardSwipeLayer
+      videoId={videoId}
+      title={title}
+      channelId={channelId}
+      surface={surface}
+    >
+      {children}
+    </CardSwipeLayer>
+  );
+}
 
 export function VideoCard({
   href,
@@ -59,6 +92,7 @@ export function VideoCard({
   recommendationReason,
   dimmed,
   surface = "feed",
+  enableSwipe = false,
 }: VideoCardProps) {
   const viewsLabel = formatViews(viewCount);
   const publishedLabel = formatPublishedLabel(publishedText, publishedAt);
@@ -81,26 +115,36 @@ export function VideoCard({
       }`}
     >
       {videoId ? (
-        <div className="relative">
-          <VideoCardThumbnailInteractive
-            href={href}
-            videoId={videoId}
-            thumbnailUrl={thumbnailUrl}
-            durationSeconds={durationSeconds}
-            isLive={isLive}
-            isUpcoming={isUpcoming}
-            disableHoverPreview={isLive === true}
-            thumbClassName={thumbShell}
-            imgClassName={thumbImg}
-          />
-          <VideoCardQuickActions
-            videoId={videoId}
-            title={title}
-            channelId={channelId}
-            surface={surface}
-            className="absolute right-2 top-2 z-20"
-          />
-        </div>
+        // Swipe wraps only the video frame — meta below stays put and the
+        // underlay matches the thumbnail's height and rounding.
+        <MaybeSwipe
+          enabled={enableSwipe}
+          videoId={videoId}
+          title={title}
+          channelId={channelId}
+          surface={surface}
+        >
+          <div className="relative">
+            <VideoCardThumbnailInteractive
+              href={href}
+              videoId={videoId}
+              thumbnailUrl={thumbnailUrl}
+              durationSeconds={durationSeconds}
+              isLive={isLive}
+              isUpcoming={isUpcoming}
+              disableHoverPreview={isLive === true}
+              thumbClassName={thumbShell}
+              imgClassName={thumbImg}
+            />
+            <VideoCardQuickActions
+              videoId={videoId}
+              title={title}
+              channelId={channelId}
+              surface={surface}
+              className="absolute right-2 top-2 z-20"
+            />
+          </div>
+        </MaybeSwipe>
       ) : (
         <Link href={href} className="block">
           <div className={thumbShell}>

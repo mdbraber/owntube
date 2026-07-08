@@ -1,4 +1,3 @@
-import { CardSwipeLayer } from "@/components/videos/card-swipe-layer";
 import { VideoCard, VideoCardShort } from "@/components/videos/video-card";
 import type { UnifiedVideo } from "@/server/services/proxy.types";
 
@@ -68,23 +67,11 @@ export function VideoGrid({
     <ul className={gridClass}>
       {videos.map((v) => (
         <li key={v.videoId}>
-          {enableSwipe ? (
-            <CardSwipeLayer
-              videoId={v.videoId}
-              title={v.title}
-              channelId={v.channelId}
-            >
-              <VideoCard
-                {...videoCardProps(v)}
-                dimmed={dimVideoIds?.has(v.videoId) ?? false}
-              />
-            </CardSwipeLayer>
-          ) : (
-            <VideoCard
-              {...videoCardProps(v)}
-              dimmed={dimVideoIds?.has(v.videoId) ?? false}
-            />
-          )}
+          <VideoCard
+            {...videoCardProps(v)}
+            dimmed={dimVideoIds?.has(v.videoId) ?? false}
+            enableSwipe={enableSwipe}
+          />
         </li>
       ))}
     </ul>

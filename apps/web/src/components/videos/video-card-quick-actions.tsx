@@ -61,7 +61,7 @@ export function VideoCardQuickActions({
     <div
       className={cn(
         // pointer-fine only: on touch the kebab/bottom sheet is the path.
-        "hidden flex-col gap-1.5 pointer-fine:flex",
+        "hidden flex-col gap-1.5 [@media(hover:hover)]:flex",
         "opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-within:opacity-100",
         className,
       )}

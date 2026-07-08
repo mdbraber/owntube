@@ -164,7 +164,7 @@ export function VideoRow({
         {onRemove ? (
           <button
             type="button"
-            className="flex h-8 w-8 items-center justify-center rounded-full text-[hsl(var(--muted-foreground))] opacity-0 transition hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))] focus-visible:opacity-100 group-hover:opacity-100 pointer-coarse:opacity-100 disabled:opacity-30"
+            className="flex h-8 w-8 items-center justify-center rounded-full text-[hsl(var(--muted-foreground))] opacity-100 transition hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))] [@media(hover:hover)]:opacity-0 group-hover:opacity-100 focus-visible:opacity-100 disabled:opacity-30"
             title={removeLabel}
             aria-label={removeLabel}
             disabled={removeDisabled}
