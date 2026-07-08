@@ -776,11 +776,7 @@ body {
   max-width: 60rem;
 }
 
-/* Roll-up: the last line is currently building (bright); lines above it are
-   already-spoken context, dimmed. */
+/* Roll-up: every line renders at full brightness. */
 .ot-caption__line {
   display: block;
-}
-.ot-caption__line--dim {
-  color: rgb(255 255 255 / 0.6);
 }

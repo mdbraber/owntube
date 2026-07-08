@@ -629,9 +629,9 @@ export function PlayerChrome({
  * its left edge jittering. Lines stay left-aligned (shared left margin). It
  * rides low at rest and lifts above the scrubber while the chrome is shown.
  *
- * YouTube-style roll-up: the last line is the one currently building (bright);
- * any line above it is already-spoken context, shown dimmed. Styling lives in
- * the `.ot-caption` classes in globals.css.
+ * YouTube-style roll-up: earlier lines stay as full-brightness context above
+ * the line currently building. Styling lives in the `.ot-caption` classes in
+ * globals.css.
  */
 function CaptionOverlay({
   text,
@@ -642,18 +642,11 @@ function CaptionOverlay({
 }) {
   if (!text) return null;
   const lines = text.split("\n");
-  const lastIndex = lines.length - 1;
   return (
     <output aria-live="polite" className="ot-caption" data-raised={raised}>
       <span className="ot-caption__box">
         {lines.map((line, i) => (
-          <span
-            key={`${i}:${line}`}
-            className={cn(
-              "ot-caption__line",
-              i < lastIndex && "ot-caption__line--dim",
-            )}
-          >
+          <span key={`${i}:${line}`} className="ot-caption__line">
             {line}
           </span>
         ))}
