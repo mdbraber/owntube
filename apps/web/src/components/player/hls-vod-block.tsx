@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNativeAdapter } from "@/components/player/player-adapters";
 import { usePlayerCaptions } from "@/components/player/player-captions";
 import { PlayerChrome } from "@/components/player/player-chrome";
@@ -10,7 +10,12 @@ import {
 } from "@/components/player/player-media-hooks";
 import type { CaptionTrack } from "@/components/player/player-payload";
 import type { SponsorBlockChromeProps } from "@/components/player/player-types";
+import {
+  pickDashVideoFamily,
+  useDashPlayback,
+} from "@/hooks/use-dash-playback";
 import { useHlsVodPlayback } from "@/hooks/use-hls-vod-playback";
+import { isIosLikeBrowser } from "@/lib/ios-playback";
 import { cn } from "@/lib/utils";
 import type { VideoChapter } from "@/lib/video-chapters";
 
@@ -101,13 +106,56 @@ export function HlsVodBlock({
     window.setTimeout(() => onPlaybackError(), 0);
   }, [onPlaybackError]);
 
+  // Upgrade the synthesized-HLS source to our synthesized DASH manifest when
+  // the browser can MSE-decode a better ladder (VP9/AV1 → >1080p; the HLS
+  // path is AVC-only). iOS keeps native HLS — MSE strands video there. A
+  // dash.js fatal error drops back to the HLS path for this stream. Decided
+  // post-mount (capability probes are browser-only), so both hooks below see
+  // an empty src until then and neither double-initializes.
+  const [dashDecision, setDashDecision] = useState<{
+    key: string;
+    src: string | null;
+  } | null>(null);
+  const [dashFailedKey, setDashFailedKey] = useState<string | null>(null);
+  const dashFailed = dashFailedKey === reactKey;
+  useEffect(() => {
+    if (
+      dashFailed ||
+      shortsMode ||
+      !videoId ||
+      !src.startsWith("/hls/") ||
+      isIosLikeBrowser()
+    ) {
+      setDashDecision({ key: reactKey, src: null });
+      return;
+    }
+    const family = pickDashVideoFamily();
+    setDashDecision({
+      key: reactKey,
+      src: family
+        ? `/dash/${encodeURIComponent(videoId)}/manifest.mpd?video=${family}`
+        : null,
+    });
+  }, [src, videoId, reactKey, shortsMode, dashFailed]);
+  const decided = dashDecision?.key === reactKey;
+  const dashSrc = decided ? dashDecision.src : null;
+
   useHlsVodPlayback(
     videoRef,
-    src,
+    decided && !dashSrc ? src : "",
     reactKey,
     startAtSeconds,
     shortsMode || miniShouldAutoplay || autoplay,
     emitPlaybackError,
+  );
+
+  useDashPlayback(
+    videoRef,
+    dashSrc ?? "",
+    reactKey,
+    startAtSeconds,
+    shortsMode || miniShouldAutoplay || autoplay,
+    () => setDashFailedKey(reactKey),
   );
 
   const adapter = useNativeAdapter({

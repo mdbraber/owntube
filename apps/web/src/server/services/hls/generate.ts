@@ -18,7 +18,7 @@
 
 const INVIDIOUS_TIMEOUT_MS = 15_000;
 
-type AdaptiveFormat = {
+export type AdaptiveFormat = {
   itag: number | string;
   type: string;
   url: string;
@@ -35,7 +35,7 @@ function invidiousBase(): string {
   return (process.env.INVIDIOUS_BASE_URL ?? "").trim().replace(/\/+$/, "");
 }
 
-function codecsOf(type: string): string {
+export function codecsOf(type: string): string {
   return type.match(/codecs="([^"]+)"/)?.[1] ?? "";
 }
 
@@ -46,7 +46,7 @@ function codecsOf(type: string): string {
  * browser streams segments directly from Invidious/companion (CORS `*`) instead
  * of re-proxying every fragment through our Node server.
  */
-function segmentUri(url: string): string {
+export function segmentUri(url: string): string {
   if (process.env.INVIDIOUS_DIRECT_HLS_SEGMENTS === "true") return url;
   try {
     const u = new URL(url);
@@ -92,7 +92,9 @@ const adaptiveFormatsCache = new Map<
   { at: number; formats: Promise<AdaptiveFormat[]> }
 >();
 
-function fetchAdaptiveFormats(videoId: string): Promise<AdaptiveFormat[]> {
+export function fetchAdaptiveFormats(
+  videoId: string,
+): Promise<AdaptiveFormat[]> {
   const hit = adaptiveFormatsCache.get(videoId);
   if (hit && Date.now() - hit.at < ADAPTIVE_CACHE_TTL_MS) return hit.formats;
   const formats = fetchAdaptiveFormatsUncached(videoId).catch((e) => {
