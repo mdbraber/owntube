@@ -84,9 +84,11 @@ async function fetchAdaptiveFormatsUncached(
  * (~1-2s upstream) — slow start and needless load on Invidious. Cache the
  * adaptive formats per videoId for a short TTL and dedupe concurrent in-flight
  * fetches by storing the Promise, so the whole manifest set shares one upstream
- * round-trip. The signed stream URLs inside stay valid far longer than the TTL.
+ * round-trip. The signed stream URLs inside stay valid for ~6h, so a long TTL
+ * is safe — and it turns the ~3s cold manifest cost into ~0.3s for every
+ * replay/seek/quality-switch within the window.
  */
-const ADAPTIVE_CACHE_TTL_MS = 60_000;
+const ADAPTIVE_CACHE_TTL_MS = 30 * 60_000;
 const adaptiveFormatsCache = new Map<
   string,
   { at: number; formats: Promise<AdaptiveFormat[]> }

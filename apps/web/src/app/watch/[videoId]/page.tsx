@@ -42,6 +42,7 @@ import {
   isVideoWatched,
 } from "@/server/history/watch-resume";
 import { getRecommendations } from "@/server/recommendation/engine";
+import { fetchAdaptiveFormats } from "@/server/services/hls/generate";
 import {
   fetchRelatedVideos,
   fetchTrendingVideos,
@@ -168,6 +169,13 @@ export default async function WatchPage({
       ? getWatchResumeSeconds(db, userId, videoId, detail.durationSeconds)
       : null;
   const effectiveStartAtSeconds = startAtSeconds ?? resumeSeconds ?? undefined;
+
+  // Pre-warm the adaptive-formats cache in parallel with the page render:
+  // the client's first manifest request (/dash or /hls) otherwise pays the
+  // ~3s upstream formats fetch on its critical path.
+  if (detail && !isLive && !isUpcoming) {
+    void fetchAdaptiveFormats(videoId).catch(() => {});
+  }
 
   // Already-watched videos open at rest: poster + chrome, no autoplay
   // (whatever the setting says), position back at the start.
@@ -354,6 +362,7 @@ export default async function WatchPage({
                 autoplayOnWatch={
                   (userSettings?.autoplayOnWatch ?? true) && !videoWatched
                 }
+                autoplayNextDefault={userSettings?.autoplayNext}
                 sponsorBlockPrefs={
                   userSettings && !isLive
                     ? sponsorBlockPrefsFromAppSettings(userSettings)

@@ -42,6 +42,7 @@ const settingsPatchSchema = z.object({
   defaultCinemaMode: z.boolean().optional(),
   enableMiniPlayer: z.boolean().optional(),
   autoplayOnWatch: z.boolean().optional(),
+  autoplayNext: z.boolean().optional(),
   defaultPlaybackQuality: defaultPlaybackQualitySchema.optional(),
   sponsorBlockEnabled: z.boolean().optional(),
   sponsorBlockAutoSkip: z.boolean().optional(),

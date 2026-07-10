@@ -56,6 +56,7 @@ import type { SponsorBlockPrefs } from "@/lib/sponsorblock-prefs";
 import { cn } from "@/lib/utils";
 import type { VideoChapter } from "@/lib/video-chapters";
 import type { VideoStoryboard } from "@/server/services/proxy.types";
+import { trpc } from "@/trpc/react";
 
 export type { VideoPlayerPayload };
 
@@ -89,6 +90,8 @@ export type VideoPlayerProps = {
   miniStartPaused?: boolean;
   /** Start playing as soon as the watch page loads (user setting). */
   autoplayOnWatch?: boolean;
+  /** Server-side "Autoplay next" (user settings); undefined when signed out. */
+  autoplayNextDefault?: boolean;
   /**
    * External cinema control. The persistent player is hosted outside
    * WatchCinemaProvider, so the watch page bridges its cinema state through
@@ -129,6 +132,7 @@ export function VideoPlayer({
   restoredMuted,
   miniStartPaused = false,
   autoplayOnWatch = false,
+  autoplayNextDefault,
   cinema,
   sponsorBlockPrefs: sponsorBlockPrefsProp,
   isLive = false,
@@ -239,7 +243,7 @@ export function VideoPlayer({
     return readPlayerMediaPrefs().volume;
   });
   const [queue, setQueue] = useState<WatchQueueItem[]>([]);
-  const [autoplayNext, setAutoplayNext] = useState(true);
+  const [autoplayNext, setAutoplayNext] = useState(autoplayNextDefault ?? true);
   const [nextCountdown, setNextCountdown] = useState<number | null>(null);
   const nextUp = queue[0] ?? null;
 
@@ -257,22 +261,41 @@ export function VideoPlayer({
     };
   }, []);
 
+  // "Autoplay next" is a *global* user setting (DB), not per device: the
+  // server value seeds the toggle and every flip writes through, so switching
+  // it off anywhere keeps it off everywhere. localStorage remains only as a
+  // signed-out fallback.
+  const updateSettingsMutation = trpc.settings.update.useMutation();
   useEffect(() => {
+    if (typeof autoplayNextDefault === "boolean") {
+      setAutoplayNext(autoplayNextDefault);
+      return;
+    }
     try {
       const raw = window.localStorage.getItem("ot:watch-autoplay-next");
       if (raw === "0") setAutoplayNext(false);
       if (raw === "1") setAutoplayNext(true);
     } catch {}
-  }, []);
+  }, [autoplayNextDefault]);
 
+  const toggleAutoplayNext = useCallback(() => {
+    setAutoplayNext((v) => !v);
+  }, []);
+  const autoplayNextSyncRef = useRef(autoplayNext);
   useEffect(() => {
+    if (autoplayNextSyncRef.current === autoplayNext) return;
+    autoplayNextSyncRef.current = autoplayNext;
     try {
       window.localStorage.setItem(
         "ot:watch-autoplay-next",
         autoplayNext ? "1" : "0",
       );
     } catch {}
-  }, [autoplayNext]);
+    updateSettingsMutation.mutate(
+      { autoplayNext },
+      { onError: () => {} }, // signed out: local toggle still applies
+    );
+  }, [autoplayNext, updateSettingsMutation.mutate]);
 
   useEffect(() => {
     if (nextCountdown == null) return;
@@ -510,7 +533,7 @@ export function VideoPlayer({
               nextUp={nextUp}
               queue={queue}
               autoplayNext={autoplayNext}
-              onToggleAutoplayNext={() => setAutoplayNext((v) => !v)}
+              onToggleAutoplayNext={toggleAutoplayNext}
               onPlayNext={playNextNow}
               miniMode={miniMode}
               shortsMode={shortsMode}
@@ -543,7 +566,7 @@ export function VideoPlayer({
               nextUp={nextUp}
               queue={queue}
               autoplayNext={autoplayNext}
-              onToggleAutoplayNext={() => setAutoplayNext((v) => !v)}
+              onToggleAutoplayNext={toggleAutoplayNext}
               onPlayNext={playNextNow}
               miniMode={miniMode}
               shortsMode={shortsMode}
@@ -580,7 +603,7 @@ export function VideoPlayer({
             nextUp={nextUp}
             queue={queue}
             autoplayNext={autoplayNext}
-            onToggleAutoplayNext={() => setAutoplayNext((v) => !v)}
+            onToggleAutoplayNext={toggleAutoplayNext}
             onPlayNext={playNextNow}
             miniMode={miniMode}
             shortsMode={shortsMode}
@@ -619,7 +642,7 @@ export function VideoPlayer({
             nextUp={nextUp}
             queue={queue}
             autoplayNext={autoplayNext}
-            onToggleAutoplayNext={() => setAutoplayNext((v) => !v)}
+            onToggleAutoplayNext={toggleAutoplayNext}
             onPlayNext={playNextNow}
             miniMode={miniMode}
             shortsMode={shortsMode}

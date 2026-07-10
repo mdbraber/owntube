@@ -93,6 +93,8 @@ export const appSettingsSchema = z.object({
   enableMiniPlayer: z.boolean().default(true),
   /** Start playing automatically when the watch page opens. */
   autoplayOnWatch: z.boolean().default(true),
+  /** Auto-advance to the next queued/related video when one ends. */
+  autoplayNext: z.boolean().default(true),
   /** Default watch-page quality rung (1080p, 720p, muxed 360p, …). */
   defaultPlaybackQuality: defaultPlaybackQualitySchema.default("1080p"),
   /** Channels excluded from personalized recommendations. */
@@ -186,6 +188,7 @@ const defaultSettings: AppSettings = {
   defaultCinemaMode: false,
   enableMiniPlayer: true,
   autoplayOnWatch: true,
+  autoplayNext: true,
   defaultPlaybackQuality: "1080p",
   blockedRecommendationChannels: [],
   sponsorBlockEnabled: true,
