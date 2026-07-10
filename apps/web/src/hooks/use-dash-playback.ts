@@ -23,13 +23,22 @@ function mseCodecSupported(mimeType: string, codecs: string): boolean {
 }
 
 /**
- * Seeks (and startup) run against a temporary bitrate cap so the first frame
- * at the new position needs only a small segment (~480p) — YouTube's trick
- * for near-instant scrubbing. Once the seek renders, the cap lifts and
- * `fastSwitchEnabled` re-fetches the forward buffer at full quality, so the
- * cheap rung is on screen for well under a second.
+ * Seeks execute at a cheap rung (highest ≤ this) so the first frame at the
+ * new position needs only a small segment — YouTube's trick for near-instant
+ * scrubbing. Once the seek renders, quality jumps straight back to what the
+ * measured throughput supports and `fastSwitchEnabled` re-fetches the forward
+ * buffer, so the soft frame sharpens within a few seconds.
+ *
+ * Imperative (setRepresentation…, autoSwitchBitrate off/on) rather than a
+ * declarative maxBitrate cap: dash.js satisfies a seek with the *current*
+ * representation regardless of a cap set at seek time (a 2–3s multi-MB 4K
+ * fetch), and after uncapping, a buffer full of cheap segments keeps its ABR
+ * parked low for ~10s despite a huge throughput estimate. Measured: capped
+ * seeks 2.2–3.7s; imperative seeks ~540ms at 2160p.
  */
 const SEEK_FAST_MAX_KBPS = 2000;
+/** Headroom factor on measured throughput when jumping back up post-seek. */
+const POST_SEEK_THROUGHPUT_SAFETY = 0.7;
 
 const VIDEO_CODEC_RE = /avc1|avc3|av01|vp0?9|vp8|hev1|hvc1|dvh/i;
 const MSE_UNDECODABLE_ON_IOS_RE = /av01|vp0?9|vp8/i;
@@ -140,33 +149,67 @@ export function useDashPlayback(
       });
       player.on("error", () => onFatalErrorRef.current?.());
 
-      // Seek-at-low-quality-then-climb (see SEEK_FAST_MAX_KBPS). The initial
-      // position also passes through PLAYBACK_SEEKING, so cold starts paint
-      // fast too.
-      let uncapTimer: number | null = null;
-      const capVideoBitrate = (kbps: number) => {
+      // Fast-seek plumbing (see SEEK_FAST_MAX_KBPS). Scrub bursts fire many
+      // `playbackSeeking` events — the low rung is forced once, and the jump
+      // back up runs debounced after the last `playbackSeeked`.
+      const setAutoSwitch = (on: boolean) => {
         player?.updateSettings({
-          streaming: { abr: { maxBitrate: { video: kbps } } },
+          streaming: { abr: { autoSwitchBitrate: { video: on } } },
         });
       };
+      let seekActive = false;
+      let jumpTimer: number | null = null;
       player.on("playbackSeeking", () => {
-        if (uncapTimer !== null) window.clearTimeout(uncapTimer);
-        uncapTimer = null;
-        capVideoBitrate(SEEK_FAST_MAX_KBPS);
+        if (jumpTimer !== null) window.clearTimeout(jumpTimer);
+        jumpTimer = null;
+        if (seekActive) return;
+        try {
+          const reps = player?.getRepresentationsByType("video") ?? [];
+          let low = -1;
+          reps.forEach((r, i) => {
+            if (
+              r.bitrateInKbit <= SEEK_FAST_MAX_KBPS &&
+              (low < 0 || r.bitrateInKbit > (reps[low]?.bitrateInKbit ?? 0))
+            ) {
+              low = i;
+            }
+          });
+          if (low < 0 || reps.length === 0) return;
+          seekActive = true;
+          setAutoSwitch(false);
+          // forceReplace: the seek-target fragment itself loads at the cheap
+          // rung instead of the current (possibly 2160p) representation.
+          player?.setRepresentationForTypeByIndex("video", low, true);
+        } catch {
+          /* before streamInitialized (initial position seek): let ABR run */
+        }
       });
       player.on("playbackSeeked", () => {
-        if (uncapTimer !== null) window.clearTimeout(uncapTimer);
-        // Brief grace so the cheap segment finishes appending before ABR
-        // re-plans; fastSwitch then upgrades the forward buffer.
-        uncapTimer = window.setTimeout(() => {
-          uncapTimer = null;
-          capVideoBitrate(-1);
-        }, 250);
-      });
-      capVideoBitrate(SEEK_FAST_MAX_KBPS);
-      player.on("playbackPlaying", () => {
-        if (uncapTimer !== null) return; // a seek is mid-flight; let it finish
-        capVideoBitrate(-1);
+        if (!seekActive) return;
+        if (jumpTimer !== null) window.clearTimeout(jumpTimer);
+        jumpTimer = window.setTimeout(() => {
+          jumpTimer = null;
+          seekActive = false;
+          try {
+            const reps = player?.getRepresentationsByType("video") ?? [];
+            const throughput = player?.getAverageThroughput("video") ?? 0;
+            let jump = -1;
+            reps.forEach((r, i) => {
+              if (
+                r.bitrateInKbit < throughput * POST_SEEK_THROUGHPUT_SAFETY &&
+                (jump < 0 || r.bitrateInKbit > (reps[jump]?.bitrateInKbit ?? 0))
+              ) {
+                jump = i;
+              }
+            });
+            if (jump >= 0) {
+              player?.setRepresentationForTypeByIndex("video", jump, false);
+            }
+          } catch {
+            /* stream torn down mid-debounce */
+          }
+          setAutoSwitch(true);
+        }, 200);
       });
 
       const start = startAtRef.current;
