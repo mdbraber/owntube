@@ -26,6 +26,9 @@ async function fetchUpstreamWithRetry(
       return await fetchWithTimeout(url, init);
     } catch (e) {
       lastError = e;
+      // The browser gave up on this fetch (seek away, page left) — nobody is
+      // waiting for a retry.
+      if (init.signal?.aborted) break;
       if (i < attempts - 1) {
         await new Promise((r) => setTimeout(r, 150 * (i + 1)));
       }
@@ -48,12 +51,14 @@ async function fetchInvidiousUpstream(
   subpath: string,
   search: string,
   forwardHeaders: Record<string, string>,
+  clientSignal?: AbortSignal,
 ): Promise<Response> {
   const base = `${inv}/`;
   const upstream = new URL(subpath + search, base);
   const r = await fetchUpstreamWithRetry(upstream, {
     headers: forwardHeaders,
     cache: "no-store",
+    signal: clientSignal,
   });
   if (r.ok || r.status !== 404) return r;
 
@@ -68,6 +73,7 @@ async function fetchInvidiousUpstream(
     const r2 = await fetchWithTimeout(u.toString(), {
       headers: forwardHeaders,
       cache: "no-store",
+      signal: clientSignal,
     });
     if (r2.ok) {
       await r.body?.cancel?.();
@@ -135,8 +141,18 @@ export async function GET(
 
   let r: Response;
   try {
-    r = await fetchInvidiousUpstream(inv, subpath, search, forwardHeaders);
+    r = await fetchInvidiousUpstream(
+      inv,
+      subpath,
+      search,
+      forwardHeaders,
+      request.signal,
+    );
   } catch {
+    // Client abort (seek away): nothing to answer. 499 mirrors nginx's code.
+    if (request.signal.aborted) {
+      return new Response(null, { status: 499 });
+    }
     // Timeout or network failure: surface a gateway error so hls.js retries.
     return new Response("upstream fetch failed", { status: 504 });
   }

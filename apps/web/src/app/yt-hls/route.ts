@@ -48,11 +48,12 @@ export async function GET(request: Request) {
     r = await fetchWithTimeout(target.toString(), {
       headers: forwardHeaders,
       cache: "no-store",
+      signal: request.signal,
     });
 
     // Some googlevideo segment URLs return 403 when Origin/Referer are
     // forwarded. Retry once with relaxed headers before giving up.
-    if (!r.ok && r.status === 403) {
+    if (!r.ok && r.status === 403 && !request.signal.aborted) {
       const relaxedHeaders = headersForYoutubeUpstream({
         range: request.headers.get("range"),
         accept: request.headers.get("accept"),
@@ -62,9 +63,14 @@ export async function GET(request: Request) {
       r = await fetchWithTimeout(target.toString(), {
         headers: relaxedHeaders,
         cache: "no-store",
+        signal: request.signal,
       });
     }
   } catch {
+    // Client abort (seek away): nothing to answer. 499 mirrors nginx's code.
+    if (request.signal.aborted) {
+      return new Response(null, { status: 499 });
+    }
     // Timeout or network failure: surface a gateway error so hls.js retries.
     return new Response("upstream fetch failed", { status: 504 });
   }
