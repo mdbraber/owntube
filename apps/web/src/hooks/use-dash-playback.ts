@@ -45,7 +45,12 @@ function videoRepresentationPlayable(rep: RepresentationLike): boolean {
   if (isIosLikeBrowser() && MSE_UNDECODABLE_ON_IOS_RE.test(codecs)) {
     return false;
   }
-  return mseCodecSupported(rep?.mimeType || "video/mp4", codecs);
+  // dash.js often leaves mimeType empty at filter time. Guessing a container
+  // here is wrong (VP9 probed as video/mp4 fails everywhere, silently dropping
+  // the whole video track) — keep the rep and let dash.js's own capability
+  // check, which sees the real mimeType, do the filtering.
+  if (!rep?.mimeType) return true;
+  return mseCodecSupported(rep.mimeType, codecs);
 }
 
 /**
@@ -116,14 +121,23 @@ export function useDashPlayback(
             bufferTimeAtTopQuality: 30,
             fastSwitchEnabled: true,
           },
+          capabilities: {
+            // The MediaCapabilities API rejects YouTube's bare "vp9" codec
+            // string as ambiguous, silently dropping the whole VP9 ladder
+            // (black video, audio keeps playing). isTypeSupported accepts it.
+            useMediaCapabilitiesApi: false,
+          },
         },
       });
       player.on("error", () => onFatalErrorRef.current?.());
 
       const start = startAtRef.current;
+      // Absolute URL: dash.js subsystems (e.g. CmcdController) construct
+      // URL objects from the manifest URL and throw on app-relative paths.
+      const manifestUrl = new URL(src, window.location.href).toString();
       player.initialize(
         video,
-        src,
+        manifestUrl,
         autoPlayRef.current,
         typeof start === "number" && Number.isFinite(start) && start > 0
           ? start
