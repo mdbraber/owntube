@@ -119,7 +119,11 @@ export async function GET(request: Request) {
 
   const acceptRanges = r.headers.get("accept-ranges");
   const contentRange = r.headers.get("content-range");
-  const contentLength = r.headers.get("content-length");
+  // Compressed upstream bodies are decompressed by fetch(); forwarding the
+  // compressed content-length would truncate them client-side.
+  const contentLength = r.headers.get("content-encoding")
+    ? null
+    : r.headers.get("content-length");
 
   return new Response(r.body, {
     status: r.status,

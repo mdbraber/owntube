@@ -201,7 +201,13 @@ export async function GET(
 
   const acceptRanges = r.headers.get("accept-ranges");
   const contentRange = r.headers.get("content-range");
-  const contentLength = r.headers.get("content-length");
+  // fetch() transparently decompresses gzip'd upstream bodies; forwarding the
+  // upstream content-length (the *compressed* size) makes clients truncate the
+  // decompressed stream. Media segments are never compressed, so length (and
+  // ranges) stay correct for them.
+  const contentLength = r.headers.get("content-encoding")
+    ? null
+    : r.headers.get("content-length");
 
   // Images (thumbnails, avatars) are effectively content-addressed by video/
   // channel id, so they can be cached hard; media segments must stay short.
