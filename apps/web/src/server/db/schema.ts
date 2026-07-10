@@ -127,6 +127,8 @@ export const channelMeta = sqliteTable(
     description: text("description"),
     /** Unix seconds of the channel's newest known upload; orders the sidebar. */
     latestVideoAt: integer("latest_video_at"),
+    /** Unix seconds recency was last computed; lets interactive refreshes skip warm channels. */
+    latestCheckedAt: integer("latest_checked_at"),
     updatedAt: integer("updated_at").notNull(),
   },
   (t) => [index("channel_meta_updated_idx").on(t.updatedAt)],

@@ -13,6 +13,7 @@ import {
   channelCacheKey,
   readFreshCacheRow,
   readLatestCacheRow,
+  registerInFlight,
   writeCache,
 } from "@/server/services/proxy/cache";
 import {
@@ -1192,10 +1193,14 @@ export async function fetchChannelPage(
     writeCache(db, key, store.sourceUsed, store, "channel");
     return resolved;
   })();
-  inFlightChannel.set(key, task);
-  try {
-    return await task;
-  } finally {
-    inFlightChannel.delete(key);
+  registerInFlight(inFlightChannel, key, task);
+
+  // Serve-stale-and-revalidate: an expired row answers instantly while the
+  // task above refreshes the cache in the background. Only a channel with no
+  // cached row at all (first visit ever) blocks on the live fetch.
+  if (!opts?.bypassChannelCache) {
+    const stale = readStaleChannelCache(db, key);
+    if (stale) return { ...stale, warning: undefined };
   }
+  return task;
 }

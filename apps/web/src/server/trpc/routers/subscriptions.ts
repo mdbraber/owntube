@@ -2,10 +2,7 @@ import { and, desc, eq, inArray, or } from "drizzle-orm";
 import { z } from "zod";
 import { normalizeChannelTag } from "@/lib/channel-tag";
 import { stripRestrictedListVideos } from "@/lib/feed-exclude-restricted";
-import {
-  fetchLongFormWindows,
-  type LongFormWindow,
-} from "@/lib/long-form-uploads";
+import type { LongFormWindow } from "@/lib/long-form-uploads";
 import {
   compareSubscriptionHeads,
   newerPublished,
@@ -20,6 +17,12 @@ import {
   refreshChannelMetaIfStale,
 } from "@/server/channel-meta/store";
 import type { AppDb } from "@/server/db/client";
+import {
+  getChannelRssEntries,
+  getLongFormWindows,
+  refreshChannelRss,
+  refreshLongFormWindow,
+} from "@/server/rss/cache";
 import {
   channelTags,
   interactions,
@@ -269,65 +272,8 @@ const MAX_MERGE_CURSOR_OFFSET = 10_000;
 const MAX_SORT_PICKS = 50_000;
 const RSS_SEED_MAX_CHANNELS = 250;
 
-function decodeXmlEntities(input: string): string {
-  return input
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'");
-}
-
-async function fetchRssEntriesFromChannel(
-  channelId: string,
-): Promise<UnifiedVideo[]> {
-  try {
-    const url = new URL("https://www.youtube.com/feeds/videos.xml");
-    url.searchParams.set("channel_id", channelId);
-    const resp = await fetch(url.toString(), {
-      signal: AbortSignal.timeout(8000),
-      cache: "no-store",
-    });
-    if (!resp.ok) return [];
-    const xml = await resp.text();
-    const entries = [...xml.matchAll(/<entry>([\s\S]*?)<\/entry>/gi)];
-    const out: UnifiedVideo[] = [];
-    for (const m of entries) {
-      const entry = m[1];
-      if (!entry) continue;
-      const videoIdRaw = entry.match(/<yt:videoId>([^<]+)<\/yt:videoId>/i)?.[1];
-      const titleRaw = entry.match(/<title>([\s\S]*?)<\/title>/i)?.[1];
-      const publishedRaw = entry.match(/<published>([^<]+)<\/published>/i)?.[1];
-      const channelNameRaw = entry.match(/<name>([\s\S]*?)<\/name>/i)?.[1];
-      if (!videoIdRaw || !titleRaw) continue;
-      const videoId = decodeXmlEntities(videoIdRaw.trim());
-      const title = decodeXmlEntities(titleRaw.trim());
-      const channelName = channelNameRaw
-        ? decodeXmlEntities(channelNameRaw.trim())
-        : undefined;
-      const publishedAtMs = publishedRaw
-        ? Date.parse(publishedRaw.trim())
-        : NaN;
-      const publishedAt = Number.isNaN(publishedAtMs)
-        ? undefined
-        : Math.floor(publishedAtMs / 1000);
-      out.push({
-        videoId,
-        title,
-        channelId,
-        channelName,
-        thumbnailUrl: `https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/hqdefault.jpg`,
-        publishedAt,
-        publishedText: publishedRaw?.trim(),
-      });
-    }
-    return out;
-  } catch {
-    return [];
-  }
-}
-
 async function patchVisibleVideosWithRssDates(
+  db: AppDb,
   videos: UnifiedVideo[],
 ): Promise<UnifiedVideo[]> {
   const channelIds = Array.from(
@@ -341,7 +287,7 @@ async function patchVisibleVideosWithRssDates(
 
   const rssByVideoId = new Map<string, number>();
   const all = await Promise.all(
-    channelIds.map((c) => fetchRssEntriesFromChannel(c)),
+    channelIds.map((c) => getChannelRssEntries(db, c)),
   );
   for (const list of all) {
     for (const item of list) {
@@ -497,7 +443,7 @@ async function collectSortedFeedPage(
   if (offset === 0) {
     const seedTargets = buffers.slice(0, RSS_SEED_MAX_CHANNELS);
     const rssEntries = await Promise.all(
-      seedTargets.map((b) => fetchRssEntriesFromChannel(b.channelId)),
+      seedTargets.map((b) => getChannelRssEntries(db, b.channelId)),
     );
     for (let i = 0; i < seedTargets.length; i++) {
       const channelEntries = rssEntries[i] ?? [];
@@ -662,10 +608,11 @@ function isSubscriptionShort(
 }
 
 async function stripShortsFromSubscriptionFeed(
+  db: AppDb,
   videos: UnifiedVideo[],
 ): Promise<UnifiedVideo[]> {
   if (videos.length === 0) return videos;
-  const windows = await fetchLongFormWindows(videos.map((v) => v.channelId));
+  const windows = await getLongFormWindows(db, videos.map((v) => v.channelId));
   return videos.filter((v) => !isSubscriptionShort(v, windows));
 }
 
@@ -848,9 +795,12 @@ export const subscriptionsRouter = router({
     // 2. Newest upload per channel (long-form playlist, Shorts-RSS fallback),
     // capped like the merged-feed seed. Shared with the cache warmer.
     const recencyTargets = subs.slice(0, RSS_SEED_MAX_CHANNELS);
+    // The cache warmer recomputes recency every cycle; only fill gaps here so
+    // this once-per-session mutation is a local no-op in steady state.
     updated += await refreshChannelsLatestVideoAt(
       ctx.db,
       recencyTargets.map((s) => s.channelId),
+      { skipIfCheckedWithinSec: 15 * 60 },
     );
     return { updated };
   }),
@@ -899,6 +849,16 @@ export const subscriptionsRouter = router({
       const overrides = getUserProxyOverrides(ctx.db, ctx.userId);
       await refreshChannelMetaIfStale(ctx.db, channelId, overrides).catch(
         () => {},
+      );
+      // Warm the new channel's feed inputs immediately (fire-and-forget) so it
+      // shows up in the merged feed and sorts correctly without waiting for
+      // the next cache-warmer cycle.
+      void Promise.allSettled([
+        refreshChannelRss(ctx.db, channelId),
+        refreshLongFormWindow(ctx.db, channelId),
+        fetchChannelPage(ctx.db, { channelId }, overrides),
+      ]).then(() =>
+        refreshChannelsLatestVideoAt(ctx.db, [channelId]).catch(() => {}),
       );
       return { ok: true as const };
     }),
@@ -1062,7 +1022,7 @@ export const subscriptionsRouter = router({
         : videos;
       return {
         videos: settings.hideShortsInSubscriptions
-          ? await stripShortsFromSubscriptionFeed(restrictedFiltered)
+          ? await stripShortsFromSubscriptionFeed(ctx.db, restrictedFiltered)
           : restrictedFiltered,
       };
     }),
@@ -1115,7 +1075,7 @@ export const subscriptionsRouter = router({
         offset,
         limit,
       );
-      const patchedVideos = await patchVisibleVideosWithRssDates(videos);
+      const patchedVideos = await patchVisibleVideosWithRssDates(ctx.db, videos);
       const nowSec = Math.floor(Date.now() / 1000);
       const sortedPatchedVideos = [...patchedVideos].sort((a, b) =>
         newerPublished(a, b, nowSec),
@@ -1129,7 +1089,7 @@ export const subscriptionsRouter = router({
         ? stripRestrictedListVideos(withMeta)
         : withMeta;
       const visibleVideos = settings.hideShortsInSubscriptions
-        ? await stripShortsFromSubscriptionFeed(restrictedFiltered)
+        ? await stripShortsFromSubscriptionFeed(ctx.db, restrictedFiltered)
         : restrictedFiltered;
       const candidateVideoIds = visibleVideos.map((v) => v.videoId);
       const ignoredRows =

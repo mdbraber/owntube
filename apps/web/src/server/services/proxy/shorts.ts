@@ -14,6 +14,7 @@ import type { AppDb } from "@/server/db/client";
 import {
   readFreshCacheRow,
   readLatestCacheRow,
+  registerInFlight,
   shortsFeedCacheKey,
   writeCache,
 } from "@/server/services/proxy/cache";
@@ -508,10 +509,14 @@ export async function fetchShortsFeed(
     return out;
   })();
 
-  inFlightShortsFeed.set(key, task);
-  try {
-    return await task;
-  } finally {
-    inFlightShortsFeed.delete(key);
+  registerInFlight(inFlightShortsFeed, key, task);
+
+  // Serve-stale-and-revalidate: an expired row answers instantly while the
+  // task above refreshes the cache in the background. Mirrors the fresh-read
+  // shelf condition — a thin cached shelf page must not mask the refetch.
+  const stale = readStaleShortsFeedCache(db, key);
+  if (stale && (input.purpose !== "shelf" || stale.videos.length >= limit)) {
+    return { ...stale, warning: undefined };
   }
+  return task;
 }

@@ -13,6 +13,8 @@ export {
   resolveProxyBases,
   type UpstreamAvailability,
 } from "@/server/services/proxy/config";
+import { clearSearchInFlight } from "@/server/services/proxy/search";
+
 export { searchVideos } from "@/server/services/proxy/search";
 
 import { clearTrendingInFlight } from "@/server/services/proxy/trending";
@@ -27,6 +29,7 @@ export {
 } from "@/server/services/proxy/channel";
 
 import { clearShortsInFlight } from "@/server/services/proxy/shorts";
+import { clearRelatedInFlight } from "@/server/services/proxy/video";
 
 export { fetchShortsFeed } from "@/server/services/proxy/shorts";
 
@@ -34,6 +37,8 @@ export function clearProxyCaches(db: AppDb): { clearedRows: number } {
   clearTrendingInFlight();
   clearChannelInFlight();
   clearShortsInFlight();
+  clearSearchInFlight();
+  clearRelatedInFlight();
   const res = db.delete(videoCache).run();
   return { clearedRows: Number(res.changes ?? 0) };
 }

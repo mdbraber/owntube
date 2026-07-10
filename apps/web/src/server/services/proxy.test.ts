@@ -341,7 +341,7 @@ describe("searchVideos", () => {
     sqlite.close();
   });
 
-  it("serves stale cache when both upstreams fail", async () => {
+  it("serves stale cache instantly while revalidating in the background", async () => {
     const { db, sqlite } = createTestDb();
     process.env.PIPED_BASE_URL = "https://piped.test";
     process.env.INVIDIOUS_BASE_URL = "https://inv.test";
@@ -366,7 +366,9 @@ describe("searchVideos", () => {
     const stale = await searchVideos(db, { q: "cache-me", limit: 10 });
     expect(stale.sourceUsed).toBe("cache");
     expect(stale.stale).toBe(true);
-    expect(stale.warning).toContain("stale cache");
+    // Serve-stale-first: the answer comes from cache before upstream is tried,
+    // so there is no upstream-failure warning to surface.
+    expect(stale.warning).toBeUndefined();
     sqlite.close();
   });
 

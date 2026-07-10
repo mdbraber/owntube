@@ -13,11 +13,23 @@ import { runSqlMigrations } from "../src/server/db/run-migrations";
 import * as schema from "../src/server/db/schema";
 import { RateLimitExceededError } from "../src/server/errors/rate-limit-exceeded";
 import { UpstreamUnavailableError } from "../src/server/errors/upstream-unavailable";
+import { watchQueue } from "../src/server/db/schema";
 import {
   fetchChannelPage,
   fetchShortsFeed,
   fetchTrendingVideos,
+  fetchVideoComments,
+  fetchVideoDetail,
 } from "../src/server/services/proxy";
+import {
+  DEFAULT_SPONSORBLOCK_CATEGORIES,
+  getSponsorBlockSegments,
+} from "../src/server/sponsorblock/service";
+import {
+  getChannelRssEntries,
+  refreshChannelRss,
+  refreshLongFormWindow,
+} from "../src/server/rss/cache";
 import {
   collectWarmChannelIds,
   DEFAULT_WARM_HISTORY_CHANNELS,
@@ -58,6 +70,12 @@ const warmChannelsEnabled = envFlag("OWNTUBE_WARM_CHANNELS", true);
 const warmChannelPagesEnabled = envFlag("OWNTUBE_WARM_CHANNEL_PAGES", true);
 const warmShortsEnabled = envFlag("OWNTUBE_WARM_SHORTS", true);
 const warmRecencyEnabled = envFlag("OWNTUBE_WARM_RECENCY", true);
+const warmRssEnabled = envFlag("OWNTUBE_WARM_RSS", true);
+const warmVideosEnabled = envFlag("OWNTUBE_WARM_VIDEOS", true);
+const warmVideoLimit = Number.parseInt(
+  process.env.OWNTUBE_WARM_VIDEO_LIMIT ?? "16",
+  10,
+);
 
 function sleepMs(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -155,6 +173,21 @@ async function warmChannelMeta(
   return stats.failed === 0;
 }
 
+/**
+ * Force-refresh each channel's uploads RSS + long-form window rows. These are
+ * what the merged subscriptions feed, Shorts classification, and recency read
+ * (serve-stale-and-revalidate) — refreshing them here every cycle keeps the
+ * interactive path SQLite-only.
+ */
+async function warmRssFeeds(db: AppDb, channelIds: string[]): Promise<boolean> {
+  const stats = await runInBatches("rss feeds", channelIds, async (channelId) => {
+    await refreshChannelRss(db, channelId);
+    await refreshLongFormWindow(db, channelId);
+    return {};
+  });
+  return stats.failed === 0;
+}
+
 async function warmChannelRecency(
   db: AppDb,
   channelIds: string[],
@@ -197,6 +230,62 @@ async function warmChannelPages(
   return stats.failed === 0;
 }
 
+/**
+ * The videos a user is most likely to open next: the newest uploads across
+ * their subscriptions (top of the merged home feed, from the just-warmed RSS
+ * cache) plus everything queued.
+ */
+async function collectWarmVideoIds(
+  db: AppDb,
+  channelIds: string[],
+  limit: number,
+): Promise<string[]> {
+  const perChannel = await Promise.all(
+    channelIds.map((c) => getChannelRssEntries(db, c)),
+  );
+  const newestFirst = perChannel
+    .flat()
+    .filter((e) => typeof e.publishedAt === "number")
+    .sort((a, b) => (b.publishedAt ?? 0) - (a.publishedAt ?? 0));
+  const ids = new Set<string>();
+  for (const e of newestFirst) {
+    if (ids.size >= limit) break;
+    ids.add(e.videoId);
+  }
+  const queued = db
+    .select({ videoId: watchQueue.videoId })
+    .from(watchQueue)
+    .limit(24)
+    .all();
+  for (const q of queued) ids.add(q.videoId);
+  return [...ids];
+}
+
+/**
+ * Pre-fetch what the watch page needs for likely-next videos: stream detail
+ * (cached until its signed URLs near expiry), the first comments page, and
+ * SponsorBlock segments — so clicking a video from the home feed is served
+ * entirely from SQLite.
+ */
+async function warmVideoDetails(db: AppDb, videoIds: string[]): Promise<boolean> {
+  const stats = await runInBatches("video details", videoIds, async (videoId) => {
+    let ok = false;
+    try {
+      await fetchVideoDetail(db, { videoId });
+      ok = true;
+    } catch {
+      /* age-restricted/unavailable: skip */
+    }
+    await fetchVideoComments(db, { videoId, sortBy: "top" }).catch(() => {});
+    await getSponsorBlockSegments(db, {
+      videoId,
+      categories: [...DEFAULT_SPONSORBLOCK_CATEGORIES],
+    }).catch(() => {});
+    return { skipped: !ok };
+  });
+  return stats.failed === 0;
+}
+
 async function main(): Promise<void> {
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 
@@ -234,6 +323,10 @@ async function main(): Promise<void> {
       if (warmChannelsEnabled && !(await warmChannelMeta(db, channelIds))) {
         hadFailure = true;
       }
+      // RSS before recency: recency reads the rows this step just refreshed.
+      if (warmRssEnabled && !(await warmRssFeeds(db, channelIds))) {
+        hadFailure = true;
+      }
       if (warmRecencyEnabled && !(await warmChannelRecency(db, channelIds))) {
         hadFailure = true;
       }
@@ -242,6 +335,18 @@ async function main(): Promise<void> {
         !(await warmChannelPages(db, channelIds))
       ) {
         hadFailure = true;
+      }
+      if (warmVideosEnabled) {
+        const safeVideoLimit =
+          Number.isFinite(warmVideoLimit) && warmVideoLimit > 0
+            ? Math.min(warmVideoLimit, 64)
+            : 16;
+        const videoIds = await collectWarmVideoIds(
+          db,
+          channelIds,
+          safeVideoLimit,
+        );
+        if (!(await warmVideoDetails(db, videoIds))) hadFailure = true;
       }
     }
   } finally {

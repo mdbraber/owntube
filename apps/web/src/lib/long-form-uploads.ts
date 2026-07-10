@@ -22,7 +22,7 @@ export type LongFormWindow = {
   newestPublishedAt: number | null;
 };
 
-async function fetchLongFormWindow(
+export async function fetchLongFormWindowLive(
   channelId: string,
 ): Promise<LongFormWindow | null> {
   const playlistId = longFormUploadsPlaylistId(channelId);
@@ -82,7 +82,7 @@ export async function fetchLongFormWindows(
   ];
   const out = new Map<string, LongFormWindow>();
   const results = await Promise.all(
-    unique.map(async (c) => [c, await fetchLongFormWindow(c)] as const),
+    unique.map(async (c) => [c, await fetchLongFormWindowLive(c)] as const),
   );
   for (const [c, window] of results) {
     if (window) out.set(c, window);

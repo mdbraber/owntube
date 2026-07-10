@@ -1,6 +1,12 @@
 import { invidiousPortCollidesWithNextApp } from "@/lib/invidious-port-collision";
 import type { AppDb } from "@/server/db/client";
 import {
+  readFreshCacheRow,
+  readLatestCacheRow,
+  registerInFlight,
+  writeCache,
+} from "@/server/services/proxy/cache";
+import {
   type ProxySourceOverrides,
   resolveProxyBaseCandidates,
 } from "@/server/services/proxy/config";
@@ -11,6 +17,7 @@ import {
 import { fetchJson } from "@/server/services/proxy/http";
 import {
   channelIdFromPath,
+  liveUpstreamSource,
   normalizeBaseUrl,
   resolveInvidiousAbsoluteMediaUrl,
   resolveInvidiousThumbnail,
@@ -212,8 +219,61 @@ function mapInvidiousComments(
   return parsed.data;
 }
 
+const inFlightComments = new Map<string, Promise<VideoCommentsResult>>();
+
+export function clearCommentsInFlight(): void {
+  inFlightComments.clear();
+}
+
+function commentsCacheKey(videoId: string, sortBy: string): string {
+  return `comments:v1:${videoId}:${sortBy}`;
+}
+
+function readCommentsCacheRow(
+  row: { payloadJson: string } | undefined,
+): VideoCommentsResult | null {
+  if (!row) return null;
+  const parsed = videoCommentsResultSchema.safeParse(
+    JSON.parse(row.payloadJson) as unknown,
+  );
+  return parsed.success ? parsed.data : null;
+}
+
+/**
+ * First comment pages (no continuation) are cached in `video_cache` with
+ * serve-stale-and-revalidate semantics, so the cache warmer can pre-fetch the
+ * likely-next videos and the watch page's slowest interactive call becomes a
+ * local read. Continuation pages stay live — they're an explicit "load more".
+ */
 export async function fetchVideoComments(
-  _db: AppDb,
+  db: AppDb,
+  input: VideoCommentsInput,
+  overrides?: ProxySourceOverrides,
+): Promise<VideoCommentsResult> {
+  const continuationRequested = Boolean(input.continuation?.trim());
+  if (continuationRequested) {
+    return fetchVideoCommentsLive(input, overrides);
+  }
+
+  const key = commentsCacheKey(input.videoId, input.sortBy);
+  const fresh = readCommentsCacheRow(readFreshCacheRow(db, key));
+  if (fresh) return fresh;
+
+  const inFlight = inFlightComments.get(key);
+  if (inFlight) return inFlight;
+  const task = (async () => {
+    const live = await fetchVideoCommentsLive(input, overrides);
+    writeCache(db, key, liveUpstreamSource(live.sourceUsed), live, "comments");
+    return live;
+  })();
+  registerInFlight(inFlightComments, key, task);
+
+  const stale = readCommentsCacheRow(readLatestCacheRow(db, key));
+  if (stale) return stale;
+  return task;
+}
+
+async function fetchVideoCommentsLive(
   input: VideoCommentsInput,
   overrides?: ProxySourceOverrides,
 ): Promise<VideoCommentsResult> {

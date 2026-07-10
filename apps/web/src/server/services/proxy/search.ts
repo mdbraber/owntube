@@ -4,6 +4,7 @@ import type { AppDb } from "@/server/db/client";
 import {
   readFreshCacheRow,
   readLatestCacheRow,
+  registerInFlight,
   searchCacheKey,
   writeCache,
 } from "@/server/services/proxy/cache";
@@ -175,17 +176,42 @@ function parseInvidiousSearch(
   return { videos, channels, continuation };
 }
 
+const inFlightSearch = new Map<string, Promise<SearchVideosResult>>();
+
+export function clearSearchInFlight(): void {
+  inFlightSearch.clear();
+}
+
 export async function searchVideos(
   db: AppDb,
   input: SearchVideosInput,
   overrides?: ProxySourceOverrides,
 ): Promise<SearchVideosResult> {
-  const parsedInput = input;
-  const limit = parsedInput.limit ?? 20;
-  const key = searchCacheKey(parsedInput);
+  const key = searchCacheKey(input);
 
   const cached = readFreshSearchCache(db, key);
   if (cached) return cached;
+
+  const inFlight = inFlightSearch.get(key);
+  if (inFlight) return inFlight;
+  const task = searchVideosLive(db, input, key, overrides);
+  registerInFlight(inFlightSearch, key, task);
+
+  // Serve-stale-and-revalidate: an expired row answers instantly while the
+  // task above refreshes the cache in the background.
+  const stale = readStaleSearchCache(db, key);
+  if (stale) return { ...stale, warning: undefined };
+  return task;
+}
+
+async function searchVideosLive(
+  db: AppDb,
+  input: SearchVideosInput,
+  key: string,
+  overrides?: ProxySourceOverrides,
+): Promise<SearchVideosResult> {
+  const parsedInput = input;
+  const limit = parsedInput.limit ?? 20;
 
   const { pipedBases, invidiousBases } = resolveProxyBaseCandidates(overrides);
 

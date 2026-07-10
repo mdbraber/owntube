@@ -12,6 +12,7 @@ import {
   detailCacheKey,
   readFreshCacheRow,
   readLatestCacheRow,
+  registerInFlight,
   relatedCacheKey,
   writeCache,
 } from "@/server/services/proxy/cache";
@@ -420,6 +421,12 @@ function mergeAndRankRelatedVideos(
   return ranked.slice(0, limit);
 }
 
+const inFlightRelated = new Map<string, Promise<RelatedVideosResult>>();
+
+export function clearRelatedInFlight(): void {
+  inFlightRelated.clear();
+}
+
 export async function fetchRelatedVideos(
   db: AppDb,
   input: VideoDetailInput,
@@ -430,6 +437,25 @@ export async function fetchRelatedVideos(
   const cached = readFreshRelatedCache(db, key);
   if (cached) return cached;
 
+  const inFlight = inFlightRelated.get(key);
+  if (inFlight) return inFlight;
+  const task = fetchRelatedVideosLive(db, input, key, limit, overrides);
+  registerInFlight(inFlightRelated, key, task);
+
+  // Serve-stale-and-revalidate: an expired row answers instantly while the
+  // task above refreshes the cache in the background.
+  const stale = readStaleRelatedCache(db, key);
+  if (stale) return { ...stale, warning: undefined };
+  return task;
+}
+
+async function fetchRelatedVideosLive(
+  db: AppDb,
+  input: VideoDetailInput,
+  key: string,
+  limit: number,
+  overrides?: ProxySourceOverrides,
+): Promise<RelatedVideosResult> {
   const { pipedBases, invidiousBases } = resolveProxyBaseCandidates(overrides);
   const errors: string[] = [];
 

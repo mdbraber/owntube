@@ -5,6 +5,7 @@ import type { AppDb } from "@/server/db/client";
 import {
   readFreshCacheRow,
   readLatestCacheRow,
+  registerInFlight,
   trendingCacheKey,
   writeCache,
 } from "@/server/services/proxy/cache";
@@ -216,10 +217,11 @@ export async function fetchTrendingVideos(
     writeCache(db, key, store.sourceUsed, store, "trending");
     return out;
   })();
-  inFlightTrending.set(key, task);
-  try {
-    return await task;
-  } finally {
-    inFlightTrending.delete(key);
-  }
+  registerInFlight(inFlightTrending, key, task);
+
+  // Serve-stale-and-revalidate: an expired row answers instantly while the
+  // task above refreshes the cache in the background.
+  const stale = readStaleTrendingCache(db, key);
+  if (stale) return { ...stale, warning: undefined };
+  return task;
 }
