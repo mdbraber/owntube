@@ -175,9 +175,13 @@ async function fetchSidx(streamUrl: string, indexRange: string): Promise<Sidx> {
 
 function pickVideoFormats(af: AdaptiveFormat[]): AdaptiveFormat[] {
   // AVC only: universally decodable, including iOS native HLS.
+  // Best rung FIRST: Safari's native player starts with the first variant in
+  // the master playlist (and is slow to climb from a low anchor), so ascending
+  // order meant playback opened — and often stayed — at 144p. hls.js ignores
+  // list order (bandwidth-estimate ABR), so this only steers Safari/iOS.
   return af
     .filter((f) => /avc1/.test(f.type) && f.init && f.index)
-    .sort((a, b) => Number(a.bitrate) - Number(b.bitrate));
+    .sort((a, b) => Number(b.bitrate) - Number(a.bitrate));
 }
 
 function pickAudioFormat(af: AdaptiveFormat[]): AdaptiveFormat | undefined {
