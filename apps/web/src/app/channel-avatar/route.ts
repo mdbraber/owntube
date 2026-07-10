@@ -2,6 +2,7 @@ import {
   collectAllowedChannelAvatarOrigins,
   isAllowedChannelAvatarFetchTarget,
 } from "@/lib/channel-avatar-proxy";
+import { getCachedAsset } from "@/server/assets/cache";
 
 const MAX_TARGET_URL_LEN = 8_192;
 
@@ -37,11 +38,27 @@ export async function GET(request: Request) {
     "user-agent": "OwnTube/0.1",
     accept: "image/*,*/*;q=0.8",
   };
+  const fetchUpstream = () =>
+    fetch(target.toString(), {
+      headers: forwardHeaders,
+      cache: "no-store",
+      signal: AbortSignal.timeout(10_000),
+    });
 
-  const r = await fetch(target.toString(), {
-    headers: forwardHeaders,
-    cache: "no-store",
-  });
+  // Disk asset cache (serve-stale-and-revalidate); pass-through on refusal.
+  const asset = await getCachedAsset(target.toString(), "avatar", fetchUpstream);
+  if (asset) {
+    return new Response(new Uint8Array(asset.body), {
+      status: 200,
+      headers: {
+        "content-type": asset.contentType,
+        "cache-control": "public, max-age=86400, stale-while-revalidate=604800",
+        "content-length": String(asset.body.byteLength),
+      },
+    });
+  }
+
+  const r = await fetchUpstream();
 
   if (!r.ok) {
     return new Response(r.body, {

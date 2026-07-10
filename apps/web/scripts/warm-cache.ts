@@ -13,6 +13,7 @@ import { runSqlMigrations } from "../src/server/db/run-migrations";
 import * as schema from "../src/server/db/schema";
 import { RateLimitExceededError } from "../src/server/errors/rate-limit-exceeded";
 import { UpstreamUnavailableError } from "../src/server/errors/upstream-unavailable";
+import { pruneAssetCache } from "../src/server/assets/cache";
 import { watchQueue } from "../src/server/db/schema";
 import {
   fetchChannelPage,
@@ -74,6 +75,10 @@ const warmRssEnabled = envFlag("OWNTUBE_WARM_RSS", true);
 const warmVideosEnabled = envFlag("OWNTUBE_WARM_VIDEOS", true);
 const warmVideoLimit = Number.parseInt(
   process.env.OWNTUBE_WARM_VIDEO_LIMIT ?? "16",
+  10,
+);
+const assetCacheMaxMb = Number.parseInt(
+  process.env.OWNTUBE_ASSET_CACHE_MAX_MB ?? "1024",
   10,
 );
 
@@ -348,6 +353,15 @@ async function main(): Promise<void> {
         );
         if (!(await warmVideoDetails(db, videoIds))) hadFailure = true;
       }
+
+      const safeAssetMax =
+        Number.isFinite(assetCacheMaxMb) && assetCacheMaxMb > 0
+          ? assetCacheMaxMb
+          : 1024;
+      const pruned = await pruneAssetCache(safeAssetMax * 1024 * 1024);
+      logLine(
+        `warm-cache: asset cache — ${Math.round(pruned.totalBytes / 1024 / 1024)}MB, pruned=${pruned.removed}`,
+      );
     }
   } finally {
     sqlite.close();

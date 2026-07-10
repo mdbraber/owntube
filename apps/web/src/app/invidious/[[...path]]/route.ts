@@ -1,5 +1,9 @@
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import {
+  type AssetKind,
+  getCachedAsset,
+} from "@/server/assets/cache";
+import {
   getAppOriginFromRequestHeaders,
   rewriteM3u8AllProxies,
 } from "@/lib/invidious-proxy";
@@ -85,6 +89,23 @@ async function fetchInvidiousUpstream(
 }
 
 const INVIDIOUS_PROXY_PREFIX = "/invidious/";
+
+/**
+ * Kind for disk-cacheable image assets by proxied subpath; null = not an
+ * asset (media, manifests, API JSON) — those keep their existing paths.
+ */
+export function assetKindForSubpath(subpath: string): AssetKind | null {
+  if (subpath.startsWith("vi/")) {
+    return subpath.includes("storyboard") ? "storyboard" : "thumbnail";
+  }
+  if (subpath.startsWith("ggpht/") || subpath.startsWith("ytc/")) {
+    return "avatar";
+  }
+  if (/\.(jpe?g|png|webp|gif)$/i.test(subpath.split("?")[0] ?? "")) {
+    return "image";
+  }
+  return null;
+}
 
 /**
  * Upper bound on a single upstream media fetch. Safari (and h2/h3 in general)
@@ -401,6 +422,28 @@ export async function GET(
   if (range) forwardHeaders.range = range;
   const accept = request.headers.get("accept");
   if (accept) forwardHeaders.accept = accept;
+
+  // Images are served from the disk asset cache (serve-stale-and-revalidate);
+  // the fetcher below keeps the thumbnail 404-fallback chain. Null (non-image,
+  // oversized, upstream error) falls through to plain pass-through proxying.
+  const assetKind = assetKindForSubpath(subpath);
+  if (assetKind && !range) {
+    const asset = await getCachedAsset(
+      `invidious:${subpath}${search}`,
+      assetKind,
+      () => fetchInvidiousUpstream(inv, subpath, search, forwardHeaders),
+    );
+    if (asset) {
+      return new Response(new Uint8Array(asset.body), {
+        status: 200,
+        headers: {
+          "content-type": asset.contentType,
+          "cache-control": "public, max-age=86400, stale-while-revalidate=604800",
+          "content-length": String(asset.body.byteLength),
+        },
+      });
+    }
+  }
 
   const chunked = await maybeChunkedMediaResponse(
     inv,
