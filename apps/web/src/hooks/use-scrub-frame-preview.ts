@@ -114,7 +114,10 @@ function useGeneratedScrubFrameAt(
     cache.running = true;
     const video = document.createElement("video");
     video.src = streamSrc;
-    video.preload = "auto";
+    // "metadata": seeks below fetch just the data they need. "auto" makes
+    // Safari stream the entire file in the background, which head-of-line
+    // blocks the main player's segment fetches on the shared connection.
+    video.preload = "metadata";
     video.muted = true;
     video.playsInline = true;
     video.crossOrigin = "anonymous";
@@ -166,6 +169,10 @@ function useGeneratedScrubFrameAt(
     } catch {
       // ignore preview frame generation failures
     } finally {
+      // Detach the media element so the browser stops any buffering the
+      // capture seeks left in flight.
+      video.removeAttribute("src");
+      video.load();
       cache.running = false;
     }
   }, [streamSrc, durationSeconds]);
@@ -208,16 +215,19 @@ export function useScrubFramePreview({
     durationSeconds,
     storyboard,
   );
+  // Canvas-generated frames need a hidden <video> seeking through the whole
+  // stream — a large background download that competes with player seeks on
+  // the shared connection. Storyboard sprite sheets cover the same 160×90
+  // preview for a few hundred KB, so the capture video is reserved for videos
+  // with no storyboard at all.
   const generated = useGeneratedScrubFrameAt(
-    scrubPreviewStreamSrc,
+    storyboard ? undefined : scrubPreviewStreamSrc,
     durationSeconds,
   );
 
   const frameAt = useCallback(
     (timeSeconds: number): ScrubFramePreview | null => {
-      if (storyboard) {
-        return generated.frameAt(timeSeconds) ?? storyboardFrameAt(timeSeconds);
-      }
+      if (storyboard) return storyboardFrameAt(timeSeconds);
       return generated.frameAt(timeSeconds);
     },
     [storyboard, generated.frameAt, storyboardFrameAt],

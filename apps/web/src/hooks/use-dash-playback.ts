@@ -110,6 +110,7 @@ export function useDashPlayback(
 
     let cancelled = false;
     let player: MediaPlayerClass | null = null;
+    let portalObserver: ResizeObserver | null = null;
     const releaseFetchGuard = installSameOriginMediaFetchGuard();
 
     void (async () => {
@@ -134,9 +135,19 @@ export function useDashPlayback(
       player.registerCustomCapabilitiesFilter(videoRepresentationPlayable);
       player.updateSettings({
         streaming: {
+          // ABR is portal-capped via maxBitrate (see portalCapKbps below), not
+          // limitBitrateByPortal: the built-in limit allows only rungs that FIT
+          // the portal (360p in a 633px player — visibly soft); the cap below
+          // allows the smallest rung that COVERS it (YouTube's behavior).
           buffer: {
-            // Absorb proxied-segment latency; fewer mid-playback stalls.
-            bufferTimeAtTopQuality: 30,
+            // Bounds the post-seek refill burst: fastSwitch re-fetches this
+            // much forward buffer at top quality (22Mbps 2160p ≈ 2.7MB/s), and
+            // while that burst saturates the downlink every small fetch a
+            // subsequent seek needs queues behind it in the AP/link buffers.
+            // 30s (≈80MB burst, ~9s of saturated Wi-Fi) made rapid re-seeks
+            // stall for seconds; 12s keeps ~4× real-time headroom against
+            // stalls while the burst clears in ~3s.
+            bufferTimeAtTopQuality: 12,
             fastSwitchEnabled: true,
           },
           capabilities: {
@@ -157,6 +168,44 @@ export function useDashPlayback(
           streaming: { abr: { autoSwitchBitrate: { video: on } } },
         });
       };
+
+      // Don't decode 2160p into a ~600px player: LAN throughput always says
+      // "top rung", but 4K VP9 software decode freezes the main thread for
+      // seconds (observed 13s seeked delays) and each rung step roughly
+      // doubles the buffer-refill burst. Cap ABR at the cheapest rung whose
+      // height covers the portal; fullscreen (ResizeObserver) lifts the cap.
+      const portalCapKbps = (): number => {
+        try {
+          const reps = player?.getRepresentationsByType("video") ?? [];
+          const rect = video.getBoundingClientRect();
+          const portalH =
+            Math.max(rect.height, (rect.width * 9) / 16) *
+            (window.devicePixelRatio || 1);
+          if (!(portalH > 0)) return -1;
+          let cap = -1;
+          let capHeight = Number.POSITIVE_INFINITY;
+          for (const r of reps) {
+            if (!r.height || !r.bitrateInKbit) continue;
+            if (r.height >= portalH && r.height < capHeight) {
+              capHeight = r.height;
+              cap = r.bitrateInKbit;
+            }
+          }
+          return cap; // -1 (no limit) when no rung covers the portal
+        } catch {
+          return -1;
+        }
+      };
+      const applyPortalCap = () => {
+        player?.updateSettings({
+          streaming: { abr: { maxBitrate: { video: portalCapKbps() } } },
+        });
+      };
+      player.on("streamInitialized", applyPortalCap);
+      if (typeof ResizeObserver !== "undefined") {
+        portalObserver = new ResizeObserver(applyPortalCap);
+        portalObserver.observe(video);
+      }
       let seekActive = false;
       let jumpTimer: number | null = null;
       player.on("playbackSeeking", () => {
@@ -193,8 +242,13 @@ export function useDashPlayback(
           try {
             const reps = player?.getRepresentationsByType("video") ?? [];
             const throughput = player?.getAverageThroughput("video") ?? 0;
+            // Mirror the portal cap for this imperative jump — it bypasses
+            // ABR, so without it the jump lands on 2160p in a small player
+            // and the capped autoSwitch immediately re-switches away.
+            const capKbps = portalCapKbps();
             let jump = -1;
             reps.forEach((r, i) => {
+              if (capKbps > 0 && r.bitrateInKbit > capKbps) return;
               if (
                 r.bitrateInKbit < throughput * POST_SEEK_THROUGHPUT_SAFETY &&
                 (jump < 0 || r.bitrateInKbit > (reps[jump]?.bitrateInKbit ?? 0))
@@ -229,6 +283,7 @@ export function useDashPlayback(
 
     return () => {
       cancelled = true;
+      portalObserver?.disconnect();
       releaseFetchGuard();
       try {
         player?.destroy();

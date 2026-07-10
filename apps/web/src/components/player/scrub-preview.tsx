@@ -111,7 +111,9 @@ function ScrubPreviewVisual({
           src={scrubPreview.streamSrc}
           muted
           playsInline
-          preload="auto"
+          // "metadata", not "auto": hover-seeks fetch what they need; "auto"
+          // streams the whole file and blocks player seeks on the connection.
+          preload="metadata"
           className={cn(
             "relative z-[1] h-full w-full object-cover transition-opacity",
             videoSeekReady ? "opacity-100" : "opacity-0",

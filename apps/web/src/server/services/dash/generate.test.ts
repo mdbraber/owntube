@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildMpd,
   pickDashVideoFormats,
@@ -62,29 +62,27 @@ describe("pickDashVideoFormats", () => {
 });
 
 describe("companion-direct segments", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("rewrites googlevideo URLs to the companion proxy, never direct", () => {
-    const prev = process.env.INVIDIOUS_PUBLIC_BASE_URL;
-    process.env.INVIDIOUS_PUBLIC_BASE_URL = "https://inv.example";
-    try {
-      const gv = {
-        ...vp9_2160,
-        url: "https://rr2---sn-abc.googlevideo.com/videoplayback?itag=313&dur=562.433",
-      };
-      const mpd = buildMpd([gv], aac, 562);
-      expect(mpd).toContain(
-        "https://inv.example/companion/videoplayback?itag=313",
-      );
-      expect(mpd).toContain("host=rr2---sn-abc.googlevideo.com");
-      expect(mpd).not.toContain(
-        "<BaseURL>https://rr2---sn-abc.googlevideo.com",
-      );
-    } finally {
-      if (prev === undefined) delete process.env.INVIDIOUS_PUBLIC_BASE_URL;
-      else process.env.INVIDIOUS_PUBLIC_BASE_URL = prev;
-    }
+    vi.stubEnv("INVIDIOUS_PUBLIC_BASE_URL", "https://inv.example");
+    vi.stubEnv("INVIDIOUS_DIRECT_DASH_SEGMENTS", "true");
+    const gv = {
+      ...vp9_2160,
+      url: "https://rr2---sn-abc.googlevideo.com/videoplayback?itag=313&dur=562.433",
+    };
+    const mpd = buildMpd([gv], aac, 562);
+    expect(mpd).toContain(
+      "https://inv.example/companion/videoplayback?itag=313",
+    );
+    expect(mpd).toContain("host=rr2---sn-abc.googlevideo.com");
+    expect(mpd).not.toContain("<BaseURL>https://rr2---sn-abc.googlevideo.com");
   });
 
   it("moves instance-minted local URLs onto the companion path", () => {
+    vi.stubEnv("INVIDIOUS_DIRECT_DASH_SEGMENTS", "true");
     const local = {
       ...vp9_2160,
       url: "https://inv.example/videoplayback?itag=313&host=rr2---sn-abc.googlevideo.com",
@@ -93,6 +91,36 @@ describe("companion-direct segments", () => {
     expect(mpd).toContain(
       "<BaseURL>https://inv.example/companion/videoplayback?itag=313",
     );
+  });
+
+  it("split mode (default): heavy rungs same-origin, seek-critical direct", () => {
+    vi.stubEnv("INVIDIOUS_DIRECT_DASH_SEGMENTS", "split");
+    const withHost = (f: AdaptiveFormat) => ({
+      ...f,
+      url: `${f.url}&host=rr2---sn-abc.googlevideo.com`,
+    });
+    const mpd = buildMpd(
+      [withHost(vp9_2160), withHost(vp9_1080)],
+      withHost(aac),
+      562,
+    );
+    // 12Mbps 2160p: aborted multi-MB fetches must drain bounded → proxy.
+    expect(mpd).toContain("<BaseURL>/invidious/videoplayback?itag=313");
+    // 2.5Mbps seek rung and audio: latency-critical on seeks → direct.
+    expect(mpd).toContain(
+      "<BaseURL>https://inv.example/companion/videoplayback?itag=248",
+    );
+    expect(mpd).toContain(
+      "<BaseURL>https://inv.example/companion/videoplayback?itag=140",
+    );
+  });
+
+  it("false: everything through the same-origin proxy", () => {
+    vi.stubEnv("INVIDIOUS_DIRECT_DASH_SEGMENTS", "false");
+    const mpd = buildMpd([vp9_2160, vp9_1080], aac, 562);
+    expect(mpd).not.toContain("companion/videoplayback");
+    expect(mpd).toContain("<BaseURL>/invidious/videoplayback?itag=313");
+    expect(mpd).toContain("<BaseURL>/invidious/videoplayback?itag=140");
   });
 });
 

@@ -94,15 +94,34 @@ function pickDashAudioFormat(af: AdaptiveFormat[]): AdaptiveFormat | undefined {
 }
 
 /**
- * DASH segments go browser→companion directly by default (CORS `*`, one hop —
- * the same route Invidious's own player takes); the companion rewrite
- * guarantees the browser never fetches googlevideo. Opt out with
- * INVIDIOUS_DIRECT_DASH_SEGMENTS=false to force the same-origin
- * `/invidious/videoplayback` Node proxy (e.g. when the instance host is not
- * reachable from the browser).
+ * Streams at or below this ride the companion origin in split mode: the audio
+ * track and the cheap rung dash.js seeks at (SEEK_FAST_MAX_KBPS in
+ * use-dash-playback.ts, 2000) — small segments whose aborted fetches drain in
+ * well under a second.
  */
-function dashSegmentUri(url: string): string {
-  if (process.env.INVIDIOUS_DIRECT_DASH_SEGMENTS !== "false") {
+const SPLIT_DIRECT_MAX_KBPS = 2500;
+
+/**
+ * Where a representation's segments are fetched from, by
+ * INVIDIOUS_DIRECT_DASH_SEGMENTS:
+ *
+ * - unset / "split" (default): seek-critical streams (audio + rungs ≤
+ *   SPLIT_DIRECT_MAX_KBPS) go browser→companion directly (CORS `*`, one hop,
+ *   ~zero per-request overhead — the route Invidious's own player takes); the
+ *   heavy top rungs go through the same-origin `/invidious/videoplayback`
+ *   proxy, which serves them in bounded, abort-propagating ≤2MB chunks. A
+ *   seek that cancels a multi-MB fetch therefore never head-of-line blocks
+ *   the connection the seek's own small fetches ride (Safari drains an
+ *   aborted response before running later requests on that connection —
+ *   measured 3s+ stalls per aborted 11MB segment).
+ * - "true": everything direct to companion.
+ * - "false": everything through the same-origin proxy (e.g. when the
+ *   companion host is not reachable from the browser).
+ */
+function dashSegmentUri(url: string, seekCritical: boolean): string {
+  const mode = process.env.INVIDIOUS_DIRECT_DASH_SEGMENTS ?? "split";
+  const wantDirect = mode === "true" || (mode !== "false" && seekCritical);
+  if (wantDirect) {
     const direct = companionDirectSegmentUri(url);
     if (direct) return direct;
   }
@@ -118,9 +137,11 @@ function representationXml(f: AdaptiveFormat, indent: string): string {
   const fps =
     typeof f.fps === "number" && f.fps > 0 ? ` frameRate="${f.fps}"` : "";
   const bandwidth = Math.max(1, Number(f.bitrate) || 1);
+  const seekCritical =
+    f.type.startsWith("audio/") || bandwidth <= SPLIT_DIRECT_MAX_KBPS * 1000;
   return [
     `${indent}<Representation id="${xmlEscape(String(f.itag))}" codecs="${xmlEscape(codecsOf(f.type))}" bandwidth="${bandwidth}"${dims}${fps}>`,
-    `${indent}  <BaseURL>${xmlEscape(dashSegmentUri(f.url))}</BaseURL>`,
+    `${indent}  <BaseURL>${xmlEscape(dashSegmentUri(f.url, seekCritical))}</BaseURL>`,
     `${indent}  <SegmentBase indexRange="${xmlEscape(f.index)}">`,
     `${indent}    <Initialization range="${xmlEscape(f.init)}"/>`,
     `${indent}  </SegmentBase>`,
