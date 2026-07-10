@@ -16,6 +16,8 @@
  * proxy (and its mid-stream `read ETIMEDOUT` stalls) out of the segment path.
  */
 
+import { isYoutubeFamilyHostname } from "@/lib/invidious-proxy";
+
 const INVIDIOUS_TIMEOUT_MS = 15_000;
 
 export type AdaptiveFormat = {
@@ -39,15 +41,61 @@ export function codecsOf(type: string): string {
   return type.match(/codecs="([^"]+)"/)?.[1] ?? "";
 }
 
+/** Public instance base the *browser* can reach, for direct segment mode. */
+function invidiousPublicBase(): string {
+  return (
+    process.env.INVIDIOUS_PUBLIC_BASE_URL ??
+    process.env.INVIDIOUS_BASE_URL ??
+    ""
+  )
+    .trim()
+    .replace(/\/+$/, "");
+}
+
+/**
+ * Browser-direct segment URL that NEVER points at googlevideo (those URLs are
+ * IP-locked and the browser must not fetch them): googlevideo stream URLs are
+ * rewritten to the instance's companion proxy
+ * (`<instance>/companion/videoplayback?…&host=<googlevideo-host>` — serves
+ * `Access-Control-Allow-Origin: *` and answers Range preflights), and
+ * instance-hosted `/videoplayback` URLs move onto the same companion path.
+ * Returns null when no browser-reachable base is configured.
+ */
+export function companionDirectSegmentUri(url: string): string | null {
+  try {
+    const u = new URL(url);
+    if (isYoutubeFamilyHostname(u.hostname)) {
+      const base = invidiousPublicBase();
+      if (!base) return null;
+      const params = new URLSearchParams(u.search);
+      params.set("host", u.hostname);
+      return `${base}/companion/videoplayback?${params.toString()}`;
+    }
+    // Instance-minted local URL (`/videoplayback?…&host=…`): prefer the
+    // companion path — CORS-enabled and faster than Invidious's legacy proxy.
+    if (
+      u.pathname === "/videoplayback" &&
+      new URLSearchParams(u.search).has("host")
+    ) {
+      return `${u.origin}/companion/videoplayback${u.search}`;
+    }
+    return url;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Segment/init URI for a media playlist. Default: rewrite the absolute Invidious
  * stream URL to OwnTube's same-origin `/invidious/…` proxy path. With
- * INVIDIOUS_DIRECT_HLS_SEGMENTS=true: keep the absolute Invidious URL so the
- * browser streams segments directly from Invidious/companion (CORS `*`) instead
- * of re-proxying every fragment through our Node server.
+ * INVIDIOUS_DIRECT_HLS_SEGMENTS=true: point at Invidious/companion directly
+ * (CORS `*`) so segments skip our Node proxy — never at googlevideo.
  */
 export function segmentUri(url: string): string {
-  if (process.env.INVIDIOUS_DIRECT_HLS_SEGMENTS === "true") return url;
+  if (process.env.INVIDIOUS_DIRECT_HLS_SEGMENTS === "true") {
+    const direct = companionDirectSegmentUri(url);
+    if (direct) return direct;
+  }
   try {
     const u = new URL(url);
     return `/invidious${u.pathname}${u.search}`;

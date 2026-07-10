@@ -61,6 +61,41 @@ describe("pickDashVideoFormats", () => {
   });
 });
 
+describe("companion-direct segments", () => {
+  it("rewrites googlevideo URLs to the companion proxy, never direct", () => {
+    const prev = process.env.INVIDIOUS_PUBLIC_BASE_URL;
+    process.env.INVIDIOUS_PUBLIC_BASE_URL = "https://inv.example";
+    try {
+      const gv = {
+        ...vp9_2160,
+        url: "https://rr2---sn-abc.googlevideo.com/videoplayback?itag=313&dur=562.433",
+      };
+      const mpd = buildMpd([gv], aac, 562);
+      expect(mpd).toContain(
+        "https://inv.example/companion/videoplayback?itag=313",
+      );
+      expect(mpd).toContain("host=rr2---sn-abc.googlevideo.com");
+      expect(mpd).not.toContain(
+        "<BaseURL>https://rr2---sn-abc.googlevideo.com",
+      );
+    } finally {
+      if (prev === undefined) delete process.env.INVIDIOUS_PUBLIC_BASE_URL;
+      else process.env.INVIDIOUS_PUBLIC_BASE_URL = prev;
+    }
+  });
+
+  it("moves instance-minted local URLs onto the companion path", () => {
+    const local = {
+      ...vp9_2160,
+      url: "https://inv.example/videoplayback?itag=313&host=rr2---sn-abc.googlevideo.com",
+    };
+    const mpd = buildMpd([local], aac, 562);
+    expect(mpd).toContain(
+      "<BaseURL>https://inv.example/companion/videoplayback?itag=313",
+    );
+  });
+});
+
 describe("buildMpd", () => {
   it("emits a static VOD MPD with SegmentBase byte ranges", () => {
     const mpd = buildMpd([vp9_2160, vp9_1080], aac, 562.433);

@@ -19,6 +19,7 @@
 import {
   type AdaptiveFormat,
   codecsOf,
+  companionDirectSegmentUri,
   fetchAdaptiveFormats,
   segmentUri,
 } from "@/server/services/hls/generate";
@@ -92,6 +93,22 @@ function pickDashAudioFormat(af: AdaptiveFormat[]): AdaptiveFormat | undefined {
   return dedupeByItag(af).find((f) => /mp4a/.test(f.type) && usable(f));
 }
 
+/**
+ * DASH segments go browser→companion directly by default (CORS `*`, one hop —
+ * the same route Invidious's own player takes); the companion rewrite
+ * guarantees the browser never fetches googlevideo. Opt out with
+ * INVIDIOUS_DIRECT_DASH_SEGMENTS=false to force the same-origin
+ * `/invidious/videoplayback` Node proxy (e.g. when the instance host is not
+ * reachable from the browser).
+ */
+function dashSegmentUri(url: string): string {
+  if (process.env.INVIDIOUS_DIRECT_DASH_SEGMENTS !== "false") {
+    const direct = companionDirectSegmentUri(url);
+    if (direct) return direct;
+  }
+  return segmentUri(url);
+}
+
 function representationXml(f: AdaptiveFormat, indent: string): string {
   const [w, h] = (f.size ?? "").split("x").map((n) => Number.parseInt(n, 10));
   const dims =
@@ -103,7 +120,7 @@ function representationXml(f: AdaptiveFormat, indent: string): string {
   const bandwidth = Math.max(1, Number(f.bitrate) || 1);
   return [
     `${indent}<Representation id="${xmlEscape(String(f.itag))}" codecs="${xmlEscape(codecsOf(f.type))}" bandwidth="${bandwidth}"${dims}${fps}>`,
-    `${indent}  <BaseURL>${xmlEscape(segmentUri(f.url))}</BaseURL>`,
+    `${indent}  <BaseURL>${xmlEscape(dashSegmentUri(f.url))}</BaseURL>`,
     `${indent}  <SegmentBase indexRange="${xmlEscape(f.index)}">`,
     `${indent}    <Initialization range="${xmlEscape(f.init)}"/>`,
     `${indent}  </SegmentBase>`,
