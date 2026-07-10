@@ -22,6 +22,15 @@ function mseCodecSupported(mimeType: string, codecs: string): boolean {
   return true;
 }
 
+/**
+ * Seeks (and startup) run against a temporary bitrate cap so the first frame
+ * at the new position needs only a small segment (~480p) — YouTube's trick
+ * for near-instant scrubbing. Once the seek renders, the cap lifts and
+ * `fastSwitchEnabled` re-fetches the forward buffer at full quality, so the
+ * cheap rung is on screen for well under a second.
+ */
+const SEEK_FAST_MAX_KBPS = 2000;
+
 const VIDEO_CODEC_RE = /avc1|avc3|av01|vp0?9|vp8|hev1|hvc1|dvh/i;
 const MSE_UNDECODABLE_ON_IOS_RE = /av01|vp0?9|vp8/i;
 
@@ -130,6 +139,35 @@ export function useDashPlayback(
         },
       });
       player.on("error", () => onFatalErrorRef.current?.());
+
+      // Seek-at-low-quality-then-climb (see SEEK_FAST_MAX_KBPS). The initial
+      // position also passes through PLAYBACK_SEEKING, so cold starts paint
+      // fast too.
+      let uncapTimer: number | null = null;
+      const capVideoBitrate = (kbps: number) => {
+        player?.updateSettings({
+          streaming: { abr: { maxBitrate: { video: kbps } } },
+        });
+      };
+      player.on("playbackSeeking", () => {
+        if (uncapTimer !== null) window.clearTimeout(uncapTimer);
+        uncapTimer = null;
+        capVideoBitrate(SEEK_FAST_MAX_KBPS);
+      });
+      player.on("playbackSeeked", () => {
+        if (uncapTimer !== null) window.clearTimeout(uncapTimer);
+        // Brief grace so the cheap segment finishes appending before ABR
+        // re-plans; fastSwitch then upgrades the forward buffer.
+        uncapTimer = window.setTimeout(() => {
+          uncapTimer = null;
+          capVideoBitrate(-1);
+        }, 250);
+      });
+      capVideoBitrate(SEEK_FAST_MAX_KBPS);
+      player.on("playbackPlaying", () => {
+        if (uncapTimer !== null) return; // a seek is mid-flight; let it finish
+        capVideoBitrate(-1);
+      });
 
       const start = startAtRef.current;
       // Absolute URL: dash.js subsystems (e.g. CmcdController) construct
