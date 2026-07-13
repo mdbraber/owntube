@@ -725,7 +725,7 @@ function PlayerMobileMenu({
       />
       <div
         ref={sheetRef}
-        className="absolute inset-x-0 bottom-0 max-h-[70dvh] overflow-y-auto rounded-t-[20px] border-t border-white/10 bg-zinc-950/95 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] text-sm text-zinc-100 shadow-2xl backdrop-blur-md"
+        className="absolute inset-x-0 bottom-0 max-h-[70dvh] overflow-y-auto overscroll-contain rounded-t-[20px] border-t border-white/10 bg-zinc-950/95 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] text-sm text-zinc-100 shadow-2xl backdrop-blur-md"
       >
         <div className="flex justify-center pt-2.5">
           <span className="h-1 w-10 rounded-full bg-white/20" />

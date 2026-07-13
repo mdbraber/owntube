@@ -543,7 +543,7 @@ export function VideoActionsMenu({
                 ref={sheetRef}
                 role="dialog"
                 aria-label="Video actions"
-                className="absolute inset-x-0 bottom-0 max-h-[85dvh] overflow-y-auto rounded-t-2xl border-t border-[hsl(var(--border))] bg-[hsl(var(--card))] pb-[max(env(safe-area-inset-bottom),0.75rem)] animate-[ot-sheet-in_260ms_cubic-bezier(0.32,0.72,0.22,1)] motion-reduce:animate-none"
+                className="absolute inset-x-0 bottom-0 max-h-[85dvh] overflow-y-auto overscroll-contain rounded-t-2xl border-t border-[hsl(var(--border))] bg-[hsl(var(--card))] pb-[max(env(safe-area-inset-bottom),0.75rem)] animate-[ot-sheet-in_260ms_cubic-bezier(0.32,0.72,0.22,1)] motion-reduce:animate-none"
                 onClick={(e) => e.stopPropagation()}
                 onKeyDown={(e) => e.stopPropagation()}
               >

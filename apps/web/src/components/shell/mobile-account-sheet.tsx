@@ -79,7 +79,7 @@ export function MobileAccountSheet({
           />
           <div
             ref={sheetRef}
-            className="absolute inset-x-0 bottom-0 max-h-[80dvh] overflow-y-auto rounded-t-[20px] border-t border-[hsl(var(--border))] bg-[hsl(var(--card))] pb-[env(safe-area-inset-bottom)] shadow-2xl [animation:ot-fade-slide_0.16s_ease-out]"
+            className="absolute inset-x-0 bottom-0 max-h-[80dvh] overflow-y-auto overscroll-contain rounded-t-[20px] border-t border-[hsl(var(--border))] bg-[hsl(var(--card))] pb-[env(safe-area-inset-bottom)] shadow-2xl [animation:ot-fade-slide_0.16s_ease-out]"
           >
             <div className="flex justify-center pt-2.5">
               <span className="h-1 w-10 rounded-full bg-[hsl(var(--border))]" />
