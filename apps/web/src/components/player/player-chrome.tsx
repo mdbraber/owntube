@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import {
+  type ComponentProps,
   type MouseEvent as ReactMouseEvent,
   useEffect,
   useRef,
@@ -79,6 +80,7 @@ export function PlayerChrome({
   const [showVolPanel, setShowVolPanel] = useState(false);
   const [shortsQualityOpen, setShortsQualityOpen] = useState(false);
   const [queueOpen, setQueueOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [autoCenterHint, setAutoCenterHint] = useState<{
     kind: "play" | "pause";
     tick: number;
@@ -451,7 +453,7 @@ export function PlayerChrome({
                     type="button"
                     onClick={onToggleAutoplayNext}
                     className={cn(
-                      "rounded-md px-2 py-1 text-[11px] font-medium tracking-wide transition",
+                      "hidden rounded-md px-2 py-1 text-[11px] font-medium tracking-wide transition sm:inline-block",
                       autoplayNext
                         ? "ot-brand-gradient text-white"
                         : "bg-white/10 text-white/90 hover:bg-white/15",
@@ -464,7 +466,7 @@ export function PlayerChrome({
                   <button
                     type="button"
                     onClick={onPlayNext}
-                    className="flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-white/15"
+                    className="hidden h-9 w-9 items-center justify-center rounded-full transition hover:bg-white/15 sm:flex"
                     aria-label="Play next video"
                     title={nextUp.title}
                   >
@@ -474,7 +476,7 @@ export function PlayerChrome({
               ) : null}
 
               {queue.length > 0 && !miniMode && !shortsMode ? (
-                <div className="relative">
+                <div className="relative hidden sm:block">
                   <button
                     type="button"
                     onClick={() => setQueueOpen((v) => !v)}
@@ -518,7 +520,7 @@ export function PlayerChrome({
                     captions.setActive(captions.activeIndex === null ? 0 : null)
                   }
                   className={cn(
-                    "flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-white/15",
+                    "hidden h-9 w-9 items-center justify-center rounded-full transition hover:bg-white/15 sm:flex",
                     captions.activeIndex !== null
                       ? "bg-white/15 text-white"
                       : "",
@@ -532,7 +534,7 @@ export function PlayerChrome({
               ) : null}
 
               {!miniMode && !shortsMode ? (
-                <div className="relative">
+                <div className="relative hidden sm:block">
                   <button
                     type="button"
                     onClick={() => onSettingsOpenChange(!settingsOpen)}
@@ -553,7 +555,7 @@ export function PlayerChrome({
                   type="button"
                   onClick={() => onToggleCinema()}
                   className={cn(
-                    "flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-white/15",
+                    "hidden h-9 w-9 items-center justify-center rounded-full transition hover:bg-white/15 sm:flex",
                     cinemaMode ? "bg-white/15 text-white" : "",
                   )}
                   aria-label={
@@ -563,6 +565,28 @@ export function PlayerChrome({
                   title="Cinema (C)"
                 >
                   <CinemaIcon className="h-5 w-5" />
+                </button>
+              ) : null}
+
+              {!miniMode && !shortsMode ? (
+                <button
+                  type="button"
+                  onClick={() => setMobileMenuOpen(true)}
+                  className="flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-white/15 sm:hidden"
+                  aria-label="More controls"
+                  aria-haspopup="dialog"
+                  aria-expanded={mobileMenuOpen}
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                    className="h-5 w-5"
+                    aria-hidden
+                  >
+                    <circle cx="12" cy="5" r="2" />
+                    <circle cx="12" cy="12" r="2" />
+                    <circle cx="12" cy="19" r="2" />
+                  </svg>
                 </button>
               ) : null}
 
@@ -586,7 +610,7 @@ export function PlayerChrome({
                   type="button"
                   onClick={() => adapter.togglePictureInPicture()}
                   className={cn(
-                    "flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-white/15",
+                    "hidden h-9 w-9 items-center justify-center rounded-full transition hover:bg-white/15 sm:flex",
                     adapter.pictureInPicture ? "bg-white/15" : "",
                   )}
                   aria-label={
@@ -602,6 +626,25 @@ export function PlayerChrome({
           </div>
         </div>
       )}
+
+      {mobileMenuOpen && !miniMode && !shortsMode ? (
+        <PlayerMobileMenu
+          quality={quality}
+          audio={audio}
+          captions={captions}
+          rate={adapter.playbackRate}
+          setRate={(r) => adapter.setPlaybackRate(r)}
+          nextUp={nextUp}
+          autoplayNext={autoplayNext}
+          onToggleAutoplayNext={onToggleAutoplayNext}
+          onPlayNext={onPlayNext}
+          queue={queue}
+          canPip={hydrated && adapter.canPictureInPicture}
+          pipActive={adapter.pictureInPicture}
+          onTogglePip={() => adapter.togglePictureInPicture()}
+          onClose={() => setMobileMenuOpen(false)}
+        />
+      ) : null}
 
       {settingsOpen && !shortsMode ? (
         <SettingsMenu
@@ -619,6 +662,162 @@ export function PlayerChrome({
         />
       ) : null}
     </>
+  );
+}
+
+/**
+ * Mobile counterpart of the desktop control cluster: everything beyond
+ * play/seek/volume/fullscreen lives in this bottom sheet, opened by the ⋯
+ * button. Rendered inside the player root (not portaled) so it also shows in
+ * element fullscreen, where `fixed` positions against the fullscreen element.
+ */
+function PlayerMobileMenu({
+  quality,
+  audio,
+  captions,
+  rate,
+  setRate,
+  nextUp,
+  autoplayNext,
+  onToggleAutoplayNext,
+  onPlayNext,
+  queue,
+  canPip,
+  pipActive,
+  onTogglePip,
+  onClose,
+}: Pick<
+  ComponentProps<typeof SettingsMenu>,
+  "quality" | "audio" | "captions" | "rate" | "setRate"
+> & {
+  nextUp?: { title: string } | null;
+  autoplayNext: boolean;
+  onToggleAutoplayNext: () => void;
+  onPlayNext: () => void;
+  queue: readonly { href: string; title: string }[];
+  canPip: boolean;
+  pipActive: boolean;
+  onTogglePip: () => void;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[70] sm:hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Player options"
+    >
+      <button
+        type="button"
+        aria-label="Close player options"
+        onClick={onClose}
+        className="absolute inset-0 bg-black/60"
+      />
+      <div className="absolute inset-x-0 bottom-0 max-h-[70dvh] overflow-y-auto rounded-t-[20px] border-t border-white/10 bg-zinc-950/95 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] text-sm text-zinc-100 shadow-2xl backdrop-blur-md">
+        <div className="flex justify-center pt-2.5">
+          <span className="h-1 w-10 rounded-full bg-white/20" />
+        </div>
+        {nextUp || canPip ? (
+          <div className="px-1 py-1">
+            {nextUp ? (
+              <>
+                <button
+                  type="button"
+                  onClick={onToggleAutoplayNext}
+                  className="flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2.5 hover:bg-white/10"
+                  aria-pressed={autoplayNext}
+                >
+                  <span>Autoplay next</span>
+                  <span
+                    className={cn(
+                      "text-xs",
+                      autoplayNext
+                        ? "text-[hsl(var(--primary))]"
+                        : "text-zinc-400",
+                    )}
+                  >
+                    {autoplayNext ? "On" : "Off"}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onPlayNext();
+                  }}
+                  className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-white/10"
+                >
+                  <span className="shrink-0">Play next</span>
+                  <span className="line-clamp-1 text-right text-xs text-zinc-400">
+                    {nextUp.title}
+                  </span>
+                </button>
+              </>
+            ) : null}
+            {canPip ? (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onTogglePip();
+                }}
+                className="flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2.5 hover:bg-white/10"
+                aria-pressed={pipActive}
+              >
+                <span>Picture in picture</span>
+                <span
+                  className={cn(
+                    "text-xs",
+                    pipActive ? "text-[hsl(var(--primary))]" : "text-zinc-400",
+                  )}
+                >
+                  {pipActive ? "On" : "Off"}
+                </span>
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+        <div className={nextUp || canPip ? "border-t border-white/10" : ""}>
+          <SettingsMenu
+            variant="embedded"
+            quality={quality}
+            audio={audio}
+            captions={captions}
+            rate={rate}
+            setRate={setRate}
+            onClose={onClose}
+          />
+        </div>
+        {queue.length > 0 ? (
+          <div className="border-t border-white/10 px-3 py-2">
+            <p className="pb-1 text-[11px] uppercase tracking-wide text-zinc-400">
+              Up next
+            </p>
+            <ul className="max-h-48 overflow-auto">
+              {queue.map((item, idx) => (
+                <li key={`${item.href}-${idx}`}>
+                  <Link
+                    href={item.href}
+                    className="line-clamp-1 block rounded-md px-1 py-1.5 text-xs text-zinc-100 hover:bg-white/10"
+                    onClick={onClose}
+                  >
+                    {idx + 1}. {item.title}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </div>
+    </div>
   );
 }
 

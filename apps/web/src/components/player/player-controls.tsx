@@ -54,6 +54,7 @@ export function SettingsMenu({
   rate,
   setRate,
   onClose,
+  variant = "popover",
 }: {
   quality: QualityModel;
   audio: AudioModel;
@@ -61,6 +62,8 @@ export function SettingsMenu({
   rate: number;
   setRate: (r: number) => void;
   onClose: () => void;
+  /** "embedded" drops the popover positioning/chrome so the same menu can sit inside the mobile sheet. */
+  variant?: "popover" | "embedded";
 }) {
   const [view, setView] = useState<SettingsView>("root");
   useEffect(() => {
@@ -69,7 +72,11 @@ export function SettingsMenu({
   }, [audio.kind, captions.kind, view]);
   return (
     <div
-      className="absolute bottom-14 right-3 z-40 w-56 overflow-hidden rounded-lg border border-white/10 bg-zinc-950/95 text-sm shadow-xl backdrop-blur-md"
+      className={
+        variant === "embedded"
+          ? "w-full overflow-hidden text-sm"
+          : "absolute bottom-14 right-3 z-40 w-56 overflow-hidden rounded-lg border border-white/10 bg-zinc-950/95 text-sm shadow-xl backdrop-blur-md"
+      }
       onClick={(e: ReactMouseEvent) => e.stopPropagation()}
       onKeyDown={(e) => {
         if (e.key === "Escape") onClose();
@@ -137,15 +144,17 @@ export function SettingsMenu({
               </button>
             </li>
           ) : null}
-          <li className="border-t border-white/10">
-            <button
-              type="button"
-              onClick={onClose}
-              className="w-full px-3 py-2 text-left text-xs text-zinc-400 hover:bg-white/10"
-            >
-              Close
-            </button>
-          </li>
+          {variant === "popover" ? (
+            <li className="border-t border-white/10">
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-full px-3 py-2 text-left text-xs text-zinc-400 hover:bg-white/10"
+              >
+                Close
+              </button>
+            </li>
+          ) : null}
         </ul>
       ) : null}
       {view === "speed" ? (

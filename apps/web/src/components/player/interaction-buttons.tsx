@@ -133,14 +133,16 @@ export function InteractionButtons({
     return (
       <button
         type="button"
-        className={cn(pillBase, "rounded-full px-4", pillTone(active))}
+        className={cn(pillBase, "rounded-full px-3 sm:px-4", pillTone(active))}
         disabled={disabled}
         aria-pressed={active}
         title={actions.labelFor(id)}
         onClick={() => actions.runAction(id)}
       >
         <Glyph id={id} active={active} />
-        <span>{label}</span>
+        {/* Icon-only below sm: three labeled pills overflow a phone row, and
+            the kebab's sheet carries the labeled versions of every action. */}
+        <span className="hidden sm:inline">{label}</span>
       </button>
     );
   };
@@ -153,7 +155,7 @@ export function InteractionButtons({
           type="button"
           className={cn(
             pillBase,
-            "max-w-56 rounded-full px-4",
+            "max-w-56 rounded-full px-3 sm:px-4",
             pillTone(membership.active),
           )}
           disabled={disabled}
@@ -167,7 +169,7 @@ export function InteractionButtons({
           onClick={onSaveMainPress}
         >
           <Glyph id="save" active={membership.active} />
-          <span className="truncate">{membership.label}</span>
+          <span className="hidden truncate sm:inline">{membership.label}</span>
         </button>
         {saveMenuOpen ? (
           <div
