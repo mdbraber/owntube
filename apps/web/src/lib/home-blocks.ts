@@ -92,10 +92,21 @@ const HIDE_SHORTS: SectionOptionDef = {
   defaultValue: true,
 };
 
+/**
+ * The feed already drops ignored videos server-side, so this defaults on; the
+ * option exists to (a) show them again when you want to review/undo, and (b)
+ * make an Ignore press remove the card from the block immediately.
+ */
+const HIDE_IGNORED: SectionOptionDef = {
+  key: "hideIgnored",
+  label: "Hide ignored videos",
+  defaultValue: true,
+};
+
 export const SECTION_OPTIONS: Partial<
   Record<HomeBlockType, SectionOptionDef[]>
 > = {
-  subscriptions: [HIDE_WATCHED, HIDE_SHORTS],
+  subscriptions: [HIDE_WATCHED, HIDE_SHORTS, HIDE_IGNORED],
   queue: [HIDE_WATCHED],
   saved: [HIDE_WATCHED],
   playlist: [HIDE_WATCHED],

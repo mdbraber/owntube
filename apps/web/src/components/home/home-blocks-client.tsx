@@ -8,6 +8,7 @@ import {
 } from "@/components/subscriptions/subscription-tag-filter";
 import { Button } from "@/components/ui/button";
 import { Sheet } from "@/components/ui/sheet";
+import { useIgnoredVideos } from "@/components/videos/ignored-videos-context";
 import { useRowDrag } from "@/components/videos/use-row-drag";
 import {
   DragHandleIcon,
@@ -295,6 +296,11 @@ function blockFetchCount(block: HomeBlock): number {
 
 function SubscriptionsBlockBody({ block }: { block: HomeBlock }) {
   const { includeTags, excludeTags } = blockTagLists(block);
+  const hideIgnored = homeBlockOption(block, "hideIgnored");
+  // Server-fetched pages already exclude ignored videos; this also drops the
+  // ones ignored *this session*, so pressing Ignore removes the card at once
+  // instead of leaving it until the next refetch.
+  const { sessionIgnored } = useIgnoredVideos();
   // Over-fetch: the feed strips shorts/restricted *after* the limit, so a
   // page of exactly `limit` often arrives short. Infinite so the scrollable
   // shelf can keep pulling pages.
@@ -304,12 +310,17 @@ function SubscriptionsBlockBody({ block }: { block: HomeBlock }) {
       includeTags,
       excludeTags,
       hideShorts: homeBlockOption(block, "hideShorts"),
+      hideIgnored,
     },
     { getNextPageParam: (last) => last.nextCursor ?? undefined },
   );
+  const fetched = (query.data?.pages.flatMap((p) => p.videos) ??
+    []) as BlockVideo[];
   const videos = useHideFinished(
     block,
-    (query.data?.pages.flatMap((p) => p.videos) ?? []) as BlockVideo[],
+    hideIgnored
+      ? fetched.filter((v) => !sessionIgnored.has(v.videoId))
+      : fetched,
   );
   const scrollable = isScrollRow(block);
   return (

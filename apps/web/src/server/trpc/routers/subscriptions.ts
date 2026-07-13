@@ -18,12 +18,6 @@ import {
 } from "@/server/channel-meta/store";
 import type { AppDb } from "@/server/db/client";
 import {
-  getChannelRssEntries,
-  getLongFormWindows,
-  refreshChannelRss,
-  refreshLongFormWindow,
-} from "@/server/rss/cache";
-import {
   channelTags,
   interactions,
   subscriptions,
@@ -31,6 +25,12 @@ import {
 } from "@/server/db/schema";
 import { RateLimitExceededError } from "@/server/errors/rate-limit-exceeded";
 import { UpstreamUnavailableError } from "@/server/errors/upstream-unavailable";
+import {
+  getChannelRssEntries,
+  getLongFormWindows,
+  refreshChannelRss,
+  refreshLongFormWindow,
+} from "@/server/rss/cache";
 import {
   fetchChannelPage,
   type ProxySourceOverrides,
@@ -612,7 +612,10 @@ async function stripShortsFromSubscriptionFeed(
   videos: UnifiedVideo[],
 ): Promise<UnifiedVideo[]> {
   if (videos.length === 0) return videos;
-  const windows = await getLongFormWindows(db, videos.map((v) => v.channelId));
+  const windows = await getLongFormWindows(
+    db,
+    videos.map((v) => v.channelId),
+  );
   return videos.filter((v) => !isSubscriptionShort(v, windows));
 }
 
@@ -1039,6 +1042,8 @@ export const subscriptionsRouter = router({
         excludeTags: tagFilterSchema,
         /** Per-surface override of the profile hideShortsInSubscriptions setting (home blocks). */
         hideShorts: z.boolean().optional(),
+        /** Drop videos the user ignored. Default true — matches every existing caller. */
+        hideIgnored: z.boolean().optional(),
       }),
     )
     .query(async ({ ctx, input }) => {
@@ -1077,7 +1082,10 @@ export const subscriptionsRouter = router({
         offset,
         limit,
       );
-      const patchedVideos = await patchVisibleVideosWithRssDates(ctx.db, videos);
+      const patchedVideos = await patchVisibleVideosWithRssDates(
+        ctx.db,
+        videos,
+      );
       const nowSec = Math.floor(Date.now() / 1000);
       const sortedPatchedVideos = [...patchedVideos].sort((a, b) =>
         newerPublished(a, b, nowSec),
@@ -1090,10 +1098,10 @@ export const subscriptionsRouter = router({
       const restrictedFiltered = settings.hideRestrictedVideos
         ? stripRestrictedListVideos(withMeta)
         : withMeta;
-      const visibleVideos = (input.hideShorts ??
-        settings.hideShortsInSubscriptions)
-        ? await stripShortsFromSubscriptionFeed(ctx.db, restrictedFiltered)
-        : restrictedFiltered;
+      const visibleVideos =
+        (input.hideShorts ?? settings.hideShortsInSubscriptions)
+          ? await stripShortsFromSubscriptionFeed(ctx.db, restrictedFiltered)
+          : restrictedFiltered;
       const candidateVideoIds = visibleVideos.map((v) => v.videoId);
       const ignoredRows =
         candidateVideoIds.length > 0
@@ -1110,9 +1118,10 @@ export const subscriptionsRouter = router({
               .all()
           : [];
       const ignoredSet = new Set(ignoredRows.map((r) => r.videoId));
-      const keptVideos = visibleVideos.filter(
-        (v) => !ignoredSet.has(v.videoId),
-      );
+      const keptVideos =
+        (input.hideIgnored ?? true)
+          ? visibleVideos.filter((v) => !ignoredSet.has(v.videoId))
+          : visibleVideos;
       const visibleVideoIds = keptVideos.map((v) => v.videoId);
       const watchedRows =
         visibleVideoIds.length > 0
