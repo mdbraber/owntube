@@ -1,13 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { isIosLikeBrowser } from "@/lib/ios-playback";
 
-// CSS pseudo-fullscreen: pins the player shell to the viewport. Used on iOS
-// Safari, which exposes no element Fullscreen API and whose native
-// `webkitEnterFullscreen` both replaces our custom controls with Apple's player
-// and throws outright on MSE-backed (hls.js) video. Inline styles with
-// `important` priority beat the shell's Tailwind utilities (aspect-video,
-// rounded corners) and escape any parent `overflow: hidden`.
+// CSS pseudo-fullscreen: pins the player shell to the viewport. Last-resort
+// fallback for browsers with no element Fullscreen API and no native video
+// fullscreen (see `toggle`: iOS now prefers Apple's real fullscreen). Inline
+// styles with `important` priority beat the shell's Tailwind utilities
+// (aspect-video, rounded corners) and escape any parent `overflow: hidden`.
 const PSEUDO_FULLSCREEN_STYLES: ReadonlyArray<[string, string]> = [
   ["position", "fixed"],
   ["top", "0"],
@@ -61,19 +61,32 @@ export function useFullscreenShell(
       setActive(standardActive || webkitActive || pseudoActiveRef.current);
     };
     document.addEventListener("fullscreenchange", onChange);
-    const video = shellRef.current?.querySelector("video");
-    video?.addEventListener("webkitbeginfullscreen", onChange as EventListener);
-    video?.addEventListener("webkitendfullscreen", onChange as EventListener);
+    // Capture phase on `document`, not the element: webkit's fullscreen events
+    // do not bubble, but capture still reaches them — and the <video> is
+    // remounted whenever the source changes (key={reactKey}), which would leave
+    // element-bound listeners on a dead node and the button's state stale.
+    document.addEventListener(
+      "webkitbeginfullscreen",
+      onChange as EventListener,
+      true,
+    );
+    document.addEventListener(
+      "webkitendfullscreen",
+      onChange as EventListener,
+      true,
+    );
     onChange();
     return () => {
       document.removeEventListener("fullscreenchange", onChange);
-      video?.removeEventListener(
+      document.removeEventListener(
         "webkitbeginfullscreen",
         onChange as EventListener,
+        true,
       );
-      video?.removeEventListener(
+      document.removeEventListener(
         "webkitendfullscreen",
         onChange as EventListener,
+        true,
       );
     };
   }, [shellRef]);
@@ -103,6 +116,7 @@ export function useFullscreenShell(
           webkitEnterFullscreen?: () => void;
           webkitExitFullscreen?: () => void;
           webkitDisplayingFullscreen?: boolean;
+          webkitSupportsFullscreen?: boolean;
         })
       | null;
     const doc = document as Document & {
@@ -127,12 +141,28 @@ export function useFullscreenShell(
           return;
         }
       }
+      // iOS: hand off to Apple's real fullscreen player. Element fullscreen is
+      // absent (iPhone) or gives a shell-scaled page rather than the native
+      // experience (iPad), and the old worry — webkitEnterFullscreen throwing on
+      // MSE-backed video — cannot bite here: iOS is routed to native HLS
+      // (`isIosLikeBrowser` disables the dash/MSE path), so the element always
+      // has a real fullscreen-capable source. Trade-off is Apple's controls
+      // replacing ours for the duration, which is the platform norm; JS still
+      // drives the element, so SponsorBlock skips keep working.
+      if (
+        isIosLikeBrowser() &&
+        typeof video?.webkitEnterFullscreen === "function" &&
+        video.webkitSupportsFullscreen !== false
+      ) {
+        video.webkitEnterFullscreen();
+        return;
+      }
       if (typeof el.requestFullscreen === "function") {
         await el.requestFullscreen();
         return;
       }
-      // iOS Safari: no element Fullscreen API. Pin the shell to the viewport so
-      // the custom controls stay usable instead of handing off to Apple's player.
+      // No fullscreen API at all: pin the shell to the viewport so the custom
+      // controls stay usable.
       setPseudo(true);
     } catch {
       // Standard request failed/denied — fall back to CSS pseudo-fullscreen.
