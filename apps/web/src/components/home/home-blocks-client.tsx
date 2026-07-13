@@ -588,19 +588,20 @@ function BlockHeading({ block }: { block: HomeBlock }) {
  * Per-block options behind a dot menu (edit mode) — options live in the
  * shared sectionPrefs "base", so the section's own page stays in sync.
  */
-function BlockOptionsMenu({
+function BlockOptionsBody({
   block,
   onPatch,
+  active,
 }: {
   block: HomeBlock;
   onPatch: (patch: Partial<HomeBlock>) => void;
+  /** Gates the tags query so closed menus/sheets don't fetch. */
+  active: boolean;
 }) {
-  const rootRef = useRef<HTMLDivElement>(null);
-  const [open, setOpen] = useState(false);
   const defs = SECTION_OPTIONS[block.type] ?? [];
   const withTags = block.type === "subscriptions";
   const allTags = trpc.channelTags.listAll.useQuery(undefined, {
-    enabled: open && withTags,
+    enabled: active && withTags,
   });
 
   const cycleTag = (tag: string) => {
@@ -625,6 +626,82 @@ function BlockOptionsMenu({
     }
     onPatch({ options: next });
   };
+
+  const scrollRowEligible = block.rows === 1;
+
+  return (
+    <>
+      {defs.map((def) => (
+        <label
+          key={def.key}
+          className="flex cursor-pointer select-none items-center gap-2.5 rounded-lg px-2.5 py-2 transition hover:bg-[hsl(var(--muted)_/_0.65)]"
+        >
+          <input
+            type="checkbox"
+            className="h-4 w-4 accent-[hsl(var(--primary))]"
+            checked={homeBlockOption(block, def.key)}
+            onChange={(e) =>
+              onPatch({
+                options: {
+                  ...block.options,
+                  [def.key]: e.currentTarget.checked,
+                },
+              })
+            }
+          />
+          {def.label}
+        </label>
+      ))}
+      {scrollRowEligible ? (
+        <label className="flex cursor-pointer select-none items-center gap-2.5 rounded-lg px-2.5 py-2 transition hover:bg-[hsl(var(--muted)_/_0.65)]">
+          <input
+            type="checkbox"
+            className="h-4 w-4 accent-[hsl(var(--primary))]"
+            checked={block.options?.scrollRow ?? false}
+            onChange={(e) =>
+              onPatch({
+                options: {
+                  ...block.options,
+                  scrollRow: e.currentTarget.checked,
+                },
+              })
+            }
+          />
+          Scrollable row
+        </label>
+      ) : null}
+      {withTags && (allTags.data ?? []).length > 0 ? (
+        <div
+          className={cn(
+            "px-2.5 py-2",
+            defs.length > 0 &&
+              "mt-1 border-t border-[hsl(var(--border))] pt-2.5",
+          )}
+        >
+          <SubscriptionTagFilter
+            tags={allTags.data ?? []}
+            stateFor={(tag) => blockTagState(block, tag)}
+            onCycle={cycleTag}
+            onShowAll={() => setAllTags("off")}
+            onHideAll={() => setAllTags("exclude")}
+          />
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+function BlockOptionsMenu({
+  block,
+  onPatch,
+}: {
+  block: HomeBlock;
+  onPatch: (patch: Partial<HomeBlock>) => void;
+}) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const defs = SECTION_OPTIONS[block.type] ?? [];
+  const withTags = block.type === "subscriptions";
 
   useEffect(() => {
     if (!open) return;
@@ -662,62 +739,159 @@ function BlockOptionsMenu({
           role="menu"
           className="absolute right-0 top-full z-40 mt-1 w-72 max-w-[85vw] rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-1.5 text-sm shadow-lg"
         >
-          {defs.map((def) => (
-            <label
-              key={def.key}
-              className="flex cursor-pointer select-none items-center gap-2.5 rounded-lg px-2.5 py-2 transition hover:bg-[hsl(var(--muted)_/_0.65)]"
-            >
-              <input
-                type="checkbox"
-                className="h-4 w-4 accent-[hsl(var(--primary))]"
-                checked={homeBlockOption(block, def.key)}
-                onChange={(e) =>
-                  onPatch({
-                    options: {
-                      ...block.options,
-                      [def.key]: e.currentTarget.checked,
-                    },
-                  })
-                }
-              />
-              {def.label}
-            </label>
-          ))}
-          {scrollRowEligible ? (
-            <label className="flex cursor-pointer select-none items-center gap-2.5 rounded-lg px-2.5 py-2 transition hover:bg-[hsl(var(--muted)_/_0.65)]">
-              <input
-                type="checkbox"
-                className="h-4 w-4 accent-[hsl(var(--primary))]"
-                checked={block.options?.scrollRow ?? false}
-                onChange={(e) =>
-                  onPatch({
-                    options: {
-                      ...block.options,
-                      scrollRow: e.currentTarget.checked,
-                    },
-                  })
-                }
-              />
-              Scrollable row
-            </label>
-          ) : null}
-          {withTags && (allTags.data ?? []).length > 0 ? (
-            <div
-              className={cn(
-                "px-2.5 py-2",
-                defs.length > 0 &&
-                  "mt-1 border-t border-[hsl(var(--border))] pt-2.5",
-              )}
-            >
-              <SubscriptionTagFilter
-                tags={allTags.data ?? []}
-                stateFor={(tag) => blockTagState(block, tag)}
-                onCycle={cycleTag}
-                onShowAll={() => setAllTags("off")}
-                onHideAll={() => setAllTags("exclude")}
-              />
+          <BlockOptionsBody block={block} onPatch={onPatch} active={open} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Mobile replacement for the inline block edit controls: the size/layout/rows
+ * pills plus the options popover don't fit a phone-width header row, so a
+ * single trigger opens everything in a bottom sheet (same pattern as the
+ * account sheet).
+ */
+function BlockEditSheet({
+  block,
+  onPatch,
+  onRemove,
+}: {
+  block: HomeBlock;
+  onPatch: (patch: Partial<HomeBlock>) => void;
+  onRemove: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [open]);
+
+  const pillRow = (
+    label: string,
+    content: React.ReactNode,
+  ): React.ReactNode => (
+    <div>
+      <div className="pb-1.5 text-xs font-medium text-[hsl(var(--muted-foreground))]">
+        {label}
+      </div>
+      <div className="flex w-fit overflow-hidden rounded-full border border-[hsl(var(--border))] text-xs font-medium">
+        {content}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="sm:hidden">
+      <button
+        type="button"
+        className="flex h-7 w-7 items-center justify-center rounded-full text-[hsl(var(--muted-foreground))] transition hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))]"
+        title="Edit block"
+        aria-label="Edit block"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={() => setOpen(true)}
+      >
+        <MoreIcon className="h-4 w-4" />
+      </button>
+      {open ? (
+        <div className="fixed inset-0 z-[60]" role="dialog" aria-modal="true">
+          <button
+            type="button"
+            aria-label="Close block editor"
+            onClick={() => setOpen(false)}
+            className="absolute inset-0 bg-black/50 [animation:ot-fade-in_0.15s_ease-out]"
+          />
+          <div className="absolute inset-x-0 bottom-0 max-h-[80dvh] overflow-y-auto rounded-t-[20px] border-t border-[hsl(var(--border))] bg-[hsl(var(--card))] pb-[calc(env(safe-area-inset-bottom)+0.5rem)] shadow-2xl [animation:ot-fade-slide_0.16s_ease-out]">
+            <div className="flex justify-center pt-2.5">
+              <span className="h-1 w-10 rounded-full bg-[hsl(var(--border))]" />
             </div>
-          ) : null}
+            <div className="px-4 pb-1 pt-2 text-sm font-semibold">
+              {HOME_BLOCK_LABEL[block.type]}
+            </div>
+
+            <div className="space-y-3 px-4 py-2">
+              {pillRow(
+                "Item size",
+                HOME_BLOCK_SIZES.map((size) => (
+                  <button
+                    key={size}
+                    type="button"
+                    aria-pressed={block.size === size}
+                    className={cn(
+                      "px-3 py-1.5 transition",
+                      block.size === size
+                        ? "bg-[hsl(var(--primary))] text-white"
+                        : "text-[hsl(var(--muted-foreground))]",
+                    )}
+                    onClick={() => onPatch({ size })}
+                  >
+                    {HOME_BLOCK_SIZE_LABEL[size]}
+                  </button>
+                )),
+              )}
+              {pillRow(
+                "Layout",
+                (["cards", "rows"] as const).map((layout) => (
+                  <button
+                    key={layout}
+                    type="button"
+                    aria-pressed={block.layout === layout}
+                    className={cn(
+                      "px-3 py-1.5 transition",
+                      block.layout === layout
+                        ? "bg-[hsl(var(--primary))] text-white"
+                        : "text-[hsl(var(--muted-foreground))]",
+                    )}
+                    onClick={() => onPatch({ layout })}
+                  >
+                    {layout === "cards" ? "Cards" : "Rows"}
+                  </button>
+                )),
+              )}
+              {pillRow(
+                "Rows",
+                HOME_BLOCK_ROWS.map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    aria-pressed={block.rows === n}
+                    className={cn(
+                      "px-3 py-1.5 transition",
+                      block.rows === n
+                        ? "bg-[hsl(var(--primary))] text-white"
+                        : "text-[hsl(var(--muted-foreground))]",
+                    )}
+                    onClick={() => onPatch({ rows: n })}
+                  >
+                    {n}
+                  </button>
+                )),
+              )}
+            </div>
+
+            <div className="mx-2.5 border-t border-[hsl(var(--border))] py-1.5">
+              <BlockOptionsBody block={block} onPatch={onPatch} active={open} />
+            </div>
+
+            <div className="mx-2.5 border-t border-[hsl(var(--border))] pt-1.5">
+              <button
+                type="button"
+                className="w-full rounded-lg px-2.5 py-2.5 text-left text-sm font-medium text-red-500 transition hover:bg-[hsl(var(--muted)_/_0.65)]"
+                onClick={() => {
+                  setOpen(false);
+                  onRemove();
+                }}
+              >
+                Remove block
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
     </div>
@@ -926,78 +1100,87 @@ export function HomeBlocksClient() {
                 <span className="ml-auto" />
                 {editing ? (
                   <>
-                    {/* item size */}
-                    <div className="flex overflow-hidden rounded-full border border-[hsl(var(--border))] text-xs font-medium">
-                      {HOME_BLOCK_SIZES.map((size) => (
-                        <button
-                          key={size}
-                          type="button"
-                          aria-pressed={block.size === size}
-                          title={`Item size ${HOME_BLOCK_SIZE_LABEL[size]}`}
-                          className={cn(
-                            "px-2.5 py-1 transition",
-                            block.size === size
-                              ? "bg-[hsl(var(--primary))] text-white"
-                              : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]",
-                          )}
-                          onClick={() => patchBlock(block.id, { size })}
+                    <div className="hidden items-center gap-2 sm:flex">
+                      {/* item size */}
+                      <div className="flex overflow-hidden rounded-full border border-[hsl(var(--border))] text-xs font-medium">
+                        {HOME_BLOCK_SIZES.map((size) => (
+                          <button
+                            key={size}
+                            type="button"
+                            aria-pressed={block.size === size}
+                            title={`Item size ${HOME_BLOCK_SIZE_LABEL[size]}`}
+                            className={cn(
+                              "px-2.5 py-1 transition",
+                              block.size === size
+                                ? "bg-[hsl(var(--primary))] text-white"
+                                : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]",
+                            )}
+                            onClick={() => patchBlock(block.id, { size })}
+                          >
+                            {HOME_BLOCK_SIZE_LABEL[size]}
+                          </button>
+                        ))}
+                      </div>
+                      {/* cards ⇄ rows */}
+                      <div className="flex overflow-hidden rounded-full border border-[hsl(var(--border))] text-xs font-medium">
+                        {(["cards", "rows"] as const).map((layout) => (
+                          <button
+                            key={layout}
+                            type="button"
+                            aria-pressed={block.layout === layout}
+                            className={cn(
+                              "px-3 py-1 transition",
+                              block.layout === layout
+                                ? "bg-[hsl(var(--primary))] text-white"
+                                : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]",
+                            )}
+                            onClick={() => patchBlock(block.id, { layout })}
+                          >
+                            {layout === "cards" ? "Cards" : "Rows"}
+                          </button>
+                        ))}
+                      </div>
+                      {
+                        <select
+                          className="rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-2.5 py-1 text-xs"
+                          value={block.rows}
+                          aria-label="Number of rows"
+                          onChange={(e) =>
+                            patchBlock(block.id, {
+                              rows: Number(e.currentTarget.value),
+                            })
+                          }
                         >
-                          {HOME_BLOCK_SIZE_LABEL[size]}
-                        </button>
-                      ))}
-                    </div>
-                    {/* cards ⇄ rows */}
-                    <div className="flex overflow-hidden rounded-full border border-[hsl(var(--border))] text-xs font-medium">
-                      {(["cards", "rows"] as const).map((layout) => (
-                        <button
-                          key={layout}
-                          type="button"
-                          aria-pressed={block.layout === layout}
-                          className={cn(
-                            "px-3 py-1 transition",
-                            block.layout === layout
-                              ? "bg-[hsl(var(--primary))] text-white"
-                              : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]",
-                          )}
-                          onClick={() => patchBlock(block.id, { layout })}
-                        >
-                          {layout === "cards" ? "Cards" : "Rows"}
-                        </button>
-                      ))}
-                    </div>
-                    {
-                      <select
-                        className="rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-2.5 py-1 text-xs"
-                        value={block.rows}
-                        aria-label="Number of rows"
-                        onChange={(e) =>
-                          patchBlock(block.id, {
-                            rows: Number(e.currentTarget.value),
-                          })
+                          {HOME_BLOCK_ROWS.map((n) => (
+                            <option key={n} value={n}>
+                              {n} {n === 1 ? "row" : "rows"}
+                            </option>
+                          ))}
+                        </select>
+                      }
+                      <BlockOptionsMenu
+                        block={block}
+                        onPatch={(patch) => patchBlock(block.id, patch)}
+                      />
+                      <button
+                        type="button"
+                        className="flex h-7 w-7 items-center justify-center rounded-full text-[hsl(var(--muted-foreground))] transition hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))]"
+                        title="Remove block"
+                        aria-label="Remove block"
+                        onClick={() =>
+                          persist(blocks.filter((b) => b.id !== block.id))
                         }
                       >
-                        {HOME_BLOCK_ROWS.map((n) => (
-                          <option key={n} value={n}>
-                            {n} {n === 1 ? "row" : "rows"}
-                          </option>
-                        ))}
-                      </select>
-                    }
-                    <BlockOptionsMenu
+                        <XIcon className="h-4 w-4" />
+                      </button>
+                    </div>
+                    <BlockEditSheet
                       block={block}
                       onPatch={(patch) => patchBlock(block.id, patch)}
-                    />
-                    <button
-                      type="button"
-                      className="flex h-7 w-7 items-center justify-center rounded-full text-[hsl(var(--muted-foreground))] transition hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))]"
-                      title="Remove block"
-                      aria-label="Remove block"
-                      onClick={() =>
+                      onRemove={() =>
                         persist(blocks.filter((b) => b.id !== block.id))
                       }
-                    >
-                      <XIcon className="h-4 w-4" />
-                    </button>
+                    />
                   </>
                 ) : null}
               </div>
