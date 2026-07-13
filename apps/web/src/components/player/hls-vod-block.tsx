@@ -10,6 +10,7 @@ import {
 } from "@/components/player/player-media-hooks";
 import type { CaptionTrack } from "@/components/player/player-payload";
 import type { SponsorBlockChromeProps } from "@/components/player/player-types";
+import { useBackgroundPlayback } from "@/hooks/use-background-playback";
 import {
   pickDashVideoFamily,
   useDashPlayback,
@@ -173,6 +174,14 @@ export function HlsVodBlock({
   );
 
   useReportVideoIntrinsics(videoRef, onVideoIntrinsics);
+
+  // iOS suspends inline <video> when the app is backgrounded; auto-PiP keeps it
+  // running. Also wires the lock-screen / Control Center transport controls.
+  useBackgroundPlayback(videoRef, {
+    title,
+    poster,
+    enabled: !miniMode && !shortsMode,
+  });
 
   // Re-seek whenever the requested start time changes to a NEW value. The
   // initial position is handled by `useHlsVodPlayback` (on loadedmetadata), but

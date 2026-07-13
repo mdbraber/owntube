@@ -5,7 +5,6 @@ import { getQueryKey } from "@trpc/react-query";
 import type { inferRouterOutputs } from "@trpc/server";
 import { useRouter } from "next/navigation";
 import { useCallback, useRef, useState } from "react";
-import { usePlayerContext } from "@/components/player/player-context";
 import { useActionToast } from "@/components/videos/action-toast";
 import { useIgnoredVideos } from "@/components/videos/ignored-videos-context";
 import {
@@ -61,7 +60,6 @@ export function useVideoActions({
   const router = useRouter();
   const utils = trpc.useUtils();
   const queryClient = useQueryClient();
-  const { active: activePlayer } = usePlayerContext();
   const { showToast } = useActionToast();
   const { ignore, unignore } = useIgnoredVideos();
   const membership = useVideoMembership(videoId);
@@ -464,14 +462,18 @@ export function useVideoActions({
       el.pause();
       if (Number.isFinite(el.duration) && el.duration > 0) {
         el.currentTime = Math.max(0, el.duration - 0.1);
+        // The seek can hand control back to a player that still believes it is
+        // playing (dash.js/hls.js resume on `seeked`), which resumed playback
+        // for a second or two. Pause once more when the seek lands.
+        el.addEventListener("seeked", () => el.pause(), { once: true });
       }
     };
-    if (activePlayer?.props.videoId === videoId) {
-      const el = document.querySelector<HTMLVideoElement>(
-        "[data-ot-player-root] video",
-      );
-      if (el) finishPlayback(el);
-    }
+    // Match on the element itself: the persistent-player context is empty on the
+    // watch page, so keying off `activePlayer` skipped the seek entirely there.
+    const onPageVideo = document.querySelector<HTMLVideoElement>(
+      `[data-ot-player-root][data-ot-player-video-id="${CSS.escape(videoId)}"] video`,
+    );
+    if (onPageVideo) finishPlayback(onPageVideo);
     for (const el of document.querySelectorAll<HTMLVideoElement>(
       `video[data-ot-preview="${CSS.escape(videoId)}"]`,
     )) {
@@ -498,7 +500,6 @@ export function useVideoActions({
     videoId,
     channelId,
     showToast,
-    activePlayer,
   ]);
 
   const ignoreVideo = useCallback(() => {

@@ -504,6 +504,7 @@ export function VideoPlayer({
       <div
         ref={playerMediaRootRef}
         data-ot-player-root=""
+        data-ot-player-video-id={videoId}
         className={cn(
           "relative w-full",
           shortsMode ? "h-full min-h-0" : undefined,
