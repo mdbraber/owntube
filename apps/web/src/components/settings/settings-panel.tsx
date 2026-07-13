@@ -187,6 +187,9 @@ export function SettingsPanel({
   const [enableMiniPlayer, setEnableMiniPlayer] = useState(
     initial.enableMiniPlayer ?? true,
   );
+  const [backgroundPlayback, setBackgroundPlayback] = useState(
+    initial.backgroundPlayback ?? true,
+  );
   const [autoplayOnWatch, setAutoplayOnWatch] = useState(
     initial.autoplayOnWatch ?? true,
   );
@@ -251,6 +254,10 @@ export function SettingsPanel({
     setEnableMiniPlayer(initial.enableMiniPlayer ?? true);
     writeWatchMiniEnabled(initial.enableMiniPlayer ?? true);
   }, [initial.enableMiniPlayer]);
+
+  useEffect(() => {
+    setBackgroundPlayback(initial.backgroundPlayback ?? true);
+  }, [initial.backgroundPlayback]);
 
   useEffect(() => {
     setAutoplayOnWatch(initial.autoplayOnWatch ?? true);
@@ -403,6 +410,7 @@ export function SettingsPanel({
       hideShortsInSubscriptions,
       defaultCinemaMode,
       enableMiniPlayer,
+      backgroundPlayback,
       autoplayOnWatch,
       defaultPlaybackQuality,
       sponsorBlockEnabled,
@@ -710,6 +718,15 @@ export function SettingsPanel({
               onChange={(e) => setEnableMiniPlayer(e.currentTarget.checked)}
             />
             Keep mini-player when leaving watch page
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={backgroundPlayback}
+              onChange={(e) => setBackgroundPlayback(e.currentTarget.checked)}
+            />
+            Keep playing when you switch apps (iPhone/iPad: uses
+            Picture-in-Picture)
           </label>
           <label className="flex items-center gap-2 text-sm">
             <input

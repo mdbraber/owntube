@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { isIosLikeBrowser } from "@/lib/ios-playback";
+import { trpc } from "@/trpc/react";
 
 type WebkitVideo = HTMLVideoElement & {
   autoPictureInPicture?: boolean;
@@ -20,7 +21,10 @@ type WebkitVideo = HTMLVideoElement & {
  *
  * The Media Session metadata/handlers give the lock screen and Control Center
  * the right title, channel and artwork, and make their transport buttons work
- * (without handlers iOS shows the controls but the buttons do nothing).
+ * (without handlers iOS shows the controls but the buttons do nothing). Those
+ * stay on regardless — only the auto-PiP behaviour is behind the user setting
+ * (`backgroundPlayback`, read here rather than drilled through the player tree,
+ * same as MiniPlayerSync).
  */
 export function useBackgroundPlayback(
   videoRef: React.RefObject<HTMLVideoElement | null>,
@@ -36,14 +40,22 @@ export function useBackgroundPlayback(
     enabled?: boolean;
   },
 ): void {
+  const { data: settings } = trpc.settings.get.useQuery(undefined, {
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const backgroundPlayback = settings?.backgroundPlayback ?? true;
+
   useEffect(() => {
     const video = videoRef.current as WebkitVideo | null;
-    if (!video || !enabled || !isIosLikeBrowser()) return;
+    if (!video || !enabled || !backgroundPlayback || !isIosLikeBrowser()) {
+      return;
+    }
     video.autoPictureInPicture = true;
     return () => {
       video.autoPictureInPicture = false;
     };
-  }, [videoRef, enabled]);
+  }, [videoRef, enabled, backgroundPlayback]);
 
   useEffect(() => {
     const video = videoRef.current;
