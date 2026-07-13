@@ -7,6 +7,7 @@ import {
   type TagState,
 } from "@/components/subscriptions/subscription-tag-filter";
 import { Button } from "@/components/ui/button";
+import { Sheet } from "@/components/ui/sheet";
 import { useRowDrag } from "@/components/videos/use-row-drag";
 import {
   DragHandleIcon,
@@ -20,7 +21,6 @@ import { VideoGrid } from "@/components/videos/video-grid";
 import { useWatchProgressMap } from "@/components/videos/video-membership-context";
 import { VideoRow } from "@/components/videos/video-row";
 import { VideoThumbnailImg } from "@/components/videos/video-thumbnail-img";
-import { useSheetSwipeDismiss } from "@/hooks/use-sheet-swipe-dismiss";
 import {
   CARD_MIN_WIDTH_PX,
   DEFAULT_HOME_BLOCKS,
@@ -763,16 +763,6 @@ function BlockEditSheet({
   onRemove: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const sheetRef = useSheetSwipeDismiss(() => setOpen(false));
-
-  useEffect(() => {
-    if (!open) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [open]);
 
   const pillRow = (
     label: string,
@@ -801,104 +791,88 @@ function BlockEditSheet({
       >
         <MoreIcon className="h-4 w-4" />
       </button>
-      {open ? (
-        <div className="fixed inset-0 z-[60]" role="dialog" aria-modal="true">
+      <Sheet open={open} onOpenChange={setOpen} title="Edit block">
+        <div className="px-4 pb-1 pt-2 text-sm font-semibold">
+          {HOME_BLOCK_LABEL[block.type]}
+        </div>
+
+        <div className="space-y-3 px-4 py-2">
+          {pillRow(
+            "Item size",
+            HOME_BLOCK_SIZES.map((size) => (
+              <button
+                key={size}
+                type="button"
+                aria-pressed={block.size === size}
+                className={cn(
+                  "px-3 py-1.5 transition",
+                  block.size === size
+                    ? "bg-[hsl(var(--primary))] text-white"
+                    : "text-[hsl(var(--muted-foreground))]",
+                )}
+                onClick={() => onPatch({ size })}
+              >
+                {HOME_BLOCK_SIZE_LABEL[size]}
+              </button>
+            )),
+          )}
+          {pillRow(
+            "Layout",
+            (["cards", "rows"] as const).map((layout) => (
+              <button
+                key={layout}
+                type="button"
+                aria-pressed={block.layout === layout}
+                className={cn(
+                  "px-3 py-1.5 transition",
+                  block.layout === layout
+                    ? "bg-[hsl(var(--primary))] text-white"
+                    : "text-[hsl(var(--muted-foreground))]",
+                )}
+                onClick={() => onPatch({ layout })}
+              >
+                {layout === "cards" ? "Cards" : "Rows"}
+              </button>
+            )),
+          )}
+          {pillRow(
+            "Rows",
+            HOME_BLOCK_ROWS.map((n) => (
+              <button
+                key={n}
+                type="button"
+                aria-pressed={block.rows === n}
+                className={cn(
+                  "px-3 py-1.5 transition",
+                  block.rows === n
+                    ? "bg-[hsl(var(--primary))] text-white"
+                    : "text-[hsl(var(--muted-foreground))]",
+                )}
+                onClick={() => onPatch({ rows: n })}
+              >
+                {n}
+              </button>
+            )),
+          )}
+        </div>
+
+        <div className="mx-2.5 border-t border-[hsl(var(--border))] py-1.5">
+          <BlockOptionsBody block={block} onPatch={onPatch} active={open} />
+        </div>
+
+        <div className="mx-2.5 border-t border-[hsl(var(--border))] pt-1.5">
           <button
             type="button"
-            aria-label="Close block editor"
-            onClick={() => setOpen(false)}
-            className="absolute inset-0 bg-black/50 [animation:ot-fade-in_0.15s_ease-out]"
-          />
-          <div
-            ref={sheetRef}
-            className="absolute inset-x-0 bottom-0 max-h-[80dvh] overflow-y-auto overscroll-contain rounded-t-[20px] border-t border-[hsl(var(--border))] bg-[hsl(var(--card))] pb-[calc(env(safe-area-inset-bottom)+0.5rem)] shadow-2xl [animation:ot-fade-slide_0.16s_ease-out]"
+            className="w-full rounded-lg px-2.5 py-2.5 text-left text-sm font-medium text-red-500 transition hover:bg-[hsl(var(--muted)_/_0.65)]"
+            onClick={() => {
+              setOpen(false);
+              onRemove();
+            }}
           >
-            <div className="flex justify-center pt-2.5">
-              <span className="h-1 w-10 rounded-full bg-[hsl(var(--border))]" />
-            </div>
-            <div className="px-4 pb-1 pt-2 text-sm font-semibold">
-              {HOME_BLOCK_LABEL[block.type]}
-            </div>
-
-            <div className="space-y-3 px-4 py-2">
-              {pillRow(
-                "Item size",
-                HOME_BLOCK_SIZES.map((size) => (
-                  <button
-                    key={size}
-                    type="button"
-                    aria-pressed={block.size === size}
-                    className={cn(
-                      "px-3 py-1.5 transition",
-                      block.size === size
-                        ? "bg-[hsl(var(--primary))] text-white"
-                        : "text-[hsl(var(--muted-foreground))]",
-                    )}
-                    onClick={() => onPatch({ size })}
-                  >
-                    {HOME_BLOCK_SIZE_LABEL[size]}
-                  </button>
-                )),
-              )}
-              {pillRow(
-                "Layout",
-                (["cards", "rows"] as const).map((layout) => (
-                  <button
-                    key={layout}
-                    type="button"
-                    aria-pressed={block.layout === layout}
-                    className={cn(
-                      "px-3 py-1.5 transition",
-                      block.layout === layout
-                        ? "bg-[hsl(var(--primary))] text-white"
-                        : "text-[hsl(var(--muted-foreground))]",
-                    )}
-                    onClick={() => onPatch({ layout })}
-                  >
-                    {layout === "cards" ? "Cards" : "Rows"}
-                  </button>
-                )),
-              )}
-              {pillRow(
-                "Rows",
-                HOME_BLOCK_ROWS.map((n) => (
-                  <button
-                    key={n}
-                    type="button"
-                    aria-pressed={block.rows === n}
-                    className={cn(
-                      "px-3 py-1.5 transition",
-                      block.rows === n
-                        ? "bg-[hsl(var(--primary))] text-white"
-                        : "text-[hsl(var(--muted-foreground))]",
-                    )}
-                    onClick={() => onPatch({ rows: n })}
-                  >
-                    {n}
-                  </button>
-                )),
-              )}
-            </div>
-
-            <div className="mx-2.5 border-t border-[hsl(var(--border))] py-1.5">
-              <BlockOptionsBody block={block} onPatch={onPatch} active={open} />
-            </div>
-
-            <div className="mx-2.5 border-t border-[hsl(var(--border))] pt-1.5">
-              <button
-                type="button"
-                className="w-full rounded-lg px-2.5 py-2.5 text-left text-sm font-medium text-red-500 transition hover:bg-[hsl(var(--muted)_/_0.65)]"
-                onClick={() => {
-                  setOpen(false);
-                  onRemove();
-                }}
-              >
-                Remove block
-              </button>
-            </div>
-          </div>
+            Remove block
+          </button>
         </div>
-      ) : null}
+      </Sheet>
     </div>
   );
 }

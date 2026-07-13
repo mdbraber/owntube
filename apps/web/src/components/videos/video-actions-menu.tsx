@@ -8,9 +8,9 @@ import {
   useRef,
   useState,
 } from "react";
-import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Sheet } from "@/components/ui/sheet";
 import { useVideoActions } from "@/components/videos/use-video-actions";
 import { QuickActionChips } from "@/components/videos/video-action-chips";
 import { CheckIcon, MoreIcon } from "@/components/videos/video-action-icons";
@@ -21,7 +21,6 @@ import {
   videoActionGroupsForSurface,
 } from "@/components/videos/video-action-registry";
 import { VideoThumbnailImg } from "@/components/videos/video-thumbnail-img";
-import { useSheetSwipeDismiss } from "@/hooks/use-sheet-swipe-dismiss";
 import { DEFAULT_QUICK_ACTIONS, type QuickAction } from "@/lib/quick-actions";
 import { formatRecommendationReason } from "@/lib/recommendation-reason";
 import { cn } from "@/lib/utils";
@@ -318,7 +317,6 @@ export function VideoActionsMenu({
     setOpen(false);
     setView("main");
   }, []);
-  const sheetRef = useSheetSwipeDismiss(close);
 
   // Outside click / Escape for the popover variant.
   useEffect(() => {
@@ -530,72 +528,50 @@ export function VideoActionsMenu({
         </div>
       ) : null}
 
-      {open && asSheet
-        ? createPortal(
-            <div className="fixed inset-0 z-[60]" id={menuId}>
-              <button
-                type="button"
-                aria-label="Close"
-                className="absolute inset-0 bg-black/45 animate-[ot-fade-in_180ms_ease-out] motion-reduce:animate-none"
-                onClick={close}
-              />
-              <div
-                ref={sheetRef}
-                role="dialog"
-                aria-label="Video actions"
-                className="absolute inset-x-0 bottom-0 max-h-[85dvh] overflow-y-auto overscroll-contain rounded-t-2xl border-t border-[hsl(var(--border))] bg-[hsl(var(--card))] pb-[max(env(safe-area-inset-bottom),0.75rem)] animate-[ot-sheet-in_260ms_cubic-bezier(0.32,0.72,0.22,1)] motion-reduce:animate-none"
-                onClick={(e) => e.stopPropagation()}
-                onKeyDown={(e) => e.stopPropagation()}
-              >
-                <div
-                  aria-hidden
-                  className="mx-auto mt-2 h-1 w-9 rounded-full bg-[hsl(var(--border))]"
-                />
-                {view === "main" ? (
-                  <>
-                    <div className="flex items-center gap-3 border-b border-[hsl(var(--border))] px-4 py-3">
-                      <div className="relative aspect-video w-20 shrink-0 overflow-hidden rounded-lg bg-[hsl(var(--muted))]">
-                        <VideoThumbnailImg
-                          url={thumbnailUrl}
-                          videoId={videoId}
-                          className="h-full w-full object-cover"
-                          loading="lazy"
-                        />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="line-clamp-2 text-sm font-semibold leading-snug">
-                          {title}
-                        </p>
-                        {channelName ? (
-                          <p className="mt-0.5 truncate text-xs text-[hsl(var(--muted-foreground))]">
-                            {channelName}
-                          </p>
-                        ) : null}
-                      </div>
-                    </div>
-                    {chipIds.length > 0 ? (
-                      <QuickActionChips
-                        ids={chipIds}
-                        actions={actions}
-                        className="border-b border-[hsl(var(--border))] px-3 py-3"
-                        onOpenPlaylistPicker={() => setView("playlist")}
-                      />
-                    ) : null}
-                    {reasonLine}
-                    <div className="px-1 py-1 [&_button]:py-2.5">
-                      {mainList}
-                    </div>
-                  </>
-                ) : (
-                  <div className="px-2 pt-2 [&_button]:py-2.5">
-                    {playlistPicker}
-                  </div>
-                )}
+      {asSheet ? (
+        <Sheet
+          open={open}
+          onOpenChange={(next) => (next ? setOpen(true) : close())}
+          title="Video actions"
+        >
+          {view === "main" ? (
+            <>
+              <div className="flex items-center gap-3 border-b border-[hsl(var(--border))] px-4 py-3">
+                <div className="relative aspect-video w-20 shrink-0 overflow-hidden rounded-lg bg-[hsl(var(--muted))]">
+                  <VideoThumbnailImg
+                    url={thumbnailUrl}
+                    videoId={videoId}
+                    className="h-full w-full object-cover"
+                    loading="lazy"
+                  />
+                </div>
+                <div className="min-w-0">
+                  <p className="line-clamp-2 text-sm font-semibold leading-snug">
+                    {title}
+                  </p>
+                  {channelName ? (
+                    <p className="mt-0.5 truncate text-xs text-[hsl(var(--muted-foreground))]">
+                      {channelName}
+                    </p>
+                  ) : null}
+                </div>
               </div>
-            </div>,
-            document.body,
-          )
-        : null}
+              {chipIds.length > 0 ? (
+                <QuickActionChips
+                  ids={chipIds}
+                  actions={actions}
+                  className="border-b border-[hsl(var(--border))] px-3 py-3"
+                  onOpenPlaylistPicker={() => setView("playlist")}
+                />
+              ) : null}
+              {reasonLine}
+              <div className="px-1 py-1 [&_button]:py-2.5">{mainList}</div>
+            </>
+          ) : (
+            <div className="px-2 pt-2 [&_button]:py-2.5">{playlistPicker}</div>
+          )}
+        </Sheet>
+      ) : null}
     </div>
   );
 }

@@ -41,7 +41,7 @@ import {
 } from "@/components/player/player-icons";
 import { usePlayerKeyboardShortcuts } from "@/components/player/player-keyboard";
 import type { ChromeProps } from "@/components/player/player-types";
-import { useSheetSwipeDismiss } from "@/hooks/use-sheet-swipe-dismiss";
+import { Sheet } from "@/components/ui/sheet";
 import { useSponsorBlockAutoSkip } from "@/hooks/use-sponsorblock-auto-skip";
 import { cn } from "@/lib/utils";
 import { chapterIndexAt } from "@/lib/video-chapters";
@@ -628,8 +628,11 @@ export function PlayerChrome({
         </div>
       )}
 
-      {mobileMenuOpen && !miniMode && !shortsMode ? (
+      {!miniMode && !shortsMode ? (
         <PlayerMobileMenu
+          open={mobileMenuOpen}
+          onOpenChange={setMobileMenuOpen}
+          shellRef={shellRef}
           quality={quality}
           audio={audio}
           captions={captions}
@@ -643,7 +646,6 @@ export function PlayerChrome({
           canPip={hydrated && adapter.canPictureInPicture}
           pipActive={adapter.pictureInPicture}
           onTogglePip={() => adapter.togglePictureInPicture()}
-          onClose={() => setMobileMenuOpen(false)}
         />
       ) : null}
 
@@ -686,7 +688,9 @@ function PlayerMobileMenu({
   canPip,
   pipActive,
   onTogglePip,
-  onClose,
+  open,
+  onOpenChange,
+  shellRef,
 }: Pick<
   ComponentProps<typeof SettingsMenu>,
   "quality" | "audio" | "captions" | "rate" | "setRate"
@@ -699,37 +703,22 @@ function PlayerMobileMenu({
   canPip: boolean;
   pipActive: boolean;
   onTogglePip: () => void;
-  onClose: () => void;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** The element that goes fullscreen — the sheet portals into it so it also paints there. */
+  shellRef: React.RefObject<HTMLElement | null>;
 }) {
-  const sheetRef = useSheetSwipeDismiss(onClose);
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
-
+  const onClose = () => onOpenChange(false);
   return (
-    <div
-      className="fixed inset-0 z-[70] sm:hidden"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Player options"
+    <Sheet
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Player options"
+      container={shellRef}
+      panelClassName="border-white/10 bg-zinc-950/95 text-zinc-100 backdrop-blur-md"
+      contentClassName="text-sm"
     >
-      <button
-        type="button"
-        aria-label="Close player options"
-        onClick={onClose}
-        className="absolute inset-0 bg-black/60"
-      />
-      <div
-        ref={sheetRef}
-        className="absolute inset-x-0 bottom-0 max-h-[70dvh] overflow-y-auto overscroll-contain rounded-t-[20px] border-t border-white/10 bg-zinc-950/95 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] text-sm text-zinc-100 shadow-2xl backdrop-blur-md"
-      >
-        <div className="flex justify-center pt-2.5">
-          <span className="h-1 w-10 rounded-full bg-white/20" />
-        </div>
+      <>
         {nextUp || canPip ? (
           <div className="px-1 py-1">
             {nextUp ? (
@@ -821,8 +810,8 @@ function PlayerMobileMenu({
             </ul>
           </div>
         ) : null}
-      </div>
-    </div>
+      </>
+    </Sheet>
   );
 }
 
