@@ -81,10 +81,21 @@ const HIDE_WATCHED: SectionOptionDef = {
   defaultValue: false,
 };
 
+/**
+ * Default mirrors the profile-level `hideShortsInSubscriptions` default (true)
+ * so untouched blocks keep today's behavior; once set, the block value
+ * overrides the profile setting for this block only.
+ */
+const HIDE_SHORTS: SectionOptionDef = {
+  key: "hideShorts",
+  label: "Hide Shorts",
+  defaultValue: true,
+};
+
 export const SECTION_OPTIONS: Partial<
   Record<HomeBlockType, SectionOptionDef[]>
 > = {
-  subscriptions: [HIDE_WATCHED],
+  subscriptions: [HIDE_WATCHED, HIDE_SHORTS],
   queue: [HIDE_WATCHED],
   saved: [HIDE_WATCHED],
   playlist: [HIDE_WATCHED],

@@ -344,8 +344,15 @@ export const SECONDARY_NAV: NavItem[] = [
   },
 ];
 
-/** Tabs in the mobile bottom bar (account button is added separately). */
-export const BOTTOM_NAV: NavItem[] = [...SIDEBAR_NAV, SUBSCRIPTIONS_ITEM];
+/**
+ * Tabs in the mobile bottom bar (account button is added separately). The bar
+ * fits 5 items at most; Recommended cedes its slot and stays reachable via
+ * the sidebar/sheet.
+ */
+export const BOTTOM_NAV: NavItem[] = [
+  ...SIDEBAR_NAV.filter((n) => n.key !== "recommended"),
+  SUBSCRIPTIONS_ITEM,
+];
 
 /**
  * Links in the desktop avatar dropdown — only what the sidebar does *not*
@@ -367,6 +374,8 @@ export const MOBILE_SHEET_LINKS: {
   label: string;
   icon: ReactNode;
 }[] = [
+  // Recommended lost its bottom-bar slot (5-tab limit) — keep it reachable here.
+  { href: "/recommended", label: "Recommended", icon: RecommendedIcon },
   ...SECONDARY_NAV.filter((n) => n.key !== "subs").map((n) => ({
     href: n.href,
     label: n.label,

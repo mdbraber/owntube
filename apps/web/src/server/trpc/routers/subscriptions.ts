@@ -1037,6 +1037,8 @@ export const subscriptionsRouter = router({
         refreshToken: z.number().optional(),
         includeTags: tagFilterSchema,
         excludeTags: tagFilterSchema,
+        /** Per-surface override of the profile hideShortsInSubscriptions setting (home blocks). */
+        hideShorts: z.boolean().optional(),
       }),
     )
     .query(async ({ ctx, input }) => {
@@ -1088,7 +1090,8 @@ export const subscriptionsRouter = router({
       const restrictedFiltered = settings.hideRestrictedVideos
         ? stripRestrictedListVideos(withMeta)
         : withMeta;
-      const visibleVideos = settings.hideShortsInSubscriptions
+      const visibleVideos = (input.hideShorts ??
+        settings.hideShortsInSubscriptions)
         ? await stripShortsFromSubscriptionFeed(ctx.db, restrictedFiltered)
         : restrictedFiltered;
       const candidateVideoIds = visibleVideos.map((v) => v.videoId);

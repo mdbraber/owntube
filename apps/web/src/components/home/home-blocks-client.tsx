@@ -302,6 +302,7 @@ function SubscriptionsBlockBody({ block }: { block: HomeBlock }) {
       limit: Math.min(48, Math.max(8, blockFetchCount(block) * 2)),
       includeTags,
       excludeTags,
+      hideShorts: homeBlockOption(block, "hideShorts"),
     },
     { getNextPageParam: (last) => last.nextCursor ?? undefined },
   );
