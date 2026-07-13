@@ -175,9 +175,10 @@ export function HlsVodBlock({
 
   useReportVideoIntrinsics(videoRef, onVideoIntrinsics);
 
-  // iOS suspends inline <video> when the app is backgrounded; auto-PiP keeps it
-  // running. Also wires the lock-screen / Control Center transport controls.
+  // iOS suspends inline <video> when the app is backgrounded; hand playback to a
+  // hidden <audio> so it keeps going. Also wires lock-screen / Control Center.
   useBackgroundPlayback(videoRef, {
+    videoId,
     title,
     poster,
     enabled: !miniMode && !shortsMode,

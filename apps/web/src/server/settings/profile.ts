@@ -93,9 +93,9 @@ export const appSettingsSchema = z.object({
   enableMiniPlayer: z.boolean().default(true),
   /**
    * Keep playing when the app is backgrounded (iOS/iPadOS): WebKit suspends an
-   * inline <video> on app switch, so the player opts into automatic
-   * Picture-in-Picture, which keeps running. No effect on desktop, which keeps
-   * playing regardless.
+   * inline <video> on app switch, so the player hands playback to a hidden
+   * <audio> element (which iOS keeps alive) and takes it back on return. No
+   * effect on desktop, which keeps playing regardless.
    */
   backgroundPlayback: z.boolean().default(true),
   /** Start playing automatically when the watch page opens. */

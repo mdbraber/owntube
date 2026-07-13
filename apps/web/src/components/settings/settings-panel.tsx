@@ -725,8 +725,8 @@ export function SettingsPanel({
               checked={backgroundPlayback}
               onChange={(e) => setBackgroundPlayback(e.currentTarget.checked)}
             />
-            Keep playing when you switch apps (iPhone/iPad: uses
-            Picture-in-Picture)
+            Keep playing when you switch apps (iPhone/iPad: audio continues in
+            the background)
           </label>
           <label className="flex items-center gap-2 text-sm">
             <input

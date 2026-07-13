@@ -288,6 +288,19 @@ function getSidx(
   return sidx;
 }
 
+/**
+ * Audio-only media playlist (the default AAC rendition). Backs the iOS
+ * background-playback handoff: WebKit suspends an inline <video> when the app
+ * is backgrounded, but keeps an <audio> element running — so the player swaps
+ * to an <audio> pointed here. Audio-only HLS is natively supported by Safari.
+ */
+export async function generateAudioPlaylist(videoId: string): Promise<string> {
+  const af = await fetchAdaptiveFormats(videoId);
+  const audio = pickAudioFormat(af);
+  if (!audio) throw new Error("no AAC audio stream");
+  return generateMediaPlaylist(videoId, String(audio.itag));
+}
+
 /** Media playlist for one stream (itag): EXT-X-MAP + byte-range fragments. */
 export async function generateMediaPlaylist(
   videoId: string,

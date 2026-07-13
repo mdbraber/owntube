@@ -1,39 +1,42 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { isIosLikeBrowser } from "@/lib/ios-playback";
 import { trpc } from "@/trpc/react";
 
-type WebkitVideo = HTMLVideoElement & {
-  autoPictureInPicture?: boolean;
-};
-
 /**
- * Keep playback alive when the user leaves the app, and drive the OS media
- * controls.
+ * Keep playing when the user leaves the app, and drive the OS media controls.
  *
- * iOS/iPadOS Safari suspends an inline `<video>` as soon as the app is
- * backgrounded — nothing in our code pauses it; WebKit does. The supported
- * escape hatch is `autoPictureInPicture`: WebKit automatically moves a playing
- * video into Picture-in-Picture when the user switches away, and PiP keeps
- * running. Enabled on iOS-family browsers only — on desktop, auto-PiP on every
- * tab switch would be obnoxious (and desktop keeps playing anyway).
+ * iOS/iPadOS Safari suspends an inline `<video>` the moment the app is
+ * backgrounded (WebKit does this; nothing in our code pauses it). It does NOT
+ * suspend an `<audio>` element — that is how web audio players keep going with
+ * the screen locked. So on `visibilitychange → hidden` we hand playback over to
+ * a hidden `<audio>` pointed at the video's audio-only HLS rendition
+ * (`/hls/<id>/audio.m3u8`, natively played by Safari), and hand it back to the
+ * `<video>` — position synced — when the user returns.
  *
- * The Media Session metadata/handlers give the lock screen and Control Center
- * the right title, channel and artwork, and make their transport buttons work
- * (without handlers iOS shows the controls but the buttons do nothing). Those
- * stay on regardless — only the auto-PiP behaviour is behind the user setting
- * (`backgroundPlayback`, read here rather than drilled through the player tree,
- * same as MiniPlayerSync).
+ * `autoPictureInPicture` was tried first: it does NOT fire for inline web video
+ * on iPadOS, even with "Start PiP Automatically" enabled. Hence the handoff.
+ *
+ * iOS gates programmatic playback of each media element behind a user gesture,
+ * so the `<audio>` is primed (muted play → immediate pause) on the first
+ * interaction with the page; without that, the `play()` at backgrounding is
+ * rejected and playback would just stop.
+ *
+ * Media Session metadata/handlers stay on regardless of the setting — the lock
+ * screen and Control Center are useful either way — and are routed to whichever
+ * element currently owns playback.
  */
 export function useBackgroundPlayback(
   videoRef: React.RefObject<HTMLVideoElement | null>,
   {
+    videoId,
     title,
     channelName,
     poster,
     enabled = true,
   }: {
+    videoId?: string;
     title?: string;
     channelName?: string;
     poster?: string;
@@ -45,17 +48,88 @@ export function useBackgroundPlayback(
     refetchOnWindowFocus: false,
   });
   const backgroundPlayback = settings?.backgroundPlayback ?? true;
+  /** The <audio> element while it owns playback (null when the video does). */
+  const handedOffRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
-    const video = videoRef.current as WebkitVideo | null;
-    if (!video || !enabled || !backgroundPlayback || !isIosLikeBrowser()) {
+    const video = videoRef.current;
+    if (
+      !video ||
+      !videoId ||
+      !enabled ||
+      !backgroundPlayback ||
+      !isIosLikeBrowser()
+    ) {
       return;
     }
-    video.autoPictureInPicture = true;
-    return () => {
-      video.autoPictureInPicture = false;
+
+    const audio = document.createElement("audio");
+    audio.src = `/hls/${encodeURIComponent(videoId)}/audio.m3u8`;
+    audio.preload = "auto";
+    audio.setAttribute("playsinline", "");
+    audio.style.display = "none";
+    document.body.appendChild(audio);
+
+    // iOS only lets an element play programmatically once it has played inside a
+    // user gesture. Prime it on the first interaction (the tap that starts the
+    // video does fine), silently, then park it.
+    let primed = false;
+    const prime = () => {
+      if (primed) return;
+      primed = true;
+      audio.muted = true;
+      void audio
+        .play()
+        .then(() => {
+          audio.pause();
+          audio.currentTime = 0;
+          audio.muted = false;
+        })
+        .catch(() => {
+          audio.muted = false;
+          primed = false; // let a later gesture try again
+        });
     };
-  }, [videoRef, enabled, backgroundPlayback]);
+    document.addEventListener("pointerdown", prime, { capture: true });
+    document.addEventListener("touchend", prime, { capture: true });
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        // Backgrounding: only take over if the video was actually playing.
+        if (video.paused || handedOffRef.current) return;
+        audio.currentTime = video.currentTime;
+        handedOffRef.current = audio;
+        void audio.play().catch(() => {
+          handedOffRef.current = null;
+        });
+        video.pause();
+        return;
+      }
+      // Returning: give playback back to the video at the audio's position.
+      const active = handedOffRef.current;
+      if (!active) return;
+      handedOffRef.current = null;
+      const resumeAt = active.currentTime;
+      const wasPlaying = !active.paused;
+      active.pause();
+      if (Number.isFinite(resumeAt) && resumeAt > 0) {
+        video.currentTime = resumeAt;
+      }
+      // Paused from the lock screen while away → stay paused on return.
+      if (wasPlaying) void video.play().catch(() => {});
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      document.removeEventListener("pointerdown", prime, { capture: true });
+      document.removeEventListener("touchend", prime, { capture: true });
+      handedOffRef.current = null;
+      audio.pause();
+      audio.removeAttribute("src");
+      audio.remove();
+    };
+  }, [videoRef, videoId, enabled, backgroundPlayback]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -68,23 +142,33 @@ export function useBackgroundPlayback(
       ...(poster ? { artwork: [{ src: poster }] } : {}),
     });
 
+    /** Lock-screen controls must drive whichever element currently plays. */
+    const active = (): HTMLMediaElement => handedOffRef.current ?? video;
     const seekBy = (offset: number) => {
-      const duration = Number.isFinite(video.duration) ? video.duration : 0;
-      const next = video.currentTime + offset;
-      video.currentTime = Math.max(
+      const el = active();
+      const duration = Number.isFinite(el.duration) ? el.duration : 0;
+      const next = el.currentTime + offset;
+      el.currentTime = Math.max(
         0,
         duration > 0 ? Math.min(next, duration) : next,
       );
     };
     const handlers: [MediaSessionAction, MediaSessionActionHandler][] = [
-      ["play", () => void video.play().catch(() => {})],
-      ["pause", () => video.pause()],
+      [
+        "play",
+        () => {
+          void active()
+            .play()
+            .catch(() => {});
+        },
+      ],
+      ["pause", () => active().pause()],
       ["seekbackward", (d) => seekBy(-(d.seekOffset ?? 10))],
       ["seekforward", (d) => seekBy(d.seekOffset ?? 10)],
       [
         "seekto",
         (d) => {
-          if (typeof d.seekTime === "number") video.currentTime = d.seekTime;
+          if (typeof d.seekTime === "number") active().currentTime = d.seekTime;
         },
       ],
     ];
