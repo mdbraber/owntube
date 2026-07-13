@@ -20,6 +20,7 @@ import { VideoGrid } from "@/components/videos/video-grid";
 import { useWatchProgressMap } from "@/components/videos/video-membership-context";
 import { VideoRow } from "@/components/videos/video-row";
 import { VideoThumbnailImg } from "@/components/videos/video-thumbnail-img";
+import { useSheetSwipeDismiss } from "@/hooks/use-sheet-swipe-dismiss";
 import {
   CARD_MIN_WIDTH_PX,
   DEFAULT_HOME_BLOCKS,
@@ -762,6 +763,7 @@ function BlockEditSheet({
   onRemove: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const sheetRef = useSheetSwipeDismiss(() => setOpen(false));
 
   useEffect(() => {
     if (!open) return;
@@ -807,7 +809,10 @@ function BlockEditSheet({
             onClick={() => setOpen(false)}
             className="absolute inset-0 bg-black/50 [animation:ot-fade-in_0.15s_ease-out]"
           />
-          <div className="absolute inset-x-0 bottom-0 max-h-[80dvh] overflow-y-auto rounded-t-[20px] border-t border-[hsl(var(--border))] bg-[hsl(var(--card))] pb-[calc(env(safe-area-inset-bottom)+0.5rem)] shadow-2xl [animation:ot-fade-slide_0.16s_ease-out]">
+          <div
+            ref={sheetRef}
+            className="absolute inset-x-0 bottom-0 max-h-[80dvh] overflow-y-auto rounded-t-[20px] border-t border-[hsl(var(--border))] bg-[hsl(var(--card))] pb-[calc(env(safe-area-inset-bottom)+0.5rem)] shadow-2xl [animation:ot-fade-slide_0.16s_ease-out]"
+          >
             <div className="flex justify-center pt-2.5">
               <span className="h-1 w-10 rounded-full bg-[hsl(var(--border))]" />
             </div>

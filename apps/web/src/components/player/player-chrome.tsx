@@ -41,6 +41,7 @@ import {
 } from "@/components/player/player-icons";
 import { usePlayerKeyboardShortcuts } from "@/components/player/player-keyboard";
 import type { ChromeProps } from "@/components/player/player-types";
+import { useSheetSwipeDismiss } from "@/hooks/use-sheet-swipe-dismiss";
 import { useSponsorBlockAutoSkip } from "@/hooks/use-sponsorblock-auto-skip";
 import { cn } from "@/lib/utils";
 import { chapterIndexAt } from "@/lib/video-chapters";
@@ -700,6 +701,7 @@ function PlayerMobileMenu({
   onTogglePip: () => void;
   onClose: () => void;
 }) {
+  const sheetRef = useSheetSwipeDismiss(onClose);
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -721,7 +723,10 @@ function PlayerMobileMenu({
         onClick={onClose}
         className="absolute inset-0 bg-black/60"
       />
-      <div className="absolute inset-x-0 bottom-0 max-h-[70dvh] overflow-y-auto rounded-t-[20px] border-t border-white/10 bg-zinc-950/95 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] text-sm text-zinc-100 shadow-2xl backdrop-blur-md">
+      <div
+        ref={sheetRef}
+        className="absolute inset-x-0 bottom-0 max-h-[70dvh] overflow-y-auto rounded-t-[20px] border-t border-white/10 bg-zinc-950/95 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] text-sm text-zinc-100 shadow-2xl backdrop-blur-md"
+      >
         <div className="flex justify-center pt-2.5">
           <span className="h-1 w-10 rounded-full bg-white/20" />
         </div>

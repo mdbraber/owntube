@@ -21,6 +21,7 @@ import {
   videoActionGroupsForSurface,
 } from "@/components/videos/video-action-registry";
 import { VideoThumbnailImg } from "@/components/videos/video-thumbnail-img";
+import { useSheetSwipeDismiss } from "@/hooks/use-sheet-swipe-dismiss";
 import { DEFAULT_QUICK_ACTIONS, type QuickAction } from "@/lib/quick-actions";
 import { formatRecommendationReason } from "@/lib/recommendation-reason";
 import { cn } from "@/lib/utils";
@@ -317,6 +318,7 @@ export function VideoActionsMenu({
     setOpen(false);
     setView("main");
   }, []);
+  const sheetRef = useSheetSwipeDismiss(close);
 
   // Outside click / Escape for the popover variant.
   useEffect(() => {
@@ -538,6 +540,7 @@ export function VideoActionsMenu({
                 onClick={close}
               />
               <div
+                ref={sheetRef}
                 role="dialog"
                 aria-label="Video actions"
                 className="absolute inset-x-0 bottom-0 max-h-[85dvh] overflow-y-auto rounded-t-2xl border-t border-[hsl(var(--border))] bg-[hsl(var(--card))] pb-[max(env(safe-area-inset-bottom),0.75rem)] animate-[ot-sheet-in_260ms_cubic-bezier(0.32,0.72,0.22,1)] motion-reduce:animate-none"
