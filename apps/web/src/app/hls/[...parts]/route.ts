@@ -1,5 +1,4 @@
 import {
-  generateAudioPlaylist,
   generateMasterPlaylist,
   generateMediaPlaylist,
 } from "@/server/services/hls/generate";
@@ -11,7 +10,6 @@ const VIDEO_ID_RE = /^[\w-]{6,20}$/;
  * Serves a synthesized VOD HLS manifest (see `generate.ts`):
  *   /hls/<videoId>/master.m3u8       -> variants + audio group
  *   /hls/<videoId>/media.m3u8?itag=… -> one stream's byte-range fragments
- *   /hls/<videoId>/audio.m3u8        -> audio-only (iOS background playback)
  * Segments resolve to the same-origin `/invidious/videoplayback` proxy.
  */
 export async function GET(
@@ -27,15 +25,6 @@ export async function GET(
   try {
     if (file === "master.m3u8") {
       const body = await generateMasterPlaylist(videoId);
-      return new Response(body, {
-        headers: {
-          "content-type": M3U8_CONTENT_TYPE,
-          "cache-control": "no-store",
-        },
-      });
-    }
-    if (file === "audio.m3u8") {
-      const body = await generateAudioPlaylist(videoId);
       return new Response(body, {
         headers: {
           "content-type": M3U8_CONTENT_TYPE,

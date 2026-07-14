@@ -91,13 +91,6 @@ export const appSettingsSchema = z.object({
   defaultCinemaMode: z.boolean().default(false),
   /** Keep a mini player when leaving watch page. */
   enableMiniPlayer: z.boolean().default(true),
-  /**
-   * Keep playing when the app is backgrounded (iOS/iPadOS): WebKit suspends an
-   * inline <video> on app switch, so the player hands playback to a hidden
-   * <audio> element (which iOS keeps alive) and takes it back on return. No
-   * effect on desktop, which keeps playing regardless.
-   */
-  backgroundPlayback: z.boolean().default(true),
   /** Start playing automatically when the watch page opens. */
   autoplayOnWatch: z.boolean().default(true),
   /** Auto-advance to the next queued/related video when one ends. */
@@ -194,7 +187,6 @@ const defaultSettings: AppSettings = {
   hideShortsInSubscriptions: true,
   defaultCinemaMode: false,
   enableMiniPlayer: true,
-  backgroundPlayback: true,
   autoplayOnWatch: true,
   autoplayNext: true,
   defaultPlaybackQuality: "1080p",
