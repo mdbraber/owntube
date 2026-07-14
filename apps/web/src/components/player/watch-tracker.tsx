@@ -93,11 +93,13 @@ export function WatchTracker({
       if (!el || !Number.isFinite(el.currentTime)) return undefined;
       return Math.min(86_400, Math.max(0, Math.floor(el.currentTime)));
     };
-    const buildEvent = () => {
+    const buildEvent = (overrides?: { completed?: true }) => {
+      const position = readPositionSeconds();
       const event = computeWatchEvent(
         elapsedVisibleSeconds(),
         durationSeconds,
         isLive,
+        position,
       );
       return {
         videoId,
@@ -105,11 +107,22 @@ export function WatchTracker({
         videoTitle,
         channelName,
         durationWatched: event.durationWatched,
-        positionSeconds: readPositionSeconds(),
-        completed: event.completed,
+        positionSeconds: position,
+        completed: overrides?.completed ?? event.completed,
         videoDurationSeconds: reportedDuration,
         isShort,
       };
+    };
+
+    /**
+     * Events from *this* video's player only — the page can also hold hover
+     * previews and a mini player, whose `pause`/`ended` must not be recorded
+     * against this row.
+     */
+    const isThisPlayer = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLVideoElement)) return false;
+      const root = target.closest("[data-ot-player-root]");
+      return root?.getAttribute("data-ot-player-video-id") === videoId;
     };
 
     m({
@@ -130,18 +143,27 @@ export function WatchTracker({
     // it: pausing, and the tab being hidden or closed (pagehide). `pause` does
     // not bubble, so listen in the capture phase and ignore companion <audio>.
     const onMediaPause = (e: Event) => {
-      if ((e.target as HTMLElement | null)?.tagName === "VIDEO") {
-        m(buildEvent());
-      }
+      if (isThisPlayer(e.target)) m(buildEvent());
+    };
+    /**
+     * Playing to the end is the definitive "watched" signal, and it was never
+     * recorded: dwell alone misses fast playback, skips and scrubs, and on
+     * auto-advance the tracker's unmount event reads the *next* video's
+     * position. Persist completion the moment it ends, before either happens.
+     */
+    const onMediaEnded = (e: Event) => {
+      if (isThisPlayer(e.target)) m(buildEvent({ completed: true }));
     };
     const onPageHide = () => m(buildEvent());
     document.addEventListener("pause", onMediaPause, true);
+    document.addEventListener("ended", onMediaEnded, true);
     window.addEventListener("pagehide", onPageHide);
 
     return () => {
       window.clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisibilityChange);
       document.removeEventListener("pause", onMediaPause, true);
+      document.removeEventListener("ended", onMediaEnded, true);
       window.removeEventListener("pagehide", onPageHide);
       m(buildEvent(), {
         onSuccess: () => {

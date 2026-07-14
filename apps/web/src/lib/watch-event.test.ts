@@ -48,4 +48,25 @@ describe("computeWatchEvent", () => {
     });
     expect(computeWatchEvent(12.9, 600, false).durationWatched).toBe(12);
   });
+
+  it("completes on playback position even when dwell is short", () => {
+    // Watched at 2x, or with sponsor segments skipped: half the dwell, but the
+    // playhead reached the end — that is a finished video.
+    expect(computeWatchEvent(300, 600, false, 600).completed).toBe(true);
+    // Scrubbed to the end.
+    expect(computeWatchEvent(20, 600, false, 590).completed).toBe(true);
+  });
+
+  it("does not complete from a position short of the ratio", () => {
+    expect(computeWatchEvent(20, 600, false, 300).completed).toBe(false);
+  });
+
+  it("still completes on dwell alone when no position is known", () => {
+    expect(computeWatchEvent(510, 600, false).completed).toBe(true);
+    expect(computeWatchEvent(100, 600, false).completed).toBe(false);
+  });
+
+  it("never completes live streams", () => {
+    expect(computeWatchEvent(9999, 600, true, 9999).completed).toBe(false);
+  });
 });
