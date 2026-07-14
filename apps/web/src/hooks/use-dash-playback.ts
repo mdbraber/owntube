@@ -37,6 +37,8 @@ function mseCodecSupported(mimeType: string, codecs: string): boolean {
  * seeks 2.2–3.7s; imperative seeks ~540ms at 2160p.
  */
 const SEEK_FAST_MAX_KBPS = 2000;
+/** Opening ceiling before the portal cap can be computed — see updateSettings. */
+const INITIAL_MAX_KBPS = 12000;
 /** Headroom factor on measured throughput when jumping back up post-seek. */
 const POST_SEEK_THROUGHPUT_SAFETY = 0.7;
 
@@ -111,6 +113,7 @@ export function useDashPlayback(
     let cancelled = false;
     let player: MediaPlayerClass | null = null;
     let portalObserver: ResizeObserver | null = null;
+    let onFullscreenChange: (() => void) | null = null;
     const releaseFetchGuard = installSameOriginMediaFetchGuard();
 
     void (async () => {
@@ -139,6 +142,15 @@ export function useDashPlayback(
           // limitBitrateByPortal: the built-in limit allows only rungs that FIT
           // the portal (360p in a 633px player — visibly soft); the cap below
           // allows the smallest rung that COVERS it (YouTube's behavior).
+          abr: {
+            // The portal cap can only be computed once representations exist
+            // (streamInitialized). Until then ABR is free, and on a LAN it
+            // opens at the top rung — a 36Mbps 2160p source starts fetching
+            // multi-MB segments and decoding 4K before the cap lands, which
+            // stalls the first seeks. Start under a windowed-1080p ceiling;
+            // portalCapKbps then refines it (and lifts it in fullscreen).
+            maxBitrate: { video: INITIAL_MAX_KBPS },
+          },
           buffer: {
             // Bounds the post-seek refill burst: fastSwitch re-fetches this
             // much forward buffer at top quality (22Mbps 2160p ≈ 2.7MB/s), and
@@ -169,18 +181,36 @@ export function useDashPlayback(
         });
       };
 
-      // Don't decode 2160p into a ~600px player: LAN throughput always says
-      // "top rung", but 4K VP9 software decode freezes the main thread for
-      // seconds (observed 13s seeked delays) and each rung step roughly
-      // doubles the buffer-refill burst. Cap ABR at the cheapest rung whose
-      // height covers the portal; fullscreen (ResizeObserver) lifts the cap.
+      // Don't decode more pixels than the player shows: LAN throughput always
+      // says "top rung", but 4K VP9 decode freezes the main thread for seconds
+      // (observed 13s seeked delays, and multi-second scrubs on 36Mbps videos)
+      // and each rung step roughly doubles the buffer-refill burst. Cap ABR at
+      // the cheapest rung whose height covers the portal.
+      //
+      // Windowed playback is additionally capped at 1080p: on a Retina display
+      // the devicePixelRatio factor alone demands ~1460px for a normal-sized
+      // player, which selects 2160p — a rung this machine cannot decode
+      // smoothly, for detail nobody can see in a windowed player. Fullscreen
+      // (tracked by the ResizeObserver + fullscreenchange below) lifts it, so
+      // a 4K display still gets the full ladder where it counts.
+      const WINDOWED_MAX_HEIGHT = 1080;
       const portalCapKbps = (): number => {
         try {
           const reps = player?.getRepresentationsByType("video") ?? [];
           const rect = video.getBoundingClientRect();
-          const portalH =
-            Math.max(rect.height, (rect.width * 9) / 16) *
-            (window.devicePixelRatio || 1);
+          const fullscreen = Boolean(
+            document.fullscreenElement ??
+              (
+                video as HTMLVideoElement & {
+                  webkitDisplayingFullscreen?: boolean;
+                }
+              ).webkitDisplayingFullscreen,
+          );
+          const cssPortalH = Math.max(rect.height, (rect.width * 9) / 16);
+          const wanted = cssPortalH * (window.devicePixelRatio || 1);
+          const portalH = fullscreen
+            ? wanted
+            : Math.min(wanted, WINDOWED_MAX_HEIGHT);
           if (!(portalH > 0)) return -1;
           let cap = -1;
           let capHeight = Number.POSITIVE_INFINITY;
@@ -206,6 +236,10 @@ export function useDashPlayback(
         portalObserver = new ResizeObserver(applyPortalCap);
         portalObserver.observe(video);
       }
+      // Entering/leaving fullscreen may not resize the element (it can already
+      // fill its shell), so the observer alone would miss the cap change.
+      document.addEventListener("fullscreenchange", applyPortalCap);
+      onFullscreenChange = applyPortalCap;
       let seekActive = false;
       let jumpTimer: number | null = null;
       player.on("playbackSeeking", () => {
@@ -284,6 +318,9 @@ export function useDashPlayback(
     return () => {
       cancelled = true;
       portalObserver?.disconnect();
+      if (onFullscreenChange) {
+        document.removeEventListener("fullscreenchange", onFullscreenChange);
+      }
       releaseFetchGuard();
       try {
         player?.destroy();
