@@ -25,6 +25,7 @@ import {
 } from "@/server/db/schema";
 import { RateLimitExceededError } from "@/server/errors/rate-limit-exceeded";
 import { UpstreamUnavailableError } from "@/server/errors/upstream-unavailable";
+import { removeWatchedFromQueue } from "@/server/queue/remove-watched";
 import {
   getChannelRssEntries,
   getLongFormWindows,
@@ -227,6 +228,11 @@ function markWatchedRows(
       })
       .run();
   }
+  removeWatchedFromQueue(
+    db,
+    userId,
+    items.map((i) => i.videoId),
+  );
 }
 
 async function fetchChannelVideosUpToPages(

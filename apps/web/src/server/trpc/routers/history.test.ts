@@ -111,7 +111,7 @@ describe("historyRouter", () => {
       completed: false,
       videoDurationSeconds: 600,
     });
-    expect(second).toEqual({ id: first.id, updated: true });
+    expect(second).toEqual({ id: first.id, updated: true, dequeued: false });
 
     const activeRows = db
       .select()
@@ -207,7 +207,7 @@ describe("historyRouter", () => {
       completed: false,
       videoDurationSeconds: 0,
     });
-    expect(second).toEqual({ id: first.id, updated: true });
+    expect(second).toEqual({ id: first.id, updated: true, dequeued: false });
 
     const row = db
       .select()

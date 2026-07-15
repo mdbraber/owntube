@@ -2,6 +2,7 @@ import { and, desc, eq, like, or } from "drizzle-orm";
 import { z } from "zod";
 import { readChannelMetaByIds } from "@/server/channel-meta/store";
 import { watchHistory } from "@/server/db/schema";
+import { removeWatchedFromQueue } from "@/server/queue/remove-watched";
 import { clearRecommendationCachesForUser } from "@/server/recommendation/engine";
 import { loadWatchedVideoIdsForRecommendations } from "@/server/recommendation/watched-videos";
 import { fetchVideoDetail } from "@/server/services/proxy";
@@ -106,10 +107,14 @@ export const historyRouter = router({
           })
           .where(eq(watchHistory.id, recent.id))
           .run();
+        let dequeued = false;
         if (input.completed) {
+          dequeued =
+            removeWatchedFromQueue(ctx.db, ctx.userId, [input.videoId]).length >
+            0;
           clearRecommendationCachesForUser(ctx.userId);
         }
-        return { id: recent.id, updated: true };
+        return { id: recent.id, updated: true, dequeued };
       }
 
       const inserted = ctx.db
@@ -131,10 +136,14 @@ export const historyRouter = router({
         })
         .returning({ id: watchHistory.id })
         .get();
+      let dequeued = false;
       if (input.completed) {
+        dequeued =
+          removeWatchedFromQueue(ctx.db, ctx.userId, [input.videoId]).length >
+          0;
         clearRecommendationCachesForUser(ctx.userId);
       }
-      return { id: inserted.id, updated: false };
+      return { id: inserted.id, updated: false, dequeued };
     }),
   /**
    * Lightweight watch-progress map source: newest row per video is resolved

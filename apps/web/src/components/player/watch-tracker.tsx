@@ -30,7 +30,16 @@ export function WatchTracker({
   onWatched,
 }: WatchTrackerProps) {
   const utils = trpc.useUtils();
-  const { mutate } = trpc.history.upsertEvent.useMutation();
+  const { mutate } = trpc.history.upsertEvent.useMutation({
+    onSuccess: (res) => {
+      // Finishing the video drops it from the queue server-side; refresh the
+      // cached queue so the /queue page, Up-next and the localStorage mirror
+      // (QueueSync) stop offering a video that was just watched.
+      if (!res.dequeued) return;
+      void utils.queue.list.invalidate();
+      void utils.queue.listDetailed.invalidate();
+    },
+  });
   /** tRPC’s mutation return object is not referentially stable; do not list it in effect deps. */
   const mutateRef = useRef(mutate);
   mutateRef.current = mutate;

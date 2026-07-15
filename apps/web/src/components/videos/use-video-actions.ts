@@ -164,6 +164,9 @@ export function useVideoActions({
         utils.feed.home.invalidate(),
         utils.video.related.invalidate(),
         utils.history.list.invalidate(),
+        // Marking watched dequeues server-side.
+        utils.queue.list.invalidate(),
+        utils.queue.listDetailed.invalidate(),
       ]),
     onSettled: () => {
       setWatchedOverride(null);
