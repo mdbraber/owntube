@@ -14,7 +14,9 @@ function nowUnix(): number {
 }
 
 const saveKeywordsSchema = z.object({
-  keywords: z.array(z.string()).max(30),
+  // Matches the tasteKeywords store cap (see appSettingsSchema). upsert then
+  // normalizes/dedupes to <=96, so an over-long client array is trimmed there.
+  keywords: z.array(z.string()).max(96),
 });
 
 export const tasteRouter = router({
