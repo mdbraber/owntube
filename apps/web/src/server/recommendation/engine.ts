@@ -10,6 +10,7 @@ import { channelMeta, interactions, watchHistory } from "@/server/db/schema";
 import {
   expandScoredPoolWithRelatedCandidates,
   HOME_RELATED_LIMITS,
+  HOME_RELATED_LIMITS_DEEP,
 } from "@/server/recommendation/collect-related-candidates";
 import { collectTaggedVideoCandidates } from "@/server/recommendation/collect-tagged-candidates";
 import { getCollectedVideoIds } from "@/server/recommendation/collected-videos";
@@ -81,6 +82,7 @@ function recommendationPoolCacheKey(
     overrides?: ProxySourceOverrides;
   },
   excludeSubscribed: boolean,
+  personalizedOnly: boolean,
 ): string {
   const region = opts.region ?? "US";
   const piped = (
@@ -97,7 +99,7 @@ function recommendationPoolCacheKey(
     .map((url) => url.trim())
     .filter(Boolean)
     .join(",");
-  return `${userId}|${region}|${opts.pageSize}|${piped}|${invidious}|${excludeSubscribed ? "nosubs" : "subs"}`;
+  return `${userId}|${region}|${opts.pageSize}|${piped}|${invidious}|${excludeSubscribed ? "nosubs" : "subs"}|${personalizedOnly ? "ponly" : "blend"}`;
 }
 
 function diversifiedRowToVideo(row: ScoredVideo): UnifiedVideo {
@@ -329,13 +331,17 @@ async function ensureRecommendationPool(
     overrides?: ProxySourceOverrides;
   },
 ): Promise<RecommendationPoolCacheEntry> {
-  // Read here (not just in the builder) so the flag participates in the cache
-  // key — toggling it rebuilds the pool without an explicit invalidation.
-  const excludeSubscribed = getUserSettings(
-    db,
+  // Read here (not just in the builder) so the flags participate in the cache
+  // key — toggling one rebuilds the pool without an explicit invalidation.
+  const flagSettings = getUserSettings(db, userId);
+  const excludeSubscribed = flagSettings.excludeSubscribedFromRecommendations;
+  const personalizedOnly = flagSettings.personalizedFeedOnly;
+  const cacheKey = recommendationPoolCacheKey(
     userId,
-  ).excludeSubscribedFromRecommendations;
-  const cacheKey = recommendationPoolCacheKey(userId, opts, excludeSubscribed);
+    opts,
+    excludeSubscribed,
+    personalizedOnly,
+  );
   const now = Date.now();
   const cached = recommendationPoolCache.get(cacheKey);
   if (cached && cached.expiresAt > now) {
@@ -548,7 +554,11 @@ async function ensureRecommendationPool(
         db,
         scored,
         coldStart,
-        limits: HOME_RELATED_LIMITS,
+        // Personalized-only feed drops the trending tail, so lean harder on
+        // related expansion to keep the pool long and discovery-rich.
+        limits: personalizedOnly
+          ? HOME_RELATED_LIMITS_DEEP
+          : HOME_RELATED_LIMITS,
         overrides: opts.overrides,
         excludeVideoIds: excludedVideoIds,
         signals,

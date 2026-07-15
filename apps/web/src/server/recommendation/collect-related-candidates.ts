@@ -31,6 +31,19 @@ export const HOME_RELATED_LIMITS: RelatedCollectionLimits = {
   maxRelatedTotal: 48,
 };
 
+/**
+ * Deeper related-expansion for the personalized-only feed: with the trending
+ * tail dropped, the pool leans harder on related videos to stay long, so more
+ * seeds and a larger related cap replace that filler with actual discovery.
+ * Costs more upstream related fetches per build (amortized by the 10-min pool
+ * cache), so it is only used when the user opts into `personalizedFeedOnly`.
+ */
+export const HOME_RELATED_LIMITS_DEEP: RelatedCollectionLimits = {
+  maxSeeds: 12,
+  limitPerSeed: 12,
+  maxRelatedTotal: 120,
+};
+
 export const SHORTS_RELATED_LIMITS: RelatedCollectionLimits = {
   maxSeeds: 4,
   limitPerSeed: 8,

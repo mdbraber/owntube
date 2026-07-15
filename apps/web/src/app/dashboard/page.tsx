@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ExcludeSubscribedToggle } from "@/components/dashboard/exclude-subscribed-toggle";
+import { PersonalizedFeedOnlyToggle } from "@/components/dashboard/personalized-feed-only-toggle";
 import { PageHeader } from "@/components/layout/page-header";
 import { auth } from "@/server/auth";
 import type { RecommendationReason } from "@/server/services/proxy.types";
@@ -121,6 +122,7 @@ export default async function DashboardPage() {
           </p>
         </div>
         <ExcludeSubscribedToggle />
+        <PersonalizedFeedOnlyToggle />
         <p className="text-sm text-[hsl(var(--muted-foreground))]">
           Recommendations are a discovery surface: videos already in your
           history, queue, saved list, or playlists stay out of the feed. They

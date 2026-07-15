@@ -108,6 +108,12 @@ export const appSettingsSchema = z.object({
    * recommendations are a discovery surface. Can be turned off.
    */
   excludeSubscribedFromRecommendations: z.boolean().default(true),
+  /**
+   * Recommended feed shows only personalized picks — no regional-trending tail.
+   * The pool digs deeper into related videos to compensate for the dropped
+   * tail, so you get more discovery instead of trending filler. Opt-in.
+   */
+  personalizedFeedOnly: z.boolean().default(false),
   /** Show SponsorBlock segment markers on the watch player timeline. */
   sponsorBlockEnabled: z.boolean().default(true),
   /** Automatically skip SponsorBlock segments during playback. */
@@ -198,6 +204,7 @@ const defaultSettings: AppSettings = {
   defaultPlaybackQuality: "1080p",
   blockedRecommendationChannels: [],
   excludeSubscribedFromRecommendations: true,
+  personalizedFeedOnly: false,
   sponsorBlockEnabled: true,
   sponsorBlockAutoSkip: true,
   sponsorBlockCategories: DEFAULT_SPONSORBLOCK_CATEGORIES,

@@ -303,6 +303,9 @@ export const feedRouter = router({
     try {
       if (ctx.userId && !category) {
         const settings = getUserSettings(ctx.db, ctx.userId);
+        // Personalized-only: drop the regional-trending tail entirely. The
+        // recommendation pool digs deeper into related videos to compensate,
+        // so the feed stays long but stays personalized.
         const [{ videos: personalized, coldStart }, tailPool] =
           await Promise.all([
             getPersonalizedFeedVideos(ctx.db, ctx.userId, {
@@ -310,14 +313,16 @@ export const feedRouter = router({
               region,
               overrides,
             }),
-            buildTrendingTailPool(
-              ctx.db,
-              ctx.userId,
-              region,
-              overrides,
-              settings.hideRestrictedVideos,
-              settings.excludeSubscribedFromRecommendations,
-            ),
+            settings.personalizedFeedOnly
+              ? Promise.resolve<UnifiedVideo[]>([])
+              : buildTrendingTailPool(
+                  ctx.db,
+                  ctx.userId,
+                  region,
+                  overrides,
+                  settings.hideRestrictedVideos,
+                  settings.excludeSubscribedFromRecommendations,
+                ),
           ]);
         const stream = mergePersonalizedWithTrendingTail(
           settings.hideRestrictedVideos

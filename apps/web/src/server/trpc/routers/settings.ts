@@ -40,6 +40,7 @@ const settingsPatchSchema = z.object({
   hideRestrictedVideos: z.boolean().optional(),
   hideShortsInSubscriptions: z.boolean().optional(),
   excludeSubscribedFromRecommendations: z.boolean().optional(),
+  personalizedFeedOnly: z.boolean().optional(),
   defaultCinemaMode: z.boolean().optional(),
   enableMiniPlayer: z.boolean().optional(),
   autoplayOnWatch: z.boolean().optional(),
