@@ -19,8 +19,14 @@ const MIN_UNIQUE_CANDIDATES_HISTORY_ONLY = 14;
 const CHANNEL_FETCH_CONCURRENCY = 6;
 /** When trending supplies a channel we did not page yet, fetch latest uploads so recs prefer newer unwatched videos. */
 const MAX_TRENDING_ONLY_CHANNEL_HEAD_FETCHES = 12;
-/** Cap upstream searches per pool build so many configured keywords cannot burst the rate limiter (6h search cache absorbs repeats). */
-const MAX_KEYWORD_SEARCHES = 6;
+/**
+ * Cap upstream searches per pool build. Matches the taste-keyword limit so
+ * every declared keyword actively pulls candidates. Safe at this size because
+ * the 6h search cache absorbs repeats (only the first build after a keyword
+ * change pays the full fan-out) and every call still goes through the upstream
+ * rate limiter — so this bounds the work, it does not burst it.
+ */
+const MAX_KEYWORD_SEARCHES = 96;
 const VIDEOS_PER_KEYWORD = 8;
 const KEYWORD_SEARCH_CONCURRENCY = 3;
 
