@@ -158,14 +158,19 @@ export function keepCandidateForPersonalizedFeed(
   if (video.channelId && interestChannelIds.has(video.channelId)) {
     return true;
   }
-  /** Stronger gate as history grows — pure regional trending with no topic/channel match drops out. */
+  /**
+   * Stronger gate as history grows — pure regional trending with no
+   * topic/channel match drops out. Thresholds are loosened (~35% below the
+   * earlier values) so more topically-distant candidates survive into the pool
+   * for out-of-bubble discovery; clear no-overlap rows still drop.
+   */
   if (signals.totalWatches >= 22) {
-    return tag >= 0.062 || ch >= 0.042;
+    return tag >= 0.04 || ch >= 0.028;
   }
   if (signals.totalWatches >= 16) {
-    return tag >= 0.048 || ch >= 0.034;
+    return tag >= 0.032 || ch >= 0.023;
   }
-  return tag >= 0.04 || ch >= 0.03;
+  return tag >= 0.026 || ch >= 0.02;
 }
 
 /**
