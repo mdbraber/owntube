@@ -195,6 +195,33 @@ export function keepCandidateForTrendingTail(
   return tag >= TRENDING_TAIL_TAG_MIN || ch >= TRENDING_TAIL_CHANNEL_MIN;
 }
 
+/**
+ * Continuous taste relevance for a trending-tail row, used to order (not gate)
+ * the tail so the feed keeps going while widening: strong matches surface
+ * first, off-taste regional trending sinks progressively toward the deep end
+ * instead of being dropped. Higher is more on-taste. A channel the user already
+ * engages with dominates (its interest bonus outweighs any title score), then
+ * channel affinity, then title similarity.
+ */
+export function trendingTailRelevance(
+  video: UnifiedVideo,
+  signals: UserSignals,
+  tasteModel: TfidfModel,
+  interestChannelIds: ReadonlySet<string>,
+): number {
+  // Cold start: no reliable taste yet — treat every row equally so a stable
+  // sort leaves the upstream trending order untouched.
+  if (signals.totalWatches < 14) return 0;
+  const interestBonus =
+    video.channelId && interestChannelIds.has(video.channelId) ? 1 : 0;
+  const maxCh = Math.max(1, ...signals.channelWeights.values());
+  const ch = video.channelId
+    ? (signals.channelWeights.get(video.channelId) ?? 0) / maxCh
+    : 0;
+  const tag = tasteModel.similarity(video.title);
+  return interestBonus + ch + tag;
+}
+
 /** Gate regional shorts_discovery rows — always on for discovery source, softer when history is thin. */
 export function keepShortsDiscoveryCandidate(
   video: UnifiedVideo,

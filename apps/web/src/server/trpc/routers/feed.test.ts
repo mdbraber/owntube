@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { UserSignals } from "@/server/recommendation/signals";
 import { buildTfidfModel } from "@/server/recommendation/tfidf";
 import {
-  filterTrendingTailByTaste,
   mergePersonalizedWithTrendingTail,
+  orderTrendingTailByTaste,
 } from "@/server/trpc/routers/feed";
 
 function signalsWithHistory(overrides: Partial<UserSignals> = {}): UserSignals {
@@ -26,41 +26,47 @@ function signalsWithHistory(overrides: Partial<UserSignals> = {}): UserSignals {
   };
 }
 
-describe("filterTrendingTailByTaste", () => {
+describe("orderTrendingTailByTaste", () => {
   const taste = buildTfidfModel([
     "rust async runtime tokio",
     "rust ownership and borrowing",
   ]);
 
-  it("drops off-taste rows and keeps on-taste rows in order", () => {
+  it("orders on-taste rows first without dropping off-taste ones", () => {
     const pool = [
       { videoId: "off1", channelId: "UCx", title: "regional pop hit" },
       { videoId: "on1", channelId: "UCy", title: "rust async deep dive" },
       { videoId: "off2", channelId: "UCz", title: "celebrity gossip clip" },
       { videoId: "on2", channelId: "UCfan", title: "unrelated upload" },
     ];
-    const kept = filterTrendingTailByTaste(
+    const ordered = orderTrendingTailByTaste(
       pool,
       signalsWithHistory({ channelWeights: new Map([["UCfan", 5]]) }),
       taste,
       new Set(),
     );
-    // on1 matches on title; on2 is kept via its high-affinity channel (UCfan).
-    expect(kept.map((v) => v.videoId)).toEqual(["on1", "on2"]);
+    // on2 (high channel affinity) and on1 (title match) rise to the top; the
+    // off-taste rows stay in the list at the deep end (nothing dropped).
+    expect(ordered.map((v) => v.videoId)).toEqual([
+      "on2",
+      "on1",
+      "off1",
+      "off2",
+    ]);
   });
 
-  it("keeps everything during cold start", () => {
+  it("keeps the original order during cold start", () => {
     const pool = [
       { videoId: "a12345", title: "regional pop hit" },
       { videoId: "b12345", title: "rust async deep dive" },
     ];
-    const kept = filterTrendingTailByTaste(
+    const ordered = orderTrendingTailByTaste(
       pool,
       signalsWithHistory({ totalWatches: 3 }),
       taste,
       new Set(),
     );
-    expect(kept.map((v) => v.videoId)).toEqual(["a12345", "b12345"]);
+    expect(ordered.map((v) => v.videoId)).toEqual(["a12345", "b12345"]);
   });
 });
 

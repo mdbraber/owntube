@@ -7,7 +7,7 @@ import { watchHistory } from "@/server/db/schema";
 import { RateLimitExceededError } from "@/server/errors/rate-limit-exceeded";
 import { UpstreamUnavailableError } from "@/server/errors/upstream-unavailable";
 import { getPersonalizedFeedVideos } from "@/server/recommendation/engine";
-import { keepCandidateForTrendingTail } from "@/server/recommendation/scoring";
+import { trendingTailRelevance } from "@/server/recommendation/scoring";
 import {
   collectUserSignals,
   type UserSignals,
@@ -74,26 +74,31 @@ function trendingTailCacheKey(
 }
 
 /**
- * Drops regional-trending rows that match none of the user's taste (title
- * similarity, watched/interacted channels, or channel affinity). Past cold
- * start the tail is meant to extend the personalized feed with *relevant*
- * trending — off-taste filler is removed rather than parked at the end, so the
- * feed ends when the good picks run out instead of padding with noise.
+ * Orders the trending tail by taste relevance, strongest first, without
+ * dropping anything: the feed keeps extending as far as trending goes, but
+ * widens as it drags on — on-taste rows up top, off-taste regional trending
+ * sinking toward the deep end. Stable sort, so equally-relevant rows keep their
+ * upstream trending order.
  */
-export function filterTrendingTailByTaste(
+export function orderTrendingTailByTaste(
   pool: UnifiedVideo[],
   signals: UserSignals,
   tasteModel: TfidfModel,
   interestChannelIds: ReadonlySet<string>,
 ): UnifiedVideo[] {
-  return pool.filter((video) =>
-    keepCandidateForTrendingTail(
+  return pool
+    .map((video, index) => ({
       video,
-      signals,
-      tasteModel,
-      interestChannelIds,
-    ),
-  );
+      index,
+      score: trendingTailRelevance(
+        video,
+        signals,
+        tasteModel,
+        interestChannelIds,
+      ),
+    }))
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .map((entry) => entry.video);
 }
 
 async function buildTrendingTailPoolUncached(
@@ -171,7 +176,7 @@ async function buildTrendingTailPoolUncached(
         ...signals.historyChannelIds,
         ...signals.interactionInterestChannelIds,
       ]);
-      pool = filterTrendingTailByTaste(
+      pool = orderTrendingTailByTaste(
         pool,
         signals,
         tasteModel,
