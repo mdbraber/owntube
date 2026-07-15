@@ -111,9 +111,10 @@ export const appSettingsSchema = z.object({
   /**
    * Recommended feed shows only personalized picks — no regional-trending tail.
    * The pool digs deeper into related videos to compensate for the dropped
-   * tail, so you get more discovery instead of trending filler. Opt-in.
+   * tail, so you get more discovery instead of trending filler. On by default;
+   * can be turned off to blend regional trending back in.
    */
-  personalizedFeedOnly: z.boolean().default(false),
+  personalizedFeedOnly: z.boolean().default(true),
   /** Show SponsorBlock segment markers on the watch player timeline. */
   sponsorBlockEnabled: z.boolean().default(true),
   /** Automatically skip SponsorBlock segments during playback. */
@@ -204,7 +205,7 @@ const defaultSettings: AppSettings = {
   defaultPlaybackQuality: "1080p",
   blockedRecommendationChannels: [],
   excludeSubscribedFromRecommendations: true,
-  personalizedFeedOnly: false,
+  personalizedFeedOnly: true,
   sponsorBlockEnabled: true,
   sponsorBlockAutoSkip: true,
   sponsorBlockCategories: DEFAULT_SPONSORBLOCK_CATEGORIES,

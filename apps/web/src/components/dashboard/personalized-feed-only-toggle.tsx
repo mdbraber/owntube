@@ -21,7 +21,7 @@ export function PersonalizedFeedOnlyToggle() {
       ]),
   });
 
-  const checked = settings.data?.personalizedFeedOnly ?? false;
+  const checked = settings.data?.personalizedFeedOnly ?? true;
   const disabled = settings.isPending || update.isPending;
 
   return (
