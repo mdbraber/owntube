@@ -25,7 +25,6 @@ import { VideoThumbnailImg } from "@/components/videos/video-thumbnail-img";
 import {
   CARD_MIN_WIDTH_PX,
   DEFAULT_HOME_BLOCKS,
-  HOME_BLOCK_ACCENT,
   HOME_BLOCK_LABEL,
   HOME_BLOCK_ROWS,
   HOME_BLOCK_SIZE_LABEL,
@@ -653,12 +652,10 @@ function BlockHeading({ block }: { block: HomeBlock }) {
     block.type === "playlist"
       ? (playlistName ?? "Playlist")
       : HOME_BLOCK_LABEL[block.type];
-  const accent = HOME_BLOCK_ACCENT[block.type];
   return (
     <Link
       href={homeBlockHref(block)}
-      className="group/h inline-flex items-center gap-2"
-      style={{ color: `hsl(${accent})` }}
+      className="group/h inline-flex items-center gap-2 text-[hsl(var(--primary))]"
     >
       <h2 className="m-0 text-2xl font-extrabold leading-tight tracking-tight transition group-hover/h:opacity-80">
         {label}

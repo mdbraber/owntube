@@ -137,23 +137,6 @@ export const HOME_BLOCK_LABEL: Record<HomeBlockType, string> = {
   playlist: "Playlist",
 };
 
-/**
- * A distinct accent hue per block type so headers are easy to tell apart at a
- * glance. Stored as bare HSL channels (`H S% L%`) for use in `hsl(...)`; the
- * mid-range lightness keeps each legible on both the light and dark themes
- * (large bold headings only need ~3:1). "playlist" shares the playlists hue.
- */
-export const HOME_BLOCK_ACCENT: Record<HomeBlockType, string> = {
-  subscriptions: "212 78% 52%", // blue
-  recommended: "262 68% 60%", // violet
-  explore: "186 76% 38%", // teal
-  history: "26 82% 48%", // orange
-  queue: "148 58% 40%", // green
-  saved: "342 72% 54%", // rose
-  playlists: "244 60% 60%", // indigo
-  playlist: "244 60% 60%", // indigo
-};
-
 /** Where the block heading links to. */
 export function homeBlockHref(block: HomeBlock): string {
   switch (block.type) {
