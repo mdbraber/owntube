@@ -87,6 +87,18 @@ function toUnified(v: BlockVideo): UnifiedVideo {
   } as UnifiedVideo;
 }
 
+function fromUnified(v: UnifiedVideo): BlockVideo {
+  return {
+    videoId: v.videoId,
+    title: v.title,
+    channelId: v.channelId,
+    channelName: v.channelName,
+    channelAvatarUrl: v.channelAvatarUrl,
+    thumbnailUrl: v.thumbnailUrl,
+    durationSeconds: v.durationSeconds,
+  };
+}
+
 /**
  * One horizontally scrollable row of cards ("Scrollable row" option on
  * single-row blocks). A sentinel at the end asks the host for more when an
@@ -338,6 +350,64 @@ function SubscriptionsBlockBody({ block }: { block: HomeBlock }) {
   );
 }
 
+/** The personalized recommendation feed (same source as /recommended). */
+function RecommendedBlockBody({ block }: { block: HomeBlock }) {
+  const settings = trpc.settings.get.useQuery();
+  const region = settings.data?.trendingRegion ?? "US";
+  const scrollable = isScrollRow(block);
+  const query = trpc.feed.home.useInfiniteQuery(
+    {
+      region,
+      pageSize: Math.min(48, Math.max(12, blockFetchCount(block))),
+    },
+    {
+      initialCursor: 0,
+      getNextPageParam: (last, all) => {
+        if (!last.hasMore || last.videos.length === 0) return undefined;
+        return all.reduce((n, p) => n + p.videos.length, 0);
+      },
+    },
+  );
+  const seen = new Set<string>();
+  const videos: BlockVideo[] = [];
+  for (const v of query.data?.pages.flatMap((p) => p.videos) ?? []) {
+    if (seen.has(v.videoId)) continue;
+    seen.add(v.videoId);
+    videos.push(fromUnified(v));
+  }
+  return (
+    <VideoBlockBody
+      videos={scrollable ? videos : videos.slice(0, blockFetchCount(block))}
+      block={block}
+      surface="feed"
+      isLoading={query.isPending}
+      onEndReached={
+        scrollable && query.hasNextPage && !query.isFetchingNextPage
+          ? () => void query.fetchNextPage()
+          : undefined
+      }
+    />
+  );
+}
+
+/** Regional trending (same source as /trending, labelled "Explore"). */
+function ExploreBlockBody({ block }: { block: HomeBlock }) {
+  const settings = trpc.settings.get.useQuery();
+  const region = settings.data?.trendingRegion ?? "US";
+  const query = trpc.trending.list.useQuery({ region, limit: 60 });
+  const videos: BlockVideo[] = (query.data?.videos ?? []).map(fromUnified);
+  return (
+    <VideoBlockBody
+      videos={
+        isScrollRow(block) ? videos : videos.slice(0, blockFetchCount(block))
+      }
+      block={block}
+      surface="feed"
+      isLoading={query.isPending}
+    />
+  );
+}
+
 function HistoryBlockBody({ block }: { block: HomeBlock }) {
   // The block's own value for the shared option definition — independent of
   // the History page's filter.
@@ -553,6 +623,10 @@ function BlockBody({ block }: { block: HomeBlock }) {
   switch (block.type) {
     case "subscriptions":
       return <SubscriptionsBlockBody block={block} />;
+    case "recommended":
+      return <RecommendedBlockBody block={block} />;
+    case "explore":
+      return <ExploreBlockBody block={block} />;
     case "history":
       return <HistoryBlockBody block={block} />;
     case "queue":
@@ -593,6 +667,36 @@ function BlockHeading({ block }: { block: HomeBlock }) {
         ›
       </span>
     </Link>
+  );
+}
+
+/**
+ * Read-only recap of a subscriptions block's tag filter, shown under the
+ * header — only the tags explicitly included (✓) or excluded (✕), never the
+ * full tag list, so a scoped block announces what it's scoped to at a glance.
+ */
+function SubscriptionTagsSummary({ block }: { block: HomeBlock }) {
+  const { includeTags, excludeTags } = blockTagLists(block);
+  if (!includeTags && !excludeTags) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {(includeTags ?? []).map((tag) => (
+        <span
+          key={`inc-${tag}`}
+          className="inline-flex items-center gap-1 rounded-full border border-transparent bg-[hsl(var(--primary))] px-2.5 py-0.5 text-xs font-medium text-[hsl(var(--primary-foreground))]"
+        >
+          <span aria-hidden>✓</span>#{tag}
+        </span>
+      ))}
+      {(excludeTags ?? []).map((tag) => (
+        <span
+          key={`exc-${tag}`}
+          className="inline-flex items-center gap-1 rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--muted)_/_0.5)] px-2.5 py-0.5 text-xs font-medium text-[hsl(var(--muted-foreground))] line-through"
+        >
+          <span aria-hidden>✕</span>#{tag}
+        </span>
+      ))}
+    </div>
   );
 }
 
@@ -892,6 +996,8 @@ function BlockEditSheet({
 
 const ADDABLE_TYPES: Exclude<HomeBlockType, "playlist">[] = [
   "subscriptions",
+  "recommended",
+  "explore",
   "history",
   "queue",
   "saved",
@@ -1035,7 +1141,7 @@ export function HomeBlocksClient() {
         <h1 className="m-0 text-2xl font-extrabold tracking-tight">Home</h1>
         <div className="flex items-center gap-2">
           {editing ? (
-            <AddBlockMenu onAdd={(b) => persist([...blocks, b])} />
+            <AddBlockMenu onAdd={(b) => persist([b, ...blocks])} />
           ) : null}
           <Button
             type="button"
@@ -1174,6 +1280,9 @@ export function HomeBlocksClient() {
                   </>
                 ) : null}
               </div>
+              {block.type === "subscriptions" ? (
+                <SubscriptionTagsSummary block={block} />
+              ) : null}
               <BlockBody block={block} />
             </li>
           );

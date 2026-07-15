@@ -6,6 +6,8 @@
 
 export const HOME_BLOCK_TYPES = [
   "subscriptions",
+  "recommended",
+  "explore",
   "history",
   "queue",
   "saved",
@@ -126,6 +128,8 @@ export function homeBlockOption(block: HomeBlock, key: string): boolean {
 
 export const HOME_BLOCK_LABEL: Record<HomeBlockType, string> = {
   subscriptions: "Subscriptions",
+  recommended: "Recommended",
+  explore: "Explore",
   history: "History",
   queue: "Queue",
   saved: "Saved",
@@ -138,6 +142,10 @@ export function homeBlockHref(block: HomeBlock): string {
   switch (block.type) {
     case "subscriptions":
       return "/subscriptions";
+    case "recommended":
+      return "/recommended";
+    case "explore":
+      return "/trending";
     case "history":
       return "/history";
     case "queue":
