@@ -1,6 +1,7 @@
 import { and, desc, eq, gt } from "drizzle-orm";
 import type { AppDb } from "@/server/db/client";
 import { interactions, watchHistory } from "@/server/db/schema";
+import { getQueuedAndPlaylistVideoRefs } from "@/server/recommendation/collected-videos";
 
 export type UserSignals = {
   channelWeights: Map<string, number>;
@@ -22,7 +23,11 @@ export type UserSignals = {
   likedVideoIds: Set<string>;
   /** Videos the user disliked — excluded from recommendations. */
   dislikedVideoIds: Set<string>;
-  /** Saved videos (excluding disliked), for taste corpus / affinity. */
+  /**
+   * Positively-collected videos (excluding disliked), for taste corpus /
+   * affinity: explicit saves plus queued and playlisted videos, which are
+   * treated as the same kind of endorsement.
+   */
   savedVideoIds: Set<string>;
   /**
    * Channels from like/save interactions (with `channel_id` set), for topic gate
@@ -255,6 +260,26 @@ export function collectUserSignals(
     );
     const prevLw = channelLastWatchedAt.get(r.channelId) ?? 0;
     channelLastWatchedAt.set(r.channelId, Math.max(prevLw, r.createdAt));
+  }
+
+  // Queuing a video or filing it into a playlist is an endorsement, so treat it
+  // like a save: its title joins the taste corpus (via savedVideoIds) and its
+  // channel gains affinity. Saves themselves are handled above; this covers the
+  // queue/playlist entries that never wrote a `save` interaction.
+  for (const ref of getQueuedAndPlaylistVideoRefs(db, userId)) {
+    if (dislikedVideoIds.has(ref.videoId)) continue;
+    savedVideoIds.add(ref.videoId);
+    if (!ref.channelId) continue;
+    interactionInterestChannelIds.add(ref.channelId);
+    const ageSec = Math.max(0, nowSec - ref.addedAt);
+    const contrib =
+      SAVE_CHANNEL_WEIGHT * Math.exp(-ageSec / INTERACTION_CHANNEL_TAU_SEC);
+    channelWeights.set(
+      ref.channelId,
+      (channelWeights.get(ref.channelId) ?? 0) + contrib,
+    );
+    const prevLw = channelLastWatchedAt.get(ref.channelId) ?? 0;
+    channelLastWatchedAt.set(ref.channelId, Math.max(prevLw, ref.addedAt));
   }
 
   const channelsOrderedByRecentWatch = [...channelLastWatchedAt.entries()]

@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { interactions, users, watchHistory } from "@/server/db/schema";
+import {
+  interactions,
+  playlistItems,
+  playlists,
+  users,
+  watchHistory,
+  watchQueue,
+} from "@/server/db/schema";
 import {
   classifyWatchEngagement,
   collectUserSignals,
@@ -288,6 +295,67 @@ describe("collectUserSignals — engagement weighting", () => {
     const signals = collectUserSignals(db, userId);
     expect(signals.quickSkipVideoIds.has("likedAnyway1")).toBe(false);
     expect(signals.quickSkipVideoIds.has("twoRowsVid01")).toBe(false);
+  });
+});
+
+describe("collectUserSignals — queue / playlist as taste signals", () => {
+  it("treats queued and playlisted videos as positive taste, and skips disliked ones", () => {
+    const { db } = createTestDb();
+    const userId = seedUser(db);
+    const now = Math.floor(Date.now() / 1000);
+
+    db.insert(watchQueue)
+      .values({
+        userId,
+        videoId: "queuedVid001",
+        title: "Queued",
+        channelId: "UC-queued",
+        position: 0,
+        addedAt: now - 100,
+      })
+      .run();
+    const playlist = db
+      .insert(playlists)
+      .values({ userId, name: "Faves", createdAt: now, updatedAt: now })
+      .returning({ id: playlists.id })
+      .get();
+    db.insert(playlistItems)
+      .values({
+        playlistId: playlist.id,
+        videoId: "playlistVid1",
+        channelId: "UC-playlist",
+        addedAt: now - 200,
+      })
+      .run();
+    // A disliked video that also sits in the queue must not become a taste signal.
+    db.insert(watchQueue)
+      .values({
+        userId,
+        videoId: "queuedDisliked",
+        title: "Nope",
+        channelId: "UC-nope",
+        position: 1,
+        addedAt: now - 50,
+      })
+      .run();
+    db.insert(interactions)
+      .values({
+        userId,
+        videoId: "queuedDisliked",
+        channelId: "UC-nope",
+        type: "dislike",
+        createdAt: now,
+      })
+      .run();
+
+    const signals = collectUserSignals(db, userId);
+    expect(signals.savedVideoIds.has("queuedVid001")).toBe(true);
+    expect(signals.savedVideoIds.has("playlistVid1")).toBe(true);
+    expect(signals.savedVideoIds.has("queuedDisliked")).toBe(false);
+    expect(signals.interactionInterestChannelIds.has("UC-queued")).toBe(true);
+    expect(signals.interactionInterestChannelIds.has("UC-playlist")).toBe(true);
+    expect(signals.interactionInterestChannelIds.has("UC-nope")).toBe(false);
+    expect(signals.channelWeights.get("UC-queued") ?? 0).toBeGreaterThan(0);
   });
 });
 

@@ -47,3 +47,50 @@ export function getCollectedVideoIds(db: AppDb, userId: number): Set<string> {
 
   return ids;
 }
+
+/** A queued / playlisted video with the channel and add time needed for taste signals. */
+export type CollectedVideoRef = {
+  videoId: string;
+  channelId: string | null;
+  addedAt: number;
+};
+
+/**
+ * Queue + playlist entries, with their channel and add timestamp, for use as
+ * positive taste signals (queuing or filing a video is an endorsement, like a
+ * save). Saved videos are intentionally *not* included here — explicit `save`
+ * interactions already feed the taste model directly in `collectUserSignals`.
+ */
+export function getQueuedAndPlaylistVideoRefs(
+  db: AppDb,
+  userId: number,
+): CollectedVideoRef[] {
+  const refs: CollectedVideoRef[] = [];
+
+  for (const r of db
+    .select({
+      videoId: watchQueue.videoId,
+      channelId: watchQueue.channelId,
+      addedAt: watchQueue.addedAt,
+    })
+    .from(watchQueue)
+    .where(eq(watchQueue.userId, userId))
+    .all()) {
+    refs.push(r);
+  }
+
+  for (const r of db
+    .select({
+      videoId: playlistItems.videoId,
+      channelId: playlistItems.channelId,
+      addedAt: playlistItems.addedAt,
+    })
+    .from(playlistItems)
+    .innerJoin(playlists, eq(playlistItems.playlistId, playlists.id))
+    .where(eq(playlists.userId, userId))
+    .all()) {
+    refs.push(r);
+  }
+
+  return refs;
+}
