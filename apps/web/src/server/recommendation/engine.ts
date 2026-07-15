@@ -12,6 +12,7 @@ import {
   HOME_RELATED_LIMITS,
 } from "@/server/recommendation/collect-related-candidates";
 import { collectTaggedVideoCandidates } from "@/server/recommendation/collect-tagged-candidates";
+import { getCollectedVideoIds } from "@/server/recommendation/collected-videos";
 import {
   appendRecommendationDebugLog,
   recommendationDebugEnabled,
@@ -357,11 +358,17 @@ async function ensureRecommendationPool(
       )
       .limit(10_000)
       .all();
-    const watchedEver = new Set(watchedRows.map((r) => r.videoId));
+    const excludedVideoIds = new Set(watchedRows.map((r) => r.videoId));
 
     const signals = collectUserSignals(db, userId, { excludeShorts: true });
     for (const id of signals.dislikedVideoIds) {
-      watchedEver.add(id);
+      excludedVideoIds.add(id);
+    }
+    // Videos already in the user's queue, saved list, or playlists are things
+    // they've already found — hold them out of recommendations so the feed
+    // surfaces things they'd otherwise not see. (They still shape taste below.)
+    for (const id of getCollectedVideoIds(db, userId)) {
+      excludedVideoIds.add(id);
     }
     const region = opts.region ?? "US";
     const userSettings = getUserSettings(db, userId);
@@ -424,7 +431,7 @@ async function ensureRecommendationPool(
       stripRestrictedListVideos(
         [...byId.values()].filter(
           (v) =>
-            !watchedEver.has(v.videoId) &&
+            !excludedVideoIds.has(v.videoId) &&
             !ignoredVideoIds.has(v.videoId) &&
             !(v.channelId && blockedRecommendationChannels.has(v.channelId)),
         ),
@@ -541,7 +548,7 @@ async function ensureRecommendationPool(
         coldStart,
         limits: HOME_RELATED_LIMITS,
         overrides: opts.overrides,
-        excludeVideoIds: watchedEver,
+        excludeVideoIds: excludedVideoIds,
         signals,
         tasteModel,
         dislikeModel,
