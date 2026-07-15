@@ -2,7 +2,10 @@ import { cosineSparse } from "@/server/recommendation/similarity";
 import { termFrequencyVector } from "@/server/recommendation/tfidf";
 import type { ScoredVideo } from "@/server/recommendation/types";
 
-const LAMBDA = 0.7;
+// Lower λ = the redundancy penalty bites harder, so the feed spreads wider
+// across topics and channels at some cost to per-item relevance. Tuned down
+// from 0.7 to favour diversity / out-of-bubble discovery.
+const LAMBDA = 0.55;
 
 function channelOverlap(a: ScoredVideo, b: ScoredVideo): number {
   if (!a.channelId || !b.channelId) return 0;
@@ -25,7 +28,7 @@ function redundancy(a: ScoredVideo, b: ScoredVideo): number {
   return Math.max(channel, content);
 }
 
-/** MMR diversification (λ=0.7); relevance term uses normalized `rawScore`. */
+/** MMR diversification (λ=0.55); relevance term uses normalized `rawScore`. */
 export function maximalMarginalRelevance(
   ranked: ScoredVideo[],
   take: number,

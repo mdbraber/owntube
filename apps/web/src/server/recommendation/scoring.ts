@@ -441,8 +441,13 @@ export function scoreCandidateDetail(
   const exploreUnit = ctx.exploreSeed
     ? deterministicUnitInterval(`${ctx.exploreSeed}:${video.videoId}`)
     : 0;
+  // Explore bonus lifts otherwise-low-ranked pool members (the edges: adjacent
+  // channels/topics from related-expansion the user doesn't follow), so the
+  // feed keeps surprising past the obvious picks. Weighted 0.08 for established
+  // users — up from 0.04 — to widen out-of-bubble discovery; it rotates daily
+  // so the surprises refresh. Newer users already get a larger nudge.
   const explore =
-    signals.totalWatches >= 16 ? exploreUnit * 0.04 : exploreUnit * 0.1;
+    signals.totalWatches >= 16 ? exploreUnit * 0.08 : exploreUnit * 0.1;
   const distinctFromCh =
     video.channelId != null
       ? (signals.distinctWatchesByChannel.get(video.channelId) ?? 0)
