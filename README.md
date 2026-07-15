@@ -4,17 +4,31 @@ Self-hosted, privacy-first YouTube frontend. No Google APIs, no tracking, no tel
 
 It's a solo side-project. Code is meant to stay maintainable by one person, so the stack is intentionally small and boring: Next.js 15 + TypeScript + tRPC + Drizzle + SQLite.
 
+![OwnTube — the customizable modular home, with color-coded blocks and per-block tag filters](docs/screenshots/home.png)
+
 ## Features
 
+- **Customizable modular home** — reorderable blocks (subscriptions, recommended, explore, history, queue, saved, playlists) with per-block layout, size, tag filters, and color-coded headers
 - Search, watch, history, like / dislike / save
-- Personal recommendation feed (TF-IDF + MMR diversification, no collaborative filtering)
-- Trending page, channel pages, subscriptions with merged feed
+- Personal recommendation feed (TF-IDF + MMR diversification, no collaborative filtering) with a local **Algorithm** dashboard, keyword refinement, and an option to keep already-subscribed channels out of recommendations
+- Trending ("Explore") page, channel pages, subscriptions with merged feed and tri-state tag filters
 - Auth.js (credentials + bcrypt), multi-user accounts
 - Theme switcher, per-user Piped/Invidious overrides, JSON export/import
 - PiP and keyboard shortcuts in the player (Vidstack)
 - Local playlists, dashboard stats, YouTube Takeout history import
 - PWA (manifest + service worker)
 - Docker Compose with healthcheck and restart policy
+
+## Screenshots
+
+|                                                                    |                                                                    |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------ |
+| **Recommended** — personalized "For You" feed                      | **Subscriptions** — merged uploads with tri-state tag filters      |
+| [![Recommended feed](docs/screenshots/recommended.png)](docs/screenshots/recommended.png) | [![Subscriptions](docs/screenshots/subscriptions.png)](docs/screenshots/subscriptions.png) |
+| **Algorithm** — local recommender insights & settings              | **Watch** — Vidstack player                                        |
+| [![Algorithm dashboard](docs/screenshots/dashboard.png)](docs/screenshots/dashboard.png) | [![Watch page](docs/screenshots/watch.png)](docs/screenshots/watch.png) |
+| **Explore** — regional trending                                    |                                                                    |
+| [![Explore / trending](docs/screenshots/trending.png)](docs/screenshots/trending.png) |                                                                    |
 
 ## Requirements
 
@@ -54,15 +68,17 @@ For a fully local setup with a self-hosted Invidious, run `bash scripts/setup-in
 
 | Route                   | What                                              |
 | ----------------------- | ------------------------------------------------- |
-| `/`                     | Home feed (recommendations, falls back to trending) |
-| `/trending`             | Regional trending                                 |
+| `/`                     | Customizable modular home (signed-out → `/recommended`) |
+| `/recommended`          | Personalized recommendation feed (falls back to trending) |
+| `/trending`             | Regional trending ("Explore")                     |
 | `/subscriptions`        | Subscribed channels + merged latest uploads       |
 | `/channel/:channelId`   | Channel profile and videos                        |
 | `/search`               | Video search                                      |
 | `/watch/:videoId`       | Player + related videos                           |
 | `/history`              | Watch history (signed-in)                         |
 | `/playlists`            | Local playlists                                   |
-| `/dashboard`            | Personal stats                                    |
+| `/queue`, `/saved`      | Watch queue and saved videos                      |
+| `/dashboard`            | Algorithm — recommender insights, keywords, settings |
 | `/settings`             | Theme, source instances, JSON export/import       |
 | `/login`, `/register`   | Credentials auth                                  |
 
