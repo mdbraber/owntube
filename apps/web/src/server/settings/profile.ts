@@ -104,9 +104,10 @@ export const appSettingsSchema = z.object({
     .default([]),
   /**
    * Keep uploads from channels you already subscribe to out of personalized
-   * recommendations (they're still in your Subscriptions feed). Opt-in.
+   * recommendations (they're still in your Subscriptions feed). On by default:
+   * recommendations are a discovery surface. Can be turned off.
    */
-  excludeSubscribedFromRecommendations: z.boolean().default(false),
+  excludeSubscribedFromRecommendations: z.boolean().default(true),
   /** Show SponsorBlock segment markers on the watch player timeline. */
   sponsorBlockEnabled: z.boolean().default(true),
   /** Automatically skip SponsorBlock segments during playback. */
@@ -196,7 +197,7 @@ const defaultSettings: AppSettings = {
   autoplayNext: true,
   defaultPlaybackQuality: "1080p",
   blockedRecommendationChannels: [],
-  excludeSubscribedFromRecommendations: false,
+  excludeSubscribedFromRecommendations: true,
   sponsorBlockEnabled: true,
   sponsorBlockAutoSkip: true,
   sponsorBlockCategories: DEFAULT_SPONSORBLOCK_CATEGORIES,

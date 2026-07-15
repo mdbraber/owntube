@@ -17,7 +17,7 @@ export function ExcludeSubscribedToggle() {
     onSettled: () => utils.settings.get.invalidate(),
   });
 
-  const checked = settings.data?.excludeSubscribedFromRecommendations ?? false;
+  const checked = settings.data?.excludeSubscribedFromRecommendations ?? true;
   const disabled = settings.isPending || update.isPending;
 
   return (
