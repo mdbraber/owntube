@@ -12,6 +12,7 @@ import {
   collectUserSignals,
   type UserSignals,
 } from "@/server/recommendation/signals";
+import { getSubscribedChannelIds } from "@/server/recommendation/subscribed-channels";
 import {
   buildKeywordCorpus,
   buildTasteCorpusTitles,
@@ -61,6 +62,7 @@ function trendingTailCacheKey(
   userId: number | null,
   region: string,
   hideRestricted: boolean,
+  excludeSubscribed: boolean,
   overrides: ReturnType<typeof getUserProxyOverrides>,
 ): string {
   const piped = (overrides?.pipedBaseUrls ?? [overrides?.pipedBaseUrl ?? ""])
@@ -73,7 +75,7 @@ function trendingTailCacheKey(
     .map((url) => url.trim())
     .filter(Boolean)
     .join(",");
-  return `tail|${userId ?? "anon"}|${region}|${hideRestricted ? 1 : 0}|${piped}|${invidious}`;
+  return `tail|${userId ?? "anon"}|${region}|${hideRestricted ? 1 : 0}|${excludeSubscribed ? 1 : 0}|${piped}|${invidious}`;
 }
 
 /**
@@ -112,6 +114,7 @@ async function buildTrendingTailPoolUncached(
   region: string,
   overrides: ReturnType<typeof getUserProxyOverrides>,
   hideRestricted: boolean,
+  excludeSubscribed: boolean,
 ) {
   const trending = await fetchTrendingVideos(
     db,
@@ -136,6 +139,14 @@ async function buildTrendingTailPoolUncached(
       .all();
     const seen = new Set(seenRows.map((r) => r.videoId));
     pool = pool.filter((v) => !seen.has(v.videoId));
+
+    // Opt-in: keep already-subscribed channels out of the trending tail too, so
+    // the whole recommended feed honors the setting (not just the personalized
+    // head).
+    if (excludeSubscribed) {
+      const subscribed = getSubscribedChannelIds(db, userId);
+      pool = pool.filter((v) => !(v.channelId && subscribed.has(v.channelId)));
+    }
 
     // Taste-sort the tail for users past cold start. DB + in-memory only (the
     // TF-IDF corpus is ≤240 short docs); the 90s per-user cache amortizes it.
@@ -177,11 +188,13 @@ async function buildTrendingTailPool(
   region: string,
   overrides: ReturnType<typeof getUserProxyOverrides>,
   hideRestricted: boolean,
+  excludeSubscribed: boolean,
 ) {
   const cacheKey = trendingTailCacheKey(
     userId,
     region,
     hideRestricted,
+    excludeSubscribed,
     overrides,
   );
   const now = Date.now();
@@ -202,6 +215,7 @@ async function buildTrendingTailPool(
       region,
       overrides,
       hideRestricted,
+      excludeSubscribed,
     );
     return {
       expiresAt: Date.now() + TRENDING_TAIL_CACHE_TTL_MS,
@@ -297,6 +311,7 @@ export const feedRouter = router({
               region,
               overrides,
               settings.hideRestrictedVideos,
+              settings.excludeSubscribedFromRecommendations,
             ),
           ]);
         const stream = mergePersonalizedWithTrendingTail(

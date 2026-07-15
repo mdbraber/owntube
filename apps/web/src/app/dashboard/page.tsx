@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { ExcludeSubscribedToggle } from "@/components/dashboard/exclude-subscribed-toggle";
 import { PageHeader } from "@/components/layout/page-header";
 import { auth } from "@/server/auth";
 import type { RecommendationReason } from "@/server/services/proxy.types";
@@ -108,6 +109,18 @@ export default async function DashboardPage() {
             </p>
           </article>
         ))}
+      </section>
+
+      <section className="space-y-4">
+        <div className="space-y-1">
+          <h2 className="text-xl font-bold tracking-tight">
+            Recommendation settings
+          </h2>
+          <p className="text-sm text-[hsl(var(--muted-foreground))]">
+            Tune what the feed pulls from.
+          </p>
+        </div>
+        <ExcludeSubscribedToggle />
       </section>
 
       <section className="space-y-4">

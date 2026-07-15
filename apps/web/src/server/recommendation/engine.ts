@@ -34,6 +34,7 @@ import {
   collectUserSignals,
   dislikeCorpusVideoIds,
 } from "@/server/recommendation/signals";
+import { getSubscribedChannelIds } from "@/server/recommendation/subscribed-channels";
 import {
   buildKeywordCorpus,
   buildTasteCorpusTitles,
@@ -77,6 +78,7 @@ function recommendationPoolCacheKey(
     region?: string;
     overrides?: ProxySourceOverrides;
   },
+  excludeSubscribed: boolean,
 ): string {
   const region = opts.region ?? "US";
   const piped = (
@@ -93,7 +95,7 @@ function recommendationPoolCacheKey(
     .map((url) => url.trim())
     .filter(Boolean)
     .join(",");
-  return `${userId}|${region}|${opts.pageSize}|${piped}|${invidious}`;
+  return `${userId}|${region}|${opts.pageSize}|${piped}|${invidious}|${excludeSubscribed ? "nosubs" : "subs"}`;
 }
 
 function diversifiedRowToVideo(row: ScoredVideo): UnifiedVideo {
@@ -324,7 +326,13 @@ async function ensureRecommendationPool(
     overrides?: ProxySourceOverrides;
   },
 ): Promise<RecommendationPoolCacheEntry> {
-  const cacheKey = recommendationPoolCacheKey(userId, opts);
+  // Read here (not just in the builder) so the flag participates in the cache
+  // key — toggling it rebuilds the pool without an explicit invalidation.
+  const excludeSubscribed = getUserSettings(
+    db,
+    userId,
+  ).excludeSubscribedFromRecommendations;
+  const cacheKey = recommendationPoolCacheKey(userId, opts, excludeSubscribed);
   const now = Date.now();
   const cached = recommendationPoolCache.get(cacheKey);
   if (cached && cached.expiresAt > now) {
@@ -381,6 +389,15 @@ async function ensureRecommendationPool(
     const blockedRecommendationChannels = new Set(
       userSettings.blockedRecommendationChannels,
     );
+    // Opt-in "discovery mode": the user's subscribed channels are kept in the
+    // pool so they still seed related-expansion and shape the taste centroid
+    // (subscriptions are a strong taste signal) — but their *own* uploads are
+    // stripped from the final output below, since those already live in the
+    // Subscriptions feed. Null when the setting is off (today's behavior).
+    const subscribedChannelIds =
+      userSettings.excludeSubscribedFromRecommendations
+        ? getSubscribedChannelIds(db, userId)
+        : null;
     const { byId, sourceByVideoId } = mergeVideosByIdPreferNewer(
       taggedCandidates,
       nowSec,
@@ -420,21 +437,37 @@ async function ensureRecommendationPool(
     );
     const tasteTitles = readCachedDetailTitlesForVideos(db, tasteVideoIds, 72);
     const keywordCorpus = buildKeywordCorpus(userSettings.tasteKeywords);
+    // Discovery mode: recent subscribed uploads become their own taste centroid
+    // so title similarity pulls in *related* content from non-subscribed
+    // channels, even though the subscribed videos themselves are stripped later.
+    const subscriptionTitles = subscribedChannelIds
+      ? unique
+          .filter((v) =>
+            sourceByVideoId.get(v.videoId)?.startsWith("subscription:"),
+          )
+          .map((v) => v.title)
+          .slice(0, 72)
+      : [];
     const poolTitles = unique.map((v) => v.title).slice(0, 200);
     const corpusTitles = buildTasteCorpusTitles([
       keywordCorpus,
       tasteTitles,
+      subscriptionTitles,
       poolTitles,
     ]);
     const interestChannelIds = new Set([
       ...signals.historyChannelIds,
       ...signals.interactionInterestChannelIds,
+      ...(subscribedChannelIds ?? []),
     ]);
     const maxCh = Math.max(1, ...signals.channelWeights.values());
-    // Per-interest centroids (keywords / liked+saved titles) so a candidate
-    // matching one interest is not diluted by the user's other interests.
+    // Per-interest centroids (keywords / liked+saved titles / subscriptions) so
+    // a candidate matching one interest is not diluted by the user's others.
     const tasteModel = buildTfidfModel(corpusTitles, {
-      groups: [keywordCorpus, tasteTitles],
+      groups:
+        subscriptionTitles.length > 0
+          ? [keywordCorpus, tasteTitles, subscriptionTitles]
+          : [keywordCorpus, tasteTitles],
     });
     const dislikeModel = buildTfidfModel(
       readCachedDislikeTitlesOrdered(db, dislikeCorpusVideoIds(signals), 48),
@@ -516,6 +549,15 @@ async function ensureRecommendationPool(
         scoreContext,
       });
     scored = expandedScored;
+
+    // Discovery mode: now that subscribed uploads have done their job seeding
+    // related-expansion and the taste centroid, drop the subscribed channels'
+    // own videos (including any pulled back in by expansion) from the output.
+    if (subscribedChannelIds) {
+      scored = scored.filter(
+        (row) => !(row.channelId && subscribedChannelIds.has(row.channelId)),
+      );
+    }
 
     if (!coldStart) {
       const filtered = scored.filter((row) =>
