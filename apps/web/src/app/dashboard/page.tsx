@@ -121,6 +121,13 @@ export default async function DashboardPage() {
           </p>
         </div>
         <ExcludeSubscribedToggle />
+        <p className="text-sm text-[hsl(var(--muted-foreground))]">
+          Recommendations are a discovery surface: videos already in your
+          history, queue, saved list, or playlists stay out of the feed. They
+          still shape it, though — queuing, saving, or filing a video into a
+          playlist teaches the recommender to surface more like it from channels
+          you don't yet follow.
+        </p>
       </section>
 
       <section className="space-y-4">
@@ -133,7 +140,7 @@ export default async function DashboardPage() {
         </div>
         {insights.topTopics.length === 0 ? (
           <p className="text-sm text-[hsl(var(--muted-foreground))]">
-            Not enough signal yet — watch, like, or save a few videos.
+            Not enough signal yet — watch, like, save, or queue a few videos.
           </p>
         ) : (
           <div className="flex flex-wrap gap-2">
