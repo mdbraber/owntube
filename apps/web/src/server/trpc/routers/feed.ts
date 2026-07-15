@@ -22,6 +22,11 @@ import {
   buildTfidfModel,
   type TfidfModel,
 } from "@/server/recommendation/tfidf";
+import {
+  type TrendingTailCacheEntry,
+  trendingTailPoolCache,
+  trendingTailPoolInFlight,
+} from "@/server/recommendation/trending-tail-cache";
 import { fetchTrendingVideos } from "@/server/services/proxy";
 import {
   trendingVideoCategorySchema,
@@ -46,17 +51,7 @@ const homeInputSchema = z
   })
   .optional();
 
-type TrendingTailCacheEntry = {
-  expiresAt: number;
-  pool: UnifiedVideo[];
-};
-
 const TRENDING_TAIL_CACHE_TTL_MS = 90_000;
-const trendingTailPoolCache = new Map<string, TrendingTailCacheEntry>();
-const trendingTailPoolInFlight = new Map<
-  string,
-  Promise<TrendingTailCacheEntry>
->();
 
 function trendingTailCacheKey(
   userId: number | null,
@@ -140,6 +135,19 @@ async function buildTrendingTailPoolUncached(
     const seen = new Set(seenRows.map((r) => r.videoId));
     pool = pool.filter((v) => !seen.has(v.videoId));
 
+    const userSettings = getUserSettings(db, userId);
+
+    // "Don't recommend this channel" must hold in the trending tail too — the
+    // personalized head already drops these, and the whole recommended feed
+    // should honor the block. The tail cache is cleared on block so it lands
+    // immediately rather than after the 90s TTL.
+    const blockedChannels = new Set(userSettings.blockedRecommendationChannels);
+    if (blockedChannels.size > 0) {
+      pool = pool.filter(
+        (v) => !(v.channelId && blockedChannels.has(v.channelId)),
+      );
+    }
+
     // Opt-in: keep already-subscribed channels out of the trending tail too, so
     // the whole recommended feed honors the setting (not just the personalized
     // head).
@@ -152,7 +160,6 @@ async function buildTrendingTailPoolUncached(
     // TF-IDF corpus is ≤240 short docs); the 90s per-user cache amortizes it.
     const signals = collectUserSignals(db, userId, { excludeShorts: true });
     if (signals.totalWatches >= 14) {
-      const userSettings = getUserSettings(db, userId);
       const keywordCorpus = buildKeywordCorpus(userSettings.tasteKeywords);
       const tasteVideoIds = Array.from(
         new Set([...signals.likedVideoIds, ...signals.savedVideoIds]),

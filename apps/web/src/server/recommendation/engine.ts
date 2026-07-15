@@ -46,6 +46,7 @@ import {
   buildTfidfModel,
   termFrequencyVector,
 } from "@/server/recommendation/tfidf";
+import { clearTrendingTailCacheForUser } from "@/server/recommendation/trending-tail-cache";
 import type { ScoredVideo } from "@/server/recommendation/types";
 import type { ProxySourceOverrides } from "@/server/services/proxy";
 import type { UnifiedVideo } from "@/server/services/proxy.types";
@@ -200,6 +201,7 @@ export function enrichVideosWithStoredChannelAvatars(
 
 export function clearRecommendationCachesForUser(userId?: number): void {
   clearShortsRecommendationCacheForUser(userId);
+  clearTrendingTailCacheForUser(userId);
   if (typeof userId !== "number" || !Number.isFinite(userId) || userId <= 0) {
     recommendationPoolCache.clear();
     recommendationPoolInFlight.clear();
