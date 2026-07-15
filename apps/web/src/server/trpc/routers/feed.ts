@@ -74,33 +74,26 @@ function trendingTailCacheKey(
 }
 
 /**
- * Reorders the tail so rows matching the user's taste (or watched/interacted
- * channels) come first and clearly off-taste regional trending sinks to the
- * end. Reorder rather than drop: deep scroll should never dead-end.
+ * Drops regional-trending rows that match none of the user's taste (title
+ * similarity, watched/interacted channels, or channel affinity). Past cold
+ * start the tail is meant to extend the personalized feed with *relevant*
+ * trending — off-taste filler is removed rather than parked at the end, so the
+ * feed ends when the good picks run out instead of padding with noise.
  */
-export function partitionTrendingTailByTaste(
+export function filterTrendingTailByTaste(
   pool: UnifiedVideo[],
   signals: UserSignals,
   tasteModel: TfidfModel,
   interestChannelIds: ReadonlySet<string>,
 ): UnifiedVideo[] {
-  const kept: UnifiedVideo[] = [];
-  const rejected: UnifiedVideo[] = [];
-  for (const video of pool) {
-    if (
-      keepCandidateForTrendingTail(
-        video,
-        signals,
-        tasteModel,
-        interestChannelIds,
-      )
-    ) {
-      kept.push(video);
-    } else {
-      rejected.push(video);
-    }
-  }
-  return [...kept, ...rejected];
+  return pool.filter((video) =>
+    keepCandidateForTrendingTail(
+      video,
+      signals,
+      tasteModel,
+      interestChannelIds,
+    ),
+  );
 }
 
 async function buildTrendingTailPoolUncached(
@@ -178,7 +171,7 @@ async function buildTrendingTailPoolUncached(
         ...signals.historyChannelIds,
         ...signals.interactionInterestChannelIds,
       ]);
-      pool = partitionTrendingTailByTaste(
+      pool = filterTrendingTailByTaste(
         pool,
         signals,
         tasteModel,

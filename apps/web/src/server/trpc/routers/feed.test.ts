@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { UserSignals } from "@/server/recommendation/signals";
 import { buildTfidfModel } from "@/server/recommendation/tfidf";
 import {
+  filterTrendingTailByTaste,
   mergePersonalizedWithTrendingTail,
-  partitionTrendingTailByTaste,
 } from "@/server/trpc/routers/feed";
 
 function signalsWithHistory(overrides: Partial<UserSignals> = {}): UserSignals {
@@ -26,45 +26,41 @@ function signalsWithHistory(overrides: Partial<UserSignals> = {}): UserSignals {
   };
 }
 
-describe("partitionTrendingTailByTaste", () => {
+describe("filterTrendingTailByTaste", () => {
   const taste = buildTfidfModel([
     "rust async runtime tokio",
     "rust ownership and borrowing",
   ]);
 
-  it("moves off-taste rows behind on-taste rows without dropping any", () => {
+  it("drops off-taste rows and keeps on-taste rows in order", () => {
     const pool = [
       { videoId: "off1", channelId: "UCx", title: "regional pop hit" },
       { videoId: "on1", channelId: "UCy", title: "rust async deep dive" },
       { videoId: "off2", channelId: "UCz", title: "celebrity gossip clip" },
       { videoId: "on2", channelId: "UCfan", title: "unrelated upload" },
     ];
-    const ordered = partitionTrendingTailByTaste(
+    const kept = filterTrendingTailByTaste(
       pool,
       signalsWithHistory({ channelWeights: new Map([["UCfan", 5]]) }),
       taste,
       new Set(),
     );
-    expect(ordered.map((v) => v.videoId)).toEqual([
-      "on1",
-      "on2",
-      "off1",
-      "off2",
-    ]);
+    // on1 matches on title; on2 is kept via its high-affinity channel (UCfan).
+    expect(kept.map((v) => v.videoId)).toEqual(["on1", "on2"]);
   });
 
-  it("keeps the original order during cold start", () => {
+  it("keeps everything during cold start", () => {
     const pool = [
       { videoId: "a12345", title: "regional pop hit" },
       { videoId: "b12345", title: "rust async deep dive" },
     ];
-    const ordered = partitionTrendingTailByTaste(
+    const kept = filterTrendingTailByTaste(
       pool,
       signalsWithHistory({ totalWatches: 3 }),
       taste,
       new Set(),
     );
-    expect(ordered.map((v) => v.videoId)).toEqual(["a12345", "b12345"]);
+    expect(kept.map((v) => v.videoId)).toEqual(["a12345", "b12345"]);
   });
 });
 
