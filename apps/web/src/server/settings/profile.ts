@@ -78,7 +78,7 @@ export const appSettingsSchema = z.object({
   /** ISO 3166-1 alpha-2 trending region (Piped / Invidious). */
   trendingRegion: z.string().length(2).default("US"),
   /** Topics / phrases used to bias the recommendation title similarity corpus. */
-  tasteKeywords: z.array(tasteKeywordSchema).max(24).default([]),
+  tasteKeywords: z.array(tasteKeywordSchema).max(96).default([]),
   /** Unix seconds when the user finished the taste onboarding flow. */
   tasteOnboardingCompletedAt: z.number().int().optional(),
   /** Unix seconds when the user skipped the taste onboarding flow. */
@@ -290,7 +290,7 @@ function normalizeTasteKeywords(
     if (seen.has(k)) continue;
     seen.add(k);
     out.push(t);
-    if (out.length >= 24) break;
+    if (out.length >= 96) break;
   }
   return out;
 }

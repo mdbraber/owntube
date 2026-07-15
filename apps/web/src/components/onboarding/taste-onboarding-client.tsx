@@ -50,7 +50,7 @@ function dedupeKeywords(raw: readonly string[]): string[] {
     if (seen.has(low)) continue;
     seen.add(low);
     out.push(t);
-    if (out.length >= 24) break;
+    if (out.length >= 96) break;
   }
   return out;
 }
