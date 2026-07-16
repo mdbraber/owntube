@@ -1,4 +1,5 @@
 import { and, asc, eq } from "drizzle-orm";
+import { watchHref } from "@/lib/yt-routes";
 import { z } from "zod";
 import { watchQueue } from "@/server/db/schema";
 import { fetchVideoDetail } from "@/server/services/proxy";
@@ -31,7 +32,7 @@ export const queueRouter = router({
       .where(eq(watchQueue.userId, ctx.userId))
       .orderBy(asc(watchQueue.position))
       .all();
-    return items.map((i) => ({ ...i, href: `/watch/${i.videoId}` }));
+    return items.map((i) => ({ ...i, href: watchHref(i.videoId) }));
   }),
 
   /** Enriched list (title/channel/thumbnail) for the /queue page. */

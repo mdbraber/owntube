@@ -1,4 +1,5 @@
 import type { VideoActionSurface } from "@/components/videos/video-action-registry";
+import { watchHref } from "@/lib/yt-routes";
 import { VideoCard, VideoCardShort } from "@/components/videos/video-card";
 import type { UnifiedVideo } from "@/server/services/proxy.types";
 
@@ -22,7 +23,7 @@ type VideoGridProps = {
 
 function videoCardProps(v: UnifiedVideo) {
   return {
-    href: `/watch/${v.videoId}`,
+    href: watchHref(v.videoId),
     videoId: v.videoId,
     title: v.title,
     channelId: v.channelId,

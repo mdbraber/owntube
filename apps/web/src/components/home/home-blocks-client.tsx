@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { watchHref } from "@/lib/yt-routes";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   SubscriptionTagFilter,
@@ -142,7 +143,7 @@ function HorizontalShelf({
           style={{ width: cardWidth }}
         >
           <VideoCard
-            href={`/watch/${v.videoId}`}
+            href={watchHref(v.videoId)}
             videoId={v.videoId}
             title={v.title}
             channelId={v.channelId ?? undefined}

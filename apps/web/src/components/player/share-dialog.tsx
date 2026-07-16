@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import { watchHref } from "@/lib/yt-routes";
 import { createPortal } from "react-dom";
 import { useActionToast } from "@/components/videos/action-toast";
 import { formatDuration } from "@/lib/video-display";
@@ -51,9 +52,10 @@ export function ShareDialog({ videoId, open, onClose }: ShareDialogProps) {
     ? `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}${
         startAt && seconds > 0 ? `&t=${seconds}s` : ""
       }`
-    : `${window.location.origin}/watch/${encodeURIComponent(videoId)}${
-        startAt && seconds > 0 ? `?t=${seconds}` : ""
-      }`;
+    : `${window.location.origin}${watchHref(
+        videoId,
+        startAt && seconds > 0 ? { t: seconds } : undefined,
+      )}`;
 
   const copy = async () => {
     try {

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { watchHref } from "@/lib/yt-routes";
 import {
   type ReactNode,
   useCallback,
@@ -116,7 +117,7 @@ export function ShortsSlide({
       <div className="flex h-full w-full flex-col items-center justify-center gap-2 px-6 text-center text-sm text-white/80">
         <p>Could not load this short.</p>
         <Link
-          href={`/watch/${encodeURIComponent(video.videoId)}`}
+          href={watchHref(video.videoId)}
           className="text-[hsl(var(--primary))] hover:underline"
         >
           Open in watch page
@@ -148,7 +149,7 @@ export function ShortsSlide({
             : "No playable stream for this short."}
         </p>
         <Link
-          href={`/watch/${encodeURIComponent(video.videoId)}`}
+          href={watchHref(video.videoId)}
           className="text-[hsl(var(--primary))] hover:underline"
         >
           Try watch page
@@ -204,7 +205,7 @@ export function ShortsSlide({
                 </Link>
               ) : null}
               <Link
-                href={`/watch/${encodeURIComponent(video.videoId)}`}
+                href={watchHref(video.videoId)}
                 className="mt-1 line-clamp-2 text-sm leading-snug text-white/95 hover:underline"
               >
                 {video.title}

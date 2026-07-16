@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { unstable_noStore as noStore } from "next/cache";
 import { headers } from "next/headers";
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { ChannelSubscribeButton } from "@/components/channel/channel-subscribe-button";
 import { InteractionButtons } from "@/components/player/interaction-buttons";
 import { WatchChannelTags } from "@/components/player/watch-channel-tags";
@@ -17,6 +18,7 @@ import { WatchPageGrid } from "@/components/watch/watch-page-grid";
 import { WatchPlayerMount } from "@/components/watch/watch-player-mount";
 import { WatchUpcomingLive } from "@/components/watch/watch-upcoming-live";
 import { stripRestrictedListVideos } from "@/lib/feed-exclude-restricted";
+import { watchHref } from "@/lib/yt-routes";
 import {
   getAppOriginFromRequestHeaders,
   toProxiedOrDirectPlayback,
@@ -60,17 +62,25 @@ import {
 } from "@/server/settings/profile";
 
 type WatchPageProps = {
-  params: Promise<{ videoId: string }>;
   searchParams: Promise<{
+    v?: string | string[];
     t?: string | string[];
     upstream?: string | string[];
   }>;
 };
 
+/** YouTube-canonical: the video id lives in `?v=`. */
+function readVideoId(v: string | string[] | undefined): string {
+  if (typeof v === "string") return v.trim();
+  if (Array.isArray(v)) return v[0]?.trim() ?? "";
+  return "";
+}
+
 export async function generateMetadata({
-  params,
+  searchParams,
 }: WatchPageProps): Promise<Metadata> {
-  const { videoId } = await params;
+  const videoId = readVideoId((await searchParams).v);
+  if (!videoId) return { title: "Video" };
   const input = videoDetailInputSchema.parse({ videoId });
   const db = getDb();
   try {
@@ -87,13 +97,11 @@ export async function generateMetadata({
   }
 }
 
-export default async function WatchPage({
-  params,
-  searchParams,
-}: WatchPageProps) {
+export default async function WatchPage({ searchParams }: WatchPageProps) {
   noStore();
-  const { videoId } = await params;
   const sp = await searchParams;
+  const videoId = readVideoId(sp.v);
+  if (!videoId) notFound();
   const rawT = typeof sp.t === "string" ? sp.t.trim() : "";
   const startAtSeconds = /^\d+$/.test(rawT)
     ? Number.parseInt(rawT, 10)
@@ -525,7 +533,7 @@ export default async function WatchPage({
               {sidebarVideos.map((video) => (
                 <li key={video.videoId}>
                   <VideoCardCompact
-                    href={`/watch/${encodeURIComponent(video.videoId)}`}
+                    href={watchHref(video.videoId)}
                     videoId={video.videoId}
                     title={video.title}
                     channelId={video.channelId}

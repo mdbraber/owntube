@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { watchHref } from "@/lib/yt-routes";
 import { useMemo } from "react";
 import { compactRichTextParts, parseRichText } from "@/lib/watch-rich-text";
 
@@ -59,7 +60,7 @@ export function WatchRichText({
         return (
           <Link
             key={partKey}
-            href={`/watch/${encodeURIComponent(videoId)}?t=${part.seconds}`}
+            href={watchHref(videoId, { t: part.seconds })}
             className="font-medium text-[hsl(var(--foreground))] underline decoration-[hsl(var(--primary)_/_0.45)] underline-offset-2 hover:text-[hsl(var(--primary))]"
           >
             {part.value}

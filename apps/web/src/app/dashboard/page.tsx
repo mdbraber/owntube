@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { watchHref } from "@/lib/yt-routes";
 import { redirect } from "next/navigation";
 import { ExcludeSubscribedToggle } from "@/components/dashboard/exclude-subscribed-toggle";
 import { PersonalizedFeedOnlyToggle } from "@/components/dashboard/personalized-feed-only-toggle";
@@ -263,7 +264,7 @@ export default async function DashboardPage() {
                     </span>
                     <div className="min-w-0 flex-1 space-y-1">
                       <Link
-                        href={`/watch/${encodeURIComponent(v.videoId)}`}
+                        href={watchHref(v.videoId)}
                         className="block truncate text-sm font-medium hover:underline"
                       >
                         {v.title}

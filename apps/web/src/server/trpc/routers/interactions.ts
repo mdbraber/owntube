@@ -1,4 +1,5 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
+import { watchHref } from "@/lib/yt-routes";
 import { z } from "zod";
 import { interactions } from "@/server/db/schema";
 import { clearRecommendationCachesForUser } from "@/server/recommendation/engine";
@@ -118,7 +119,7 @@ export const interactionsRouter = router({
             channelId: r.channelId,
             channelName: detail.channelName ?? r.channelId,
             channelAvatarUrl: detail.channelAvatarUrl,
-            href: `/watch/${r.videoId}`,
+            href: watchHref(r.videoId),
           };
         } catch {
           return {
@@ -129,7 +130,7 @@ export const interactionsRouter = router({
             channelId: r.channelId,
             channelName: r.channelId,
             channelAvatarUrl: undefined as string | undefined,
-            href: `/watch/${r.videoId}`,
+            href: watchHref(r.videoId),
           };
         }
       }),

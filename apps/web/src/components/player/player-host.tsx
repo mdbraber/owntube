@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
+import { watchHref } from "@/lib/yt-routes";
 import {
   useCallback,
   useEffect,
@@ -266,7 +267,7 @@ export function PlayerHost() {
     const t =
       v && Number.isFinite(v.currentTime) ? Math.round(v.currentTime) : 0;
     // The same persistent instance continues; ?t= just overrides history-resume.
-    router.push(`/watch/${encodeURIComponent(active.props.videoId)}?t=${t}`);
+    router.push(watchHref(active.props.videoId, { t }));
   }, [active, onWatch, slotEl, router]);
 
   // Drag from anywhere on the mini except the player's own controls (marked with

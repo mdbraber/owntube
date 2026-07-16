@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { watchHref } from "@/lib/yt-routes";
 import type { ReactNode } from "react";
 import { CardSwipeLayer } from "@/components/videos/card-swipe-layer";
 import { XIcon } from "@/components/videos/video-action-icons";
@@ -78,7 +79,7 @@ export function VideoRow({
   size = "md",
   enableSwipe = false,
 }: VideoRowProps) {
-  const target = `/watch/${encodeURIComponent(videoId)}`;
+  const target = watchHref(videoId);
 
   const row = (
     <div className="group flex flex-col gap-2 rounded-[var(--radius-card)] p-2 transition hover:bg-[hsl(var(--muted)_/_0.45)] sm:flex-row sm:items-center sm:gap-3">

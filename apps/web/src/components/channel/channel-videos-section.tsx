@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { playlistHref } from "@/lib/yt-routes";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useIgnoredVideos } from "@/components/videos/ignored-videos-context";
@@ -249,7 +250,7 @@ function ChannelPlaylistsGrid({
       {playlists.map((p) => (
         <li key={p.playlistId}>
           <Link
-            href={`/playlist/${encodeURIComponent(p.playlistId)}`}
+            href={playlistHref(p.playlistId)}
             className="group flex items-center gap-3 rounded-[var(--radius-card)] p-2 transition hover:bg-[hsl(var(--muted)_/_0.45)]"
           >
             <div className="relative aspect-video w-[12.75rem] shrink-0 overflow-hidden rounded-xl bg-[hsl(var(--muted))] sm:w-60">

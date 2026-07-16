@@ -937,12 +937,71 @@ async function fetchInvidiousChannelShortsPage(
   });
 }
 
+const UCID_RE = /^UC[0-9A-Za-z_-]{22}$/;
+/** Process-lifetime cache of channel handle / custom name -> resolved UC id. */
+const resolvedChannelUcids = new Map<string, string>();
+
+/**
+ * Resolve a YouTube channel handle (`@name`) or legacy custom/user name to a
+ * canonical `UC…` id via Invidious `/api/v1/resolveurl` (the direct
+ * `/api/v1/channels/@name` endpoint 500s). A bare UCID passes through untouched.
+ * On failure the original token is returned, so the caller renders the same
+ * not-found state as before instead of throwing.
+ */
+async function resolveChannelUcid(
+  channelId: string,
+  overrides?: ProxySourceOverrides,
+): Promise<string> {
+  if (UCID_RE.test(channelId)) return channelId;
+  const cached = resolvedChannelUcids.get(channelId);
+  if (cached) return cached;
+  const bare = channelId.startsWith("@") ? channelId.slice(1) : channelId;
+  // A leading `@` is unambiguously a handle; a bare token could be a handle, a
+  // /c/ custom URL, or a legacy /user/ name — try each form.
+  const ytUrls = channelId.startsWith("@")
+    ? [`https://www.youtube.com/@${bare}`]
+    : [
+        `https://www.youtube.com/@${bare}`,
+        `https://www.youtube.com/c/${bare}`,
+        `https://www.youtube.com/user/${bare}`,
+        `https://www.youtube.com/${bare}`,
+      ];
+  const { invidiousBases } = resolveProxyBaseCandidates(overrides);
+  for (const base of invidiousBases) {
+    for (const ytUrl of ytUrls) {
+      try {
+        const u = new URL("/api/v1/resolveurl", `${normalizeBaseUrl(base)}/`);
+        u.searchParams.set("url", ytUrl);
+        acquireUpstreamSlot();
+        const json = (await fetchJson(u.toString())) as {
+          ucid?: string;
+          pageType?: string;
+        };
+        if (json?.ucid && UCID_RE.test(json.ucid)) {
+          resolvedChannelUcids.set(channelId, json.ucid);
+          return json.ucid;
+        }
+      } catch {
+        /* try the next candidate / base */
+      }
+    }
+  }
+  return channelId;
+}
+
 export async function fetchChannelPage(
   db: AppDb,
-  input: ChannelPageInput,
+  rawInput: ChannelPageInput,
   overrides?: ProxySourceOverrides,
   opts?: FetchChannelPageOptions,
 ): Promise<ChannelPageResult> {
+  // Accept YouTube handle / custom / user tokens (@name, c/x, user/x): resolve
+  // to a UC id so the whole pipeline (and the cache key) is keyed canonically.
+  const canonicalId = await resolveChannelUcid(rawInput.channelId, overrides);
+  const input: ChannelPageInput =
+    canonicalId === rawInput.channelId
+      ? rawInput
+      : { ...rawInput, channelId: canonicalId };
   const key = channelCacheKey(input);
   if (opts?.cacheOnly) {
     const fresh = readFreshChannelCache(db, key);
