@@ -42,6 +42,7 @@ import {
 import { usePlayerKeyboardShortcuts } from "@/components/player/player-keyboard";
 import type { ChromeProps } from "@/components/player/player-types";
 import { Sheet } from "@/components/ui/sheet";
+import { useWatchProgress } from "@/components/videos/video-membership-context";
 import { useSponsorBlockAutoSkip } from "@/hooks/use-sponsorblock-auto-skip";
 import { cn } from "@/lib/utils";
 import { chapterIndexAt } from "@/lib/video-chapters";
@@ -195,6 +196,13 @@ export function PlayerChrome({
   const levelUi = hydrated ? level : 1;
   const seekPos = scrub ?? adapter.currentTime;
   const duration = adapter.duration;
+  // Watched video → green scrubber (matches the completed bar on cards). Use
+  // the stored completion, plus a live near-end fallback so finishing this
+  // session flips it green immediately, before the history map refreshes.
+  const storedProgress = useWatchProgress(videoId);
+  const watchedCompleted =
+    (storedProgress?.completed ?? false) ||
+    (duration > 0 && adapter.currentTime / duration >= 0.98);
   const liveClockOnly = isLive && (!Number.isFinite(duration) || duration <= 0);
   const liveWithDvr =
     isLive && Number.isFinite(duration) && duration > LIVE_EDGE_SECONDS;
@@ -378,6 +386,7 @@ export function PlayerChrome({
               chapters={chapters}
               sponsorSegments={sponsorSegments}
               scrubPreview={scrubPreview ?? null}
+              completed={watchedCompleted}
               onScrub={(t) => {
                 setScrub(t);
                 adapter.seekPreview(t);

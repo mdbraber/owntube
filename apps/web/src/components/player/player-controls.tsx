@@ -368,6 +368,7 @@ export function ProgressBar({
   chapters,
   sponsorSegments = [],
   scrubPreview,
+  completed = false,
   onScrub,
   onScrubEnd,
 }: {
@@ -377,9 +378,15 @@ export function ProgressBar({
   chapters: VideoChapter[];
   sponsorSegments?: SponsorBlockSegment[];
   scrubPreview?: ScrubPreviewConfig | null;
+  /** Watched video: paint the played fill green, matching the card's bar. */
+  completed?: boolean;
   onScrub: (t: number) => void;
   onScrubEnd: (t: number) => void;
 }) {
+  // The played portion (and scrub handle) go emerald once a video is watched,
+  // mirroring the completed watch-progress bar on cards; brand gradient
+  // otherwise.
+  const playedClass = completed ? "bg-emerald-500" : "ot-brand-gradient";
   const trackRef = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState<number | null>(null);
   const [hoverAnchor, setHoverAnchor] = useState<{
@@ -564,7 +571,7 @@ export function ProgressBar({
                 style={{ width: `${localBuffered}%` }}
               />
               <div
-                className="absolute inset-y-0 left-0 ot-brand-gradient"
+                className={cn("absolute inset-y-0 left-0", playedClass)}
                 style={{ width: `${localProgress}%` }}
               />
             </div>
@@ -582,7 +589,10 @@ export function ProgressBar({
               style={{ width: `${pct(buffered)}%` }}
             />
             <div
-              className="absolute inset-y-0 left-0 rounded-full ot-brand-gradient"
+              className={cn(
+                "absolute inset-y-0 left-0 rounded-full",
+                playedClass,
+              )}
               style={{ width: `${pct(current)}%` }}
             />
           </div>
@@ -640,7 +650,10 @@ export function ProgressBar({
           )
         : null}
       <div
-        className="pointer-events-none absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full ot-brand-gradient opacity-0 shadow ring-2 ring-black/40 transition-opacity group-hover/scrub:opacity-100"
+        className={cn(
+          "pointer-events-none absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full opacity-0 shadow ring-2 ring-black/40 transition-opacity group-hover/scrub:opacity-100",
+          playedClass,
+        )}
         style={{ left: `${pct(current)}%` }}
         aria-hidden
       />
