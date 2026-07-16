@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { channelHref, watchHref } from "@/lib/yt-routes";
+import { ChannelSubscribeButton } from "@/components/channel/channel-subscribe-button";
 import { ChannelAvatarCircle } from "@/components/videos/channel-avatar-circle";
 import { VideoCard } from "@/components/videos/video-card";
 import { auth } from "@/server/auth";
@@ -77,6 +79,7 @@ export async function SearchResults({ query, sort }: SearchResultsProps) {
   const db = getDb();
   const session = await auth();
   const userId = session?.user?.id ? Number.parseInt(session.user.id, 10) : NaN;
+  const isAuthed = Boolean(session?.user?.id);
   const overrides = getUserProxyOverrides(
     db,
     Number.isFinite(userId) ? userId : null,
@@ -194,11 +197,11 @@ export async function SearchResults({ query, sort }: SearchResultsProps) {
           <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {visibleChannels.map((c) => (
               <li key={c.channelId}>
-                <Link
-                  href={`/channel/${encodeURIComponent(c.channelId)}`}
-                  className="block rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4 transition hover:bg-[hsl(var(--muted)_/_0.35)]"
-                >
-                  <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4 transition hover:bg-[hsl(var(--muted)_/_0.35)]">
+                  <Link
+                    href={channelHref(c.channelId)}
+                    className="flex min-w-0 flex-1 items-center gap-3"
+                  >
                     <ChannelAvatarCircle
                       imageUrl={c.avatarUrl}
                       label={c.name}
@@ -214,8 +217,16 @@ export async function SearchResults({ query, sort }: SearchResultsProps) {
                         </p>
                       ) : null}
                     </div>
-                  </div>
-                </Link>
+                  </Link>
+                  {isAuthed ? (
+                    <div className="shrink-0">
+                      <ChannelSubscribeButton
+                        channelId={c.channelId}
+                        isAuthed={isAuthed}
+                      />
+                    </div>
+                  ) : null}
+                </div>
               </li>
             ))}
           </ul>
@@ -237,7 +248,7 @@ export async function SearchResults({ query, sort }: SearchResultsProps) {
             {visibleVideos.map((v) => (
               <li key={v.videoId} className="h-full">
                 <VideoCard
-                  href={`/watch/${encodeURIComponent(v.videoId)}`}
+                  href={watchHref(v.videoId)}
                   videoId={v.videoId}
                   title={v.title}
                   channelId={v.channelId}

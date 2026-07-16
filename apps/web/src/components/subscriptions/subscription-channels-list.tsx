@@ -312,7 +312,7 @@ function ChannelRow({ channel: c }: { channel: Channel }) {
             </p>
           ) : null}
           <div className="mt-1">
-            <ChannelTags channelId={c.channelId} isAuthed tone="card" />
+            <ChannelTags channelId={c.channelId} isAuthed subscribed tone="card" />
           </div>
         </div>
         <div className="hidden shrink-0 text-right text-xs text-[hsl(var(--muted-foreground))] sm:block">
