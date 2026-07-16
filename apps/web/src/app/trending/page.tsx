@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { TrendingGridSkeleton } from "@/app/trending/trending-grid-skeleton";
 import { PageHeader } from "@/components/layout/page-header";
 import { VideoGrid } from "@/components/videos/video-grid";
 import { trendingInputSchema } from "@/server/services/proxy.types";
@@ -52,13 +53,7 @@ export default async function TrendingPage({
           </>
         }
       />
-      <Suspense
-        fallback={
-          <p className="text-sm text-[hsl(var(--muted-foreground))]">
-            Loading…
-          </p>
-        }
-      >
+      <Suspense fallback={<TrendingGridSkeleton />}>
         <TrendingGrid region={region} />
       </Suspense>
     </main>

@@ -201,13 +201,12 @@ export function HomeFeedClient({ region, isAuthed }: HomeFeedClientProps) {
 
       {isInitialLoading ? (
         <div className="space-y-6" aria-hidden>
-          <div className="relative mb-2 aspect-[21/8] max-h-[min(52vw,420px)] min-h-[200px] w-full overflow-hidden rounded-[20px] border border-[hsl(var(--border))] bg-[hsl(var(--muted)_/_0.35)] max-sm:aspect-[4/3] max-sm:max-h-none">
-            <div className="absolute inset-0 animate-pulse bg-[hsl(var(--muted)_/_0.5)]" />
-            <div className="absolute inset-x-0 bottom-0 space-y-3 p-6 sm:px-9 sm:pb-8">
-              <div className="h-4 w-36 animate-pulse rounded-full bg-white/20" />
-              <div className="h-7 w-4/5 animate-pulse rounded bg-white/20" />
-              <div className="h-7 w-2/3 animate-pulse rounded bg-white/15" />
-            </div>
+          {/* Mirror the loaded feed's heading row (title + count), then the
+              card grids and shorts shelf — the skeleton represents what's
+              actually about to load, not a hero the feed never renders. */}
+          <div className="flex flex-wrap items-baseline justify-between gap-4">
+            <div className="h-6 w-28 animate-pulse rounded bg-[hsl(var(--muted)_/_0.5)]" />
+            <div className="h-4 w-16 animate-pulse rounded bg-[hsl(var(--muted)_/_0.45)]" />
           </div>
           <ul className="ot-video-grid ot-video-grid--large mx-[-16px] w-[calc(100%_+_2rem)] sm:mx-0 sm:w-full">
             {LOAD_MORE_SKELETON_KEYS.slice(0, 4).map((k) => (
