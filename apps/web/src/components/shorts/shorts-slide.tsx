@@ -20,13 +20,15 @@ import {
 } from "@/lib/short-video-aspect";
 import { cn } from "@/lib/utils";
 import { buildVideoPlayerPayloadFromDetail } from "@/lib/watch-player-payload";
-import type { UnifiedVideo } from "@/server/services/proxy.types";
+import type { UnifiedVideo, VideoDetail } from "@/server/services/proxy.types";
 import { trpc } from "@/trpc/react";
 
 type ShortsSlideProps = {
   video: UnifiedVideo;
   active: boolean;
   signedIn?: boolean;
+  /** Server-seeded detail so the first short plays without a client fetch. */
+  initialDetail?: VideoDetail;
   onWatched?: (videoId: string) => void;
   onEnded: () => void;
 };
@@ -34,40 +36,24 @@ type ShortsSlideProps = {
 const SHORT_FRAME_CLASS =
   "relative h-full max-h-full w-auto max-w-full min-w-[12rem]";
 
-function SlidePoster({
-  thumbnailUrl,
-  videoId,
-}: {
-  thumbnailUrl?: string;
-  videoId: string;
-}) {
-  if (!thumbnailUrl) {
-    return <div className="h-full w-full bg-zinc-950" />;
-  }
-  return (
-    <VideoThumbnailImg
-      url={thumbnailUrl}
-      videoId={videoId}
-      // cover, not contain: short thumbnails are 16:9, so contain renders a
-      // small horizontal strip letterboxed in the vertical frame — the
-      // "smaller horizontal video before the vertical one" flash. cover fills
-      // the 9:16 frame so the poster matches the vertical video that replaces it.
-      className="h-full w-full object-cover opacity-80"
-      loading="lazy"
-    />
-  );
-}
-
 export function ShortsSlide({
   video,
   active,
   signedIn = false,
+  initialDetail,
   onWatched,
   onEnded,
 }: ShortsSlideProps) {
   const detailQuery = trpc.video.detail.useQuery(
     { videoId: video.videoId },
-    { enabled: active, staleTime: 60_000 },
+    {
+      // `enabled` gates the fetch to the active slide, but a server-seeded
+      // `initialData` makes the first short's detail available immediately on
+      // mount so playback starts with no client round-trip.
+      enabled: active || initialDetail != null,
+      staleTime: 60_000,
+      initialData: initialDetail,
+    },
   );
 
   const playback = useMemo(() => {
@@ -111,14 +97,16 @@ export function ShortsSlide({
     (detailQuery.isLoading || detailQuery.isFetching);
   const detailReady = active && Boolean(detailQuery.data);
 
+  // The thumbnail is rendered once as a persistent backdrop in the frame (see
+  // below), so the loading/inactive states here don't re-draw it — they just
+  // sit over it. That keeps the thumbnail visible the whole time the video is
+  // resolving/buffering (no black gap) and behind any letterboxing.
   let body: ReactNode;
   if (!active) {
-    body = (
-      <SlidePoster thumbnailUrl={video.thumbnailUrl} videoId={video.videoId} />
-    );
+    body = null;
   } else if (detailQuery.isError) {
     body = (
-      <div className="flex h-full w-full flex-col items-center justify-center gap-2 px-6 text-center text-sm text-white/80">
+      <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-black/40 px-6 text-center text-sm text-white/80">
         <p>Could not load this short.</p>
         <Link
           href={watchHref(video.videoId)}
@@ -130,25 +118,13 @@ export function ShortsSlide({
     );
   } else if (waitingForDetail) {
     body = (
-      <div className="relative flex h-full w-full items-center justify-center">
-        {video.thumbnailUrl ? (
-          <VideoThumbnailImg
-            url={video.thumbnailUrl}
-            videoId={video.videoId}
-            // cover fills the 9:16 frame (16:9 thumb) so the loading poster
-            // reads as a vertical still, not a letterboxed horizontal strip.
-            className="h-full w-full object-cover opacity-50"
-            loading="eager"
-          />
-        ) : null}
-        <p className="absolute bottom-6 left-0 right-0 z-[1] text-center text-sm text-white/80">
-          Loading…
-        </p>
+      <div className="flex h-full w-full items-end justify-center pb-6">
+        <p className="text-sm text-white/80 drop-shadow">Loading…</p>
       </div>
     );
   } else if (detailReady && !playback?.payload) {
     body = (
-      <div className="flex h-full w-full flex-col items-center justify-center gap-2 px-6 text-center text-sm text-white/80">
+      <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-black/40 px-6 text-center text-sm text-white/80">
         <p>
           {playback?.onlyDashOrUnsupported
             ? "This short cannot be played in the browser."
@@ -178,8 +154,8 @@ export function ShortsSlide({
     );
   } else {
     body = (
-      <div className="flex h-full w-full items-center justify-center px-6 text-center text-sm text-white/80">
-        Loading player…
+      <div className="flex h-full w-full items-end justify-center pb-6 text-sm text-white/80">
+        <span className="drop-shadow">Loading player…</span>
       </div>
     );
   }
@@ -198,6 +174,18 @@ export function ShortsSlide({
           )}
           style={{ aspectRatio: frameAspect }}
         >
+          {/* Persistent thumbnail backdrop: shows while the video resolves and
+              buffers (instead of black), and fills behind any letterboxing —
+              e.g. a landscape short sits centered over its own blurred-cover
+              still rather than black bars. The playing video paints over it. */}
+          {video.thumbnailUrl ? (
+            <VideoThumbnailImg
+              url={video.thumbnailUrl}
+              videoId={video.videoId}
+              className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+              loading={active ? "eager" : "lazy"}
+            />
+          ) : null}
           <div className="absolute inset-0">{body}</div>
 
           <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 rounded-b-xl bg-gradient-to-t from-black/90 via-black/45 to-transparent px-3 pb-5 pt-12">

@@ -111,6 +111,19 @@ function readFreshDetailCache(db: AppDb, key: string): VideoDetail | null {
   });
 }
 
+/**
+ * Synchronous cache-only peek: returns the fresh cached VideoDetail when
+ * present, else null. Never touches upstream, so it's safe to call during SSR
+ * to seed a client query — a warm short gets instant playback, a cold one just
+ * returns null and the client resolves it (no page-blocking network wait).
+ */
+export function peekFreshVideoDetail(
+  db: AppDb,
+  input: VideoDetailInput,
+): VideoDetail | null {
+  return readFreshDetailCache(db, detailCacheKey(input));
+}
+
 function readStaleDetailCache(db: AppDb, key: string): VideoDetail | null {
   const row = readLatestCacheRow(db, key);
   if (!row) return null;

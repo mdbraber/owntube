@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ShortsEmptyHint } from "@/components/shorts/shorts-empty-hint";
+import { ShortsPreloader } from "@/components/shorts/shorts-preloader";
 import { ShortsSlide } from "@/components/shorts/shorts-slide";
 import {
   readSeenShortIds,
@@ -12,6 +13,7 @@ import type { UpstreamAvailability } from "@/server/services/proxy";
 import type {
   ShortsFeedResult,
   UnifiedVideo,
+  VideoDetail,
 } from "@/server/services/proxy.types";
 import { trpc } from "@/trpc/react";
 
@@ -19,13 +21,15 @@ type ShortsFeedClientProps = {
   region: string;
   initialVideoId?: string;
   initialFeed?: ShortsFeedResult | null;
+  /** Server-resolved detail for the first short, seeded so it plays at once. */
+  initialDetail?: VideoDetail | null;
   initialUpstream?: UpstreamAvailability;
   initialWatchedVideoIds?: string[];
   signedIn?: boolean;
 };
 
 /** How many upcoming shorts to resolve stream URLs for ahead of the active one. */
-const SHORTS_DETAIL_PREFETCH_AHEAD = 2;
+const SHORTS_DETAIL_PREFETCH_AHEAD = 3;
 
 function filterExcludedVideos(
   videos: UnifiedVideo[],
@@ -64,6 +68,7 @@ export function ShortsFeedClient({
   region,
   initialVideoId,
   initialFeed,
+  initialDetail,
   initialUpstream,
   initialWatchedVideoIds = [],
   signedIn = false,
@@ -91,6 +96,8 @@ export function ShortsFeedClient({
   excludedIdsRef.current = excludedIds;
 
   const utils = trpc.useUtils();
+  const settingsQuery = trpc.settings.get.useQuery();
+  const preloadNext = settingsQuery.data?.shortsPreloadNext ?? true;
   const seenIdsQuery = trpc.shorts.seenVideoIds.useQuery(undefined, {
     enabled: signedIn,
     staleTime: 0,
@@ -615,6 +622,11 @@ export function ShortsFeedClient({
               video={video}
               active={activeVideoId === video.videoId}
               signedIn={signedIn}
+              initialDetail={
+                initialDetail?.videoId === video.videoId
+                  ? initialDetail
+                  : undefined
+              }
               onWatched={signedIn ? onShortWatched : undefined}
               onEnded={advance}
             />
@@ -631,6 +643,12 @@ export function ShortsFeedClient({
           </div>
         ) : null}
       </div>
+      {preloadNext && items[activeIndex + 1] ? (
+        <ShortsPreloader
+          key={items[activeIndex + 1].videoId}
+          videoId={items[activeIndex + 1].videoId}
+        />
+      ) : null}
     </div>
   );
 }
