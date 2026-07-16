@@ -48,7 +48,11 @@ function SlidePoster({
     <VideoThumbnailImg
       url={thumbnailUrl}
       videoId={videoId}
-      className="h-full w-full object-contain opacity-80"
+      // cover, not contain: short thumbnails are 16:9, so contain renders a
+      // small horizontal strip letterboxed in the vertical frame — the
+      // "smaller horizontal video before the vertical one" flash. cover fills
+      // the 9:16 frame so the poster matches the vertical video that replaces it.
+      className="h-full w-full object-cover opacity-80"
       loading="lazy"
     />
   );
@@ -131,7 +135,9 @@ export function ShortsSlide({
           <VideoThumbnailImg
             url={video.thumbnailUrl}
             videoId={video.videoId}
-            className="max-h-full max-w-full object-contain opacity-50"
+            // cover fills the 9:16 frame (16:9 thumb) so the loading poster
+            // reads as a vertical still, not a letterboxed horizontal strip.
+            className="h-full w-full object-cover opacity-50"
             loading="eager"
           />
         ) : null}

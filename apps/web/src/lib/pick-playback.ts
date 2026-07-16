@@ -555,18 +555,21 @@ export function buildWatchPlayback(
       merged = buildMerged(() => true);
     }
     if (merged.length > 0) {
-      let variants = preferPlaybackDefault(
-        buildFullQualitySelectorList(merged),
-      );
-      if (options.avoidSplitAudioVideo) {
-        variants = [
-          ...variants.filter((v) => v.t === "muxed"),
-          ...variants.filter((v) => v.t === "split"),
-        ];
-      }
+      // Shorts prioritize instant start over max resolution. A muxed
+      // single-file stream begins playing immediately with in-sync audio; the
+      // split path (video-only stream + a separate <audio> element) buffers two
+      // streams and frequently stalls — the "takes forever / never loads" case,
+      // and it carries a 7s start timeout. So front muxed variants on *every*
+      // platform (not just iOS) and skip the 1080p default preference, whose
+      // rung is usually split. Split rungs stay available in the quality menu.
+      const variants = buildFullQualitySelectorList(merged);
+      const muxedFirst = [
+        ...variants.filter((v) => v.t === "muxed"),
+        ...variants.filter((v) => v.t === "split"),
+      ];
       return {
         kind: "progressive",
-        variants,
+        variants: muxedFirst,
         onlyDashOrUnsupported: false,
       };
     }
