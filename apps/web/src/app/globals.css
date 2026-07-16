@@ -797,6 +797,11 @@ body {
    it hugs its text (per-line, not one block for the whole cue). */
 .ot-caption__line {
   display: block;
+  /* Hug the text so the background ends where the words do (ragged right edge),
+     never stretching to a full block. */
+  width: fit-content;
+  max-width: 100%;
+  align-self: flex-start;
   white-space: nowrap;
   border-radius: 0.25rem;
   padding: 0.06em 0.4em;

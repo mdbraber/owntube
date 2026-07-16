@@ -35,6 +35,8 @@ import {
   PauseIcon,
   PipIcon,
   PlayIcon,
+  SkipBack15Icon,
+  SkipForward15Icon,
   VolHighIcon,
   VolLowIcon,
 } from "@/components/player/player-icons";
@@ -207,6 +209,16 @@ export function PlayerChrome({
     title,
     surface: "related",
   });
+  const skip = (delta: number) => {
+    const d = adapter.duration;
+    const target = adapter.currentTime + delta;
+    adapter.seek(
+      Number.isFinite(d) && d > 0
+        ? Math.min(Math.max(0, target), d)
+        : Math.max(0, target),
+    );
+    ping();
+  };
   const liveClockOnly = isLive && (!Number.isFinite(duration) || duration <= 0);
   const liveWithDvr =
     isLive && Number.isFinite(duration) && duration > LIVE_EDGE_SECONDS;
@@ -263,14 +275,33 @@ export function PlayerChrome({
         </div>
       ) : null}
 
-      {/* Large center play/pause — the primary control on phones (YouTube
-          style). A native <button> click is reliable on iOS where the tap
-          surface's synthetic click is not, so shorts get it too: shown whenever
-          the short is paused (a clear "tap to play"), hidden while it plays (a
-          surface tap pauses). Non-shorts also show it while the chrome is up.
-          Hidden during buffering (the spinner covers that). */}
+      {/* Center transport cluster — a big play/pause flanked by 15s skip
+          buttons (Apple-style), in every mode except mini. On shorts it's just
+          the play/pause (15s skips don't suit a short). The play button stays
+          tappable even while invisible (a native click is reliable on iOS where
+          the surface's synthetic click is not — so a center tap always toggles);
+          the skip buttons only capture while the chrome is up, so a side tap
+          otherwise reveals the controls. Buffering is covered by the spinner. */}
       {!miniMode && !hold2xUi && !(adapter.waiting && !adapter.paused) ? (
-        <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center sm:hidden">
+        <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center gap-8 sm:gap-14">
+          {!shortsMode ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                skip(-15);
+              }}
+              aria-label="Back 15 seconds"
+              className={cn(
+                "flex h-14 w-14 items-center justify-center rounded-full text-white transition hover:bg-black/40 active:scale-90 [&_svg]:drop-shadow-lg",
+                adapter.paused || chromeShown
+                  ? "pointer-events-auto opacity-100"
+                  : "opacity-0",
+              )}
+            >
+              <SkipBack15Icon className="h-8 w-8" />
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={(e) => {
@@ -280,7 +311,7 @@ export function PlayerChrome({
             }}
             aria-label={adapter.paused ? "Play" : "Pause"}
             className={cn(
-              "pointer-events-auto flex h-[68px] w-[68px] items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm transition active:scale-95",
+              "pointer-events-auto flex h-[72px] w-[72px] items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm transition active:scale-95",
               (shortsMode ? adapter.paused : adapter.paused || chromeShown)
                 ? "opacity-100"
                 : "opacity-0",
@@ -292,6 +323,24 @@ export function PlayerChrome({
               <PauseIcon className="h-8 w-8" />
             )}
           </button>
+          {!shortsMode ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                skip(15);
+              }}
+              aria-label="Forward 15 seconds"
+              className={cn(
+                "flex h-14 w-14 items-center justify-center rounded-full text-white transition hover:bg-black/40 active:scale-90 [&_svg]:drop-shadow-lg",
+                adapter.paused || chromeShown
+                  ? "pointer-events-auto opacity-100"
+                  : "opacity-0",
+              )}
+            >
+              <SkipForward15Icon className="h-8 w-8" />
+            </button>
+          ) : null}
         </div>
       ) : null}
 

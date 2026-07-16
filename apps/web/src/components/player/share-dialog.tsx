@@ -21,6 +21,26 @@ function readPlayerSeconds(): number {
   return Number.isFinite(t) ? Math.floor(t) : 0;
 }
 
+/** Video length, for clamping an edited start time. 0 when unknown. */
+function readPlayerDuration(): number {
+  const video = document.querySelector<HTMLVideoElement>(
+    "[data-ot-player-root] video",
+  );
+  const d = video?.duration ?? 0;
+  return Number.isFinite(d) && d > 0 ? Math.floor(d) : 0;
+}
+
+/** Parse "H:MM:SS", "M:SS", or bare seconds into seconds; null when invalid. */
+function parseTimeToSeconds(input: string): number | null {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+  const parts = trimmed.split(":");
+  if (parts.some((p) => !/^\d+$/.test(p.trim()))) return null;
+  let secs = 0;
+  for (const p of parts) secs = secs * 60 + Number(p);
+  return Number.isFinite(secs) ? secs : null;
+}
+
 /**
  * Share modal for the watch page: the link to copy, a "Start at" toggle that
  * appends the current playback position, and a "Share as YouTube link"
@@ -34,11 +54,16 @@ export function ShareDialog({ videoId, open, onClose }: ShareDialogProps) {
   const [startAt, setStartAt] = useState(false);
   const [asYouTube, setAsYouTube] = useState(true);
   const [seconds, setSeconds] = useState(0);
+  const [timeText, setTimeText] = useState("0:00");
+  const [duration, setDuration] = useState(0);
 
   // Snapshot the playback position when the dialog opens.
   useEffect(() => {
     if (!open) return;
-    setSeconds(readPlayerSeconds());
+    const pos = readPlayerSeconds();
+    setSeconds(pos);
+    setTimeText(formatDuration(pos) ?? "0:00");
+    setDuration(readPlayerDuration());
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
@@ -105,18 +130,51 @@ export function ShareDialog({ videoId, open, onClose }: ShareDialogProps) {
         </div>
 
         <div className="mt-4 space-y-2.5">
-          <label className="flex cursor-pointer select-none items-center gap-2.5 text-sm">
+          <div className="flex select-none items-center gap-2.5 text-sm">
+            <label className="flex cursor-pointer items-center gap-2.5">
+              <input
+                type="checkbox"
+                checked={startAt}
+                onChange={(e) => setStartAt(e.currentTarget.checked)}
+                className="h-4 w-4 accent-[hsl(var(--primary))]"
+              />
+              Start at
+            </label>
+            {/* Editable start time (H:MM:SS / M:SS / seconds); clamped to length. */}
             <input
-              type="checkbox"
-              checked={startAt}
-              onChange={(e) => setStartAt(e.currentTarget.checked)}
-              className="h-4 w-4 accent-[hsl(var(--primary))]"
+              type="text"
+              inputMode="numeric"
+              value={timeText}
+              disabled={!startAt}
+              onFocus={(e) => {
+                if (!startAt) setStartAt(true);
+                e.currentTarget.select();
+              }}
+              onChange={(e) => {
+                const raw = e.currentTarget.value;
+                setTimeText(raw);
+                const parsed = parseTimeToSeconds(raw);
+                if (parsed !== null) {
+                  setSeconds(
+                    duration > 0 ? Math.min(parsed, duration) : parsed,
+                  );
+                }
+              }}
+              onBlur={() => {
+                const parsed = parseTimeToSeconds(timeText);
+                const clamped =
+                  parsed === null
+                    ? seconds
+                    : duration > 0
+                      ? Math.min(parsed, duration)
+                      : parsed;
+                setSeconds(clamped);
+                setTimeText(formatDuration(clamped) ?? "0:00");
+              }}
+              aria-label="Start time"
+              className="w-20 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted)_/_0.5)] px-2 py-1 text-center text-sm tabular-nums text-[hsl(var(--foreground))] disabled:opacity-50"
             />
-            Start at{" "}
-            <span className="tabular-nums text-[hsl(var(--muted-foreground))]">
-              {formatDuration(seconds) ?? "0:00"}
-            </span>
-          </label>
+          </div>
           <label className="flex cursor-pointer select-none items-center gap-2.5 text-sm">
             <input
               type="checkbox"

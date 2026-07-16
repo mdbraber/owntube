@@ -190,3 +190,55 @@ export function CaptionsIcon({ className }: { className?: string }) {
     </svg>
   );
 }
+
+export function SkipBack15Icon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      role="img"
+      aria-label="Back 15 seconds"
+    >
+      <title>Back 15 seconds</title>
+      <path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z" />
+      <text
+        x="12"
+        y="16.5"
+        textAnchor="middle"
+        fontSize="7.5"
+        fontWeight="700"
+        stroke="none"
+      >
+        15
+      </text>
+    </svg>
+  );
+}
+
+export function SkipForward15Icon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      role="img"
+      aria-label="Forward 15 seconds"
+    >
+      <title>Forward 15 seconds</title>
+      <g transform="translate(24,0) scale(-1,1)">
+        <path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z" />
+      </g>
+      <text
+        x="12"
+        y="16.5"
+        textAnchor="middle"
+        fontSize="7.5"
+        fontWeight="700"
+        stroke="none"
+      >
+        15
+      </text>
+    </svg>
+  );
+}
