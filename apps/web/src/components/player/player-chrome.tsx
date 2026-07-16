@@ -40,6 +40,8 @@ import {
 } from "@/components/player/player-icons";
 import { usePlayerKeyboardShortcuts } from "@/components/player/player-keyboard";
 import { ScrubPreviewStage } from "@/components/player/scrub-preview";
+import { useVideoActions } from "@/components/videos/use-video-actions";
+import { VideoActionGlyph } from "@/components/videos/video-action-registry";
 import type { ChromeProps } from "@/components/player/player-types";
 import { Sheet } from "@/components/ui/sheet";
 import { useWatchProgress } from "@/components/videos/video-membership-context";
@@ -198,6 +200,13 @@ export function PlayerChrome({
   const watchedCompleted =
     (storedProgress?.completed ?? false) ||
     (duration > 0 && adapter.currentTime / duration >= 0.98);
+  // Fullscreen top-right quick actions (mark watched / save / queue). State is
+  // videoId-keyed from the shared membership context, so no channelId needed.
+  const videoActions = useVideoActions({
+    videoId,
+    title,
+    surface: "related",
+  });
   const liveClockOnly = isLive && (!Number.isFinite(duration) || duration <= 0);
   const liveWithDvr =
     isLive && Number.isFinite(duration) && duration > LIVE_EDGE_SECONDS;
@@ -335,11 +344,67 @@ export function PlayerChrome({
             height: "5rem",
           }}
         >
-          {!miniMode ? (
-            <p className="line-clamp-1 text-sm font-medium text-white drop-shadow">
-              {title}
-            </p>
-          ) : null}
+          <div className="flex items-start justify-between gap-3">
+            {!miniMode ? (
+              <p className="line-clamp-1 min-w-0 flex-1 text-sm font-medium text-white drop-shadow">
+                {title}
+              </p>
+            ) : (
+              <span className="flex-1" />
+            )}
+            {/* Fullscreen only: quick actions top-right (icons only). */}
+            {fsActive && !miniMode ? (
+              <div
+                data-controls
+                className="pointer-events-auto flex shrink-0 items-center gap-1"
+              >
+                {(
+                  [
+                    {
+                      id: "watched",
+                      active: videoActions.isActive("watched"),
+                      onClick: () => void videoActions.markWatched(),
+                      label: videoActions.isActive("watched")
+                        ? "Mark unwatched"
+                        : "Mark watched",
+                    },
+                    {
+                      id: "save",
+                      active: videoActions.isActive("save"),
+                      onClick: () => videoActions.toggleSave(),
+                      label: videoActions.isActive("save") ? "Unsave" : "Save",
+                    },
+                    {
+                      id: "queue",
+                      active: videoActions.isActive("queue"),
+                      onClick: () => videoActions.toggleQueue(),
+                      label: videoActions.isActive("queue")
+                        ? "Remove from queue"
+                        : "Add to queue",
+                    },
+                  ] as const
+                ).map((a) => (
+                  <button
+                    key={a.id}
+                    type="button"
+                    onClick={a.onClick}
+                    aria-label={a.label}
+                    title={a.label}
+                    className={cn(
+                      "flex h-9 w-9 items-center justify-center rounded-full text-white transition hover:bg-black/60",
+                      a.active ? "bg-black/60" : "bg-black/40",
+                    )}
+                  >
+                    <VideoActionGlyph
+                      id={a.id}
+                      active={a.active}
+                      className="h-5 w-5"
+                    />
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
         </div>
       )}
 
