@@ -39,6 +39,7 @@ import {
   VolLowIcon,
 } from "@/components/player/player-icons";
 import { usePlayerKeyboardShortcuts } from "@/components/player/player-keyboard";
+import { ScrubPreviewStage } from "@/components/player/scrub-preview";
 import type { ChromeProps } from "@/components/player/player-types";
 import { Sheet } from "@/components/ui/sheet";
 import { useWatchProgress } from "@/components/videos/video-membership-context";
@@ -226,8 +227,23 @@ export function PlayerChrome({
 
       <CaptionOverlay text={captionText} raised={chromeShown} />
 
-      {/* Buffering spinner */}
-      {!miniMode && adapter.waiting && !adapter.paused ? (
+      {/* On-video scrub preview: while actively dragging the scrubber, the frame
+          fills the whole video area (YouTube-style) with the target time floated
+          above the scrubber. The small timeline preview shows at the same time. */}
+      {scrub != null && scrubPreview && !miniMode && !shortsMode ? (
+        <div className="pointer-events-none absolute inset-0 z-40 overflow-hidden">
+          <ScrubPreviewStage time={scrub} scrubPreview={scrubPreview} />
+          <span className="absolute bottom-16 left-1/2 -translate-x-1/2 rounded bg-black/75 px-2.5 py-1 font-mono text-sm tabular-nums text-white shadow-lg sm:bottom-20">
+            {formatClock(scrub)}
+          </span>
+        </div>
+      ) : null}
+
+      {/* Buffering spinner. Not in shorts: the slide's thumbnail backdrop shows
+          through the (transparent) player while it buffers, so a swipe reads as
+          a still frame that starts playing — instant-feeling — rather than a
+          loading spinner. */}
+      {!miniMode && !shortsMode && adapter.waiting && !adapter.paused ? (
         <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
           {/* biome-ignore lint/a11y/useSemanticElements: visual spinner */}
           <div
@@ -867,7 +883,9 @@ function CaptionOverlay({
   raised: boolean;
 }) {
   if (!text) return null;
-  const lines = text.split("\n");
+  // Drop blank lines so a per-line background box never renders empty.
+  const lines = text.split("\n").filter((line) => line.trim().length > 0);
+  if (lines.length === 0) return null;
   return (
     <output aria-live="polite" className="ot-caption" data-raised={raised}>
       <span className="ot-caption__box">

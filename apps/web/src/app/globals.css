@@ -762,17 +762,21 @@ body {
 }
 
 .ot-caption__box {
-  display: inline-block;
-  /* Cancel the box's own padding so the text (not the padded box) sits at the
-     inset edge. */
-  margin-left: -0.5rem;
-  border-radius: 0.25rem;
-  padding: 0.25rem 0.5rem;
+  /* A column of independent line boxes: each line hugs its own text (a short
+     line gets a short background, not one block sized to the widest line —
+     YouTube-style). align-items:flex-start keeps every line sized to content
+     and left-aligned. The background/padding live on each line below. */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.14em;
+  /* Cancel a line box's left padding so the text (not the padded box) sits at
+     the inset edge. */
+  margin-left: -0.4em;
   text-align: left;
   font-weight: 500;
   line-height: 1.375;
   color: #fff;
-  background-color: rgb(0 0 0 / 0.55);
   text-shadow: 0 1px 2px rgb(0 0 0 / 0.9);
   /* Scales with the player width (cqw via the .ot-caption container):
      ~29px on a 900px player, down to ~12px in the mini player. */
@@ -789,10 +793,14 @@ body {
 }
 
 /* Roll-up: every line renders at full brightness and keeps its authored
-   break — cue lines never rewrap. */
+   break — cue lines never rewrap. Each line carries its own background box so
+   it hugs its text (per-line, not one block for the whole cue). */
 .ot-caption__line {
   display: block;
   white-space: nowrap;
+  border-radius: 0.25rem;
+  padding: 0.06em 0.4em;
+  background-color: rgb(0 0 0 / 0.55);
 }
 
 /* Bottom sheets (Base UI Drawer, see components/ui/sheet.tsx). The transform is

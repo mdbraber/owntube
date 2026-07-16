@@ -4,8 +4,8 @@
  * upper bound on real playback, so completion uses a ratio threshold.
  */
 
-/** Fraction of the video length that counts as a completed watch (tolerates skipped outros). */
-export const COMPLETION_RATIO = 0.85;
+/** Fraction of the video length that counts as a completed watch (tolerates a skipped outro). */
+export const COMPLETION_RATIO = 0.95;
 
 export type WatchEventPayload = {
   durationWatched: number;

@@ -126,6 +126,94 @@ function ScrubPreviewVisual({
   );
 }
 
+/**
+ * Scrub frame shown ON the video while the viewer is actively dragging the
+ * scrubber (YouTube-style, especially on touch). Fills the whole video frame:
+ * the storyboard cell is converted from its pixel crop to a percentage-based
+ * background so it scales to cover any player size. Falls back to a canvas
+ * frame (cover), then the poster still, then nothing.
+ */
+export function ScrubPreviewStage({
+  time,
+  scrubPreview,
+}: {
+  time: number;
+  scrubPreview: ScrubPreviewConfig;
+}) {
+  const [failed, setFailed] = useState(false);
+  const frame = scrubPreview.frameAt?.(time) ?? null;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset the load probe when the frame image changes.
+  useEffect(() => setFailed(false), [frame?.url]);
+
+  const fill = "absolute inset-0 h-full w-full";
+
+  if (frame && !failed) {
+    if (frame.backgroundSize) {
+      // Pixel sprite crop → percentage background so the selected cell scales to
+      // fill the frame regardless of player size. Grid geometry is recovered
+      // from the sheet size (cols×rows) and the cell offset.
+      const [sheetW, sheetH] = frame.backgroundSize
+        .split(" ")
+        .map((v) => Number.parseFloat(v));
+      const [posX, posY] = (frame.backgroundPosition ?? "0px 0px")
+        .split(" ")
+        .map((v) => Number.parseFloat(v));
+      const cols = Math.max(1, Math.round(sheetW / frame.width));
+      const rows = Math.max(1, Math.round(sheetH / frame.height));
+      const col = Math.max(0, Math.round(-posX / frame.width));
+      const row = Math.max(0, Math.round(-posY / frame.height));
+      const bgSize = `${cols * 100}% ${rows * 100}%`;
+      const bgPos = `${cols > 1 ? (col / (cols - 1)) * 100 : 0}% ${
+        rows > 1 ? (row / (rows - 1)) * 100 : 0
+      }%`;
+      return (
+        <div
+          className={cn(fill, "bg-black")}
+          aria-hidden
+          style={{
+            backgroundImage: `url(${frame.url})`,
+            backgroundRepeat: "no-repeat",
+            backgroundSize: bgSize,
+            backgroundPosition: bgPos,
+          }}
+        >
+          {/* biome-ignore lint/performance/noImgElement: probe storyboard sheet load */}
+          <img
+            src={frame.url}
+            alt=""
+            className="h-0 w-0 opacity-0"
+            onError={() => setFailed(true)}
+          />
+        </div>
+      );
+    }
+    return (
+      // biome-ignore lint/performance/noImgElement: full-frame scrub thumbnail
+      <img
+        src={frame.url}
+        alt=""
+        className={cn(fill, "bg-black object-contain")}
+        onError={() => setFailed(true)}
+        aria-hidden
+      />
+    );
+  }
+
+  if (scrubPreview.poster) {
+    return (
+      // biome-ignore lint/performance/noImgElement: scrub preview still fallback
+      <img
+        src={scrubPreview.poster}
+        alt=""
+        className={cn(fill, "bg-black object-contain")}
+        onError={(e) => applyVideoThumbnailImgError(e.currentTarget)}
+        aria-hidden
+      />
+    );
+  }
+  return null;
+}
+
 export function ScrubPreviewOverlay({
   hover,
   duration,

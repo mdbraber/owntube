@@ -86,6 +86,38 @@ export function usePlayerCaptions(
 ): CaptionModel {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [activeText, setActiveText] = useState<string | null>(null);
+  // True while the video is in a native surface (Picture-in-Picture or Apple's
+  // fullscreen player) that draws `showing` cues itself. Our in-page overlay
+  // must go dark then, or captions render twice — once natively in PiP and once
+  // in the (still-visible) inline frame.
+  const [nativePresentation, setNativePresentation] = useState(false);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reactKey rebinds after the media element remounts.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const sync = () => {
+      setNativePresentation(
+        document.pictureInPictureElement === video ||
+          (
+            video as HTMLVideoElement & {
+              webkitDisplayingFullscreen?: boolean;
+            }
+          ).webkitDisplayingFullscreen === true,
+      );
+    };
+    sync();
+    video.addEventListener("enterpictureinpicture", sync);
+    video.addEventListener("leavepictureinpicture", sync);
+    video.addEventListener("webkitbeginfullscreen", sync);
+    video.addEventListener("webkitendfullscreen", sync);
+    return () => {
+      video.removeEventListener("enterpictureinpicture", sync);
+      video.removeEventListener("leavepictureinpicture", sync);
+      video.removeEventListener("webkitbeginfullscreen", sync);
+      video.removeEventListener("webkitendfullscreen", sync);
+    };
+  }, [videoRef, reactKey]);
 
   // On a new source, restore the remembered language when it's available.
   // biome-ignore lint/correctness/useExhaustiveDependencies: reactKey re-resolves the remembered track for a new video.
@@ -263,6 +295,8 @@ export function usePlayerCaptions(
     })),
     activeIndex,
     setActive,
-    activeText,
+    // Suppress the in-page overlay while a native surface (PiP / Apple
+    // fullscreen) is drawing the cues itself, so captions show only there.
+    activeText: nativePresentation ? null : activeText,
   };
 }
