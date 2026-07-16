@@ -32,6 +32,29 @@ export function useHlsVodPlayback(
   const autoPlayRef = useRef(autoPlay);
   autoPlayRef.current = autoPlay;
 
+  // Start playback when autoplay turns ON after setup. Key case: a pre-warmed
+  // shorts slide attaches + buffers while paused (autoplay off), then becomes
+  // active (autoplay on) — but MANIFEST_PARSED / loadedmetadata already fired
+  // during preload, so their one-shot play attempt is long gone and nothing
+  // else would start it. This effect covers the transition (and retries on the
+  // next ready event). Muted shorts start fine; the watch page only reaches
+  // here when its own autoplay setting is on.
+  useEffect(() => {
+    if (!autoPlay) return;
+    const v = videoRef.current;
+    if (!v) return;
+    const play = () => {
+      if (v.paused) void v.play().catch(() => {});
+    };
+    play();
+    v.addEventListener("canplay", play);
+    v.addEventListener("loadeddata", play);
+    return () => {
+      v.removeEventListener("canplay", play);
+      v.removeEventListener("loadeddata", play);
+    };
+  }, [autoPlay, videoRef]);
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: streamKey forces a fresh instance when the source swaps without changing the URL.
   useEffect(() => {
     const video = videoRef.current;

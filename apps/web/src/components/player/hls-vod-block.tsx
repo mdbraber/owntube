@@ -12,6 +12,7 @@ import {
 import type { CaptionTrack } from "@/components/player/player-payload";
 import type { SponsorBlockChromeProps } from "@/components/player/player-types";
 import { useBackgroundPlayback } from "@/hooks/use-background-playback";
+import type { ScrubPreviewConfig } from "@/hooks/use-scrub-frame-preview";
 import {
   pickDashVideoFamily,
   useDashPlayback,
@@ -64,8 +65,10 @@ export function HlsVodBlock({
   autoplayNext,
   onToggleAutoplayNext,
   onPlayNext,
+  scrubPreview,
   miniMode = false,
   shortsMode = false,
+  shortsActive = true,
   miniStartPaused = false,
   autoplay = false,
   restoredVolume,
@@ -93,8 +96,10 @@ export function HlsVodBlock({
   autoplayNext: boolean;
   onToggleAutoplayNext: () => void;
   onPlayNext: () => void;
+  scrubPreview?: ScrubPreviewConfig | null;
   miniMode?: boolean;
   shortsMode?: boolean;
+  shortsActive?: boolean;
   miniStartPaused?: boolean;
   autoplay?: boolean;
   restoredVolume?: number;
@@ -152,7 +157,7 @@ export function HlsVodBlock({
     decided && !dashSrc ? src : "",
     reactKey,
     startAtSeconds,
-    shortsMode || miniShouldAutoplay || autoplay,
+    (shortsMode && shortsActive) || miniShouldAutoplay || autoplay,
     emitPlaybackError,
   );
 
@@ -161,7 +166,7 @@ export function HlsVodBlock({
     dashSrc ?? "",
     reactKey,
     startAtSeconds,
-    shortsMode || miniShouldAutoplay || autoplay,
+    (shortsMode && shortsActive) || miniShouldAutoplay || autoplay,
     () => setDashFailedKey(reactKey),
   );
 
@@ -189,7 +194,12 @@ export function HlsVodBlock({
   // Shorts autoplay: the browser blocks unmuted autoplay, so (like the muxed
   // block) keep retrying play on canplay/loadeddata — muted while the shared
   // pref is muted so it can start, unmuted once the viewer has turned sound on.
-  useShortsNativeAutoplay(videoRef, shortsMode, reactKey, shortsMode);
+  useShortsNativeAutoplay(
+    videoRef,
+    shortsMode && shortsActive,
+    reactKey,
+    shortsMode,
+  );
 
   // Lock-screen / Control Center metadata and transport controls.
   useBackgroundPlayback(videoRef, {
@@ -287,7 +297,7 @@ export function HlsVodBlock({
         cinemaMode={cinemaMode}
         onExitCinema={onExitCinema}
         onToggleCinema={onToggleCinema}
-        scrubPreview={null}
+        scrubPreview={scrubPreview ?? null}
         nextUp={nextUp}
         queue={queue}
         autoplayNext={autoplayNext}

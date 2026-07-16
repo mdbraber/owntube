@@ -269,7 +269,10 @@ export function shortsDiscoveryScorePenalty(
       Math.max(1, ...signals.channelWeights.values())
     : 0;
   if (ch >= 0.04) return 0;
-  return 0.35;
+  // Softened so a wider area of recommended/discovery shorts mixes through the
+  // whole pool (all pages), not just the page-1 blend — the shorts feed should
+  // feel like broad discovery, not subscriptions-only.
+  return 0.12;
 }
 
 /**

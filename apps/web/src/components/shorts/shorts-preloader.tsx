@@ -8,11 +8,44 @@ import { trpc } from "@/trpc/react";
 
 /** Bytes of a progressive next-short's start rung to warm (a few seconds). */
 const PRELOAD_BYTES = 2_000_000;
+/** Fallback warm size when a media playlist's first-segment range can't be read. */
+const SEGMENT_WARM_FALLBACK_BYTES = 1_200_000;
 
-/** Warm the generated HLS: fetch the master (triggers server-side manifest
- *  generation — the dominant ~1s cost as it re-fetches the source streams),
- *  then the audio + lowest video media playlists so hls.js has everything ready
- *  the instant the slide mounts. Segment bytes stream fast once generated. */
+/**
+ * From a generated media playlist (byte-range fMP4), warm the init segment +
+ * the opening media segments so hls.js can start decoding the instant it
+ * attaches — no network round-trip for the first frames. All segments are byte
+ * ranges into the same same-origin proxy URL (the EXT-X-MAP URI), so one ranged
+ * GET covering the init + first ~2 segments does it.
+ */
+async function warmPlaylistSegments(
+  playlistUrl: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const res = await fetch(playlistUrl, { signal });
+  if (!res.ok) return;
+  const text = await res.text();
+  const mediaUrl = text.match(/#EXT-X-MAP:URI="([^"]+)"/)?.[1];
+  if (!mediaUrl) return;
+  // Warm through the end of the 2nd media segment (enough to begin playback);
+  // fall back to a flat size if the byte ranges aren't parseable.
+  const ranges = [...text.matchAll(/#EXT-X-BYTERANGE:(\d+)@(\d+)/g)].slice(0, 2);
+  let end = SEGMENT_WARM_FALLBACK_BYTES;
+  const last = ranges[ranges.length - 1];
+  if (last) {
+    const len = Number(last[1]);
+    const off = Number(last[2]);
+    if (Number.isFinite(len) && Number.isFinite(off)) end = off + len;
+  }
+  await fetch(new URL(mediaUrl, playlistUrl).href, {
+    headers: { Range: `bytes=0-${Math.max(0, end - 1)}` },
+    signal,
+  }).catch(() => {});
+}
+
+/** Warm the generated HLS end-to-end: master (triggers server-side manifest
+ *  generation), the audio + lowest video media playlists, then their init +
+ *  first segment bytes — so a swipe starts playback with no network wait. */
 async function warmGeneratedHls(masterUrl: string, signal: AbortSignal) {
   try {
     const res = await fetch(masterUrl, { signal });
@@ -20,8 +53,8 @@ async function warmGeneratedHls(masterUrl: string, signal: AbortSignal) {
     const text = await res.text();
     const base = masterUrl.slice(0, masterUrl.lastIndexOf("/") + 1);
     const audioUri = text.match(/URI="([^"]*media\.m3u8[^"]*)"/)?.[1];
-    // Rendition playlists are listed after each STREAM-INF, highest first, so
-    // the last one is the lowest rung — what hls.js is likeliest to start on.
+    // Rendition playlists follow each STREAM-INF, highest first, so the last is
+    // the lowest rung — what hls.js is likeliest to start on.
     const videoUris = [...text.matchAll(/^(media\.m3u8[^\s"]*)$/gm)].map(
       (m) => m[1],
     );
@@ -29,7 +62,7 @@ async function warmGeneratedHls(masterUrl: string, signal: AbortSignal) {
     await Promise.all(
       [audioUri, lowest]
         .filter((u): u is string => Boolean(u))
-        .map((u) => fetch(base + u, { signal }).catch(() => {})),
+        .map((u) => warmPlaylistSegments(base + u, signal).catch(() => {})),
     );
   } catch {
     /* best-effort */

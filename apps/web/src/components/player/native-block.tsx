@@ -55,6 +55,7 @@ export function NativeMuxedBlock({
   onPlayNext,
   miniMode = false,
   shortsMode = false,
+  shortsActive = true,
   miniStartPaused = false,
   autoplay = false,
   restoredVolume,
@@ -88,6 +89,7 @@ export function NativeMuxedBlock({
   onPlayNext: () => void;
   miniMode?: boolean;
   shortsMode?: boolean;
+  shortsActive?: boolean;
   miniStartPaused?: boolean;
   autoplay?: boolean;
   restoredVolume?: number;
@@ -134,7 +136,9 @@ export function NativeMuxedBlock({
   // wants it) is restored by useShortsUnmuteAfterPlay once playback starts.
   useShortsNativeAutoplay(
     videoRef,
-    shortsMode || miniShouldAutoplay,
+    // Only the ACTIVE short plays; a pre-warmed adjacent one attaches + buffers
+    // but stays paused until it becomes active.
+    (shortsMode && shortsActive) || miniShouldAutoplay,
     reactKey,
     shortsMode || miniShouldAutoplay,
   );
@@ -190,7 +194,7 @@ export function NativeMuxedBlock({
         poster={poster}
         playsInline
         preload="auto"
-        autoPlay={shortsMode || miniShouldAutoplay || autoplay}
+        autoPlay={(shortsMode && shortsActive) || miniShouldAutoplay || autoplay}
         muted={shortsMode}
         onError={emitPlaybackError}
         onEnded={onEnded}

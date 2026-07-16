@@ -77,6 +77,13 @@ export type VideoPlayerProps = {
   miniMode?: boolean;
   /** Vertical full-height Shorts viewer (minimal chrome, cover fit). */
   shortsMode?: boolean;
+  /**
+   * The currently-visible short. When a shorts slide is mounted but NOT active
+   * (an adjacent slide pre-warmed for an instant swipe), this is false: the
+   * player attaches and buffers/decodes the first frame but does not autoplay.
+   * Flips true on becoming active → plays instantly from the warm buffer.
+   */
+  shortsActive?: boolean;
   /** Called when playback reaches the end (Shorts auto-advance). */
   onEnded?: () => void;
   /** Fired when the &lt;video&gt; element exposes intrinsic dimensions. */
@@ -128,6 +135,7 @@ export function VideoPlayer({
   scrubPreviewStreamSrc,
   miniMode = false,
   shortsMode = false,
+  shortsActive = true,
   onEnded: onEndedExternal,
   onVideoIntrinsics,
   defaultPlaybackQuality: defaultPlaybackQualityProp,
@@ -590,6 +598,7 @@ export function VideoPlayer({
               src={active.src}
               title={title}
               poster={displayPoster}
+              scrubPreview={buildScrubPreview(active.src) ?? undefined}
               volume={splitVolume}
               setVolume={setSplitVolume}
               settingsOpen={settingsOpen}
@@ -608,6 +617,7 @@ export function VideoPlayer({
               onPlayNext={playNextNow}
               miniMode={miniMode}
               shortsMode={shortsMode}
+              shortsActive={shortsActive}
               miniStartPaused={miniStartPaused}
               autoplay={watchAutoplay}
               restoredVolume={restoredVolume}
@@ -645,6 +655,7 @@ export function VideoPlayer({
             onPlayNext={playNextNow}
             miniMode={miniMode}
             shortsMode={shortsMode}
+            shortsActive={shortsActive}
             miniStartPaused={miniStartPaused}
             autoplay={watchAutoplay}
             restoredVolume={restoredVolume}

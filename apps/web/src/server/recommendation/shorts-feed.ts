@@ -97,6 +97,41 @@ function mergeShortsLists(
   return out;
 }
 
+/**
+ * Round-robin blend: takes one from each list in turn (deduped), so the feed
+ * always MIXES its lists rather than draining the first before reaching the
+ * next. Used to weave a wide area of recommended/discovery shorts through the
+ * subscription-driven results instead of showing subscriptions-only whenever
+ * they happen to fill the page. Whichever list runs out, the rest fill from the
+ * others.
+ */
+function interleaveShortsLists(
+  limit: number,
+  ...lists: UnifiedVideo[][]
+): UnifiedVideo[] {
+  const seen = new Set<string>();
+  const out: UnifiedVideo[] = [];
+  const cursor = lists.map(() => 0);
+  let progressed = true;
+  while (out.length < limit && progressed) {
+    progressed = false;
+    for (let l = 0; l < lists.length && out.length < limit; l++) {
+      const list = lists[l];
+      while (cursor[l] < list.length && seen.has(list[cursor[l]].videoId)) {
+        cursor[l]++;
+      }
+      if (cursor[l] < list.length) {
+        const v = list[cursor[l]];
+        cursor[l]++;
+        seen.add(v.videoId);
+        out.push(v);
+        progressed = true;
+      }
+    }
+  }
+  return out;
+}
+
 function filterUnwatchedShorts(
   videos: UnifiedVideo[],
   watched: Set<string> | null,
@@ -501,10 +536,11 @@ export async function fetchShortsFeedForViewer(
 
   let nextRecCursor = personalized.hasMore ? `rec:${page + 1}` : undefined;
 
-  if (page === 1 && personalized.videos.length < limit) {
-    // Top up a thin personalized page with regional/taste discovery shorts so
-    // the caller gets close to `limit` items from varied channels, instead of
-    // returning the few channel-clustered personalized results on their own.
+  if (page === 1) {
+    // Always blend a wide area of recommended/discovery shorts (regional +
+    // taste queries) INTO the subscription-driven personalized results, rather
+    // than only topping up a thin page. Interleaved so the feed opens as a mix
+    // instead of subscriptions-only whenever subscriptions fill the page.
     const upstream = await fetchTasteDiscoveryShorts(
       db,
       region,
@@ -513,7 +549,7 @@ export async function fetchShortsFeedForViewer(
       watchedEver,
       limit,
     );
-    const videos = mergeShortsLists(
+    const videos = interleaveShortsLists(
       limit,
       personalized.videos,
       upstream.videos,

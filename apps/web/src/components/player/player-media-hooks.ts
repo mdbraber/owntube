@@ -69,20 +69,45 @@ export function useShortsNativeAutoplay(
     const el = videoRef.current;
     if (!el) return;
 
+    let startedOnce = false;
+
     const tryPlay = () => {
-      if (!el.paused) return;
+      if (startedOnce || !el.paused || el.ended) return;
       if (muteForAutoplayPolicy) el.muted = true;
       void el.play().catch(() => {
-        /* autoplay policy */
+        /* autoplay policy — retried by the poll/events below */
       });
     };
 
+    // A single ready event or the play attempt itself may miss (the generated
+    // HLS is still building its manifest on first mount), so poll as a reliable
+    // backstop until the first `playing`.
+    const poll = window.setInterval(tryPlay, 300);
+
+    // Stop retrying once it's genuinely playing so we never fight a manual pause.
+    const onPlaying = () => {
+      startedOnce = true;
+      window.clearInterval(poll);
+    };
+    el.addEventListener("playing", onPlaying);
+
+    const readyEvents = [
+      "loadedmetadata",
+      "loadeddata",
+      "canplay",
+      "canplaythrough",
+    ] as const;
+    for (const e of readyEvents) el.addEventListener(e, tryPlay);
+
     tryPlay();
-    el.addEventListener("loadeddata", tryPlay);
-    el.addEventListener("canplay", tryPlay);
+    const stopPoll = window.setTimeout(() => window.clearInterval(poll), 10_000);
+
     return () => {
-      el.removeEventListener("loadeddata", tryPlay);
-      el.removeEventListener("canplay", tryPlay);
+      startedOnce = true;
+      window.clearInterval(poll);
+      window.clearTimeout(stopPoll);
+      el.removeEventListener("playing", onPlaying);
+      for (const e of readyEvents) el.removeEventListener(e, tryPlay);
     };
   }, [enabled, muteForAutoplayPolicy, streamKey, videoRef]);
 }

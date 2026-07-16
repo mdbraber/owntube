@@ -18,6 +18,10 @@ import {
   aspectRatioFromPixelDimensions,
   inferShortAspectRatioFromDetail,
 } from "@/lib/short-video-aspect";
+import {
+  formatPublishedAbsoluteLabel,
+  formatPublishedLabel,
+} from "@/lib/video-display";
 import { cn } from "@/lib/utils";
 import { buildVideoPlayerPayloadFromDetail } from "@/lib/watch-player-payload";
 import type { UnifiedVideo, VideoDetail } from "@/server/services/proxy.types";
@@ -26,6 +30,9 @@ import { trpc } from "@/trpc/react";
 type ShortsSlideProps = {
   video: UnifiedVideo;
   active: boolean;
+  /** An adjacent slide pre-warmed for an instant swipe: mount the player and
+   *  let it attach + buffer + decode the first frame, but don't autoplay. */
+  preload?: boolean;
   signedIn?: boolean;
   /** Server-seeded detail so the first short plays without a client fetch. */
   initialDetail?: VideoDetail;
@@ -39,6 +46,7 @@ const SHORT_FRAME_CLASS =
 export function ShortsSlide({
   video,
   active,
+  preload = false,
   signedIn = false,
   initialDetail,
   onWatched,
@@ -47,10 +55,10 @@ export function ShortsSlide({
   const detailQuery = trpc.video.detail.useQuery(
     { videoId: video.videoId },
     {
-      // `enabled` gates the fetch to the active slide, but a server-seeded
-      // `initialData` makes the first short's detail available immediately on
-      // mount so playback starts with no client round-trip.
-      enabled: active || initialDetail != null,
+      // Fetch for the active slide AND a pre-warmed adjacent one (so the player
+      // can mount ahead of the swipe); server-seeded `initialData` lets the
+      // first short play with no client round-trip.
+      enabled: active || preload || initialDetail != null,
       staleTime: 60_000,
       initialData: initialDetail,
     },
@@ -91,18 +99,40 @@ export function ShortsSlide({
     }
   }, [active, detailQuery.data, video.videoId]);
 
-  const waitingForDetail =
-    active &&
-    !detailQuery.data &&
-    (detailQuery.isLoading || detailQuery.isFetching);
   const detailReady = active && Boolean(detailQuery.data);
+
+  // Published date — from the feed item, falling back to the resolved detail.
+  const publishedText = video.publishedText ?? detailQuery.data?.publishedText;
+  const publishedAt = video.publishedAt ?? detailQuery.data?.publishedAt;
+  const publishedLabel = formatPublishedLabel(publishedText, publishedAt);
+  const publishedAbsolute = formatPublishedAbsoluteLabel(publishedAt);
 
   // The thumbnail is rendered once as a persistent backdrop in the frame (see
   // below), so the loading/inactive states here don't re-draw it — they just
   // sit over it. That keeps the thumbnail visible the whole time the video is
   // resolving/buffering (no black gap) and behind any letterboxing.
-  let body: ReactNode;
-  if (!active) {
+  let body: ReactNode = null;
+  if ((active || preload) && playback?.payload) {
+    // Mount for the active slide AND a pre-warmed adjacent one. When it's the
+    // pre-warm (shortsActive=false) the player attaches + buffers + decodes the
+    // first frame but stays paused, so becoming active plays it instantly.
+    body = (
+      <VideoPlayer
+        key={`${video.videoId}-${playback.payload.mode}`}
+        videoId={video.videoId}
+        payload={playback.payload}
+        title={video.title}
+        poster={undefined}
+        durationSeconds={detailQuery.data?.durationSeconds}
+        shortsMode
+        shortsActive={active}
+        onEnded={onEnded}
+        onVideoIntrinsics={onVideoIntrinsics}
+      />
+    );
+  } else if (!active) {
+    // Pre-warm slide whose payload isn't ready yet, or an off-screen slide:
+    // the thumbnail backdrop stands in.
     body = null;
   } else if (detailQuery.isError) {
     body = (
@@ -114,12 +144,6 @@ export function ShortsSlide({
         >
           Open in watch page
         </Link>
-      </div>
-    );
-  } else if (waitingForDetail) {
-    body = (
-      <div className="flex h-full w-full items-end justify-center pb-6">
-        <p className="text-sm text-white/80 drop-shadow">Loading…</p>
       </div>
     );
   } else if (detailReady && !playback?.payload) {
@@ -138,24 +162,10 @@ export function ShortsSlide({
         </Link>
       </div>
     );
-  } else if (playback?.payload) {
-    body = (
-      <VideoPlayer
-        key={`${video.videoId}-${playback.payload.mode}`}
-        videoId={video.videoId}
-        payload={playback.payload}
-        title={video.title}
-        poster={undefined}
-        durationSeconds={detailQuery.data?.durationSeconds}
-        shortsMode
-        onEnded={onEnded}
-        onVideoIntrinsics={onVideoIntrinsics}
-      />
-    );
   } else {
     body = (
       <div className="flex h-full w-full items-end justify-center pb-6 text-sm text-white/80">
-        <span className="drop-shadow">Loading player…</span>
+        <span className="drop-shadow">Loading…</span>
       </div>
     );
   }
@@ -204,6 +214,14 @@ export function ShortsSlide({
               >
                 {video.title}
               </Link>
+              {publishedLabel ? (
+                <p
+                  className="mt-1 text-xs text-white/70 drop-shadow"
+                  title={publishedAbsolute ?? undefined}
+                >
+                  {publishedLabel}
+                </p>
+              ) : null}
             </div>
           </div>
         </div>

@@ -32,9 +32,17 @@ type ShortsFeedClientProps = {
 /** How many upcoming shorts to resolve stream URLs for ahead of the active one. */
 const SHORTS_DETAIL_PREFETCH_AHEAD = 4;
 
-/** How many upcoming shorts to warm the stream/manifest bytes for (aggressive
- *  background loading so several swipes ahead start instantly). */
-const SHORTS_PRELOAD_AHEAD = 3;
+/** How many upcoming shorts to warm the stream/manifest BYTES for. This uses
+ *  plain fetch (no video decoder), so it's safe to be aggressive — it's where
+ *  most of the "instant swipe" caching win comes from. */
+const SHORTS_PRELOAD_AHEAD = 5;
+
+/** How many upcoming shorts to PRE-MOUNT as live (attached + first-frame
+ *  decoded, paused) players. Each is a REAL video decoder and devices allow
+ *  only a few at once — too many exhausts the budget and the *active* short
+ *  can't get a decoder to autoplay (you'd have to tap). Keep this tiny; the
+ *  byte-warming above carries the caching. 1 = one slide ahead (2 total). */
+const SHORTS_PREMOUNT_AHEAD = 1;
 
 function filterExcludedVideos(
   videos: UnifiedVideo[],
@@ -90,6 +98,7 @@ export function ShortsFeedClient({
   const [recycleMode, setRecycleMode] = useState(false);
   const recycleModeRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const snapRestoreTimerRef = useRef(0);
   const loadingMoreRef = useRef(false);
   const loadMoreCooldownRef = useRef(0);
   const itemsCountBeforeFetchRef = useRef(0);
@@ -460,8 +469,28 @@ export function ShortsFeedClient({
       const slideHeight = root.clientHeight;
       if (slideHeight <= 0) return;
       const clamped = Math.min(items.length - 1, Math.max(0, index));
-      root.scrollTo({ top: clamped * slideHeight, behavior: "smooth" });
+      const targetTop = clamped * slideHeight;
+      // Smooth *and* reliable. Safari's `scroll-snap-type: mandatory` interrupts
+      // a programmatic smooth scroll and leaves it landed between slides — the
+      // short "not fully in view" on auto-advance and the next/prev buttons. So
+      // disable snap for the animation, glide to the exact slide top, then
+      // restore snap once it settles (the target is already a snap point, so it
+      // holds). Manual swipes are untouched.
+      root.style.scrollSnapType = "none";
+      root.scrollTo({ top: targetTop, behavior: "smooth" });
       setActiveIndex(clamped);
+
+      const restore = () => {
+        const r = scrollRef.current;
+        if (r) r.style.scrollSnapType = "";
+        window.clearTimeout(snapRestoreTimerRef.current);
+        root.removeEventListener("scrollend", restore);
+      };
+      // scrollend fires when the glide finishes (Chrome/Safari 17.4+); a timeout
+      // covers older engines and the case where the scroll never moves.
+      root.addEventListener("scrollend", restore, { once: true });
+      window.clearTimeout(snapRestoreTimerRef.current);
+      snapRestoreTimerRef.current = window.setTimeout(restore, 700);
     },
     [items.length],
   );
@@ -647,7 +676,7 @@ export function ShortsFeedClient({
         ref={scrollRef}
         className="absolute inset-0 snap-y snap-mandatory overflow-y-auto overscroll-y-contain touch-pan-y [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
-        {items.map((video) => (
+        {items.map((video, index) => (
           <div
             key={video.videoId}
             className="h-full min-h-full w-full shrink-0 snap-start snap-always"
@@ -655,6 +684,13 @@ export function ShortsFeedClient({
             <ShortsSlide
               video={video}
               active={activeVideoId === video.videoId}
+              // Pre-warm upcoming slides' players (attach + decode the first
+              // frame, paused) so swipes start instantly. Each is a real decoder
+              // — see SHORTS_PREMOUNT_AHEAD.
+              preload={
+                index > activeIndex &&
+                index <= activeIndex + SHORTS_PREMOUNT_AHEAD
+              }
               signedIn={signedIn}
               initialDetail={
                 initialDetail?.videoId === video.videoId
