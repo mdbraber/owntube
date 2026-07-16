@@ -1,36 +1,31 @@
 import type { VideoDetail } from "@/server/services/proxy.types";
 
-function streamHeightPx(
-  source: VideoDetail["videoSources"][number],
-): number | null {
-  if (typeof source.height === "number" && source.height > 0) {
-    return source.height;
-  }
-  return null;
-}
+/** Vertical (9:16) — the Shorts default and the flash-free initial guess. */
+const VERTICAL_ASPECT = 9 / 16;
 
 /** CSS `aspect-ratio` value (width / height). */
 export function aspectRatioFromPixelDimensions(
   widthPx: number,
   heightPx: number,
 ): number {
-  if (widthPx <= 0 || heightPx <= 0) return 9 / 16;
+  if (widthPx <= 0 || heightPx <= 0) return VERTICAL_ASPECT;
   return widthPx / heightPx;
 }
 
 /**
- * Best-effort aspect before the &lt;video&gt; element reports intrinsics. Vertical
- * Shorts usually expose the long edge as `height` in stream metadata.
+ * Initial frame aspect for a short, used only until the &lt;video&gt; element
+ * reports real pixel intrinsics.
+ *
+ * We deliberately always assume vertical (9:16): the /shorts feed is vertical
+ * by convention, and stream `height` is an unreliable orientation signal —
+ * some upstreams report a vertical short's *quality number* (e.g. 480) as
+ * `height`, which reads as landscape and made the frame flash wide-then-tall.
+ * A genuinely landscape clip is corrected the instant `loadedmetadata` fires
+ * (see {@link aspectRatioFromPixelDimensions}), so nothing is lost by starting
+ * vertical, and the common case stops flashing.
  */
 export function inferShortAspectRatioFromDetail(
-  detail: VideoDetail | undefined,
+  _detail: VideoDetail | undefined,
 ): number {
-  const heights = (detail?.videoSources ?? [])
-    .map(streamHeightPx)
-    .filter((h): h is number => h != null);
-  if (heights.length === 0) return 9 / 16;
-  const maxHeight = Math.max(...heights);
-  if (maxHeight >= 900) return 9 / 16;
-  if (maxHeight <= 520) return 16 / 9;
-  return 9 / 16;
+  return VERTICAL_ASPECT;
 }
