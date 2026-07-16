@@ -18,6 +18,11 @@ import {
 } from "@/components/player/player-quality";
 import type { SponsorBlockChromeProps } from "@/components/player/player-types";
 import type { ScrubPreviewConfig } from "@/hooks/use-scrub-frame-preview";
+import {
+  getShortsMuted,
+  useShortsAudioPersist,
+  useShortsUnmuteAfterPlay,
+} from "@/lib/shorts-audio-pref";
 import { cn } from "@/lib/utils";
 import type { VideoChapter } from "@/lib/video-chapters";
 
@@ -111,17 +116,27 @@ export function NativeMuxedBlock({
     audioRef,
     externalVolume: volume,
     setExternalVolume: setVolume,
+    // Seed the adapter's mute from the shared shorts pref so a short mounts with
+    // the viewer's current choice (muted until they unmute one, then stays on).
+    initialMuted: shortsMode ? getShortsMuted() : undefined,
   });
+  // Persist the viewer's mute choice across shorts, and re-apply it once the
+  // (always-muted-to-autoplay) short is actually playing.
+  useShortsAudioPersist(adapter.muted, shortsMode);
+  useShortsUnmuteAfterPlay(videoRef, shortsMode, reactKey);
 
   const captionModel = usePlayerCaptions(videoRef, captions ?? [], reactKey);
 
   useReportVideoIntrinsics(videoRef, onVideoIntrinsics);
 
+  // Always mute for the autoplay attempt in shorts — unmuted autoplay is
+  // blocked on a fresh element even after interaction. Sound (if the viewer
+  // wants it) is restored by useShortsUnmuteAfterPlay once playback starts.
   useShortsNativeAutoplay(
     videoRef,
     shortsMode || miniShouldAutoplay,
     reactKey,
-    miniShouldAutoplay,
+    shortsMode || miniShouldAutoplay,
   );
   useMiniPlayerMediaBootstrap(
     adapter,

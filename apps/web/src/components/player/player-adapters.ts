@@ -10,11 +10,13 @@ export function useNativeAdapter(opts: {
   audioRef: React.RefObject<HTMLAudioElement | null>;
   externalVolume: number;
   setExternalVolume: (n: number) => void;
+  /** Initial mute state (shorts seed this from the shared audio pref). */
+  initialMuted?: boolean;
 }): PlayerAdapter {
   const { videoRef, audioRef, externalVolume, setExternalVolume } = opts;
   const [, force] = useState(0);
   const bump = useCallback(() => force((x) => x + 1), []);
-  const [muted, setMuted] = useState(false);
+  const [muted, setMuted] = useState(opts.initialMuted ?? false);
   const [pictureInPicture, setPictureInPicture] = useState(false);
   const limiterActiveRef = useRef(false);
   const activatedRef = useRef(false);

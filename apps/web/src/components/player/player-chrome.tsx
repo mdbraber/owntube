@@ -16,7 +16,6 @@ import {
   ProgressBar,
   SettingsMenu,
   ShortsProgressBar,
-  ShortsQualityPicker,
   ShortsTopControls,
   VolumeSlider,
 } from "@/components/player/player-controls";
@@ -80,7 +79,6 @@ export function PlayerChrome({
   const { visible, ping, hide } = useIdleVisible(adapter.paused, settingsOpen);
   const [scrub, setScrub] = useState<number | null>(null);
   const [showVolPanel, setShowVolPanel] = useState(false);
-  const [shortsQualityOpen, setShortsQualityOpen] = useState(false);
   const [queueOpen, setQueueOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [autoCenterHint, setAutoCenterHint] = useState<{
@@ -185,10 +183,6 @@ export function PlayerChrome({
       onSettingsOpenChange(false);
       return;
     }
-    if (shortsQualityOpen) {
-      setShortsQualityOpen(false);
-      return;
-    }
     adapter.togglePaused();
   };
 
@@ -245,18 +239,12 @@ export function PlayerChrome({
       ) : null}
 
       {/* Large center play/pause — the primary control on phones (YouTube
-          style). Shown when paused, or while the chrome is visible; hidden
-          during buffering (the spinner covers that) and in shorts. Desktop
-          keeps the bottom-bar button instead (sm:hidden here). */}
-      {!miniMode &&
-      !shortsMode &&
-      !hold2xUi &&
-      !(adapter.waiting && !adapter.paused) ? (
-        // A real, always-present <button> on phones: a native click is reliable
-        // on iOS (the surface's synthetic click that toggles play/pause is not),
-        // and it owns its own tap via stopPropagation so there's no double
-        // toggle. Visible when paused or while the chrome is shown; faded but
-        // still tappable while playing so a single tap here always pauses.
+          style). A native <button> click is reliable on iOS where the tap
+          surface's synthetic click is not, so shorts get it too: shown whenever
+          the short is paused (a clear "tap to play"), hidden while it plays (a
+          surface tap pauses). Non-shorts also show it while the chrome is up.
+          Hidden during buffering (the spinner covers that). */}
+      {!miniMode && !hold2xUi && !(adapter.waiting && !adapter.paused) ? (
         <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center sm:hidden">
           <button
             type="button"
@@ -268,7 +256,9 @@ export function PlayerChrome({
             aria-label={adapter.paused ? "Play" : "Pause"}
             className={cn(
               "pointer-events-auto flex h-[68px] w-[68px] items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm transition active:scale-95",
-              adapter.paused || chromeShown ? "opacity-100" : "opacity-0",
+              (shortsMode ? adapter.paused : adapter.paused || chromeShown)
+                ? "opacity-100"
+                : "opacity-0",
             )}
           >
             {adapter.paused ? (
@@ -306,23 +296,17 @@ export function PlayerChrome({
         </div>
       ) : null}
 
-      {/* Top chrome */}
+      {/* Top chrome. No quality badge on shorts: the feed is adaptive (hls.js
+          picks the rung) so there's nothing meaningful to pin, and it just
+          cluttered the corner. */}
       {shortsMode ? (
-        <>
-          <ShortsTopControls
-            adapter={adapter}
-            levelUi={levelUi}
-            chromeShown={chromeShown}
-            showVolPanel={showVolPanel}
-            onShowVolPanelChange={setShowVolPanel}
-          />
-          <ShortsQualityPicker
-            quality={quality}
-            open={shortsQualityOpen}
-            onOpenChange={setShortsQualityOpen}
-            chromeShown={chromeShown}
-          />
-        </>
+        <ShortsTopControls
+          adapter={adapter}
+          levelUi={levelUi}
+          chromeShown={chromeShown}
+          showVolPanel={showVolPanel}
+          onShowVolPanelChange={setShowVolPanel}
+        />
       ) : (
         <div
           className={cn(

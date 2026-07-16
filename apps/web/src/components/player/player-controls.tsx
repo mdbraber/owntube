@@ -18,8 +18,6 @@ import {
 } from "@/components/player/player-constants";
 import {
   MuteIcon,
-  PauseIcon,
-  PlayIcon,
   VolHighIcon,
   VolLowIcon,
 } from "@/components/player/player-icons";
@@ -786,18 +784,8 @@ export function ShortsTopControls({
         chromeShown ? "opacity-100" : "opacity-0",
       )}
     >
-      <button
-        type="button"
-        onClick={() => adapter.togglePaused()}
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-black/45 text-white transition hover:bg-black/60"
-        aria-label={adapter.paused ? "Play" : "Pause"}
-      >
-        {adapter.paused ? (
-          <PlayIcon className="h-5 w-5 pl-0.5" />
-        ) : (
-          <PauseIcon className="h-5 w-5" />
-        )}
-      </button>
+      {/* Play/pause lives on the center tap button now — top-left keeps only
+          the volume control. */}
       <fieldset
         className="flex min-w-0 items-center rounded-full border-0 bg-black/45 px-0.5"
         onMouseEnter={() => onShowVolPanelChange(true)}
@@ -879,7 +867,9 @@ export function ShortsQualityPicker({
       ref={rootRef}
       data-controls
       className={cn(
-        "pointer-events-auto absolute right-2 top-2 z-30 transition-opacity duration-200 sm:right-3 sm:top-3",
+        // Below 901px the shorts exit cross owns the top-right corner, so sit to
+        // its left; back to the corner at ≥901px where the cross is hidden.
+        "pointer-events-auto absolute right-14 top-2 z-30 transition-opacity duration-200 min-[901px]:right-3 min-[901px]:top-3",
         chromeShown ? "opacity-100" : "opacity-0",
       )}
     >

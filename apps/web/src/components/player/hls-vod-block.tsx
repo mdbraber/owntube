@@ -18,6 +18,11 @@ import {
 } from "@/hooks/use-dash-playback";
 import { useHlsVodPlayback } from "@/hooks/use-hls-vod-playback";
 import { isIosLikeBrowser } from "@/lib/ios-playback";
+import {
+  getShortsMuted,
+  useShortsAudioPersist,
+  useShortsUnmuteAfterPlay,
+} from "@/lib/shorts-audio-pref";
 import { cn } from "@/lib/utils";
 import type { VideoChapter } from "@/lib/video-chapters";
 
@@ -165,7 +170,12 @@ export function HlsVodBlock({
     audioRef,
     externalVolume: volume,
     setExternalVolume: setVolume,
+    // Seed the mute from the shared shorts pref (muted until the viewer unmutes
+    // one, then it stays on across shorts).
+    initialMuted: shortsMode ? getShortsMuted() : undefined,
   });
+  useShortsAudioPersist(adapter.muted, shortsMode);
+  useShortsUnmuteAfterPlay(videoRef, shortsMode, reactKey);
 
   const captionModel = usePlayerCaptions(
     videoRef,
@@ -177,8 +187,8 @@ export function HlsVodBlock({
   useReportVideoIntrinsics(videoRef, onVideoIntrinsics);
 
   // Shorts autoplay: the browser blocks unmuted autoplay, so (like the muxed
-  // block) keep retrying a muted play on canplay/loadeddata. Without this a
-  // short routed to the generated HLS just sits paused until tapped.
+  // block) keep retrying play on canplay/loadeddata — muted while the shared
+  // pref is muted so it can start, unmuted once the viewer has turned sound on.
   useShortsNativeAutoplay(videoRef, shortsMode, reactKey, shortsMode);
 
   // Lock-screen / Control Center metadata and transport controls.
