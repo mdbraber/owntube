@@ -77,8 +77,9 @@ export function VideoGrid({
     );
   }
 
-  const gridClass =
-    size === "large" ? "ot-video-grid ot-video-grid--large" : "ot-video-grid";
+  const gridClass = `${
+    size === "large" ? "ot-video-grid ot-video-grid--large" : "ot-video-grid"
+  } mx-[-16px] w-[calc(100%_+_2rem)] sm:mx-0 sm:w-full`;
   return (
     <ul className={gridClass} style={gridStyle}>
       {videos.map((v) => (

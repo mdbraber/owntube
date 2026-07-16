@@ -244,7 +244,7 @@ export async function SearchResults({ query, sort }: SearchResultsProps) {
       {visibleVideos.length > 0 ? (
         <section className="space-y-3">
           <h2 className="text-lg font-semibold tracking-tight">Videos</h2>
-          <ul className="ot-video-grid">
+          <ul className="ot-video-grid mx-[-16px] w-[calc(100%_+_2rem)] sm:mx-0 sm:w-full">
             {visibleVideos.map((v) => (
               <li key={v.videoId} className="h-full">
                 <VideoCard

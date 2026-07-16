@@ -188,13 +188,11 @@ function VideoBlockBody({
   const grid = useAutoFillColumns(CARD_MIN_WIDTH_PX[block.size]);
   const singleColumn = grid.columns <= 1;
   const scrollRow = isScrollRow(block);
-  const layout =
-    block.layout === "cards" && singleColumn && !scrollRow
-      ? "rows"
-      : block.layout;
-  const effectiveLayout = scrollRow ? "cards" : layout;
-  const rowCount =
-    block.layout === "cards" && singleColumn ? block.rows * 2 : block.rows;
+  // On phones (single column) every block renders as edge-to-edge cards — the
+  // full-width thumbnail people expect on mobile, matching the feed. The block's
+  // rows/cards choice applies on wider screens.
+  const effectiveLayout = scrollRow || singleColumn ? "cards" : block.layout;
+  const rowCount = block.rows;
   if (isLoading && videos.length === 0) {
     return (
       <p className="py-4 text-sm text-[hsl(var(--muted-foreground))]">

@@ -7,6 +7,7 @@ import { VideoActionsMenu } from "@/components/videos/video-actions-menu";
 import { VideoCardDurationBadge } from "@/components/videos/video-card-duration-badge";
 import { VideoCardQuickActions } from "@/components/videos/video-card-quick-actions";
 import { VideoCardThumbnailImg } from "@/components/videos/video-card-thumbnail-img";
+import { VideoCardShell } from "@/components/videos/video-card-shell";
 import { VideoCardThumbnailInteractive } from "@/components/videos/video-card-thumbnail-interactive";
 import { VideoStatusPills } from "@/components/videos/video-status-pills";
 import { VideoWatchProgress } from "@/components/videos/video-watch-progress";
@@ -105,16 +106,12 @@ export function VideoCard({
   const channel = channelName ?? "Unknown channel";
 
   const thumbShell =
-    "ot-video-card-thumbnail relative aspect-video w-full overflow-hidden rounded-[var(--radius-card)] bg-[hsl(var(--muted))] shadow-none transition duration-300 group-hover:-translate-y-0.5 group-hover:shadow-[var(--shadow-card-hover)]";
+    "ot-video-card-thumbnail relative aspect-video w-full overflow-hidden rounded-none sm:rounded-[var(--radius-card)] bg-[hsl(var(--muted))] shadow-none transition duration-300 group-hover:-translate-y-0.5 group-hover:shadow-[var(--shadow-card-hover)]";
   const thumbImg =
     "h-full w-full object-cover transition duration-500 ease-out group-hover:scale-[1.04]";
 
   return (
-    <article
-      className={`ot-video-card group flex flex-col gap-3 text-left text-[hsl(var(--foreground))]${
-        dimmed ? " opacity-40 transition-opacity hover:opacity-75" : ""
-      }`}
-    >
+    <VideoCardShell videoId={videoId} dimmed={dimmed}>
       {videoId ? (
         // Swipe wraps only the video frame — meta below stays put and the
         // underlay matches the thumbnail's height and rounding.
@@ -181,7 +178,7 @@ export function VideoCard({
           </div>
         </Link>
       )}
-      <div className="ot-video-card-meta flex items-start gap-3">
+      <div className="ot-video-card-meta flex items-start gap-3 px-4 sm:px-0">
         {channelHref ? (
           <Link href={channelHref} className="mt-0.5 shrink-0">
             <ChannelAvatarCircle
@@ -254,7 +251,7 @@ export function VideoCard({
           </p>
         </div>
       </div>
-    </article>
+    </VideoCardShell>
   );
 }
 

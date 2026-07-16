@@ -209,11 +209,11 @@ export function HomeFeedClient({ region, isAuthed }: HomeFeedClientProps) {
               <div className="h-7 w-2/3 animate-pulse rounded bg-white/15" />
             </div>
           </div>
-          <ul className="ot-video-grid ot-video-grid--large">
+          <ul className="ot-video-grid ot-video-grid--large mx-[-16px] w-[calc(100%_+_2rem)] sm:mx-0 sm:w-full">
             {LOAD_MORE_SKELETON_KEYS.slice(0, 4).map((k) => (
               <li key={`initial-skeleton-top-${k}`} className="space-y-3">
-                <div className="aspect-video w-full animate-pulse rounded-[var(--radius-card)] bg-[hsl(var(--muted)_/_0.45)]" />
-                <div className="flex gap-3">
+                <div className="aspect-video w-full animate-pulse rounded-none bg-[hsl(var(--muted)_/_0.45)] sm:rounded-[var(--radius-card)]" />
+                <div className="flex gap-3 px-4 sm:px-0">
                   <div className="h-9 w-9 shrink-0 animate-pulse rounded-full bg-[hsl(var(--muted)_/_0.45)]" />
                   <div className="min-w-0 flex-1 space-y-2 pt-1">
                     <div className="h-3.5 w-11/12 animate-pulse rounded bg-[hsl(var(--muted)_/_0.45)]" />
@@ -227,11 +227,11 @@ export function HomeFeedClient({ region, isAuthed }: HomeFeedClientProps) {
             slots={shortsShelfLayout.displayCount}
             shortWidthPx={shortsShelfLayout.shortWidthPx}
           />
-          <ul className="ot-video-grid ot-video-grid--large">
+          <ul className="ot-video-grid ot-video-grid--large mx-[-16px] w-[calc(100%_+_2rem)] sm:mx-0 sm:w-full">
             {LOAD_MORE_SKELETON_KEYS.slice(4, 6).map((k) => (
               <li key={`initial-skeleton-bottom-${k}`} className="space-y-3">
-                <div className="aspect-video w-full animate-pulse rounded-[var(--radius-card)] bg-[hsl(var(--muted)_/_0.45)]" />
-                <div className="flex gap-3">
+                <div className="aspect-video w-full animate-pulse rounded-none bg-[hsl(var(--muted)_/_0.45)] sm:rounded-[var(--radius-card)]" />
+                <div className="flex gap-3 px-4 sm:px-0">
                   <div className="h-9 w-9 shrink-0 animate-pulse rounded-full bg-[hsl(var(--muted)_/_0.45)]" />
                   <div className="min-w-0 flex-1 space-y-2 pt-1">
                     <div className="h-3.5 w-11/12 animate-pulse rounded bg-[hsl(var(--muted)_/_0.45)]" />
@@ -313,12 +313,12 @@ export function HomeFeedClient({ region, isAuthed }: HomeFeedClientProps) {
       ) : null}
 
       {isLoadingMore ? (
-        <ul className="ot-video-grid ot-video-grid--large" aria-hidden>
+        <ul className="ot-video-grid ot-video-grid--large mx-[-16px] w-[calc(100%_+_2rem)] sm:mx-0 sm:w-full" aria-hidden>
           {LOAD_MORE_SKELETON_KEYS.slice(0, LOAD_MORE_SKELETON_COUNT).map(
             (k) => (
               <li key={`skeleton-${k}`} className="space-y-3">
-                <div className="aspect-video w-full animate-pulse rounded-[var(--radius-card)] bg-[hsl(var(--muted)_/_0.45)]" />
-                <div className="flex gap-3">
+                <div className="aspect-video w-full animate-pulse rounded-none bg-[hsl(var(--muted)_/_0.45)] sm:rounded-[var(--radius-card)]" />
+                <div className="flex gap-3 px-4 sm:px-0">
                   <div className="h-9 w-9 shrink-0 animate-pulse rounded-full bg-[hsl(var(--muted)_/_0.45)]" />
                   <div className="min-w-0 flex-1 space-y-2 pt-1">
                     <div className="h-3.5 w-11/12 animate-pulse rounded bg-[hsl(var(--muted)_/_0.45)]" />

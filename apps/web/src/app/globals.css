@@ -727,6 +727,10 @@ body {
   justify-items: center;
 }
 
+/* Mobile edge-to-edge feed cards are done with Tailwind `max-sm:` utilities on
+   the grid/card/thumbnail components (custom rules here lose the Tailwind v4
+   layer cascade), so nothing lives in this file for that. */
+
 /* Player captions: we render the active cue ourselves (the native track is kept
    `hidden`) so we control alignment, roll-up, and placement relative to the
    chrome. Real classes rather than Tailwind arbitrary utilities so placement is

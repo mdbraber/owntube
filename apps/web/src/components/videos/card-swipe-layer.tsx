@@ -91,7 +91,7 @@ export function CardSwipeLayer({
   }
 
   return (
-    <div className="relative touch-pan-y overflow-hidden rounded-[var(--radius-card)]">
+    <div className="relative touch-pan-y overflow-hidden rounded-none sm:rounded-[var(--radius-card)]">
       {pendingAction !== "none" ? (
         <div
           className={cn(
