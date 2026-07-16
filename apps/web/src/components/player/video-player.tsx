@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { videoIdFromWatchHref } from "@/lib/yt-routes";
 import {
   type Dispatch,
   type SetStateAction,
@@ -304,7 +305,7 @@ export function VideoPlayer({
         writeWatchQueue(queue.slice(1));
         window.dispatchEvent(
           new CustomEvent("ot:queue-consume", {
-            detail: { videoId: nextUp.href.split("/watch/")[1]?.split("?")[0] },
+            detail: { videoId: videoIdFromWatchHref(nextUp.href) ?? undefined },
           }),
         );
         router.push(nextUp.href);
@@ -471,7 +472,7 @@ export function VideoPlayer({
     writeWatchQueue(queue.slice(1));
     window.dispatchEvent(
       new CustomEvent("ot:queue-consume", {
-        detail: { videoId: nextUp.href.split("/watch/")[1]?.split("?")[0] },
+        detail: { videoId: videoIdFromWatchHref(nextUp.href) ?? undefined },
       }),
     );
     router.push(nextUp.href);

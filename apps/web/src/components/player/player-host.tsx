@@ -389,6 +389,26 @@ export function PlayerHost() {
     [active, mode],
   );
 
+  // iOS Safari drops the painted frame of a PAUSED <video> when it gets
+  // repositioned — e.g. returning to the watch slot after navigating away —
+  // leaving a black box until playback repaints. Nudging currentTime forces the
+  // compositor to decode+paint the current frame (so it reads like YouTube's
+  // last-frame hold). iOS-family only; runs after the reposition paint.
+  useEffect(() => {
+    if (mode !== "full" || !isIosLike) return;
+    const id = requestAnimationFrame(() => {
+      const v =
+        containerRef.current?.querySelector<HTMLVideoElement>("video");
+      if (!v || !v.paused || v.readyState < 2) return;
+      try {
+        v.currentTime = Math.max(0, v.currentTime - 0.05);
+      } catch {
+        /* not seekable yet */
+      }
+    });
+    return () => cancelAnimationFrame(id);
+  }, [mode, isIosLike]);
+
   if (!active || mode === "hidden") return null;
 
   const effCorner: MiniCorner = isMobile
@@ -411,7 +431,9 @@ export function PlayerHost() {
     else style.bottom = insets.bottom + MINI_GAP;
     if (effCorner[1] === "l") style.left = MINI_GAP;
     else style.right = MINI_GAP;
-    if (!isMobile && miniWidth) style.width = miniWidth;
+    // Phones: a ~half-width mini. Desktop uses the resizable measured width.
+    if (isMobile) style.width = "50vw";
+    else if (miniWidth) style.width = miniWidth;
     if (drag) {
       style.transform = `translate(${drag.dx}px, ${drag.dy}px)`;
       style.transition = "none";

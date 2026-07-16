@@ -414,7 +414,7 @@ export default async function WatchPage({ searchParams }: WatchPageProps) {
                 </p>
               </div>
               <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-[hsl(var(--border))] pb-4">
-                <div className="flex min-w-0 items-center gap-3">
+                <div className="flex min-w-0 flex-1 items-center gap-3">
                   {detail?.channelId ? (
                     <Link
                       href={`/channel/${encodeURIComponent(detail.channelId)}`}
@@ -458,7 +458,7 @@ export default async function WatchPage({ searchParams }: WatchPageProps) {
                     ) : null}
                   </div>
                   {detail?.channelId ? (
-                    <div className="ml-1 shrink-0">
+                    <div className="ml-auto shrink-0">
                       <ChannelSubscribeButton
                         channelId={detail.channelId}
                         isAuthed={isAuthed}

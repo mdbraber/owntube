@@ -225,7 +225,7 @@ export function PlayerChrome({
       <CaptionOverlay text={captionText} raised={chromeShown} />
 
       {/* Buffering spinner */}
-      {adapter.waiting && !adapter.paused ? (
+      {!miniMode && adapter.waiting && !adapter.paused ? (
         <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
           {/* biome-ignore lint/a11y/useSemanticElements: visual spinner */}
           <div
@@ -236,11 +236,48 @@ export function PlayerChrome({
         </div>
       ) : null}
 
-      {/* Toggle hint icon (play/pause) */}
+      {/* Large center play/pause — the primary control on phones (YouTube
+          style). Shown when paused, or while the chrome is visible; hidden
+          during buffering (the spinner covers that) and in shorts. Desktop
+          keeps the bottom-bar button instead (sm:hidden here). */}
+      {!miniMode &&
+      !shortsMode &&
+      !hold2xUi &&
+      !(adapter.waiting && !adapter.paused) ? (
+        // A real, always-present <button> on phones: a native click is reliable
+        // on iOS (the surface's synthetic click that toggles play/pause is not),
+        // and it owns its own tap via stopPropagation so there's no double
+        // toggle. Visible when paused or while the chrome is shown; faded but
+        // still tappable while playing so a single tap here always pauses.
+        <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center sm:hidden">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              adapter.togglePaused();
+              ping();
+            }}
+            aria-label={adapter.paused ? "Play" : "Pause"}
+            className={cn(
+              "pointer-events-auto flex h-[68px] w-[68px] items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm transition active:scale-95",
+              adapter.paused || chromeShown ? "opacity-100" : "opacity-0",
+            )}
+          >
+            {adapter.paused ? (
+              <BigPlayOverlayIcon className="h-9 w-9" />
+            ) : (
+              <PauseIcon className="h-8 w-8" />
+            )}
+          </button>
+        </div>
+      ) : null}
+
+      {/* Toggle hint icon (play/pause) — desktop only; phones use the big
+          center button above. */}
       {(centerHint ?? autoCenterHint) && !hold2xUi ? (
         <div
           key={(centerHint ?? autoCenterHint)?.tick}
-          className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center"
+          className="pointer-events-none absolute inset-0 z-20 hidden items-center justify-center sm:flex"
         >
           <div className="flex h-16 w-16 animate-[ot-hint-fade_1000ms_ease-in-out_forwards] items-center justify-center rounded-full bg-black/55 text-white">
             {(centerHint ?? autoCenterHint)?.kind === "play" ? (
@@ -321,7 +358,7 @@ export function PlayerChrome({
             }}
           />
         </div>
-      ) : (
+      ) : miniMode ? null : (
         <div
           data-controls
           className={cn(
@@ -350,11 +387,12 @@ export function PlayerChrome({
                 adapter.seek(t);
               }}
             />
-            <div className="mt-1 flex items-center gap-1.5 text-white sm:gap-2">
+            <div className="mt-[-18px] flex items-center gap-1.5 text-white sm:mt-1 sm:gap-2">
+              {/* Phones use the big center play/pause overlay instead. */}
               <button
                 type="button"
                 onClick={() => adapter.togglePaused()}
-                className="flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-white/15"
+                className="hidden h-9 w-9 items-center justify-center rounded-full transition hover:bg-white/15 sm:flex"
                 aria-label={adapter.paused ? "Play" : "Pause"}
               >
                 {adapter.paused ? (
@@ -613,7 +651,7 @@ export function PlayerChrome({
                   type="button"
                   onClick={() => adapter.togglePictureInPicture()}
                   className={cn(
-                    "hidden h-9 w-9 items-center justify-center rounded-full transition hover:bg-white/15 sm:flex",
+                    "flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-white/15",
                     adapter.pictureInPicture ? "bg-white/15" : "",
                   )}
                   aria-label={
@@ -645,7 +683,7 @@ export function PlayerChrome({
           onToggleAutoplayNext={onToggleAutoplayNext}
           onPlayNext={onPlayNext}
           queue={queue}
-          canPip={hydrated && adapter.canPictureInPicture}
+          canPip={false}
           pipActive={adapter.pictureInPicture}
           onTogglePip={() => adapter.togglePictureInPicture()}
         />

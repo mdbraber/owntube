@@ -35,3 +35,10 @@ export function playlistHref(playlistId: string): string {
 export function channelHref(channelId: string): string {
   return `/channel/${encodeURIComponent(channelId)}`;
 }
+
+/** Extract the video id from a canonical `/watch?v=<id>` href (null if absent). */
+export function videoIdFromWatchHref(href: string): string | null {
+  const q = href.indexOf("?");
+  if (q < 0) return null;
+  return new URLSearchParams(href.slice(q + 1)).get("v");
+}

@@ -10,7 +10,7 @@ export default function WatchLoading() {
   return (
     <main className="mx-auto grid min-h-screen max-w-7xl gap-6 px-4 py-8 lg:grid-cols-[2fr_1fr]">
       <div className="space-y-4">
-        <div className="aspect-video animate-pulse rounded-xl bg-[hsl(var(--muted))]" />
+        <div className="mx-[-16px] aspect-video w-[calc(100%_+_2rem)] animate-pulse rounded-none bg-[hsl(var(--muted))] sm:mx-0 sm:w-auto sm:rounded-xl" />
         <div className="h-7 w-2/3 animate-pulse rounded bg-[hsl(var(--muted))]" />
         <div className="h-5 w-1/3 animate-pulse rounded bg-[hsl(var(--muted))]" />
       </div>

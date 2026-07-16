@@ -53,9 +53,13 @@ export function WatchPlayerMount({
         // going full-bleed here (phones, <sm) is what makes the watch video sit
         // edge-to-edge; square corners on mobile, framed/rounded on sm+.
         "relative overflow-hidden bg-black bg-contain bg-center bg-no-repeat sm:rounded-[var(--radius-card)]",
+        // Phones (<sm): edge-to-edge regardless of cinema mode — break out of the
+        // page's 16px side padding, square corners.
+        "aspect-video mx-[-16px] w-[calc(100%_+_2rem)]",
+        // Tablet/desktop (sm+): framed; cinema centers and caps height.
         cinemaMode
-          ? "mx-auto aspect-video w-full max-h-[min(88vh,92dvh)]"
-          : "aspect-video -mx-4 w-[calc(100%_+_2rem)] sm:mx-0 sm:w-full",
+          ? "sm:mx-auto sm:w-full sm:max-h-[min(88vh,92dvh)]"
+          : "sm:mx-0 sm:w-full",
       )}
       style={poster ? { backgroundImage: `url(${poster})` } : undefined}
       aria-hidden

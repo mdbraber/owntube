@@ -41,9 +41,11 @@ export function useMiniPlayerMediaBootstrap(
         ? restoredVolume
         : prefs.volume;
     adapter.setVolume(vol);
+    // A full→mini transition must never silence audio — only lift a mute if the
+    // restored/pref state is explicitly unmuted. (Never force-mute the mini.)
     const muted =
       typeof restoredMuted === "boolean" ? restoredMuted : prefs.muted;
-    if (muted !== adapter.muted) adapter.toggleMuted();
+    if (adapter.muted && !muted) adapter.toggleMuted();
   }, [
     adapter,
     adapter.canPlay,
