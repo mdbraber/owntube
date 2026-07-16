@@ -1,58 +1,91 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect } from "react";
 import { initialQualityIndexForPayload } from "@/components/player/player-quality";
 import { isIosLikeBrowser } from "@/lib/ios-playback";
 import { buildVideoPlayerPayloadFromDetail } from "@/lib/watch-player-payload";
 import { trpc } from "@/trpc/react";
 
+/** Bytes of a progressive next-short's start rung to warm (a few seconds). */
+const PRELOAD_BYTES = 2_000_000;
+
+/** Warm the generated HLS: fetch the master (triggers server-side manifest
+ *  generation — the dominant ~1s cost as it re-fetches the source streams),
+ *  then the audio + lowest video media playlists so hls.js has everything ready
+ *  the instant the slide mounts. Segment bytes stream fast once generated. */
+async function warmGeneratedHls(masterUrl: string, signal: AbortSignal) {
+  try {
+    const res = await fetch(masterUrl, { signal });
+    if (!res.ok) return;
+    const text = await res.text();
+    const base = masterUrl.slice(0, masterUrl.lastIndexOf("/") + 1);
+    const audioUri = text.match(/URI="([^"]*media\.m3u8[^"]*)"/)?.[1];
+    // Rendition playlists are listed after each STREAM-INF, highest first, so
+    // the last one is the lowest rung — what hls.js is likeliest to start on.
+    const videoUris = [...text.matchAll(/^(media\.m3u8[^\s"]*)$/gm)].map(
+      (m) => m[1],
+    );
+    const lowest = videoUris[videoUris.length - 1];
+    await Promise.all(
+      [audioUri, lowest]
+        .filter((u): u is string => Boolean(u))
+        .map((u) => fetch(base + u, { signal }).catch(() => {})),
+    );
+  } catch {
+    /* best-effort */
+  }
+}
+
 /**
- * Invisibly buffers the *next* short's start stream so swiping to it begins
- * playback with no network wait. It reuses the already-prefetched detail (the
- * feed prefetches detail ±ahead, so this is normally a cache hit — no extra API
- * call), extracts the exact low muxed rung the player starts on, and lets a
- * hidden `<video preload="auto">` warm the HTTP cache the real player then
- * reuses. Only mounted when the user's "preload next short" setting is on.
+ * Warms the *next* short's start stream so swiping to it begins playback with
+ * little/no network wait. Reuses the already-prefetched detail (normally a cache
+ * hit — no extra API call) and, for the generated HLS shorts take, pre-generates
+ * the manifest + playlists; for Piped's progressive shorts, primes the opening
+ * bytes of the start rung.
  *
- * HLS starts are skipped: warming a manifest's segments isn't a cheap single
- * request, and shorts almost always resolve to a muxed progressive start.
+ * Crucially it uses `fetch`, NOT a hidden `<video>`: a second decoding element
+ * starves the active short's decoder on mobile and makes it flicker play/pause.
+ * A byte/manifest fetch has no decoder, so it can't contend with playback. Only
+ * mounted when the user's "preload next short" setting is on.
  */
 export function ShortsPreloader({ videoId }: { videoId: string }) {
   const detailQuery = trpc.video.detail.useQuery(
     { videoId },
     { staleTime: 60_000 },
   );
+  const detail = detailQuery.data;
 
-  const src = useMemo(() => {
-    if (!detailQuery.data || typeof window === "undefined") return null;
+  useEffect(() => {
+    if (!detail || typeof window === "undefined") return;
     const built = buildVideoPlayerPayloadFromDetail(
-      detailQuery.data,
+      detail,
       window.location.origin,
       window.location.host,
       { avoidSplitAudioVideo: isIosLikeBrowser() },
     );
-    if (built.payload?.mode !== "progressive") return null;
-    const variants = built.payload.variants;
-    // Same rung the shorts player starts on (lowest muxed) → the bytes we warm
-    // are the bytes it will actually request.
-    const idx = initialQualityIndexForPayload(built.payload, "360p-muxed");
-    const v = variants[idx] ?? variants[0];
-    if (!v) return null;
-    return v.t === "muxed" ? v.src : v.video;
-  }, [detailQuery.data]);
+    const payload = built.payload;
+    if (!payload) return;
 
-  if (!src) return null;
-  return (
-    // biome-ignore lint/a11y/useMediaCaption: silent, off-screen cache-warmer.
-    <video
-      key={src}
-      src={src}
-      muted
-      playsInline
-      preload="auto"
-      aria-hidden
-      tabIndex={-1}
-      className="pointer-events-none absolute left-0 top-0 h-px w-px opacity-0"
-    />
-  );
+    const controller = new AbortController();
+    if (payload.mode === "hls") {
+      void warmGeneratedHls(
+        new URL(payload.src, window.location.origin).href,
+        controller.signal,
+      );
+    } else {
+      const variants = payload.variants;
+      const idx = initialQualityIndexForPayload(payload, "360p-muxed");
+      const v = variants[idx] ?? variants[0];
+      const src = v ? (v.t === "muxed" ? v.src : v.video) : null;
+      if (src) {
+        void fetch(src, {
+          headers: { Range: `bytes=0-${PRELOAD_BYTES - 1}` },
+          signal: controller.signal,
+        }).catch(() => {});
+      }
+    }
+    return () => controller.abort();
+  }, [detail]);
+
+  return null;
 }

@@ -72,7 +72,10 @@ export function AppShell({
           {children}
           <PlayerHost />
         </div>
-        <ShellBottomNav account={bottomNavAccount} />
+        {/* Shorts is a full-bleed, chrome-free experience on phones (the topbar
+            is hidden too) — drop the bottom tab bar so the feed uses the whole
+            height; the in-feed exit cross navigates back. */}
+        {isShortsRoute ? null : <ShellBottomNav account={bottomNavAccount} />}
       </div>
     </div>
   );

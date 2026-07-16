@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ShortsEmptyHint } from "@/components/shorts/shorts-empty-hint";
 import { ShortsPreloader } from "@/components/shorts/shorts-preloader";
@@ -29,7 +30,11 @@ type ShortsFeedClientProps = {
 };
 
 /** How many upcoming shorts to resolve stream URLs for ahead of the active one. */
-const SHORTS_DETAIL_PREFETCH_AHEAD = 3;
+const SHORTS_DETAIL_PREFETCH_AHEAD = 4;
+
+/** How many upcoming shorts to warm the stream/manifest bytes for (aggressive
+ *  background loading so several swipes ahead start instantly). */
+const SHORTS_PRELOAD_AHEAD = 3;
 
 function filterExcludedVideos(
   videos: UnifiedVideo[],
@@ -94,6 +99,13 @@ export function ShortsFeedClient({
   const recordedShortIdsRef = useRef(new Set(initialWatchedVideoIds));
   const excludedIdsRef = useRef(excludedIds);
   excludedIdsRef.current = excludedIds;
+
+  const router = useRouter();
+  const exitShorts = useCallback(() => {
+    // Back to wherever they came from; fall back to home on a cold entry.
+    if (window.history.length > 1) router.back();
+    else router.push("/");
+  }, [router]);
 
   const utils = trpc.useUtils();
   const settingsQuery = trpc.settings.get.useQuery();
@@ -574,6 +586,28 @@ export function ShortsFeedClient({
 
   return (
     <div className="absolute inset-0 bg-black">
+      {/* Exit cross: the only way out on phones, where the topbar and bottom tab
+          bar are hidden for the full-screen feed. Shown only there (chrome is
+          back at ≥901px). */}
+      <button
+        type="button"
+        aria-label="Close shorts"
+        onClick={exitShorts}
+        className="absolute right-3 top-[calc(0.5rem+env(safe-area-inset-top))] z-50 flex h-10 w-10 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm transition hover:bg-black/65 min-[901px]:hidden"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          className="h-5 w-5"
+          aria-hidden
+        >
+          <title>Close</title>
+          <path d="M6 6l12 12M18 6L6 18" />
+        </svg>
+      </button>
       <div className="pointer-events-none absolute inset-y-0 right-3 z-40 hidden flex-col items-center justify-center gap-3 sm:flex">
         <button
           type="button"
@@ -643,12 +677,14 @@ export function ShortsFeedClient({
           </div>
         ) : null}
       </div>
-      {preloadNext && items[activeIndex + 1] ? (
-        <ShortsPreloader
-          key={items[activeIndex + 1].videoId}
-          videoId={items[activeIndex + 1].videoId}
-        />
-      ) : null}
+      {preloadNext
+        ? Array.from({ length: SHORTS_PRELOAD_AHEAD }, (_, i) => {
+            const next = items[activeIndex + 1 + i];
+            return next ? (
+              <ShortsPreloader key={next.videoId} videoId={next.videoId} />
+            ) : null;
+          })
+        : null}
     </div>
   );
 }
