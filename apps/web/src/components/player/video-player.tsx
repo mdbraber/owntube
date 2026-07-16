@@ -498,7 +498,9 @@ export function VideoPlayer({
           ? "relative h-full min-h-0 w-full overflow-hidden border-0 shadow-none ring-0"
           : cinemaMode
             ? "w-full max-w-full overflow-visible border-0 shadow-2xl ring-1 ring-white/15 sm:rounded-xl"
-            : "overflow-hidden rounded-xl border border-[hsl(var(--border))] shadow-lg ring-1 ring-black/5",
+            : // Normal inline player. Square, borderless on phones (<sm) so the
+              // watch-page video reads edge-to-edge; framed rounded card on sm+.
+              "overflow-hidden sm:rounded-xl sm:border sm:border-[hsl(var(--border))] sm:shadow-lg sm:ring-1 sm:ring-black/5",
       )}
     >
       <div

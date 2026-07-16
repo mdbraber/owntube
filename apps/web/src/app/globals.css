@@ -645,6 +645,17 @@ body {
     /* biome-ignore lint/complexity/noImportantStyles: must out-rank utility classes */
     scroll-behavior: auto !important;
   }
+
+  /* Loading/buffering spinners are functional feedback, not decoration — keep
+     them actually spinning even when the blanket rule above would freeze them
+     (higher specificity than `*` wins among !important declarations). */
+  /* biome-ignore lint/complexity/noImportantStyles: must out-rank the reset above */
+  .animate-spin {
+    /* biome-ignore lint/complexity/noImportantStyles: must out-rank the reset above */
+    animation-duration: 0.8s !important;
+    /* biome-ignore lint/complexity/noImportantStyles: must out-rank the reset above */
+    animation-iteration-count: infinite !important;
+  }
 }
 
 .ot-page {

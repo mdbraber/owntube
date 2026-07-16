@@ -49,10 +49,13 @@ export function WatchPlayerMount({
         // Poster uses contain (not cover) to match the <video>'s object-contain
         // framing, so the placeholder doesn't show a cropped/zoomed poster that
         // then "scales back" once the player overlays it.
-        "relative w-full overflow-hidden rounded-[var(--radius-card)] bg-black bg-contain bg-center bg-no-repeat",
+        // The persistent player overlay is positioned to THIS slot's rect, so
+        // going full-bleed here (phones, <sm) is what makes the watch video sit
+        // edge-to-edge; square corners on mobile, framed/rounded on sm+.
+        "relative overflow-hidden bg-black bg-contain bg-center bg-no-repeat sm:rounded-[var(--radius-card)]",
         cinemaMode
-          ? "mx-auto aspect-video max-h-[min(88vh,92dvh)]"
-          : "aspect-video",
+          ? "mx-auto aspect-video w-full max-h-[min(88vh,92dvh)]"
+          : "aspect-video -mx-4 w-[calc(100%_+_2rem)] sm:mx-0 sm:w-full",
       )}
       style={poster ? { backgroundImage: `url(${poster})` } : undefined}
       aria-hidden
