@@ -97,6 +97,12 @@ export const appSettingsSchema = z.object({
   autoplayNext: z.boolean().default(true),
   /** Default watch-page quality rung (1080p, 720p, muxed 360p, …). */
   defaultPlaybackQuality: defaultPlaybackQualitySchema.default("1080p"),
+  /**
+   * Buffer the next short's video ahead of time so swiping starts it instantly.
+   * Costs extra bandwidth (downloads a short you might skip) — off-switch for
+   * metered connections.
+   */
+  shortsPreloadNext: z.boolean().default(true),
   /** Channels excluded from personalized recommendations. */
   blockedRecommendationChannels: z
     .array(z.string().min(1).max(128))
@@ -202,6 +208,7 @@ const defaultSettings: AppSettings = {
   enableMiniPlayer: true,
   autoplayOnWatch: true,
   autoplayNext: true,
+  shortsPreloadNext: true,
   defaultPlaybackQuality: "1080p",
   blockedRecommendationChannels: [],
   excludeSubscribedFromRecommendations: true,

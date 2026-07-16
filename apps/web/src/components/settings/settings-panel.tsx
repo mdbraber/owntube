@@ -190,6 +190,9 @@ export function SettingsPanel({
   const [autoplayOnWatch, setAutoplayOnWatch] = useState(
     initial.autoplayOnWatch ?? true,
   );
+  const [shortsPreloadNext, setShortsPreloadNext] = useState(
+    initial.shortsPreloadNext ?? true,
+  );
   const [defaultPlaybackQuality, setDefaultPlaybackQuality] =
     useState<DefaultPlaybackQuality>(initial.defaultPlaybackQuality ?? "1080p");
   const [enableSwipeGestures, setEnableSwipeGestures] = useState(
@@ -255,6 +258,10 @@ export function SettingsPanel({
   useEffect(() => {
     setAutoplayOnWatch(initial.autoplayOnWatch ?? true);
   }, [initial.autoplayOnWatch]);
+
+  useEffect(() => {
+    setShortsPreloadNext(initial.shortsPreloadNext ?? true);
+  }, [initial.shortsPreloadNext]);
 
   useEffect(() => {
     const q = initial.defaultPlaybackQuality ?? "1080p";
@@ -404,6 +411,7 @@ export function SettingsPanel({
       defaultCinemaMode,
       enableMiniPlayer,
       autoplayOnWatch,
+      shortsPreloadNext,
       defaultPlaybackQuality,
       sponsorBlockEnabled,
       sponsorBlockAutoSkip,
@@ -718,6 +726,14 @@ export function SettingsPanel({
               onChange={(e) => setAutoplayOnWatch(e.currentTarget.checked)}
             />
             Autoplay videos when opening the watch page
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={shortsPreloadNext}
+              onChange={(e) => setShortsPreloadNext(e.currentTarget.checked)}
+            />
+            Preload the next short while watching (faster swipes, more data)
           </label>
           <div className="max-w-md space-y-1 pt-1">
             <label

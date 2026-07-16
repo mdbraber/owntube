@@ -45,6 +45,7 @@ const settingsPatchSchema = z.object({
   enableMiniPlayer: z.boolean().optional(),
   autoplayOnWatch: z.boolean().optional(),
   autoplayNext: z.boolean().optional(),
+  shortsPreloadNext: z.boolean().optional(),
   defaultPlaybackQuality: defaultPlaybackQualitySchema.optional(),
   sponsorBlockEnabled: z.boolean().optional(),
   sponsorBlockAutoSkip: z.boolean().optional(),
