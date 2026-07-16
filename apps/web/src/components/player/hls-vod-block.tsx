@@ -7,6 +7,7 @@ import { PlayerChrome } from "@/components/player/player-chrome";
 import {
   useMiniPlayerMediaBootstrap,
   useReportVideoIntrinsics,
+  useShortsNativeAutoplay,
 } from "@/components/player/player-media-hooks";
 import type { CaptionTrack } from "@/components/player/player-payload";
 import type { SponsorBlockChromeProps } from "@/components/player/player-types";
@@ -175,6 +176,11 @@ export function HlsVodBlock({
 
   useReportVideoIntrinsics(videoRef, onVideoIntrinsics);
 
+  // Shorts autoplay: the browser blocks unmuted autoplay, so (like the muxed
+  // block) keep retrying a muted play on canplay/loadeddata. Without this a
+  // short routed to the generated HLS just sits paused until tapped.
+  useShortsNativeAutoplay(videoRef, shortsMode, reactKey, shortsMode);
+
   // Lock-screen / Control Center metadata and transport controls.
   useBackgroundPlayback(videoRef, {
     title,
@@ -223,17 +229,22 @@ export function HlsVodBlock({
       ref={shellRef}
       tabIndex={-1}
       className={cn(
-        "group/player relative overflow-hidden bg-black focus:outline-none",
-        cinemaMode
-          ? "aspect-video w-full max-h-[min(88vh,92dvh)] rounded-lg shadow-xl ring-1 ring-white/10"
-          : "aspect-video w-full",
+        // Transparent in shorts so the slide's thumbnail backdrop shows through
+        // while buffering / behind letterboxing; black everywhere else.
+        "group/player relative overflow-hidden focus:outline-none",
+        shortsMode
+          ? "h-full w-full bg-transparent"
+          : cinemaMode
+            ? "aspect-video w-full max-h-[min(88vh,92dvh)] rounded-lg bg-black shadow-xl ring-1 ring-white/10"
+            : "aspect-video w-full bg-black",
       )}
     >
       {/* biome-ignore lint/a11y/useMediaCaption: subtitle <track>s are provided dynamically from the `captions` prop (mapped children the rule can't statically see). */}
       <video
         key={reactKey}
         ref={videoRef}
-        poster={poster}
+        poster={shortsMode ? undefined : poster}
+        muted={shortsMode}
         playsInline
         preload="auto"
         onError={emitPlaybackError}

@@ -158,12 +158,14 @@ export function NativeMuxedBlock({
       ref={shellRef}
       tabIndex={-1}
       className={cn(
-        "group/player relative overflow-hidden bg-black focus:outline-none",
+        // Transparent in shorts so the slide's thumbnail backdrop shows through
+        // while buffering / behind letterboxing; black everywhere else.
+        "group/player relative overflow-hidden focus:outline-none",
         shortsMode
-          ? SHORTS_SHELL_POINTER
+          ? cn(SHORTS_SHELL_POINTER, "bg-transparent")
           : cinemaMode
-            ? "aspect-video w-full max-h-[min(88vh,92dvh)] rounded-lg shadow-xl ring-1 ring-white/10"
-            : "aspect-video w-full",
+            ? "aspect-video w-full max-h-[min(88vh,92dvh)] rounded-lg bg-black shadow-xl ring-1 ring-white/10"
+            : "aspect-video w-full bg-black",
       )}
     >
       <video

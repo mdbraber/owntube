@@ -112,6 +112,9 @@ export type VideoPlayerProps = {
 
 /* ------------------------------- Top level ------------------------------- */
 
+/** Watch time before a short ramps from its low start rung up to the default. */
+const SHORTS_QUALITY_UPGRADE_MS = 5000;
+
 export function VideoPlayer({
   videoId,
   payload,
@@ -215,6 +218,12 @@ export function VideoPlayer({
     (typeof window === "undefined"
       ? DEFAULT_PLAYBACK_QUALITY
       : readDefaultPlaybackQuality());
+  // Shorts start on the lowest muxed rung (single-file, instant start) no matter
+  // the user's default, then bump up after a few seconds of watching (see the
+  // upgrade effect below). Skim past a short and it never pays for the upgrade.
+  const startQualityPref: DefaultPlaybackQuality = shortsMode
+    ? "360p-muxed"
+    : resolvedDefaultQuality;
   const [qualityIndex, setQualityIndex] = useState(() => {
     if (
       typeof initialQualityIndexProp === "number" &&
@@ -223,10 +232,7 @@ export function VideoPlayer({
     ) {
       return Math.floor(initialQualityIndexProp);
     }
-    return initialQualityIndexForPayload(
-      effectivePayload,
-      resolvedDefaultQuality,
-    );
+    return initialQualityIndexForPayload(effectivePayload, startQualityPref);
   });
   const variantFallbackAttemptsRef = useRef(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -356,7 +362,9 @@ export function VideoPlayer({
     ) {
       return;
     }
-    const pref = defaultPlaybackQualityProp ?? readDefaultPlaybackQuality();
+    const pref = shortsMode
+      ? "360p-muxed"
+      : (defaultPlaybackQualityProp ?? readDefaultPlaybackQuality());
     setQualityIndex(initialQualityIndexForPayload(effectivePayload, pref));
     setResumeSeekSeconds(undefined);
     setSettingsOpen(false);
@@ -366,7 +374,31 @@ export function VideoPlayer({
     defaultPlaybackQualityProp,
     initialQualityIndexProp,
     miniMode,
+    shortsMode,
   ]);
+
+  // Shorts quality "ramp": having started on the lowest muxed rung for an
+  // instant start, upgrade to the *best muxed* rung once they've watched a few
+  // seconds — long enough that a quick skim never triggers the re-buffer. We
+  // deliberately ramp to muxed, not the split HD rungs: a mid-playback switch
+  // into the split (video-only + <audio>) path can stall and get the short
+  // skipped, the very failure we start low to avoid. Scrolling away unmounts
+  // the slide and cancels the timer; HD stays available in the quality menu.
+  useEffect(() => {
+    if (!shortsMode) return;
+    const variants = progressiveMobileSafe;
+    if (!variants || variants.length <= 1) return;
+    // muxed rows are ordered best-first, so the first muxed is the top rung.
+    const targetIdx = variants.findIndex((v) => v.t === "muxed");
+    if (targetIdx < 0 || targetIdx >= qualityIndex) return; // no better muxed
+    const id = window.setTimeout(() => {
+      const media = playerMediaRootRef.current?.querySelector("video");
+      const at =
+        media && Number.isFinite(media.currentTime) ? media.currentTime : 0;
+      setQualityWithResume(targetIdx, at > 0 ? at : undefined);
+    }, SHORTS_QUALITY_UPGRADE_MS);
+    return () => window.clearTimeout(id);
+  }, [shortsMode, progressiveMobileSafe, qualityIndex, setQualityWithResume]);
 
   useEffect(() => {
     if (!progressiveMobileSafe || progressiveMobileSafe.length === 0) return;
@@ -494,14 +526,16 @@ export function VideoPlayer({
   return (
     <div
       className={cn(
-        "relative w-full bg-black",
+        // Shorts stay transparent so the slide's thumbnail backdrop shows while
+        // the video buffers (and behind letterboxing); other modes are black.
+        "relative w-full",
         shortsMode
-          ? "relative h-full min-h-0 w-full overflow-hidden border-0 shadow-none ring-0"
+          ? "h-full min-h-0 w-full overflow-hidden border-0 bg-transparent shadow-none ring-0"
           : cinemaMode
-            ? "w-full max-w-full overflow-visible border-0 shadow-2xl ring-1 ring-white/15 sm:rounded-xl"
+            ? "w-full max-w-full overflow-visible border-0 bg-black shadow-2xl ring-1 ring-white/15 sm:rounded-xl"
             : // Normal inline player. Square, borderless on phones (<sm) so the
               // watch-page video reads edge-to-edge; framed rounded card on sm+.
-              "overflow-hidden sm:rounded-xl sm:border sm:border-[hsl(var(--border))] sm:shadow-lg sm:ring-1 sm:ring-black/5",
+              "overflow-hidden bg-black sm:rounded-xl sm:border sm:border-[hsl(var(--border))] sm:shadow-lg sm:ring-1 sm:ring-black/5",
       )}
     >
       <div
