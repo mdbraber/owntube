@@ -65,6 +65,10 @@ yarn-error.log*
 apps/web/data/*.db
 apps/web/data/*.db-*
 
+# runtime data dir: proxy asset cache + dev-restart signal (regenerated locally)
+apps/web/data/asset-cache/
+apps/web/data/.dev-restart
+
 # recommendation debug NDJSON (OWNTUBE_DEBUG_RECOMMENDATIONS)
 /logs/
 
