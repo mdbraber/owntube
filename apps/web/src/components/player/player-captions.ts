@@ -112,24 +112,44 @@ export function usePlayerCaptions(
     const ourLabels = new Set(tracks.map((t) => t.label));
 
     const apply = () => {
+      // In a NATIVE presentation (Picture-in-Picture, or Apple's fullscreen
+      // video player on iPhone) the browser draws only `showing` cues on its
+      // own surface, which our in-page overlay can't reach. Inline (and in our
+      // element-fullscreen, where the overlay is on-screen) we keep the active
+      // track `hidden` and render the styled text ourselves.
+      const inNativePresentation =
+        document.pictureInPictureElement === video ||
+        (video as HTMLVideoElement & { webkitDisplayingFullscreen?: boolean })
+          .webkitDisplayingFullscreen === true;
+      const activeMode: TextTrackMode = inNativePresentation
+        ? "showing"
+        : "hidden";
       const list = video.textTracks;
       for (let i = 0; i < list.length; i++) {
         const tt = list[i];
         if (!tt || !ourLabels.has(tt.label)) continue;
-        // `hidden` (not `showing`): cues still fire `cuechange`, but the browser
-        // draws nothing — we render the text ourselves in the overlay.
         const mode: TextTrackMode =
-          wantLabel !== null && tt.label === wantLabel ? "hidden" : "disabled";
+          wantLabel !== null && tt.label === wantLabel ? activeMode : "disabled";
         if (tt.mode !== mode) tt.mode = mode;
       }
     };
 
     apply();
     video.addEventListener("loadedmetadata", apply);
+    // Re-apply when entering/leaving a native surface so cues switch between our
+    // overlay (`hidden`) and native rendering (`showing`).
+    video.addEventListener("enterpictureinpicture", apply);
+    video.addEventListener("leavepictureinpicture", apply);
+    video.addEventListener("webkitbeginfullscreen", apply);
+    video.addEventListener("webkitendfullscreen", apply);
     video.textTracks.addEventListener?.("addtrack", apply);
     video.textTracks.addEventListener?.("change", apply);
     return () => {
       video.removeEventListener("loadedmetadata", apply);
+      video.removeEventListener("enterpictureinpicture", apply);
+      video.removeEventListener("leavepictureinpicture", apply);
+      video.removeEventListener("webkitbeginfullscreen", apply);
+      video.removeEventListener("webkitendfullscreen", apply);
       video.textTracks.removeEventListener?.("addtrack", apply);
       video.textTracks.removeEventListener?.("change", apply);
     };

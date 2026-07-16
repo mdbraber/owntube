@@ -49,11 +49,22 @@ export function useHlsVodPlayback(
       if (autoPlayRef.current) void video.play().catch(() => {});
     };
 
-    // Native HLS (Safari/iOS): the robust, hardware-decoded path.
+    // Native HLS (Safari/iOS) is normally the robust, hardware-decoded path —
+    // BUT the macOS media stack (a real Mac, or an iPad in "Request Desktop
+    // Website" mode — both report a real, unmanaged `window.MediaSource`)
+    // rejects our byte-range fMP4 VOD manifest natively with
+    // MEDIA_ERR_SRC_NOT_SUPPORTED. hls.js parses the manifest itself and plays
+    // it over real MSE there. So we only take the native path when the browser
+    // has NO real MediaSource — i.e. iPhone/iPad-class WebKit that exposes only
+    // ManagedMediaSource (where hls.js would fall back to MMS and stall the
+    // video track, and where native HLS works). See use-dash-playback for the
+    // sibling MMS/MSE notes.
+    const hasRealMediaSource =
+      typeof window !== "undefined" && "MediaSource" in window;
     const canNative =
       video.canPlayType("application/vnd.apple.mpegurl") !== "" ||
       video.canPlayType("application/x-mpegURL") !== "";
-    if (canNative) {
+    if (canNative && !hasRealMediaSource) {
       const onLoaded = () => applyStartAndPlay();
       const onError = () => onFatalErrorRef.current?.();
       video.addEventListener("loadedmetadata", onLoaded, { once: true });
@@ -68,8 +79,10 @@ export function useHlsVodPlayback(
       };
     }
 
-    // Non-Safari: hls.js. Same-origin config is a harmless no-op for our
-    // already-same-origin segments and still proxies any stray CDN URL.
+    // hls.js: non-Safari, and Safari on the macOS media stack (real Mac /
+    // desktop-mode iPad) where native HLS rejects the manifest. Same-origin
+    // config is a harmless no-op for our already-same-origin segments and still
+    // proxies any stray CDN URL.
     let cancelled = false;
     let hls: Hls | null = null;
     const releaseFetchGuard = installSameOriginMediaFetchGuard();

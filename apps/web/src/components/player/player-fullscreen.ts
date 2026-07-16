@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { isIosLikeBrowser } from "@/lib/ios-playback";
 
 // CSS pseudo-fullscreen: pins the player shell to the viewport. Last-resort
 // fallback for browsers with no element Fullscreen API and no native video
@@ -141,24 +140,22 @@ export function useFullscreenShell(
           return;
         }
       }
-      // iOS: hand off to Apple's real fullscreen player. Element fullscreen is
-      // absent (iPhone) or gives a shell-scaled page rather than the native
-      // experience (iPad), and the old worry — webkitEnterFullscreen throwing on
-      // MSE-backed video — cannot bite here: iOS is routed to native HLS
-      // (`isIosLikeBrowser` disables the dash/MSE path), so the element always
-      // has a real fullscreen-capable source. Trade-off is Apple's controls
-      // replacing ours for the duration, which is the platform norm; JS still
-      // drives the element, so SponsorBlock skips keep working.
+      // Prefer real element fullscreen so OUR chrome — chapters, SponsorBlock,
+      // the caption overlay — stays on top. iPad (both UA modes) and every
+      // desktop browser support it. Only iPhone lacks element fullscreen, so it
+      // alone falls through to Apple's native video player below.
+      if (typeof el.requestFullscreen === "function") {
+        await el.requestFullscreen();
+        return;
+      }
+      // iPhone: no element fullscreen — hand off to Apple's real fullscreen
+      // player. JS still drives the element, so SponsorBlock skips keep working;
+      // captions switch to native `showing` cues via usePlayerCaptions.
       if (
-        isIosLikeBrowser() &&
         typeof video?.webkitEnterFullscreen === "function" &&
         video.webkitSupportsFullscreen !== false
       ) {
         video.webkitEnterFullscreen();
-        return;
-      }
-      if (typeof el.requestFullscreen === "function") {
-        await el.requestFullscreen();
         return;
       }
       // No fullscreen API at all: pin the shell to the viewport so the custom

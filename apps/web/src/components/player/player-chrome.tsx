@@ -551,7 +551,9 @@ export function PlayerChrome({
                 </div>
               ) : null}
 
-              {!miniMode && !shortsMode ? (
+              {/* Cinema mode is meaningless in fullscreen (the player already
+                  fills the screen), so hide the toggle while fullscreen. */}
+              {!miniMode && !shortsMode && !fsActive ? (
                 <button
                   type="button"
                   onClick={() => onToggleCinema()}

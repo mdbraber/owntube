@@ -152,6 +152,12 @@ export function buildHlsSameOriginConfig(
 
   return {
     loader: ProxiedLoader,
+    // Don't let hls.js manage native text tracks: it would create its own
+    // CEA-608 track and reset TextTrack modes, clobbering the sidecar
+    // `<track>` captions that `usePlayerCaptions` drives. We never rely on
+    // hls.js to render in-manifest subtitles, so this is a safe no-op for
+    // subtitles and leaves our tracks untouched (matching native-HLS behavior).
+    renderTextTracksNatively: false,
     startFragPrefetch: true,
     // Deeper buffer absorbs proxied-segment latency: fewer mid-playback stalls
     // and snappier seeks. Live keeps its own low-latency config elsewhere.
