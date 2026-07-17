@@ -786,7 +786,9 @@ export function ShortsTopControls({
     <div
       data-controls
       className={cn(
-        "pointer-events-auto absolute left-2 top-2 z-30 flex max-w-[calc(100%-1rem)] items-center gap-1 transition-opacity duration-200 sm:left-3 sm:top-3",
+        // top matches the shorts exit 'x' (safe-area inset) so it clears the
+        // device status icons (e.g. iOS clock) in fullscreen.
+        "pointer-events-auto absolute left-2 top-[calc(0.5rem+env(safe-area-inset-top))] z-30 flex max-w-[calc(100%-1rem)] items-center gap-1 transition-opacity duration-200 sm:left-3",
         chromeShown ? "opacity-100" : "opacity-0",
       )}
     >

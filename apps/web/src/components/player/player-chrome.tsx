@@ -388,13 +388,19 @@ export function PlayerChrome({
       ) : (
         <div
           className={cn(
-            "pointer-events-none absolute inset-x-0 top-0 z-30 px-4 pt-2 transition-opacity duration-200",
+            "pointer-events-none absolute inset-x-0 top-0 z-30 px-4 transition-opacity duration-200",
+            // In fullscreen add the top safe-area inset so the title/actions row
+            // clears the device status icons (e.g. iPad clock/battery); the
+            // gradient grows to match. Non-fullscreen keeps the compact pt-2.
+            fsActive
+              ? "pt-[calc(env(safe-area-inset-top)+0.5rem)]"
+              : "pt-2",
             chromeShown ? "opacity-100" : "opacity-0",
           )}
           style={{
             background:
               "linear-gradient(to bottom, rgba(0,0,0,0.55), rgba(0,0,0,0))",
-            height: "5rem",
+            height: fsActive ? "calc(5rem + env(safe-area-inset-top))" : "5rem",
           }}
         >
           <div className="flex items-start justify-between gap-3">

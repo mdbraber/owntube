@@ -198,7 +198,9 @@ export function ShortsSlide({
           ) : null}
           <div className="absolute inset-0">{body}</div>
 
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 rounded-b-xl bg-gradient-to-t from-black/90 via-black/45 to-transparent px-3 pb-5 pt-12">
+          {/* Bottom safe-area inset (matching the hidden tab bar) so the phone's
+              rounded corners / home indicator don't clip the meta. */}
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 rounded-b-xl bg-gradient-to-t from-black/90 via-black/45 to-transparent px-3 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-12">
             <div className="pointer-events-auto min-w-0 pr-16 sm:pr-1">
               {video.channelId && video.channelName ? (
                 <Link
@@ -232,7 +234,7 @@ export function ShortsSlide({
             channelId={video.channelId}
             channelName={video.channelName}
             title={video.title}
-            className="absolute bottom-0 right-0 z-30 pr-2 sm:static sm:right-auto sm:bottom-auto sm:self-end sm:pr-0 sm:pb-6"
+            className="absolute bottom-0 right-0 z-30 pb-[env(safe-area-inset-bottom)] pr-2 sm:static sm:right-auto sm:bottom-auto sm:self-end sm:pb-6 sm:pr-0"
           />
         ) : null}
       </div>
