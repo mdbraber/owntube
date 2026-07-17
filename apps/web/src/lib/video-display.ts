@@ -59,9 +59,20 @@ export function formatThumbnailBadge({
   return formatDuration(durationSeconds);
 }
 
+// Reject epoch-like garbage (e.g. a "seconds ago" duration mistaken for a unix
+// timestamp, which renders as "56 years ago"). Mirrors the server-side floor in
+// published-sort-key.ts. Anything before ~2005-01 isn't a real upload date.
+const MIN_REASONABLE_PUBLISHED_UNIX = 1_100_000_000; // ~2004-11
+
+function isPlausiblePublishedUnix(secondsSinceEpoch: number): boolean {
+  if (!Number.isFinite(secondsSinceEpoch)) return false;
+  if (secondsSinceEpoch < MIN_REASONABLE_PUBLISHED_UNIX) return false;
+  // Allow modest clock skew, but reject far-future values.
+  return secondsSinceEpoch < Math.floor(Date.now() / 1000) + 86_400;
+}
+
 function formatRelativeFromNow(secondsSinceEpoch: number): string | null {
-  if (!Number.isFinite(secondsSinceEpoch) || secondsSinceEpoch <= 0)
-    return null;
+  if (!isPlausiblePublishedUnix(secondsSinceEpoch)) return null;
   const now = Math.floor(Date.now() / 1000);
   const delta = Math.max(0, now - Math.floor(secondsSinceEpoch));
 
@@ -89,7 +100,7 @@ function formatRelativeFromNow(secondsSinceEpoch: number): string | null {
 export function formatPublishedAbsoluteLabel(
   publishedAt: number | undefined,
 ): string | null {
-  if (typeof publishedAt !== "number" || !Number.isFinite(publishedAt)) {
+  if (typeof publishedAt !== "number" || !isPlausiblePublishedUnix(publishedAt)) {
     return null;
   }
   const d = new Date(Math.floor(publishedAt) * 1000);

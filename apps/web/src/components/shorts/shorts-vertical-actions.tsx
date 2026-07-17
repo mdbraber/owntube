@@ -9,6 +9,8 @@ import {
   videoActionShortLabel,
 } from "@/components/videos/video-action-registry";
 import { PlaylistPicker } from "@/components/videos/video-actions-menu";
+import { ShareDialog } from "@/components/player/share-dialog";
+import { ShareIcon } from "@/components/videos/video-action-icons";
 import { cn } from "@/lib/utils";
 
 type ShortsVerticalActionsProps = {
@@ -79,6 +81,7 @@ export function ShortsVerticalActions({
   const panelId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const [playlistOpen, setPlaylistOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
 
   const actions = useVideoActions({
     videoId,
@@ -144,6 +147,16 @@ export function ShortsVerticalActions({
           </RailButton>
         );
       })}
+
+      <RailButton label="Share" onClick={() => setShareOpen(true)}>
+        <ShareIcon className="h-5 w-5" />
+      </RailButton>
+
+      <ShareDialog
+        videoId={videoId}
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+      />
 
       {playlistOpen ? (
         <div

@@ -114,6 +114,22 @@ export function useNativeAdapter(opts: {
     };
   }, [videoRef, bump]);
 
+  // Reflect direct element mute changes back into React state. The shorts
+  // unmute-after-play hook sets `el.muted` straight on the DOM (bypassing the
+  // adapter), so without this the mute button would keep showing "muted" while
+  // audio is actually playing. Functional update keeps it loop-free: adapter
+  // writes set el.muted to the value we already hold, so this no-ops on those.
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    const onVolumeChange = () => {
+      setMuted((prev) => (prev === v.muted ? prev : v.muted));
+    };
+    v.addEventListener("volumechange", onVolumeChange);
+    onVolumeChange();
+    return () => v.removeEventListener("volumechange", onVolumeChange);
+  }, [videoRef.current]);
+
   // Attach the limiter when playback actually starts (the element src/buffer
   // may not have been ready during the initial play gesture).
   useEffect(() => {
