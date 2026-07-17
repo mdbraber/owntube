@@ -502,7 +502,14 @@ export function PlayerChrome({
               "linear-gradient(to top, rgba(0,0,0,0.78), rgba(0,0,0,0))",
           }}
         >
-          <div className="px-3 pb-2 pt-12 sm:px-4">
+          <div
+            className={cn(
+              "px-3 pt-12 sm:px-4",
+              // In fullscreen lift the scrubber above the home indicator /
+              // rounded corners; inline keeps the compact pb-2.
+              fsActive ? "pb-[calc(0.5rem+env(safe-area-inset-bottom))]" : "pb-2",
+            )}
+          >
             <ProgressBar
               current={seekPos}
               duration={adapter.duration}
