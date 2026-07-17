@@ -390,6 +390,9 @@ export function ProgressBar({
   const [hoverAnchor, setHoverAnchor] = useState<{
     x: number;
     y: number;
+    /** Scrubber track width ≈ player width — used to size the preview relative
+     *  to the video (so it isn't oversized on a small phone player). */
+    trackWidth: number;
   } | null>(null);
   const [dragging, setDragging] = useState(false);
   const draggingRef = useRef(false);
@@ -412,7 +415,7 @@ export function ProgressBar({
     const el = trackRef.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
-    setHoverAnchor({ x: clientX, y: rect.top });
+    setHoverAnchor({ x: clientX, y: rect.top, trackWidth: rect.width });
   }, []);
 
   const pct = (n: number) =>
@@ -628,6 +631,9 @@ export function ProgressBar({
                   hover={hover}
                   duration={duration}
                   scrubPreview={scrubPreview}
+                  width={Math.round(
+                    Math.min(200, Math.max(84, hoverAnchor.trackWidth * 0.28)),
+                  )}
                 />
               ) : null}
               {hoverSponsorLabel ? (

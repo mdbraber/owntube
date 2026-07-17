@@ -8,6 +8,29 @@ import type {
 import { cn } from "@/lib/utils";
 import { applyVideoThumbnailImgError } from "@/lib/video-thumbnail-url";
 
+/** Convert a storyboard frame's pixel sprite crop to a percentage background so
+ *  the selected cell fills whatever size box we render it in. */
+function spritePercentBackground(frame: ScrubFramePreview) {
+  const [sheetW, sheetH] = (frame.backgroundSize ?? "")
+    .split(" ")
+    .map((v) => Number.parseFloat(v));
+  const [posX, posY] = (frame.backgroundPosition ?? "0px 0px")
+    .split(" ")
+    .map((v) => Number.parseFloat(v));
+  const cols = Math.max(1, Math.round(sheetW / frame.width));
+  const rows = Math.max(1, Math.round(sheetH / frame.height));
+  const col = Math.max(0, Math.round(-posX / frame.width));
+  const row = Math.max(0, Math.round(-posY / frame.height));
+  return {
+    backgroundImage: `url(${frame.url})`,
+    backgroundRepeat: "no-repeat" as const,
+    backgroundSize: `${cols * 100}% ${rows * 100}%`,
+    backgroundPosition: `${cols > 1 ? (col / (cols - 1)) * 100 : 0}% ${
+      rows > 1 ? (row / (rows - 1)) * 100 : 0
+    }%`,
+  };
+}
+
 function ScrubPreviewVisual({
   frame,
   scrubPreview,
@@ -15,6 +38,7 @@ function ScrubPreviewVisual({
   previewVideoFailed,
   onPreviewVideoError,
   previewSeekKey,
+  width,
 }: {
   frame: ScrubFramePreview | null;
   scrubPreview: ScrubPreviewConfig;
@@ -22,6 +46,8 @@ function ScrubPreviewVisual({
   previewVideoFailed: boolean;
   onPreviewVideoError: () => void;
   previewSeekKey: number | null;
+  /** Rendered width in px — sized relative to the player by the caller. */
+  width: number;
 }) {
   const [frameFailed, setFrameFailed] = useState(false);
   const [videoSeekReady, setVideoSeekReady] = useState(false);
@@ -55,19 +81,14 @@ function ScrubPreviewVisual({
     };
   }, [frame, scrubPreview.streamSrc, previewVideoFailed]);
 
+  const aspect = `${frame?.width ?? 16} / ${frame?.height ?? 9}`;
+
   if (frame && !frameFailed) {
     if (frame.backgroundSize) {
       return (
         <div
           className="relative shrink-0 overflow-hidden rounded-md bg-zinc-950 shadow-lg ring-1 ring-white/20"
-          style={{
-            width: frame.width,
-            height: frame.height,
-            backgroundImage: `url(${frame.url})`,
-            backgroundRepeat: "no-repeat",
-            backgroundSize: frame.backgroundSize,
-            backgroundPosition: frame.backgroundPosition ?? "0 0",
-          }}
+          style={{ width, aspectRatio: aspect, ...spritePercentBackground(frame) }}
           aria-hidden
         >
           {/* biome-ignore lint/performance/noImgElement: probe storyboard sheet load */}
@@ -85,8 +106,7 @@ function ScrubPreviewVisual({
       <img
         src={frame.url}
         alt=""
-        width={frame.width}
-        height={frame.height}
+        style={{ width, aspectRatio: aspect }}
         className="relative shrink-0 rounded-md bg-zinc-950 object-cover shadow-lg ring-1 ring-white/20"
         onError={() => setFrameFailed(true)}
       />
@@ -94,7 +114,10 @@ function ScrubPreviewVisual({
   }
 
   return (
-    <div className="relative aspect-video w-[7.5rem] shrink-0 overflow-hidden rounded-md bg-zinc-950 shadow-lg ring-1 ring-white/20">
+    <div
+      className="relative aspect-video shrink-0 overflow-hidden rounded-md bg-zinc-950 shadow-lg ring-1 ring-white/20"
+      style={{ width }}
+    >
       {scrubPreview.poster ? (
         // biome-ignore lint/performance/noImgElement: scrub preview still
         <img
@@ -218,10 +241,13 @@ export function ScrubPreviewOverlay({
   hover,
   duration,
   scrubPreview,
+  width = 120,
 }: {
   hover: number;
   duration: number;
   scrubPreview: ScrubPreviewConfig;
+  /** Preview width in px, sized relative to the player by the caller. */
+  width?: number;
 }) {
   const previewRef = useRef<HTMLVideoElement | null>(null);
   const [previewVideoFailed, setPreviewVideoFailed] = useState(false);
@@ -277,6 +303,7 @@ export function ScrubPreviewOverlay({
       previewVideoFailed={previewVideoFailed}
       onPreviewVideoError={onPreviewVideoError}
       previewSeekKey={hover}
+      width={width}
     />
   );
 }

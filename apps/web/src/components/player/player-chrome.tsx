@@ -283,7 +283,11 @@ export function PlayerChrome({
           the skip buttons only capture while the chrome is up, so a side tap
           otherwise reveals the controls. Buffering is covered by the spinner. */}
       {!miniMode && !hold2xUi && !(adapter.waiting && !adapter.paused) ? (
-        <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center gap-8 sm:gap-14">
+        // [container-type:size] makes cqmin below resolve against THIS box (the
+        // whole player), so every button scales with the video — small inline,
+        // large in fullscreen — clamped to sane min/max. Icons are a fraction of
+        // their button, so they scale with it.
+        <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center gap-[clamp(0.5rem,5cqmin,3.5rem)] [container-type:size]">
           {!shortsMode ? (
             <button
               type="button"
@@ -293,13 +297,13 @@ export function PlayerChrome({
               }}
               aria-label="Back 15 seconds"
               className={cn(
-                "flex h-14 w-14 items-center justify-center rounded-full text-white transition hover:bg-black/40 active:scale-90 [&_svg]:drop-shadow-lg",
+                "flex h-[clamp(3.25rem,15cqmin,7.5rem)] w-[clamp(3.25rem,15cqmin,7.5rem)] items-center justify-center rounded-full text-white transition hover:bg-black/40 active:scale-90 [&_svg]:drop-shadow-lg",
                 adapter.paused || chromeShown
                   ? "pointer-events-auto opacity-100"
                   : "opacity-0",
               )}
             >
-              <SkipBack15Icon className="h-8 w-8" />
+              <SkipBack15Icon className="h-1/2 w-1/2" />
             </button>
           ) : null}
           <button
@@ -311,16 +315,16 @@ export function PlayerChrome({
             }}
             aria-label={adapter.paused ? "Play" : "Pause"}
             className={cn(
-              "pointer-events-auto flex h-[72px] w-[72px] items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm transition active:scale-95",
+              "pointer-events-auto flex h-[clamp(4rem,20cqmin,10rem)] w-[clamp(4rem,20cqmin,10rem)] items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm transition active:scale-95",
               (shortsMode ? adapter.paused : adapter.paused || chromeShown)
                 ? "opacity-100"
                 : "opacity-0",
             )}
           >
             {adapter.paused ? (
-              <BigPlayOverlayIcon className="h-9 w-9" />
+              <BigPlayOverlayIcon className="h-[55%] w-[55%]" />
             ) : (
-              <PauseIcon className="h-8 w-8" />
+              <PauseIcon className="h-1/2 w-1/2" />
             )}
           </button>
           {!shortsMode ? (
@@ -332,13 +336,13 @@ export function PlayerChrome({
               }}
               aria-label="Forward 15 seconds"
               className={cn(
-                "flex h-14 w-14 items-center justify-center rounded-full text-white transition hover:bg-black/40 active:scale-90 [&_svg]:drop-shadow-lg",
+                "flex h-[clamp(3.25rem,15cqmin,7.5rem)] w-[clamp(3.25rem,15cqmin,7.5rem)] items-center justify-center rounded-full text-white transition hover:bg-black/40 active:scale-90 [&_svg]:drop-shadow-lg",
                 adapter.paused || chromeShown
                   ? "pointer-events-auto opacity-100"
                   : "opacity-0",
               )}
             >
-              <SkipForward15Icon className="h-8 w-8" />
+              <SkipForward15Icon className="h-1/2 w-1/2" />
             </button>
           ) : null}
         </div>
