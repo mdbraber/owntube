@@ -20,7 +20,22 @@ export default async function ChannelPage({ params }: ChannelPageProps) {
   const session = await auth();
   const isAuthed = Boolean(session?.user?.id);
   const caller = await createCaller();
-  const page = await caller.channel.page({ channelId: input.channelId });
+  let page: Awaited<ReturnType<typeof caller.channel.page>>;
+  try {
+    page = await caller.channel.page({ channelId: input.channelId });
+  } catch {
+    // A resolution/upstream failure must not take the whole page down with an
+    // unhandled error (which renders a bare 404). Show a retryable state.
+    return (
+      <main className="ot-page flex min-h-[50vh] flex-col items-center justify-center gap-3 text-center">
+        <h1 className="text-lg font-semibold">Channel unavailable</h1>
+        <p className="max-w-sm text-sm text-[hsl(var(--muted-foreground))]">
+          We couldn&apos;t load this channel right now. It may be temporarily
+          unavailable upstream — please try again in a moment.
+        </p>
+      </main>
+    );
+  }
   const channelName = page.name ?? page.channelId;
   const subscribersLabel = formatSubscribersLabel(
     page.subscriberCount ?? undefined,

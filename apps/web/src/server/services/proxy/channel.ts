@@ -948,6 +948,27 @@ const resolvedChannelUcids = new Map<string, string>();
  * On failure the original token is returned, so the caller renders the same
  * not-found state as before instead of throwing.
  */
+/**
+ * Decode a channel token that may arrive percent-encoded from the URL path
+ * (e.g. a handle as "%40name", or double-encoded). Next.js does not reliably
+ * decode the dynamic `[channelId]` segment, so "@" reaches us as "%40" and the
+ * handle never resolves. Decode defensively (bounded loop for double-encoding),
+ * falling back to the raw value if a decode step is malformed.
+ */
+export function normalizeChannelToken(raw: string): string {
+  let s = raw.trim();
+  for (let i = 0; i < 3 && /%[0-9a-fA-F]{2}/.test(s); i++) {
+    try {
+      const decoded = decodeURIComponent(s);
+      if (decoded === s) break;
+      s = decoded;
+    } catch {
+      break;
+    }
+  }
+  return s;
+}
+
 async function resolveChannelUcid(
   channelId: string,
   overrides?: ProxySourceOverrides,
@@ -986,6 +1007,10 @@ async function resolveChannelUcid(
       }
     }
   }
+  // Low-noise telemetry: a handle/custom token we could not map to a UC id.
+  // Frequent hits here signal a resolution regression (e.g. a malformed token
+  // reaching this point, or the resolveurl upstream failing).
+  logger.warn("channel.resolve_unresolved", { channelId });
   return channelId;
 }
 
@@ -995,13 +1020,24 @@ export async function fetchChannelPage(
   overrides?: ProxySourceOverrides,
   opts?: FetchChannelPageOptions,
 ): Promise<ChannelPageResult> {
+  // Single normalization boundary: a channel token can reach us percent-encoded
+  // (Next does not always decode the dynamic route segment, so a handle arrives
+  // as "%40name" instead of "@name"). Decode it here so the whole pipeline —
+  // resolution, cache key, and upstream fetch — always sees a clean token.
+  const decodedInput: ChannelPageInput = {
+    ...rawInput,
+    channelId: normalizeChannelToken(rawInput.channelId),
+  };
   // Accept YouTube handle / custom / user tokens (@name, c/x, user/x): resolve
   // to a UC id so the whole pipeline (and the cache key) is keyed canonically.
-  const canonicalId = await resolveChannelUcid(rawInput.channelId, overrides);
+  const canonicalId = await resolveChannelUcid(
+    decodedInput.channelId,
+    overrides,
+  );
   const input: ChannelPageInput =
-    canonicalId === rawInput.channelId
-      ? rawInput
-      : { ...rawInput, channelId: canonicalId };
+    canonicalId === decodedInput.channelId
+      ? decodedInput
+      : { ...decodedInput, channelId: canonicalId };
   const key = channelCacheKey(input);
   if (opts?.cacheOnly) {
     const fresh = readFreshChannelCache(db, key);
