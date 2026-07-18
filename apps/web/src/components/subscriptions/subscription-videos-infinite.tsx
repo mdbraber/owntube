@@ -63,6 +63,25 @@ export function SubscriptionVideosInfinite() {
       // ignore storage failures (private mode, quota)
     }
   }, [tagStates, tagHydrated]);
+  // Drop persisted selections for tags that no longer exist (deleted/renamed, or
+  // a stale ?tag= value). Such a "ghost" tag renders no chip in the filter bar
+  // yet still filters the feed to zero — the user sees "no tags selected" but
+  // "no videos match", with no pill to click and even "Show all" disabled.
+  useEffect(() => {
+    if (!tagHydrated) return;
+    const known = allTagsQuery.data;
+    if (!known) return;
+    const knownSet = new Set(known.map((t) => t.tag));
+    setTagStates((prev) => {
+      let changed = false;
+      const next: Record<string, TagState> = {};
+      for (const [tag, state] of Object.entries(prev)) {
+        if (knownSet.has(tag)) next[tag] = state;
+        else changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [allTagsQuery.data, tagHydrated]);
 
   const includeTags = useMemo(
     () =>

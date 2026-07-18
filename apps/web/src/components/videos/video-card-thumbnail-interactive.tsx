@@ -458,8 +458,12 @@ export function VideoCardThumbnailInteractive({
       const sec = Math.floor(v.currentTime);
       if (sec <= 0) return;
       e.preventDefault();
-      const base = href.split("?")[0] ?? href;
-      router.push(`${base}?t=${sec}`);
+      // Preserve the href's existing query (notably ?v=<id>) and only set the
+      // resume time — splitting on "?" dropped the video id, producing links
+      // like /watch?t=8 with no v.
+      const url = new URL(href, window.location.origin);
+      url.searchParams.set("t", String(sec));
+      router.push(`${url.pathname}${url.search}`);
     },
     [href, router],
   );

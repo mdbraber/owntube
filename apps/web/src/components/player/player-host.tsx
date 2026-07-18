@@ -383,7 +383,19 @@ export function PlayerHost() {
           key={active.props.videoId}
           {...active.props}
           miniMode={mode === "mini"}
-          miniStartPaused={false}
+          // Preserve the user's paused state across the full→mini transition.
+          // Hardcoding false made the mini ALWAYS autoplay, which (a) resumed a
+          // video the user had paused and (b) asserted media focus that can evict
+          // another app's Picture-in-Picture window. Read the live element at the
+          // moment it goes mini so a paused video stays paused.
+          miniStartPaused={
+            mode === "mini" &&
+            typeof document !== "undefined" &&
+            (document.querySelector<HTMLVideoElement>(
+              "[data-ot-player-root] video",
+            )?.paused ??
+              false)
+          }
         />
       ) : null,
     [active, mode],
