@@ -217,8 +217,38 @@ export function TopbarSearch() {
               setActiveIndex((i) => (i <= 0 ? suggestions.length - 1 : i - 1));
             }
           }}
-          className="ot-topbar-search-input min-w-0 flex-1 bg-transparent text-base text-[hsl(var(--foreground))] outline-none placeholder:text-[hsl(var(--muted-foreground))] sm:text-sm"
+          className="ot-topbar-search-input min-w-0 flex-1 bg-transparent text-base text-[hsl(var(--foreground))] outline-none placeholder:text-[hsl(var(--muted-foreground))] sm:text-sm [&::-webkit-search-cancel-button]:appearance-none"
         />
+        {q ? (
+          <button
+            type="button"
+            aria-label="Clear search"
+            // Keep focus on the input (avoid the blur→close race) so clearing
+            // leaves the box ready to type again.
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              setQ("");
+              setActiveIndex(-1);
+              setPanelOpen(true);
+              setHistory(readSearchQueryHistory());
+              inputRef.current?.focus();
+            }}
+            className="ot-topbar-search-clear flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[hsl(var(--muted-foreground))] transition hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))]"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              className="h-4 w-4"
+              aria-hidden
+            >
+              <line x1="6" y1="6" x2="18" y2="18" />
+              <line x1="18" y1="6" x2="6" y2="18" />
+            </svg>
+          </button>
+        ) : null}
         <kbd className="ot-topbar-search-shortcut hidden rounded border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-2 py-0.5 font-mono text-[11px] text-[hsl(var(--muted-foreground))] sm:inline-block">
           /
         </kbd>
