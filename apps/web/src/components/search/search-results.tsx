@@ -126,10 +126,6 @@ export async function SearchResults({ query, sort }: SearchResultsProps) {
           {(result.channels?.length ?? 0) > 0
             ? ` · ${result.channels?.length ?? 0} channel${(result.channels?.length ?? 0) === 1 ? "" : "s"}`
             : ""}
-          {" · "}
-          <span className="font-medium text-[hsl(var(--foreground))]">
-            {result.sourceUsed}
-          </span>
         </output>
       </div>
       <div className="flex flex-wrap items-center justify-end gap-3">

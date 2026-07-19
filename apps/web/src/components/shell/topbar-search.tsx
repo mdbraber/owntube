@@ -217,7 +217,7 @@ export function TopbarSearch() {
               setActiveIndex((i) => (i <= 0 ? suggestions.length - 1 : i - 1));
             }
           }}
-          className="ot-topbar-search-input min-w-0 flex-1 bg-transparent text-sm text-[hsl(var(--foreground))] outline-none placeholder:text-[hsl(var(--muted-foreground))]"
+          className="ot-topbar-search-input min-w-0 flex-1 bg-transparent text-base text-[hsl(var(--foreground))] outline-none placeholder:text-[hsl(var(--muted-foreground))] sm:text-sm"
         />
         <kbd className="ot-topbar-search-shortcut hidden rounded border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-2 py-0.5 font-mono text-[11px] text-[hsl(var(--muted-foreground))] sm:inline-block">
           /
