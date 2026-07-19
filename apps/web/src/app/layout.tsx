@@ -34,7 +34,10 @@ export const metadata: Metadata = {
     icon: [{ url: `/favicon-dark.ico?v=${FAVICON_VERSION}`, sizes: "any" }],
     apple: [
       {
-        url: `/logo-dark.png?v=${FAVICON_VERSION}`,
+        // Full-bleed, fully opaque icon: iOS fills any transparency and applies
+        // its own rounded mask, so a transparent/pre-rounded icon shows an inset
+        // line. This one is edge-to-edge with no alpha.
+        url: `/apple-touch-icon.png?v=${FAVICON_VERSION}`,
         type: "image/png",
         sizes: "180x180",
       },

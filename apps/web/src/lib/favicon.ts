@@ -1,6 +1,6 @@
 import { resolveIsDarkTheme, type ThemeMode } from "@/lib/theme-appearance";
 
-export const FAVICON_VERSION = "9";
+export const FAVICON_VERSION = "10";
 
 export function faviconUrls(isDark: boolean) {
   const variant = isDark ? "dark" : "light";
