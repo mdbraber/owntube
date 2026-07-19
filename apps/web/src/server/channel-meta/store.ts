@@ -79,10 +79,19 @@ export function upsertChannelMetaRow(
     channelName: string;
     avatarUrl: string | null;
     description?: string | null;
+    /** Omit (undefined) to preserve an existing count; pass a number to set it. */
+    subscriberCount?: number | null;
   },
 ): void {
   const channelName = input.channelName.trim();
   if (!channelName) return;
+  // Only touch subscriber_count when a value was provided, so a refresh that
+  // lacks it (e.g. upstream omitted it) doesn't wipe a good stored count.
+  const subCount =
+    typeof input.subscriberCount === "number" &&
+    Number.isFinite(input.subscriberCount)
+      ? Math.round(input.subscriberCount)
+      : undefined;
   try {
     db.insert(channelMeta)
       .values({
@@ -90,6 +99,7 @@ export function upsertChannelMetaRow(
         channelName,
         avatarUrl: input.avatarUrl,
         description: input.description ?? null,
+        subscriberCount: subCount ?? null,
         updatedAt: nowUnix(),
       })
       .onConflictDoUpdate({
@@ -99,6 +109,7 @@ export function upsertChannelMetaRow(
           avatarUrl: input.avatarUrl,
           description: input.description ?? null,
           updatedAt: nowUnix(),
+          ...(subCount !== undefined ? { subscriberCount: subCount } : {}),
         },
       })
       .run();
@@ -113,6 +124,7 @@ export type ChannelMetaLite = {
   avatarUrl: string | null;
   description: string | null;
   latestVideoAt: number | null;
+  subscriberCount: number | null;
 };
 
 export function readChannelMetaByIds(
@@ -127,6 +139,7 @@ export function readChannelMetaByIds(
     avatarUrl: string | null;
     description: string | null;
     latestVideoAt: number | null;
+    subscriberCount: number | null;
   }[] = [];
   try {
     rows = db
@@ -136,6 +149,7 @@ export function readChannelMetaByIds(
         avatarUrl: channelMeta.avatarUrl,
         description: channelMeta.description,
         latestVideoAt: channelMeta.latestVideoAt,
+        subscriberCount: channelMeta.subscriberCount,
       })
       .from(channelMeta)
       .where(inArray(channelMeta.channelId, channelIds))
@@ -152,6 +166,7 @@ export function readChannelMetaByIds(
       avatarUrl: r.avatarUrl ?? null,
       description: r.description ?? null,
       latestVideoAt: r.latestVideoAt ?? null,
+      subscriberCount: r.subscriberCount ?? null,
     });
   }
   return out;
@@ -226,6 +241,7 @@ export async function refreshChannelMetaIfStale(
         channelName: resolvedName,
         avatarUrl: resolvedAvatar,
         description: resolvedDescription,
+        subscriberCount: page.subscriberCount,
       });
       return {
         channelId,

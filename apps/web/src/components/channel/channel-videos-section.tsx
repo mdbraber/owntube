@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { playlistHref } from "@/lib/yt-routes";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ChannelListItem } from "@/components/channel/channel-list-item";
 import { Button } from "@/components/ui/button";
 import { useIgnoredVideos } from "@/components/videos/ignored-videos-context";
 import { PlaylistIcon } from "@/components/videos/video-action-icons";
@@ -11,7 +12,15 @@ import { mergeVideosNewestFirst } from "@/lib/published-sort-key";
 import type { ChannelTab, UnifiedVideo } from "@/server/services/proxy.types";
 import { trpc } from "@/trpc/react";
 
-type SectionTab = ChannelTab | "playlists";
+type SuggestedChannel = {
+  channelId: string;
+  channelName: string;
+  channelAvatarUrl?: string;
+  description?: string;
+  subscriberCount?: number;
+};
+
+type SectionTab = ChannelTab | "playlists" | "similar";
 
 type ChannelVideosSectionProps = {
   channelId: string;
@@ -26,6 +35,7 @@ const TABS: { id: SectionTab; label: string }[] = [
   { id: "videos", label: "Videos" },
   { id: "shorts", label: "Shorts" },
   { id: "playlists", label: "Playlists" },
+  { id: "similar", label: "Similar" },
 ];
 
 export function ChannelVideosSection({
@@ -38,17 +48,23 @@ export function ChannelVideosSection({
 }: ChannelVideosSectionProps) {
   const [tab, setTab] = useState<SectionTab>(initialTab);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
-  const videoTab: ChannelTab = tab === "playlists" ? "videos" : tab;
+  const isVideoTab = tab === "videos" || tab === "shorts";
+  const videoTab: ChannelTab = isVideoTab ? tab : "videos";
 
   const playlistsQuery = trpc.channel.playlists.useQuery(
     { channelId },
     { enabled: tab === "playlists", staleTime: 10 * 60_000 },
   );
 
+  const relatedQuery = trpc.channel.relatedChannels.useQuery(
+    { channelId },
+    { enabled: tab === "similar", staleTime: 30 * 60_000 },
+  );
+
   const query = trpc.channel.page.useInfiniteQuery(
     { channelId, tab: videoTab },
     {
-      enabled: tab !== "playlists",
+      enabled: isVideoTab,
       getNextPageParam: (last) => last.continuation ?? undefined,
       initialData:
         tab === initialTab
@@ -83,10 +99,6 @@ export function ChannelVideosSection({
     () => new Set([...(ignoredQuery.data ?? []), ...sessionIgnored]),
     [ignoredQuery.data, sessionIgnored],
   );
-
-  const lastPage = query.data?.pages.at(-1);
-  const activeSource = lastPage?.sourceUsed ?? sourceUsed;
-  const activeStale = lastPage?.stale ?? stale;
 
   useEffect(() => {
     if (!query.hasNextPage) return;
@@ -133,11 +145,6 @@ export function ChannelVideosSection({
             );
           })}
         </div>
-        <p className="rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 py-1.5 font-mono text-xs text-[hsl(var(--muted-foreground))]">
-          {tab === "playlists"
-            ? (playlistsQuery.data?.sourceUsed ?? "…")
-            : `${activeSource}${activeStale ? " · stale cache" : ""}`}
-        </p>
       </div>
 
       {tab === "playlists" ? (
@@ -145,6 +152,12 @@ export function ChannelVideosSection({
           playlists={playlistsQuery.data?.playlists ?? []}
           isPending={playlistsQuery.isPending}
           isError={playlistsQuery.isError}
+        />
+      ) : tab === "similar" ? (
+        <SimilarChannelsGrid
+          channels={relatedQuery.data?.channels ?? []}
+          isPending={relatedQuery.isPending}
+          isError={relatedQuery.isError}
         />
       ) : (
         <>
@@ -277,6 +290,54 @@ function ChannelPlaylistsGrid({
               {p.title}
             </p>
           </Link>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Channels related to this one, derived from YouTube's recommendation graph. */
+function SimilarChannelsGrid({
+  channels,
+  isPending,
+  isError,
+}: {
+  channels: SuggestedChannel[];
+  isPending: boolean;
+  isError: boolean;
+}) {
+  if (isPending) {
+    return (
+      <p className="text-sm text-[hsl(var(--muted-foreground))]">Loading…</p>
+    );
+  }
+  if (isError) {
+    return (
+      <p className="rounded-[var(--radius-card)] border border-[hsl(var(--border))] bg-[hsl(var(--muted)_/_0.35)] py-8 text-center text-sm text-[hsl(var(--muted-foreground))]">
+        Could not load suggestions. Try again later.
+      </p>
+    );
+  }
+  if (channels.length === 0) {
+    return (
+      <p className="rounded-[var(--radius-card)] border border-dashed border-[hsl(var(--border))] bg-[hsl(var(--muted)_/_0.35)] py-14 text-center text-sm text-[hsl(var(--muted-foreground))]">
+        No similar channels found yet.
+      </p>
+    );
+  }
+  return (
+    <ul className="grid grid-cols-1 gap-1 lg:grid-cols-2">
+      {channels.map((c) => (
+        <li key={c.channelId}>
+          <ChannelListItem
+            channel={{
+              channelId: c.channelId,
+              channelName: c.channelName,
+              avatarUrl: c.channelAvatarUrl,
+              description: c.description,
+              subscriberCount: c.subscriberCount,
+            }}
+          />
         </li>
       ))}
     </ul>

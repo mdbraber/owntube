@@ -125,6 +125,8 @@ export const channelMeta = sqliteTable(
     avatarUrl: text("avatar_url"),
     /** Channel "about" text (first line shown on the channels list). */
     description: text("description"),
+    /** Subscriber count (from the channel page), shown on channel rows/cards. */
+    subscriberCount: integer("subscriber_count"),
     /** Unix seconds of the channel's newest known upload; orders the sidebar. */
     latestVideoAt: integer("latest_video_at"),
     /** Unix seconds recency was last computed; lets interactive refreshes skip warm channels. */

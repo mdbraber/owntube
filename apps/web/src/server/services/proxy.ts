@@ -51,3 +51,9 @@ export {
   fetchRelatedVideos,
   fetchVideoDetail,
 } from "@/server/services/proxy/video";
+
+export {
+  fetchRelatedChannels,
+  type RelatedChannelsResult,
+  type SuggestedChannel,
+} from "@/server/services/proxy/related-channels";

@@ -129,6 +129,8 @@ type SubscriptionChannelDetail = {
   description: string | null;
   /** Unix seconds of the channel's newest known upload (channel_meta). */
   latestVideoAt: number | null;
+  /** Subscriber count (channel_meta), shown on each row. */
+  subscriberCount: number | null;
 };
 
 function sleepMs(ms: number): Promise<void> {
@@ -149,6 +151,7 @@ async function fetchSubscriptionChannelDetail(
     avatarUrl: meta.avatarUrl,
     description: null,
     latestVideoAt: null,
+    subscriberCount: null,
   };
 }
 
@@ -182,6 +185,7 @@ async function listDetailedChannelRows(
     ...c,
     description: metaById.get(c.channelId)?.description ?? null,
     latestVideoAt: metaById.get(c.channelId)?.latestVideoAt ?? null,
+    subscriberCount: metaById.get(c.channelId)?.subscriberCount ?? null,
   }));
 }
 

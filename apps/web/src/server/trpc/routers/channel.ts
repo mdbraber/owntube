@@ -2,7 +2,10 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { RateLimitExceededError } from "@/server/errors/rate-limit-exceeded";
 import { UpstreamUnavailableError } from "@/server/errors/upstream-unavailable";
-import { fetchChannelPage } from "@/server/services/proxy";
+import {
+  fetchChannelPage,
+  fetchRelatedChannels,
+} from "@/server/services/proxy";
 import {
   fetchChannelPlaylists,
   fetchYtPlaylist,
@@ -32,6 +35,27 @@ export const channelRouter = router({
           },
           overrides,
         );
+      } catch (e) {
+        if (e instanceof UpstreamUnavailableError) {
+          throw new TRPCError({ code: "BAD_GATEWAY", message: e.message });
+        }
+        if (e instanceof RateLimitExceededError) {
+          throw new TRPCError({
+            code: "TOO_MANY_REQUESTS",
+            message: e.message,
+          });
+        }
+        throw e;
+      }
+    }),
+
+  /** Suggested "similar" channels (Similar tab) derived from relatedness. */
+  relatedChannels: publicProcedure
+    .input(z.object({ channelId: z.string().min(3).max(128) }))
+    .query(async ({ ctx, input }) => {
+      try {
+        const overrides = getUserProxyOverrides(ctx.db, ctx.userId);
+        return await fetchRelatedChannels(ctx.db, input.channelId, overrides);
       } catch (e) {
         if (e instanceof UpstreamUnavailableError) {
           throw new TRPCError({ code: "BAD_GATEWAY", message: e.message });

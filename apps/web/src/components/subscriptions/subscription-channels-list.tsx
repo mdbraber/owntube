@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { ChannelListItem } from "@/components/channel/channel-list-item";
 import { ChannelTags } from "@/components/channel/channel-tags";
 import { SubscriptionUnfollowButton } from "@/components/subscriptions/subscription-unfollow-button";
-import { ChannelAvatarCircle } from "@/components/videos/channel-avatar-circle";
 import { cn } from "@/lib/utils";
 import { formatPublishedLabel } from "@/lib/video-display";
 import { trpc } from "@/trpc/react";
@@ -16,6 +16,7 @@ type Channel = {
   avatarUrl: string | null;
   description: string | null;
   latestVideoAt: number | null;
+  subscriberCount: number | null;
 };
 
 type SortKey = "name" | "subscribed" | "lastVideo";
@@ -34,14 +35,6 @@ const DEFAULT_DESC: Record<SortKey, boolean> = {
 };
 
 const STORAGE_KEY = "ot-channels-sort";
-
-function formatSubscribedDate(unix: number): string {
-  return new Date(unix * 1000).toLocaleDateString(undefined, {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
 
 /**
  * One-per-row list of followed channels with a persistent sort: name, date
@@ -281,48 +274,28 @@ function GroupHeader({ tag, count }: { tag?: string; count: number }) {
 }
 
 function ChannelRow({ channel: c }: { channel: Channel }) {
-  const label = c.channelName || c.channelId;
   const lastVideoLabel = formatPublishedLabel(
     undefined,
     c.latestVideoAt ?? undefined,
   );
   return (
     <li>
-      <div className="group flex items-center gap-3 rounded-[var(--radius-card)] p-2 transition hover:bg-[hsl(var(--muted)_/_0.45)]">
-        <Link
-          href={`/channel/${encodeURIComponent(c.channelId)}`}
-          className="shrink-0"
-        >
-          <ChannelAvatarCircle
-            imageUrl={c.avatarUrl ?? undefined}
-            label={label}
-            size="lg"
-          />
-        </Link>
-        <div className="min-w-0 flex-1">
-          <Link
-            href={`/channel/${encodeURIComponent(c.channelId)}`}
-            className="block w-fit max-w-full truncate text-sm font-semibold text-[hsl(var(--foreground))] transition group-hover:text-[hsl(var(--primary))]"
-          >
-            {label}
-          </Link>
-          {c.description ? (
-            <p className="mt-0.5 line-clamp-1 text-xs text-[hsl(var(--muted-foreground))]">
-              {c.description}
-            </p>
-          ) : null}
-          <div className="mt-1">
-            <ChannelTags channelId={c.channelId} isAuthed subscribed tone="card" />
-          </div>
-        </div>
-        <div className="hidden shrink-0 text-right text-xs text-[hsl(var(--muted-foreground))] sm:block">
-          <p>Subscribed {formatSubscribedDate(c.subscribedAt)}</p>
-          {lastVideoLabel ? (
-            <p className="mt-0.5">Last video {lastVideoLabel}</p>
-          ) : null}
-        </div>
-        <SubscriptionUnfollowButton channelId={c.channelId} />
-      </div>
+      <ChannelListItem
+        channel={{
+          channelId: c.channelId,
+          channelName: c.channelName,
+          avatarUrl: c.avatarUrl,
+          description: c.description,
+          subscriberCount: c.subscriberCount,
+        }}
+        belowMeta={
+          <ChannelTags channelId={c.channelId} isAuthed subscribed tone="card" />
+        }
+        metaRight={
+          lastVideoLabel ? <p>Last video {lastVideoLabel}</p> : undefined
+        }
+        trailing={<SubscriptionUnfollowButton channelId={c.channelId} />}
+      />
     </li>
   );
 }
