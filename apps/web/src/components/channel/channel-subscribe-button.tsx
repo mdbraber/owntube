@@ -8,11 +8,17 @@ type ChannelSubscribeButtonProps = {
   channelId: string;
   /** When false, show sign-in CTA instead of subscribe actions. */
   isAuthed: boolean;
+  /**
+   * Hide the "Unsubscribe" state on mobile (the watch page: avoids an easy
+   * accidental unsubscribe there; Subscribe for new channels still shows).
+   */
+  hideUnsubscribeOnMobile?: boolean;
 };
 
 export function ChannelSubscribeButton({
   channelId,
   isAuthed,
+  hideUnsubscribeOnMobile = false,
 }: ChannelSubscribeButtonProps) {
   const utils = trpc.useUtils();
   const status = trpc.subscriptions.status.useQuery(
@@ -57,6 +63,7 @@ export function ChannelSubscribeButton({
       <Button
         size="sm"
         variant="secondary"
+        className={hideUnsubscribeOnMobile ? "hidden sm:inline-flex" : undefined}
         disabled={remove.isPending}
         onClick={() => remove.mutate({ channelId })}
       >

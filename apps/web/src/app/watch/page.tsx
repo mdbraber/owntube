@@ -462,6 +462,7 @@ export default async function WatchPage({ searchParams }: WatchPageProps) {
                       <ChannelSubscribeButton
                         channelId={detail.channelId}
                         isAuthed={isAuthed}
+                        hideUnsubscribeOnMobile
                       />
                     </div>
                   ) : null}

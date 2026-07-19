@@ -345,13 +345,23 @@ export const SECONDARY_NAV: NavItem[] = [
 ];
 
 /**
- * Tabs in the mobile bottom bar (account button is added separately). The bar
- * fits 5 items at most; Recommended cedes its slot and stays reachable via
+ * Tabs in the mobile bottom bar (account button is added separately):
+ * Home, Subscriptions, Recommended, Saved. Everything else stays reachable via
  * the sidebar/sheet.
  */
+const bottomNavItem = (key: string): NavItem => {
+  const item = [...SIDEBAR_NAV, SUBSCRIPTIONS_ITEM, ...SECONDARY_NAV].find(
+    (n) => n.key === key,
+  );
+  if (!item) throw new Error(`BOTTOM_NAV: unknown nav key "${key}"`);
+  return item;
+};
+
 export const BOTTOM_NAV: NavItem[] = [
-  ...SIDEBAR_NAV.filter((n) => n.key !== "recommended"),
-  SUBSCRIPTIONS_ITEM,
+  bottomNavItem("home"),
+  bottomNavItem("subs"),
+  bottomNavItem("recommended"),
+  bottomNavItem("saved"),
 ];
 
 /**
