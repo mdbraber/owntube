@@ -1,0 +1,24 @@
+{
+  "name": "ios",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Native iOS shell (Tauri + WKWebView) for the OwnTube web app. Restores Picture-in-Picture and enables background / screen-off audio, which the standalone PWA cannot do.",
+  "scripts": {
+    "ios:init": "tsx scripts/tauri.ts ios init",
+    "ios:dev": "tsx scripts/tauri.ts ios dev",
+    "ios:build": "tsx scripts/tauri.ts ios build",
+    "ios:open": "tsx scripts/tauri.ts ios open",
+    "icon": "tsx scripts/export-app-icon.ts",
+    "typecheck": "tsc --noEmit",
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@owntube/brand-icon": "workspace:*",
+    "@tauri-apps/cli": "2.10.1",
+    "@types/node": "^22",
+    "sharp": "^0.34.5",
+    "tsx": "^4.21.0",
+    "typescript": "^5"
+  }
+}

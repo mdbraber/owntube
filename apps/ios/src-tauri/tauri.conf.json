@@ -1,0 +1,54 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "OwnTube",
+  "mainBinaryName": "owntube",
+  "identifier": "com.mdbraber.owntube",
+  "version": "0.1.0",
+  "build": {
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "url": "http://localhost:3000",
+        "title": "OwnTube",
+        "width": 430,
+        "height": 932,
+        "backgroundThrottling": "disabled"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "plugins": {
+    "deep-link": {
+      "mobile": [
+        {
+          "scheme": ["owntube"],
+          "appLink": false
+        }
+      ],
+      "desktop": {
+        "schemes": ["owntube"]
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "Entertainment",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "iOS": {
+      "infoPlist": "./Info-ios.plist",
+      "minimumSystemVersion": "15.0"
+    }
+  }
+}

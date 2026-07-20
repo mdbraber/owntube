@@ -1,0 +1,17 @@
+{
+  "name": "@owntube/brand-icon",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Derives full-bleed app icons from the shared brand logo. Used by apps/web (PWA + apple-touch icons) and apps/ios (native app icon).",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "typescript": "^5"
+  }
+}

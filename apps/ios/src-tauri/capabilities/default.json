@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/mobile-schema.json",
+  "identifier": "default",
+  "description": "Local capabilities for the main window. The remote origin is granted separately by capabilities/remote.local.json, generated from OWNTUBE_URL.",
+  "windows": ["main"],
+  "permissions": ["core:default", "deep-link:default"]
+}

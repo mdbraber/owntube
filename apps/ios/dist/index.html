@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>OwnTube</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #111; color: #eee;
+        font: 16px -apple-system, system-ui, sans-serif;
+        display: flex; align-items: center; justify-content: center; text-align: center; }
+      a { color: #f23662; }
+    </style>
+  </head>
+  <body>
+    <!--
+      This local page is only a fallback. The app window is configured in
+      src-tauri/tauri.conf.json to load the remote server directly
+      (set via OWNTUBE_URL). If you ever see this page, the server was
+      unreachable — check the device's network connection to it.
+    -->
+    <p>OwnTube server unreachable.<br />Check the network connection to your OwnTube server.</p>
+  </body>
+</html>

@@ -1,5 +1,6 @@
 packages:
   - apps/web
+  - apps/ios
   - packages/*
   # apps/tv is intentionally NOT part of the shared install yet: Expo SDK 52
   # pulls React 18 / @types/react 18, which conflicts with the web app's

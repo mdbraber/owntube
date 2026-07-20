@@ -1,0 +1,29 @@
+[package]
+name = "owntube"
+version = "0.1.0"
+description = "OwnTube iOS shell"
+authors = ["mdbraber"]
+edition = "2021"
+
+# The library that the iOS/Android entry points link against.
+[lib]
+name = "owntube_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-deep-link = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Write the watch queue into the shared App Group so the widget can read it.
+[target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = [
+  "std",
+  "NSString",
+  "NSUserDefaults",
+] }
