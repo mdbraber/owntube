@@ -35,7 +35,7 @@ export function ShellSidebar({ open, onClose, isLoggedIn }: ShellSidebarProps) {
         className="flex h-full min-h-0 flex-col"
         style={{ width: SHELL_SIDEBAR_WIDTH_PX }}
       >
-        <div className="ot-shell-sidebar-header flex min-w-0 shrink-0 items-center gap-1.5 bg-[hsl(var(--sidebar))] px-3 pb-4 pt-5">
+        <div className="ot-shell-sidebar-header flex min-w-0 shrink-0 items-center gap-1.5 bg-[hsl(var(--sidebar))] px-3 pb-4 pt-[calc(1.25rem_+_env(safe-area-inset-top))]">
           <button
             type="button"
             className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-shell)] text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
