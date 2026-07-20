@@ -16,6 +16,12 @@ import { UpstreamUnavailableError } from "../src/server/errors/upstream-unavaila
 import { pruneAssetCache } from "../src/server/assets/cache";
 import { watchQueue } from "../src/server/db/schema";
 import {
+  getUserProxyOverrides,
+  getUserSettings,
+  normalizeTrendingRegionStored,
+} from "../src/server/settings/profile";
+import { materializeHomeFeed } from "../src/server/trpc/routers/feed";
+import {
   fetchChannelPage,
   fetchShortsFeed,
   fetchTrendingVideos,
@@ -73,6 +79,7 @@ const warmShortsEnabled = envFlag("OWNTUBE_WARM_SHORTS", true);
 const warmRecencyEnabled = envFlag("OWNTUBE_WARM_RECENCY", true);
 const warmRssEnabled = envFlag("OWNTUBE_WARM_RSS", true);
 const warmVideosEnabled = envFlag("OWNTUBE_WARM_VIDEOS", true);
+const warmHomeEnabled = envFlag("OWNTUBE_WARM_HOME", true);
 const warmVideoLimit = Number.parseInt(
   process.env.OWNTUBE_WARM_VIDEO_LIMIT ?? "16",
   10,
@@ -122,6 +129,33 @@ async function runInBatches<T>(
     `warm-cache: ${label} — ok=${ok} skipped=${skipped} failed=${failed} total=${items.length}`,
   );
   return { ok, skipped, failed };
+}
+
+/**
+ * Materialize each user's personalized home feed so the front page can be
+ * SSR-prefetched cache-only and paints instantly. Runs after channel/RSS/video
+ * warming so the reco engine reads warm candidate caches.
+ */
+async function warmHomeFeeds(db: AppDb): Promise<boolean> {
+  const userRows = db.select({ id: schema.users.id }).from(schema.users).all();
+  if (userRows.length === 0) return true;
+  const stats = await runInBatches(
+    "home feeds",
+    userRows.map((u) => String(u.id)),
+    async (idStr) => {
+      const userId = Number.parseInt(idStr, 10);
+      const settings = getUserSettings(db, userId);
+      const userRegion = normalizeTrendingRegionStored(
+        settings.trendingRegion ?? region,
+      );
+      await materializeHomeFeed(db, userId, {
+        pageSize: 24,
+        region: userRegion,
+        overrides: getUserProxyOverrides(db, userId),
+      });
+    },
+  );
+  return stats.failed === 0;
 }
 
 async function warmTrending(db: AppDb): Promise<boolean> {
@@ -363,6 +397,9 @@ async function main(): Promise<void> {
         `warm-cache: asset cache — ${Math.round(pruned.totalBytes / 1024 / 1024)}MB, pruned=${pruned.removed}`,
       );
     }
+
+    // After candidate caches are warm, materialize each user's home feed.
+    if (warmHomeEnabled && !(await warmHomeFeeds(db))) hadFailure = true;
   } finally {
     sqlite.close();
   }

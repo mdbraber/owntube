@@ -24,6 +24,8 @@ import { useWatchProgressMap } from "@/components/videos/video-membership-contex
 import { VideoRow } from "@/components/videos/video-row";
 import { VideoThumbnailImg } from "@/components/videos/video-thumbnail-img";
 import {
+  blockFetchCount,
+  blockTagLists,
   CARD_MIN_WIDTH_PX,
   DEFAULT_HOME_BLOCKS,
   HOME_BLOCK_LABEL,
@@ -34,8 +36,10 @@ import {
   type HomeBlockType,
   homeBlockHref,
   homeBlockOption,
+  isScrollRow,
   newHomeBlockId,
   SECTION_OPTIONS,
+  TAG_OPTION_PREFIX,
 } from "@/lib/home-blocks";
 import { cn } from "@/lib/utils";
 import type { UnifiedVideo } from "@/server/services/proxy.types";
@@ -256,31 +260,11 @@ function VideoBlockBody({
  * `tag:<name>` keys — true = include ("only these"), false = exclude, absent
  * = off. Mirrors the tri-state filter on the subscriptions page.
  */
-const TAG_OPTION_PREFIX = "tag:";
-
 function blockTagState(block: HomeBlock, tag: string): TagState {
   const value = block.options?.[`${TAG_OPTION_PREFIX}${tag}`];
   if (value === true) return "include";
   if (value === false) return "exclude";
   return "off";
-}
-
-function blockTagLists(block: HomeBlock): {
-  includeTags: string[] | undefined;
-  excludeTags: string[] | undefined;
-} {
-  const include: string[] = [];
-  const exclude: string[] = [];
-  for (const [key, value] of Object.entries(block.options ?? {})) {
-    if (!key.startsWith(TAG_OPTION_PREFIX)) continue;
-    const tag = key.slice(TAG_OPTION_PREFIX.length);
-    if (value === true) include.push(tag);
-    else if (value === false) exclude.push(tag);
-  }
-  return {
-    includeTags: include.length > 0 ? include : undefined,
-    excludeTags: exclude.length > 0 ? exclude : undefined,
-  };
 }
 
 /** Drops completed videos when the block's hide-finished option is on. */
@@ -292,17 +276,6 @@ function useHideFinished(block: HomeBlock, videos: BlockVideo[]): BlockVideo[] {
     // YouTube-style: near-finished (≥90%) counts as watched.
     return !p || (!p.completed && p.fraction < 0.9);
   });
-}
-
-/** True when the block renders as one horizontally scrollable shelf. */
-export function isScrollRow(block: HomeBlock): boolean {
-  return block.rows === 1 && (block.options?.scrollRow ?? false);
-}
-
-/** Items a block needs at most: full rows on wide screens, or N list rows. */
-function blockFetchCount(block: HomeBlock): number {
-  if (isScrollRow(block)) return 48;
-  return block.layout === "cards" ? block.rows * 8 : block.rows;
 }
 
 function SubscriptionsBlockBody({ block }: { block: HomeBlock }) {
@@ -1090,16 +1063,26 @@ function AddBlockMenu({ onAdd }: { onAdd: (block: HomeBlock) => void }) {
  * sections, reorderable in edit mode with per-block layout and size.
  * Configuration persists in the settings profile (homeBlocks).
  */
-export function HomeBlocksClient() {
+export function HomeBlocksClient({
+  initialBlocks,
+}: {
+  /** Server-resolved block config, so the first render (and its queries) match
+   *  the SSR-prefetched/hydrated data instead of flashing DEFAULT_HOME_BLOCKS. */
+  initialBlocks?: HomeBlock[];
+}) {
   const utils = trpc.useUtils();
   const settings = trpc.settings.get.useQuery();
   const update = trpc.settings.update.useMutation({
     onSettled: () => utils.settings.get.invalidate(),
   });
 
-  const [blocks, setBlocks] = useState<HomeBlock[]>(DEFAULT_HOME_BLOCKS);
+  const [blocks, setBlocks] = useState<HomeBlock[]>(
+    initialBlocks ?? DEFAULT_HOME_BLOCKS,
+  );
   const [editing, setEditing] = useState(false);
-  const hydratedRef = useRef(false);
+  // If the server supplied blocks, they already match settings — don't let the
+  // effect below overwrite them (it would re-run queries).
+  const hydratedRef = useRef(Boolean(initialBlocks));
   useEffect(() => {
     if (settings.data?.homeBlocks && !hydratedRef.current) {
       hydratedRef.current = true;

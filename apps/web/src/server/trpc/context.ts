@@ -5,6 +5,12 @@ import { userIdFromDeviceToken } from "@/server/device-token";
 export type TRPCContext = {
   db: AppDb;
   userId: number | null;
+  /**
+   * Set on the SSR-prefetch caller (home page). Procedures that would otherwise
+   * compute/hit upstream (e.g. the personalized home feed) serve cache-only so
+   * server render never blocks; a cold miss falls back to the client fetch.
+   */
+  prefetchCacheOnly?: boolean;
 };
 
 export async function createTRPCContext(opts?: {

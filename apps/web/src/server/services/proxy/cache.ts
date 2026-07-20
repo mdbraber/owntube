@@ -20,6 +20,8 @@ const SHORTS_SHELF_CACHE_TTL_SEC = 30 * 60;
 const STREAMS_DETAIL_CACHE_TTL_SEC = 3 * 60;
 /** Channel RSS + long-form uploads windows; the cache warmer refreshes every cycle. */
 const RSS_CACHE_TTL_SEC = 15 * 60;
+/** Materialized personalized home feed, per user. */
+const HOME_FEED_CACHE_TTL_SEC = 10 * 60;
 /** First page of a video's comments; warmed for likely-next videos. */
 const COMMENTS_CACHE_TTL_SEC = 30 * 60;
 /**
@@ -39,7 +41,8 @@ export type CacheKind =
   | "channel"
   | "rss"
   | "comments"
-  | "sponsorblock";
+  | "sponsorblock"
+  | "home";
 
 export type CacheSource = "piped" | "invidious" | "youtube" | "sponsorblock";
 
@@ -151,6 +154,7 @@ function cacheTtlSecForKind(
   if (kind === "streams") return STREAMS_DETAIL_CACHE_TTL_SEC;
   if (kind === "channel") return CHANNEL_PAGE_CACHE_TTL_SEC;
   if (kind === "rss") return RSS_CACHE_TTL_SEC;
+  if (kind === "home") return HOME_FEED_CACHE_TTL_SEC;
   if (kind === "comments") return COMMENTS_CACHE_TTL_SEC;
   if (kind === "shorts" && options?.shortsPurpose === "shelf") {
     return SHORTS_SHELF_CACHE_TTL_SEC;

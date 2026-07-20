@@ -126,6 +126,39 @@ export function homeBlockOption(block: HomeBlock, key: string): boolean {
   return block.options?.[key] ?? def?.defaultValue ?? false;
 }
 
+/** Option-key prefix marking a per-block tag include/exclude toggle. */
+export const TAG_OPTION_PREFIX = "tag:";
+
+/** Include/exclude tag lists a block filters its feed by. */
+export function blockTagLists(block: HomeBlock): {
+  includeTags: string[] | undefined;
+  excludeTags: string[] | undefined;
+} {
+  const include: string[] = [];
+  const exclude: string[] = [];
+  for (const [key, value] of Object.entries(block.options ?? {})) {
+    if (!key.startsWith(TAG_OPTION_PREFIX)) continue;
+    const tag = key.slice(TAG_OPTION_PREFIX.length);
+    if (value === true) include.push(tag);
+    else if (value === false) exclude.push(tag);
+  }
+  return {
+    includeTags: include.length > 0 ? include : undefined,
+    excludeTags: exclude.length > 0 ? exclude : undefined,
+  };
+}
+
+/** True when the block renders as one horizontally scrollable shelf. */
+export function isScrollRow(block: HomeBlock): boolean {
+  return block.rows === 1 && (block.options?.scrollRow ?? false);
+}
+
+/** Items a block needs at most: full rows on wide screens, or N list rows. */
+export function blockFetchCount(block: HomeBlock): number {
+  if (isScrollRow(block)) return 48;
+  return block.layout === "cards" ? block.rows * 8 : block.rows;
+}
+
 export const HOME_BLOCK_LABEL: Record<HomeBlockType, string> = {
   subscriptions: "Subscriptions",
   recommended: "Recommended",

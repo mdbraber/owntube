@@ -27,10 +27,16 @@ import {
   trendingTailPoolCache,
   trendingTailPoolInFlight,
 } from "@/server/recommendation/trending-tail-cache";
+import {
+  readFreshCacheRow,
+  readLatestCacheRow,
+  writeCache,
+} from "@/server/services/proxy/cache";
 import { fetchTrendingVideos } from "@/server/services/proxy";
 import {
   trendingVideoCategorySchema,
   type UnifiedVideo,
+  unifiedVideoSchema,
 } from "@/server/services/proxy.types";
 import {
   getUserProxyOverrides,
@@ -285,6 +291,111 @@ export function sliceHomeFeedStream(
   return { videos, hasMore };
 }
 
+type HomeFeedDb = Parameters<typeof getPersonalizedFeedVideos>[0];
+type HomeStreamOpts = {
+  pageSize: number;
+  region: string;
+  overrides: ReturnType<typeof getUserProxyOverrides>;
+};
+
+/** The full merged home stream (personalized recs + optional trending tail). */
+async function computeHomeStream(
+  db: HomeFeedDb,
+  userId: number,
+  opts: HomeStreamOpts,
+): Promise<{ stream: UnifiedVideo[]; coldStart: boolean }> {
+  const settings = getUserSettings(db, userId);
+  const [{ videos: personalized, coldStart }, tailPool] = await Promise.all([
+    getPersonalizedFeedVideos(db, userId, opts),
+    settings.personalizedFeedOnly
+      ? Promise.resolve<UnifiedVideo[]>([])
+      : buildTrendingTailPool(
+          db,
+          userId,
+          opts.region,
+          opts.overrides,
+          settings.hideRestrictedVideos,
+          settings.excludeSubscribedFromRecommendations,
+        ),
+  ]);
+  const stream = mergePersonalizedWithTrendingTail(
+    settings.hideRestrictedVideos
+      ? stripRestrictedListVideos(personalized)
+      : personalized,
+    tailPool,
+  );
+  return { stream, coldStart };
+}
+
+function homeStreamCacheKey(
+  userId: number,
+  region: string,
+  personalizedOnly: boolean,
+): string {
+  return `home-feed:v1:${userId}:${region}:${personalizedOnly ? 1 : 0}`;
+}
+
+const homeStreamSchema = z.array(unifiedVideoSchema);
+
+function parseHomeStreamRow(
+  row: { payloadJson: string } | null | undefined,
+): UnifiedVideo[] | null {
+  if (!row) return null;
+  try {
+    const parsed = homeStreamSchema.safeParse(JSON.parse(row.payloadJson));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Read-through cache for the merged home stream (per user, materialized in
+ * SQLite). `cacheOnly` (the SSR prefetch) never computes — a cold miss returns
+ * an empty stream so the client fetches it and shows its skeleton only then.
+ */
+async function getHomeStream(
+  db: HomeFeedDb,
+  userId: number,
+  opts: HomeStreamOpts & { cacheOnly?: boolean },
+): Promise<{ stream: UnifiedVideo[]; coldStart: boolean }> {
+  const settings = getUserSettings(db, userId);
+  const key = homeStreamCacheKey(
+    userId,
+    opts.region,
+    settings.personalizedFeedOnly,
+  );
+  const fresh = parseHomeStreamRow(readFreshCacheRow(db, key));
+  if (fresh) return { stream: fresh, coldStart: false };
+  if (opts.cacheOnly) {
+    const stale = parseHomeStreamRow(readLatestCacheRow(db, key));
+    if (stale) return { stream: stale, coldStart: false };
+    return { stream: [], coldStart: true };
+  }
+  const { stream, coldStart } = await computeHomeStream(db, userId, opts);
+  if (stream.length > 0) writeCache(db, key, "invidious", stream, "home");
+  return { stream, coldStart };
+}
+
+/** Recompute + materialize a user's home stream (used by the cache warmer). */
+export async function materializeHomeFeed(
+  db: HomeFeedDb,
+  userId: number,
+  opts: HomeStreamOpts,
+): Promise<void> {
+  const settings = getUserSettings(db, userId);
+  const { stream } = await computeHomeStream(db, userId, opts);
+  if (stream.length > 0) {
+    writeCache(
+      db,
+      homeStreamCacheKey(userId, opts.region, settings.personalizedFeedOnly),
+      "invidious",
+      stream,
+      "home",
+    );
+  }
+}
+
 export const feedRouter = router({
   home: publicProcedure.input(homeInputSchema).query(async ({ ctx, input }) => {
     const pageSize = input?.pageSize ?? 24;
@@ -302,34 +413,14 @@ export const feedRouter = router({
     const overrides = getUserProxyOverrides(ctx.db, ctx.userId);
     try {
       if (ctx.userId && !category) {
-        const settings = getUserSettings(ctx.db, ctx.userId);
-        // Personalized-only: drop the regional-trending tail entirely. The
-        // recommendation pool digs deeper into related videos to compensate,
-        // so the feed stays long but stays personalized.
-        const [{ videos: personalized, coldStart }, tailPool] =
-          await Promise.all([
-            getPersonalizedFeedVideos(ctx.db, ctx.userId, {
-              pageSize,
-              region,
-              overrides,
-            }),
-            settings.personalizedFeedOnly
-              ? Promise.resolve<UnifiedVideo[]>([])
-              : buildTrendingTailPool(
-                  ctx.db,
-                  ctx.userId,
-                  region,
-                  overrides,
-                  settings.hideRestrictedVideos,
-                  settings.excludeSubscribedFromRecommendations,
-                ),
-          ]);
-        const stream = mergePersonalizedWithTrendingTail(
-          settings.hideRestrictedVideos
-            ? stripRestrictedListVideos(personalized)
-            : personalized,
-          tailPool,
-        );
+        // Materialized read-through: SSR prefetch is cache-only (never blocks on
+        // the reco engine / upstream); the client and warmer compute + persist.
+        const { stream, coldStart } = await getHomeStream(ctx.db, ctx.userId, {
+          pageSize,
+          region,
+          overrides,
+          cacheOnly: ctx.prefetchCacheOnly ?? false,
+        });
         const { videos, hasMore } = sliceHomeFeedStream(stream, skip, pageSize);
         return {
           kind: "personalized" as const,
