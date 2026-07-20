@@ -5,6 +5,7 @@ import { useEffect, useRef } from "react";
 import {
   buildHlsSameOriginConfig,
   installSameOriginMediaFetchGuard,
+  proxyUrlForHlsFetch,
 } from "@/lib/hls-same-origin";
 
 /**
@@ -38,7 +39,12 @@ export function useLiveHlsPlayback(
       if (cancelled || !videoRef.current) return;
 
       if (!HlsCtor.isSupported()) {
-        video.src = src;
+        // iOS Safari (native HLS, no MSE): route the manifest through our
+        // same-origin proxy. The proxied manifest has its child playlists and
+        // segments rewritten to same-origin hops, so native HLS never fetches
+        // the IP-locked/CORS-blocked youtube.com URLs directly (which left live
+        // streams stuck loading on iOS).
+        video.src = proxyUrlForHlsFetch(src);
         return;
       }
 
