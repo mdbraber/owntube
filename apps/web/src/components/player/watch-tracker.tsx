@@ -30,27 +30,30 @@ export function WatchTracker({
   onWatched,
 }: WatchTrackerProps) {
   const utils = trpc.useUtils();
+  const onWatchedRef = useRef(onWatched);
+  onWatchedRef.current = onWatched;
   const { mutate } = trpc.history.upsertEvent.useMutation({
-    onSuccess: (res) => {
+    onSuccess: (res, variables) => {
       // Finishing the video drops it from the queue server-side; refresh the
       // cached queue so the /queue page, Up-next and the localStorage mirror
       // (QueueSync) stop offering a video that was just watched.
-      if (!res.dequeued) return;
-      void utils.queue.list.invalidate();
-      void utils.queue.listDetailed.invalidate();
+      if (res.dequeued) {
+        void utils.queue.list.invalidate();
+        void utils.queue.listDetailed.invalidate();
+      }
+      // When an event marks the video completed (auto-watched at ≥95% or on
+      // ended), refresh the shared progress map so the "Mark watched" button
+      // and hide-finished sections flip to watched at once, and notify the host.
+      if (variables.completed) {
+        onWatchedRef.current?.(variables.videoId);
+        void utils.history.list.invalidate();
+        void utils.history.progressAll.invalidate();
+      }
     },
   });
   /** tRPC’s mutation return object is not referentially stable; do not list it in effect deps. */
   const mutateRef = useRef(mutate);
   mutateRef.current = mutate;
-  const onWatchedRef = useRef(onWatched);
-  onWatchedRef.current = onWatched;
-  const invalidateHistoryRef = useRef(() => {
-    void utils.history.list.invalidate();
-  });
-  invalidateHistoryRef.current = () => {
-    void utils.history.list.invalidate();
-  };
 
   useEffect(() => {
     const m = mutateRef.current;
@@ -174,12 +177,10 @@ export function WatchTracker({
       document.removeEventListener("pause", onMediaPause, true);
       document.removeEventListener("ended", onMediaEnded, true);
       window.removeEventListener("pagehide", onPageHide);
-      m(buildEvent(), {
-        onSuccess: () => {
-          onWatchedRef.current?.(videoId);
-          invalidateHistoryRef.current();
-        },
-      });
+      // Final flush on unmount/nav; completion side-effects (onWatched +
+      // progress/history invalidation) are handled centrally in the mutation's
+      // onSuccess when the event is marked completed.
+      m(buildEvent());
     };
   }, [
     channelId,
