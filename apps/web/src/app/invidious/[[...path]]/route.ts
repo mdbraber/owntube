@@ -198,6 +198,15 @@ function chunkedMediaBody(
   };
   clientSignal.addEventListener("abort", cancelUpstream, { once: true });
 
+  // Consecutive failures with no forward progress. A flaky-but-advancing
+  // upstream can resume any number of times (this resets on each delivered
+  // byte); only a genuinely dead range (e.g. an expired signed URL) exhausts it
+  // and surfaces the error — at which point hls.js refetches the whole segment.
+  const MAX_RESUME = 4;
+  let resumeAttempts = 0;
+  const backoff = () =>
+    new Promise<void>((r) => setTimeout(r, 150 * resumeAttempts));
+
   return new ReadableStream<Uint8Array>({
     async pull(controller) {
       for (;;) {
@@ -221,16 +230,47 @@ function chunkedMediaBody(
           if (!next) {
             next = fetchChunk(pos, Math.min(pos + MEDIA_CHUNK_BYTES - 1, endTarget));
           }
-          const r = await next.promise;
-          if (!(r.status === 206 || r.status === 200) || !r.body) {
-            await r.body?.cancel().catch(() => {});
-            throw new Error(`upstream media chunk returned ${r.status}`);
+          try {
+            const r = await next.promise;
+            if (!(r.status === 206 || r.status === 200) || !r.body) {
+              await r.body?.cancel().catch(() => {});
+              throw new Error(`upstream media chunk returned ${r.status}`);
+            }
+            currentEnd = next.end;
+            reader = r.body.getReader();
+            pending = prefetchAfter(next.end);
+          } catch (e) {
+            // Upstream dropped/failed while (re)starting this chunk. Resume from
+            // the current byte position with a fresh range fetch so the client
+            // stream never breaks (which Safari would otherwise escalate to a
+            // whole-connection loss, killing unrelated API requests too).
+            if (clientSignal.aborted) {
+              controller.close();
+              return;
+            }
+            if (++resumeAttempts > MAX_RESUME) throw e;
+            await backoff();
+            continue; // reader stays null → refetch from pos
           }
-          currentEnd = next.end;
-          reader = r.body.getReader();
-          pending = prefetchAfter(next.end);
         }
-        const { done, value } = await reader.read();
+        let result: ReadableStreamReadResult<Uint8Array>;
+        try {
+          result = await reader.read();
+        } catch (e) {
+          // Body dropped mid-chunk: discard the reader + misaligned prefetch and
+          // resume from the delivered position.
+          reader = null;
+          pending?.abort.abort();
+          pending = null;
+          if (clientSignal.aborted) {
+            controller.close();
+            return;
+          }
+          if (++resumeAttempts > MAX_RESUME) throw e;
+          await backoff();
+          continue;
+        }
+        const { done, value } = result;
         if (done) {
           reader = null;
           if (pos !== currentEnd + 1) {
@@ -241,6 +281,7 @@ function chunkedMediaBody(
           continue;
         }
         pos += value.byteLength;
+        resumeAttempts = 0; // forward progress
         controller.enqueue(value);
         return;
       }
