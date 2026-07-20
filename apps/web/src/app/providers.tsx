@@ -18,6 +18,7 @@ import { ActionToastProvider } from "@/components/videos/action-toast";
 import { IgnoredVideosProvider } from "@/components/videos/ignored-videos-context";
 import { InvidiousOriginProvider } from "@/components/videos/invidious-origin-context";
 import { VideoMembershipProvider } from "@/components/videos/video-membership-context";
+import { isTransientNetworkError } from "@/lib/query-retry";
 import { trpc } from "@/trpc/react";
 
 function getBaseUrl() {
@@ -28,19 +29,6 @@ function getBaseUrl() {
     return `https://${process.env.VERCEL_URL}`;
   }
   return `http://localhost:${process.env.PORT ?? 3000}`;
-}
-
-/**
- * True for failures worth retrying: a dropped connection (no HTTP response, so
- * no httpStatus) or a transient server error (5xx). A tRPC error that reached
- * the server with a 4xx is permanent (not found, bad input, auth) — don't retry.
- */
-function isTransientNetworkError(error: unknown): boolean {
-  const status = (
-    error as { data?: { httpStatus?: number } } | null | undefined
-  )?.data?.httpStatus;
-  if (status === undefined || status === 0) return true;
-  return status >= 500;
 }
 
 export function Providers({

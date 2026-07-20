@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, SafeAreaView, StyleSheet } from "react-native";
 import { Shell } from "@/components/Shell";
 import { clearToken, getToken } from "@/lib/auth-token";
+import { TrpcProvider } from "@/lib/trpc-react";
 import { LoginScreen } from "@/screens/LoginScreen";
 import { colors } from "@/theme";
 
@@ -20,20 +21,22 @@ export default function App() {
   };
 
   return (
-    <SafeAreaView style={styles.root}>
-      <StatusBar hidden />
-      {auth === "checking" ? (
-        <ActivityIndicator
-          style={styles.centered}
-          size="large"
-          color={colors.brand}
-        />
-      ) : auth === "signedIn" ? (
-        <Shell onSignOut={signOut} />
-      ) : (
-        <LoginScreen onLoggedIn={() => setAuth("signedIn")} />
-      )}
-    </SafeAreaView>
+    <TrpcProvider>
+      <SafeAreaView style={styles.root}>
+        <StatusBar hidden />
+        {auth === "checking" ? (
+          <ActivityIndicator
+            style={styles.centered}
+            size="large"
+            color={colors.brand}
+          />
+        ) : auth === "signedIn" ? (
+          <Shell onSignOut={signOut} />
+        ) : (
+          <LoginScreen onLoggedIn={() => setAuth("signedIn")} />
+        )}
+      </SafeAreaView>
+    </TrpcProvider>
   );
 }
 
