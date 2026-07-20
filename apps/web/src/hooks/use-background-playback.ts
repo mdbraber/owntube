@@ -7,7 +7,10 @@ import { useEffect } from "react";
  * channel and artwork, and working transport buttons — without handlers iOS
  * shows the controls but the buttons do nothing.
  *
- * This hook does NOT try to keep playback alive in the background any more.
+ * It also mirrors the video's play/pause into `mediaSession.playbackState`, so
+ * iOS doesn't resume a paused video when the native shell is backgrounded.
+ *
+ * This hook does NOT try to keep playback alive in the background.
  * Two approaches were tried and removed:
  *   - `autoPictureInPicture`: WebKit ignores it for inline web video on iPadOS,
  *     even with "Start PiP Automatically" enabled.
@@ -79,7 +82,21 @@ export function useBackgroundPlayback(
       }
     }
 
+    // Keep the OS in step with whether the video is actually playing. Without
+    // this iOS doesn't know a paused video is paused, so when the app is
+    // backgrounded with UIBackgroundModes:audio (the native shell) it activates
+    // the audio session and issues `play` — resuming a video the user paused.
+    const syncPlaybackState = () => {
+      ms.playbackState = video.paused ? "paused" : "playing";
+    };
+    syncPlaybackState();
+    video.addEventListener("play", syncPlaybackState);
+    video.addEventListener("pause", syncPlaybackState);
+
     return () => {
+      video.removeEventListener("play", syncPlaybackState);
+      video.removeEventListener("pause", syncPlaybackState);
+      ms.playbackState = "none";
       for (const [action] of handlers) {
         try {
           ms.setActionHandler(action, null);
