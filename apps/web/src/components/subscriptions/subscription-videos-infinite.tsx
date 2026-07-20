@@ -38,7 +38,11 @@ const PULL_MAX = 96;
 export function SubscriptionVideosInfinite() {
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const { sessionIgnored } = useIgnoredVideos();
-  const refreshTokenRef = useRef<number>(Date.now());
+  // Starts at 0 (not Date.now()) so the first query key is stable and matches
+  // the server's SSR prefetch → the feed hydrates instead of flashing a
+  // skeleton. A manual pull-to-refresh bumps it to Date.now() to force a
+  // refetch. Keep in sync with the prefetch in app/subscriptions/page.tsx.
+  const refreshTokenRef = useRef<number>(0);
   const utils = trpc.useUtils();
   const searchParams = useSearchParams();
 

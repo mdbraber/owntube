@@ -52,6 +52,15 @@ function createDb() {
   const sqlite = openSqlite(dbPath);
   sqlite.pragma("journal_mode = WAL");
   sqlite.pragma("foreign_keys = ON");
+  // Perf pragmas for the read-heavy cache paths + the concurrent cache warmer:
+  // NORMAL is safe under WAL (only loses the last txn on OS crash, never
+  // corrupts); a 64MB page cache and 256MB mmap keep hot cache rows in memory;
+  // busy_timeout avoids SQLITE_BUSY when a request and the warmer write at once.
+  sqlite.pragma("synchronous = NORMAL");
+  sqlite.pragma("busy_timeout = 5000");
+  sqlite.pragma("cache_size = -65536");
+  sqlite.pragma("mmap_size = 268435456");
+  sqlite.pragma("temp_store = MEMORY");
   runSqlMigrations(
     sqlite,
     path.join(process.cwd(), "src/server/db/migrations"),

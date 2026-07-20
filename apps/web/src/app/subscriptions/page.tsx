@@ -1,10 +1,15 @@
+import { HydrationBoundary } from "@tanstack/react-query";
+import { createServerSideHelpers } from "@trpc/react-query/server";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import superjson from "superjson";
 import { PageHeader } from "@/components/layout/page-header";
 import { SubscriptionVideosInfinite } from "@/components/subscriptions/subscription-videos-infinite";
 import { Button } from "@/components/ui/button";
 import { auth } from "@/server/auth";
 import { createCaller } from "@/server/trpc/caller";
+import { createTRPCContext } from "@/server/trpc/context";
+import { appRouter } from "@/server/trpc/root";
 
 export default async function SubscriptionsPage() {
   const session = await auth();
@@ -13,6 +18,31 @@ export default async function SubscriptionsPage() {
   }
   const caller = await createCaller();
   const list = await caller.subscriptions.list();
+
+  // Prefetch the unfiltered first page so the feed paints from cache instead of
+  // a skeleton. cache-only keeps SSR from ever blocking on the upstream feed;
+  // the client (refetchOnMount: "always") revalidates. The input MUST match the
+  // client's first query exactly (limit 24, refreshToken 0, no tag filter) or
+  // the hydrated data won't match the query key. A saved tag filter changes the
+  // key client-side and falls back to a normal fetch (still instant on repeat
+  // visits via the IndexedDB query cache).
+  const helpers = createServerSideHelpers({
+    router: appRouter,
+    ctx: { ...(await createTRPCContext()), prefetchCacheOnly: true },
+    transformer: superjson,
+  });
+  if (list.length > 0) {
+    await helpers.subscriptions.mergedFeedInfinite
+      .prefetchInfinite({
+        limit: 24,
+        refreshToken: 0,
+        includeTags: undefined,
+        excludeTags: undefined,
+      })
+      .catch(() => {
+        // Cold cache / upstream hiccup — the client fetches on mount.
+      });
+  }
 
   return (
     <main className="ot-page space-y-8">
@@ -34,7 +64,9 @@ export default async function SubscriptionsPage() {
           press Subscribe, or paste a channel ID you know.
         </p>
       ) : (
-        <SubscriptionVideosInfinite />
+        <HydrationBoundary state={helpers.dehydrate()}>
+          <SubscriptionVideosInfinite />
+        </HydrationBoundary>
       )}
     </main>
   );

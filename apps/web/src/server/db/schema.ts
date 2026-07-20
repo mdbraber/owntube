@@ -136,6 +136,17 @@ export const channelMeta = sqliteTable(
   (t) => [index("channel_meta_updated_idx").on(t.updatedAt)],
 );
 
+/**
+ * Persistent handle/custom-name → UC id resolutions. resolveChannelUcid used to
+ * cache these only in a per-process Map, so every restart re-hit the flaky live
+ * resolveurl. This survives restarts.
+ */
+export const channelIdAliases = sqliteTable("channel_id_aliases", {
+  alias: text("alias").primaryKey(),
+  channelId: text("channel_id").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
 export const playlists = sqliteTable(
   "playlists",
   {

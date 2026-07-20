@@ -2,8 +2,12 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink } from "@trpc/client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import superjson from "superjson";
+import {
+  restoreQueryCache,
+  startQueryCachePersist,
+} from "@/lib/query-persist";
 import { PlayerProvider } from "@/components/player/player-context";
 import { QueueSync } from "@/components/queue/queue-sync";
 import { FaviconSync } from "@/components/settings/favicon-sync";
@@ -72,6 +76,22 @@ export function Providers({
         },
       }),
   );
+  // Restore the last IndexedDB snapshot, then persist future cache changes.
+  // Persisting starts only after restore so we don't overwrite the snapshot
+  // with an empty cache before reading it.
+  useEffect(() => {
+    let cancelled = false;
+    let stop: (() => void) | undefined;
+    void restoreQueryCache(queryClient).finally(() => {
+      if (cancelled) return;
+      stop = startQueryCachePersist(queryClient);
+    });
+    return () => {
+      cancelled = true;
+      stop?.();
+    };
+  }, [queryClient]);
+
   const [trpcClient] = useState(() =>
     trpc.createClient({
       links: [

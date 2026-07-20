@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { invidiousPortCollidesWithNextApp } from "@/lib/invidious-port-collision";
 import { mergeActiveLiveVideosFirst } from "@/lib/live-video";
 import { logger } from "@/lib/logger";
@@ -9,6 +10,7 @@ import {
 } from "@/lib/short-video";
 import { preferHighResVideoThumbnailUrl } from "@/lib/video-thumbnail-url";
 import type { AppDb } from "@/server/db/client";
+import { channelIdAliases } from "@/server/db/schema";
 import {
   channelCacheKey,
   readFreshCacheRow,
@@ -969,13 +971,51 @@ export function normalizeChannelToken(raw: string): string {
   return s;
 }
 
+/** Persistent handle/custom → UC id cache (survives restarts). */
+function readChannelAlias(db: AppDb, alias: string): string | null {
+  try {
+    const row = db
+      .select({ channelId: channelIdAliases.channelId })
+      .from(channelIdAliases)
+      .where(eq(channelIdAliases.alias, alias))
+      .limit(1)
+      .all()[0];
+    return row?.channelId && UCID_RE.test(row.channelId) ? row.channelId : null;
+  } catch {
+    return null; // table missing (pre-migration) or read error
+  }
+}
+
+function writeChannelAlias(db: AppDb, alias: string, channelId: string): void {
+  const now = Math.floor(Date.now() / 1000);
+  try {
+    db.insert(channelIdAliases)
+      .values({ alias, channelId, updatedAt: now })
+      .onConflictDoUpdate({
+        target: channelIdAliases.alias,
+        set: { channelId, updatedAt: now },
+      })
+      .run();
+  } catch {
+    /* table missing (pre-migration) — in-memory cache still applies */
+  }
+}
+
 async function resolveChannelUcid(
+  db: AppDb,
   channelId: string,
   overrides?: ProxySourceOverrides,
 ): Promise<string> {
   if (UCID_RE.test(channelId)) return channelId;
   const cached = resolvedChannelUcids.get(channelId);
   if (cached) return cached;
+  // Persistent cache: avoids re-hitting the flaky live resolveurl after a
+  // restart (the in-memory Map alone went cold on every deploy).
+  const persisted = readChannelAlias(db, channelId);
+  if (persisted) {
+    resolvedChannelUcids.set(channelId, persisted);
+    return persisted;
+  }
   const bare = channelId.startsWith("@") ? channelId.slice(1) : channelId;
   // A leading `@` is unambiguously a handle; a bare token could be a handle, a
   // /c/ custom URL, or a legacy /user/ name — try each form.
@@ -1000,6 +1040,7 @@ async function resolveChannelUcid(
         };
         if (json?.ucid && UCID_RE.test(json.ucid)) {
           resolvedChannelUcids.set(channelId, json.ucid);
+          writeChannelAlias(db, channelId, json.ucid);
           return json.ucid;
         }
       } catch {
@@ -1031,6 +1072,7 @@ export async function fetchChannelPage(
   // Accept YouTube handle / custom / user tokens (@name, c/x, user/x): resolve
   // to a UC id so the whole pipeline (and the cache key) is keyed canonically.
   const canonicalId = await resolveChannelUcid(
+    db,
     decodedInput.channelId,
     overrides,
   );
