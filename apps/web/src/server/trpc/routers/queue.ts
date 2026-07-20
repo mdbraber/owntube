@@ -97,7 +97,13 @@ export const queueRouter = router({
         .from(watchQueue)
         .where(eq(watchQueue.userId, ctx.userId))
         .all();
-      const nextPos = rows.reduce((m, r) => Math.max(m, r.position), -1) + 1;
+      // New videos go to the TOP of the queue (list is ordered by ascending
+      // position), so the most recently added is played next.
+      const minPos = rows.reduce(
+        (m, r) => Math.min(m, r.position),
+        Number.POSITIVE_INFINITY,
+      );
+      const nextPos = Number.isFinite(minPos) ? minPos - 1 : 0;
       ctx.db
         .insert(watchQueue)
         .values({
