@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { BrandLogo } from "@/components/shell/brand-logo";
+import { TopbarBackButton } from "@/components/shell/topbar-back-button";
 import { TopbarSearch } from "@/components/shell/topbar-search";
 import { cn } from "@/lib/utils";
 
@@ -29,6 +30,7 @@ export function ShellTopbar({
     >
       {!sidebarOpen ? (
         <div className="flex shrink-0 items-center gap-2">
+          <TopbarBackButton />
           <button
             type="button"
             className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-shell)] text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] min-[901px]:inline-flex"
