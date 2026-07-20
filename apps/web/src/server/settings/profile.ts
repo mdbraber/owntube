@@ -9,7 +9,7 @@ import {
 import { DEFAULT_HOME_BLOCKS, HOME_BLOCK_TYPES } from "@/lib/home-blocks";
 import {
   DEFAULT_QUICK_ACTIONS,
-  LEGACY_DEFAULT_QUICK_ACTIONS,
+  LEGACY_DEFAULT_QUICK_ACTIONS_LIST,
   QUICK_ACTION_VALUES,
 } from "@/lib/quick-actions";
 import {
@@ -147,9 +147,11 @@ export const appSettingsSchema = z.object({
    */
   quickActions: z.preprocess(
     (value) =>
-      // Profiles that stored the old default verbatim follow the new default.
+      // Profiles that stored a superseded default verbatim follow the new one.
       Array.isArray(value) &&
-      value.join(",") === LEGACY_DEFAULT_QUICK_ACTIONS.join(",")
+      LEGACY_DEFAULT_QUICK_ACTIONS_LIST.some(
+        (legacy) => legacy.join(",") === value.join(","),
+      )
         ? DEFAULT_QUICK_ACTIONS
         : value,
     z.array(quickActionSchema).max(4).default(DEFAULT_QUICK_ACTIONS),
