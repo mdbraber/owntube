@@ -152,12 +152,45 @@ export function HlsVodBlock({
   const decided = dashDecision?.key === reactKey;
   const dashSrc = decided ? dashDecision.src : null;
 
+  /**
+   * Whether the active short *should* be playing — the source of truth the
+   * autoplay drivers read, instead of `shortsActive` alone.
+   *
+   * `shortsActive` only means "this is the visible short"; treating it as "play
+   * this" is what let a paused short resume when the player re-attached (iOS
+   * re-fires canplay on foreground, and the fragile per-hook `startedOnce`
+   * guards reset). Derive intent from real play/pause transitions instead, held
+   * as component state so it survives those re-attaches and every driver agrees.
+   *
+   * Resets to true per stream, so swiping to a new short still autoplays.
+   */
+  const [shortsWantsPlay, setShortsWantsPlay] = useState(true);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset per stream
+  useEffect(() => {
+    setShortsWantsPlay(true);
+  }, [reactKey]);
+  useEffect(() => {
+    if (!shortsMode) return;
+    const el = videoRef.current;
+    if (!el) return;
+    const onPause = () => setShortsWantsPlay(false);
+    const onPlay = () => setShortsWantsPlay(true);
+    el.addEventListener("pause", onPause);
+    el.addEventListener("play", onPlay);
+    return () => {
+      el.removeEventListener("pause", onPause);
+      el.removeEventListener("play", onPlay);
+    };
+  }, [videoRef, shortsMode, reactKey]);
+
+  const shortsShouldPlay = shortsMode && shortsActive && shortsWantsPlay;
+
   useHlsVodPlayback(
     videoRef,
     decided && !dashSrc ? src : "",
     reactKey,
     startAtSeconds,
-    (shortsMode && shortsActive) || miniShouldAutoplay || autoplay,
+    shortsShouldPlay || miniShouldAutoplay || autoplay,
     emitPlaybackError,
   );
 
@@ -166,7 +199,7 @@ export function HlsVodBlock({
     dashSrc ?? "",
     reactKey,
     startAtSeconds,
-    (shortsMode && shortsActive) || miniShouldAutoplay || autoplay,
+    shortsShouldPlay || miniShouldAutoplay || autoplay,
     () => setDashFailedKey(reactKey),
   );
 
@@ -194,12 +227,7 @@ export function HlsVodBlock({
   // Shorts autoplay: the browser blocks unmuted autoplay, so (like the muxed
   // block) keep retrying play on canplay/loadeddata — muted while the shared
   // pref is muted so it can start, unmuted once the viewer has turned sound on.
-  useShortsNativeAutoplay(
-    videoRef,
-    shortsMode && shortsActive,
-    reactKey,
-    shortsMode,
-  );
+  useShortsNativeAutoplay(videoRef, shortsShouldPlay, reactKey, shortsMode);
 
   // Lock-screen / Control Center metadata and transport controls.
   useBackgroundPlayback(videoRef, {
