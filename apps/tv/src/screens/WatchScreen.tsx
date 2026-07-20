@@ -59,9 +59,9 @@ type PlaybackOption = {
   | { kind: "split"; audioUrl: string }
 );
 
-/** Seconds moved per D-pad press while scrubbing, and the commit debounce. */
+/** Seconds moved per D-pad press, and per tick while a direction is held. */
 const SCRUB_STEP_SECONDS = 10;
-const SCRUB_COMMIT_MS = 450;
+const SCRUB_HOLD_TICK_MS = 120;
 
 /** Preferred ceiling when picking among fixed-resolution streams. */
 const DEFAULT_HEIGHT = 1080;
@@ -144,7 +144,19 @@ export function WatchScreen({
   const [rating, setRating] = useState<"like" | "dislike" | null>(null);
   const [saved, setSaved] = useState(false);
   const scrubRef = useRef<number | null>(null);
-  const scrubCommitRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const holdTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  /**
+   * How many overlay buttons currently hold focus. Left/right scrubs unless one
+   * does — deriving it this way means the bar never has to be "selected" first,
+   * and it can't get stuck if the bar's own focus state misreports.
+   */
+  const focusedButtonsRef = useRef(0);
+  const onButtonFocusChange = (focused: boolean) => {
+    focusedButtonsRef.current = Math.max(
+      0,
+      focusedButtonsRef.current + (focused ? 1 : -1),
+    );
+  };
   // Read by the key handler, which must see the value for the current render.
   const scrubberFocusedRef = useRef(false);
   scrubberFocusedRef.current = scrubberFocused;
@@ -233,6 +245,14 @@ export function WatchScreen({
       cancelled = true;
     };
   }, [videoId]);
+
+  // Clear via the ref so the cleanup needs no dependency on the callback.
+  useEffect(
+    () => () => {
+      if (holdTimerRef.current) clearInterval(holdTimerRef.current);
+    },
+    [],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -388,6 +408,30 @@ export function WatchScreen({
     return () => sub.remove();
   }, [audioPlayer, fallbackToStablePlayback]);
 
+  /**
+   * DASH text tracks surface asynchronously while the manifest is parsed, so
+   * reading `availableSubtitleTracks` once at readyToPlay misses them and the
+   * CC control never appears. Track the change events instead.
+   */
+  useEffect(() => {
+    const available = player.addListener(
+      "availableSubtitleTracksChange",
+      ({ availableSubtitleTracks }) => {
+        setHasSubtitles(availableSubtitleTracks.length > 0);
+      },
+    );
+    const selected = player.addListener(
+      "subtitleTrackChange",
+      ({ subtitleTrack }) => {
+        setSubtitlesOn(subtitleTrack !== null);
+      },
+    );
+    return () => {
+      available.remove();
+      selected.remove();
+    };
+  }, [player]);
+
   // Show the overlay, then auto-hide after a few seconds of inactivity.
   const revealControls = useCallback(() => {
     setControlsVisible(true);
@@ -439,15 +483,47 @@ export function WatchScreen({
     const next = Math.max(0, Math.min(total, from + seconds));
     scrubRef.current = next;
     setScrubSeconds(next);
-    if (scrubCommitRef.current) clearTimeout(scrubCommitRef.current);
-    scrubCommitRef.current = setTimeout(() => {
-      player.currentTime = next;
-      if (selectedOptionRef.current?.kind === "split") {
-        audioPlayer.currentTime = next;
-      }
-      scrubRef.current = null;
-      setScrubSeconds(null);
-    }, SCRUB_COMMIT_MS);
+  };
+
+  /**
+   * OK on the scrubber commits the pending position and resumes; with nothing
+   * pending it just toggles playback.
+   */
+  /**
+   * react-native-tvos reports a held direction as a single `longLeft`/`longRight`
+   * on press plus one on release — it suppresses repeats on purpose. So a hold
+   * has to be driven here: start ticking on the press event, stop on the release.
+   */
+  const startHoldScrub = (seconds: number) => {
+    if (holdTimerRef.current) return;
+    scrubBy(seconds);
+    holdTimerRef.current = setInterval(
+      () => scrubBy(seconds),
+      SCRUB_HOLD_TICK_MS,
+    );
+  };
+
+  const stopHoldScrub = () => {
+    if (!holdTimerRef.current) return;
+    clearInterval(holdTimerRef.current);
+    holdTimerRef.current = null;
+  };
+
+  const commitScrubOrToggle = () => {
+    const target = scrubRef.current;
+    if (target === null) {
+      togglePlayback();
+      return;
+    }
+    player.currentTime = target;
+    if (selectedOptionRef.current?.kind === "split") {
+      audioPlayer.currentTime = target;
+    }
+    scrubRef.current = null;
+    setScrubSeconds(null);
+    player.play();
+    if (selectedOptionRef.current?.kind === "split") audioPlayer.play();
+    setIsPlaying(true);
   };
 
   const setRatingValue = (next: "like" | "dislike") => {
@@ -481,6 +557,9 @@ export function WatchScreen({
   useTVEventHandler((event) => {
     if (event.eventType === "focus" || event.eventType === "blur") return;
     revealControls();
+    // ACTION_UP is 1; the same long-press event fires on press and release.
+    const isKeyUp = Number(event.eventKeyAction) === 1;
+    const canScrub = focusedButtonsRef.current === 0;
     switch (event.eventType) {
       case "playPause":
         togglePlayback();
@@ -501,14 +580,22 @@ export function WatchScreen({
       // when the scrubber itself holds focus; anywhere else it moves between
       // controls as normal.
       case "left":
-        if (!controlsVisibleRef.current || scrubberFocusedRef.current) {
-          scrubBy(-SCRUB_STEP_SECONDS);
-        }
+        stopHoldScrub();
+        if (canScrub) scrubBy(-SCRUB_STEP_SECONDS);
         break;
       case "right":
-        if (!controlsVisibleRef.current || scrubberFocusedRef.current) {
-          scrubBy(SCRUB_STEP_SECONDS);
-        }
+        stopHoldScrub();
+        if (canScrub) scrubBy(SCRUB_STEP_SECONDS);
+        break;
+      case "longLeft":
+        if (!canScrub) break;
+        if (isKeyUp) stopHoldScrub();
+        else startHoldScrub(-SCRUB_STEP_SECONDS);
+        break;
+      case "longRight":
+        if (!canScrub) break;
+        if (isKeyUp) stopHoldScrub();
+        else startHoldScrub(SCRUB_STEP_SECONDS);
         break;
       default:
         break;
@@ -593,7 +680,10 @@ export function WatchScreen({
           <View style={styles.trackWrap}>
             {scrubSeconds !== null && detail.storyboard ? (
               <View
-                style={[styles.previewRow, { left: `${progressPct}%` }]}
+                style={[
+                  styles.previewRow,
+                  { left: `${clampPreviewPct(progressPct)}%` },
+                ]}
                 pointerEvents="none"
               >
                 <ScrubPreview
@@ -606,17 +696,26 @@ export function WatchScreen({
               hasTVPreferredFocus
               onFocus={() => setScrubberFocused(true)}
               onBlur={() => setScrubberFocused(false)}
-              onPress={togglePlayback}
-              style={[
-                styles.scrubber,
-                scrubberFocused && styles.scrubberFocused,
-              ]}
+              onPress={commitScrubOrToggle}
+              style={styles.scrubber}
             >
-              <View style={styles.track}>
+              <View
+                style={[styles.track, scrubberFocused && styles.trackActive]}
+              >
                 <View
-                  style={[styles.trackFill, { width: `${progressPct}%` }]}
+                  style={[
+                    styles.trackFill,
+                    scrubberFocused && styles.trackFillActive,
+                    { width: `${progressPct}%` },
+                  ]}
                 />
               </View>
+              {scrubberFocused ? (
+                <View
+                  style={[styles.knob, { left: `${progressPct}%` }]}
+                  pointerEvents="none"
+                />
+              ) : null}
             </Pressable>
           </View>
 
@@ -624,8 +723,14 @@ export function WatchScreen({
             <View style={styles.sideCluster}>
               {detail.channelId ? (
                 <Pressable
-                  onFocus={() => setChannelFocused(true)}
-                  onBlur={() => setChannelFocused(false)}
+                  onFocus={() => {
+                    setChannelFocused(true);
+                    onButtonFocusChange(true);
+                  }}
+                  onBlur={() => {
+                    setChannelFocused(false);
+                    onButtonFocusChange(false);
+                  }}
                   onPress={() => onOpenChannel(detail.channelId as string)}
                   style={[
                     styles.avatarButton,
@@ -649,13 +754,22 @@ export function WatchScreen({
             </View>
 
             <View style={styles.transport}>
-              <IconButton icon="rotate-ccw" onPress={() => seekBy(-10)} />
+              <IconButton
+                icon="rotate-ccw"
+                onPress={() => seekBy(-10)}
+                onFocusChange={onButtonFocusChange}
+              />
               <IconButton
                 icon={isPlaying ? "pause" : "play"}
                 large
                 onPress={togglePlayback}
+                onFocusChange={onButtonFocusChange}
               />
-              <IconButton icon="rotate-cw" onPress={() => seekBy(10)} />
+              <IconButton
+                icon="rotate-cw"
+                onPress={() => seekBy(10)}
+                onFocusChange={onButtonFocusChange}
+              />
             </View>
 
             {/* Mirrors the web player's action set. */}
@@ -664,16 +778,19 @@ export function WatchScreen({
                 icon="thumbs-up"
                 active={rating === "like"}
                 onPress={() => setRatingValue("like")}
+                onFocusChange={onButtonFocusChange}
               />
               <IconButton
                 icon="thumbs-down"
                 active={rating === "dislike"}
                 onPress={() => setRatingValue("dislike")}
+                onFocusChange={onButtonFocusChange}
               />
               <IconButton
                 icon="bookmark"
                 active={saved}
                 onPress={toggleSaved}
+                onFocusChange={onButtonFocusChange}
               />
               {/* Only offered when the stream actually carries subtitles. */}
               {hasSubtitles ? (
@@ -681,6 +798,7 @@ export function WatchScreen({
                   icon="type"
                   active={subtitlesOn}
                   onPress={toggleSubtitles}
+                  onFocusChange={onButtonFocusChange}
                 />
               ) : null}
             </View>
@@ -700,6 +818,26 @@ export function WatchScreen({
 const AVATAR = 44;
 /** Rendered size of a scrub preview; sprite cells are scaled to fit this. */
 const PREVIEW_WIDTH = 240;
+/**
+ * Keeps the centred preview inside the bar. The overlay spans the screen minus
+ * a `spacing.screen` margin each side, so half a preview is this share of the
+ * bar's width at 960dp — clamping to it stops the frame overhanging either end.
+ */
+function clampPreviewPct(pct: number): number {
+  const barWidth = TV_WIDTH_DP - spacing.screen * 2;
+  const halfPct = (PREVIEW_WIDTH / 2 / barWidth) * 100;
+  return Math.min(100 - halfPct, Math.max(halfPct, pct));
+}
+
+/** Layout width in dp of a 1080p TV panel (density 2). */
+const TV_WIDTH_DP = 960;
+
+/** Playhead knob shown while the scrubber holds focus. */
+const SCRUB_KNOB = 18;
+const TRACK_HEIGHT = 7;
+/** Scrubber padding, so the knob can be centred on the bar arithmetically. */
+const SCRUB_PAD = 8;
+
 /** How much of the related rail stays on screen under the controls. */
 const RELATED_PEEK_HEIGHT = 104;
 
@@ -753,11 +891,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   timesRow: { flexDirection: "row", justifyContent: "space-between" },
-  controlRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: spacing.md,
-  },
+  controlRow: { flexDirection: "row", alignItems: "center" },
   // Side clusters flex equally so the transport stays centred on screen.
   sideCluster: { flex: 1, flexDirection: "row", alignItems: "center" },
   transport: {
@@ -798,13 +932,9 @@ const styles = StyleSheet.create({
   },
   trackWrap: { position: "relative" },
   // Padding gives the focus ring somewhere to sit without moving the bar.
-  scrubber: {
-    paddingVertical: spacing.xs,
-    borderRadius: radius.shell,
-    borderWidth: focus.borderWidth,
-    borderColor: "transparent",
-  },
-  scrubberFocused: { borderColor: colors.ring },
+  // Deliberately no focus ring: the bar shows selection by turning brand-red,
+  // with a knob at the playhead.
+  scrubber: { paddingVertical: SCRUB_PAD },
   // Anchored to the playhead; the negative margin centres it on that point.
   previewRow: {
     position: "absolute",
@@ -833,7 +963,7 @@ const styles = StyleSheet.create({
     // Flush to the bottom edge so the related rail is cropped by the screen
     // rather than sitting fully inside it, as in the TV YouTube app.
     bottom: 0,
-    gap: spacing.md,
+    gap: spacing.xs,
   },
   bufferingOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -848,12 +978,28 @@ const styles = StyleSheet.create({
   },
   track: {
     flex: 1,
-    height: 7,
+    height: TRACK_HEIGHT,
     borderRadius: 4,
     backgroundColor: colors.surfaceBorder,
     overflow: "hidden",
   },
-  trackFill: { height: "100%", backgroundColor: colors.brand, borderRadius: 4 },
+  trackFill: {
+    height: "100%",
+    backgroundColor: colors.foreground,
+    borderRadius: 4,
+  },
+  // Selected: the whole bar reads red, played portion solid over a red bed.
+  trackActive: { backgroundColor: colors.brandSoft },
+  trackFillActive: { backgroundColor: colors.brand },
+  knob: {
+    position: "absolute",
+    top: SCRUB_PAD + (TRACK_HEIGHT - SCRUB_KNOB) / 2,
+    width: SCRUB_KNOB,
+    height: SCRUB_KNOB,
+    borderRadius: SCRUB_KNOB / 2,
+    marginLeft: -SCRUB_KNOB / 2,
+    backgroundColor: colors.brand,
+  },
   time: {
     color: colors.mutedForeground,
     fontSize: fontSize.sm,
