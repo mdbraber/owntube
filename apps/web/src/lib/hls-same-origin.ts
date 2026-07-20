@@ -159,10 +159,16 @@ export function buildHlsSameOriginConfig(
     // subtitles and leaves our tracks untouched (matching native-HLS behavior).
     renderTextTracksNatively: false,
     startFragPrefetch: true,
-    // Deeper buffer absorbs proxied-segment latency: fewer mid-playback stalls
-    // and snappier seeks. Live keeps its own low-latency config elsewhere.
-    maxBufferLength: 30,
-    maxMaxBufferLength: 60,
+    // Deep buffer to absorb proxied-segment latency (Invidious→googlevideo can
+    // deliver a segment slowly): keep a large cushion ahead so an occasional
+    // slow segment drains buffer instead of stalling playback. Live keeps its
+    // own low-latency config elsewhere.
+    maxBufferLength: 60,
+    maxMaxBufferLength: 120,
+    // Byte cap that governs the buffer on high-bitrate video — the 60MB default
+    // silently limits the cushion well under the time targets above (e.g. ~24s
+    // at 20 Mbps). Raise it so the time-based targets are what actually apply.
+    maxBufferSize: 120 * 1000 * 1000,
     maxBufferHole: 0.5,
     xhrSetup(xhr, url) {
       const proxied = rewrite(url);
