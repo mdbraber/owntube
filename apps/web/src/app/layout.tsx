@@ -21,6 +21,11 @@ const inter = Inter({
 const jetbrainsMono = JetBrains_Mono({
   variable: "--font-jetbrains-mono",
   subsets: ["latin"],
+  // Mono is only used for occasional UI (tags, counts, timestamps), rarely
+  // above the fold — don't waste an eager preload on every page load (that's the
+  // "preloaded but not used" warning). It still loads on demand when mono
+  // text renders. Inter (the primary face) keeps its default preload.
+  preload: false,
 });
 
 export const metadata: Metadata = {
