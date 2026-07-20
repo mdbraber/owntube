@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 import { CarouselFeed } from "@/components/CarouselFeed";
+import { FocusButton } from "@/components/FocusButton";
 import { channelInitial, formatSubscribersLabel } from "@/lib/format";
 import type { Nav } from "@/lib/navigation";
 import { trpcClient } from "@/lib/trpc";
@@ -22,6 +23,36 @@ export function ChannelScreen({
   nav: Nav;
 }) {
   const [meta, setMeta] = useState<ChannelMeta>({});
+  const [subscribed, setSubscribed] = useState<boolean | null>(null);
+  const [pending, setPending] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setSubscribed(null);
+    trpcClient.subscriptions.status
+      .query({ channelId })
+      .then((r) => {
+        if (!cancelled) setSubscribed(r.subscribed);
+      })
+      // Unknown state hides the button rather than showing a wrong label.
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [channelId]);
+
+  const toggleSubscription = () => {
+    if (subscribed === null || pending) return;
+    setPending(true);
+    const next = !subscribed;
+    const call = next
+      ? trpcClient.subscriptions.add.mutate({ channelId })
+      : trpcClient.subscriptions.remove.mutate({ channelId });
+    call
+      .then(() => setSubscribed(next))
+      .catch(() => {})
+      .finally(() => setPending(false));
+  };
 
   const feed = useInfiniteFeed<string>(
     (continuation) =>
@@ -51,12 +82,19 @@ export function ChannelScreen({
           <Text style={styles.avatarInitial}>{channelInitial(meta.name)}</Text>
         </View>
       )}
-      <View>
+      <View style={styles.headerText}>
         <Text style={styles.name}>{meta.name ?? "Channel"}</Text>
         {subscribersLabel ? (
           <Text style={styles.subs}>{subscribersLabel}</Text>
         ) : null}
       </View>
+      {subscribed !== null ? (
+        <FocusButton
+          label={subscribed ? "Subscribed" : "Subscribe"}
+          onPress={toggleSubscription}
+          disabled={pending}
+        />
+      ) : null}
     </View>
   );
 
@@ -71,6 +109,7 @@ export function ChannelScreen({
 }
 
 const styles = StyleSheet.create({
+  headerText: { flex: 1 },
   header: {
     flexDirection: "row",
     alignItems: "center",

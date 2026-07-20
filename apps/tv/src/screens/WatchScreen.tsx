@@ -1,12 +1,18 @@
 import type { SponsorBlockSegment } from "@web/lib/sponsorblock";
+import {
+  storyboardSheetUrl,
+  storyboardThumbAtTime,
+} from "@web/lib/video-scrub-frames";
 import type {
   UnifiedVideo,
   VideoDetail,
+  VideoStoryboard,
 } from "@web/server/services/proxy.types";
 import { useVideoPlayer, VideoView } from "expo-video";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   StyleSheet,
   Text,
@@ -16,7 +22,8 @@ import {
 import { FocusButton } from "@/components/FocusButton";
 import { IconButton } from "@/components/IconButton";
 import { VideoRow } from "@/components/VideoRow";
-import { formatTime } from "@/lib/format";
+import { OWNTUBE_BASE_URL } from "@/lib/config";
+import { channelInitial, formatTime, formatViews } from "@/lib/format";
 import { trpcClient } from "@/lib/trpc";
 import { errorMessage } from "@/lib/use-query";
 import { colors, focus, fontSize, monoFont, radius, spacing } from "@/theme";
@@ -45,10 +52,58 @@ type PlaybackOption = {
   id: string;
   label: string;
   videoUrl: string;
+  /** Vertical resolution, when known. Absent for HLS "Auto". */
+  height?: number;
 } & (
   | { kind: "auto" | "muxed"; audioUrl?: never }
   | { kind: "split"; audioUrl: string }
 );
+
+/** Seconds moved per D-pad press while scrubbing, and the commit debounce. */
+const SCRUB_STEP_SECONDS = 10;
+const SCRUB_COMMIT_MS = 450;
+
+/** Preferred ceiling when picking among fixed-resolution streams. */
+const DEFAULT_HEIGHT = 1080;
+
+/**
+ * Picks the stream to start with.
+ *
+ * HLS ("Auto") wins whenever the server offers it: it is a single media source
+ * that adapts up to 1080p, so ExoPlayer keeps audio and video in sync itself.
+ *
+ * Everything else is a compromise. YouTube's muxed (video+audio) progressive
+ * streams stop at 360p; every higher rendition is adaptive and arrives as a
+ * separate video-only + audio pair, which this screen plays as two ExoPlayer
+ * instances nudged into alignment. Two players drift, and correcting drift by
+ * seeking the audio player is audible — sound drops out and returns out of
+ * step. So without HLS we take the best muxed stream and accept 360p rather
+ * than ship broken audio; split sources are a last resort when nothing muxed
+ * exists.
+ */
+function pickDefaultOptionIndex(options: PlaybackOption[]): number {
+  const auto = options.findIndex((option) => option.kind === "auto");
+  if (auto >= 0) return auto;
+
+  const bestOf = (kind: PlaybackOption["kind"]) => {
+    const graded = options
+      .map((option, index) => ({ option, index }))
+      .filter((e) => e.option.kind === kind && e.option.height !== undefined);
+    if (graded.length === 0) return -1;
+    const atOrBelow = graded.filter(
+      (e) => (e.option.height ?? 0) <= DEFAULT_HEIGHT,
+    );
+    const pool = atOrBelow.length > 0 ? atOrBelow : graded;
+    return pool.reduce((a, b) =>
+      (b.option.height ?? 0) > (a.option.height ?? 0) ? b : a,
+    ).index;
+  };
+
+  const muxed = bestOf("muxed");
+  if (muxed >= 0) return muxed;
+  const split = bestOf("split");
+  return split >= 0 ? split : 0;
+}
 
 /**
  * Full watch screen: plays the stream via ExoPlayer, resumes from a saved
@@ -78,6 +133,23 @@ export function WatchScreen({
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [channelFocused, setChannelFocused] = useState(false);
+  // Subtitle tracks only appear once the stream is ready, so the CC button
+  // stays disabled until ExoPlayer reports some.
+  const [hasSubtitles, setHasSubtitles] = useState(false);
+  const [subtitlesOn, setSubtitlesOn] = useState(false);
+  // Scrubbing: left/right move a pending position that only commits on release,
+  // so holding the D-pad sweeps the bar instead of firing a seek per press.
+  const [scrubSeconds, setScrubSeconds] = useState<number | null>(null);
+  const [scrubberFocused, setScrubberFocused] = useState(false);
+  const [rating, setRating] = useState<"like" | "dislike" | null>(null);
+  const [saved, setSaved] = useState(false);
+  const scrubRef = useRef<number | null>(null);
+  const scrubCommitRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Read by the key handler, which must see the value for the current render.
+  const scrubberFocusedRef = useRef(false);
+  scrubberFocusedRef.current = scrubberFocused;
+  const controlsVisibleRef = useRef(true);
+  controlsVisibleRef.current = controlsVisible;
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Read by the auto-hide timer to avoid hiding controls while paused.
   const isPlayingRef = useRef(isPlaying);
@@ -92,19 +164,28 @@ export function WatchScreen({
   const shouldPlayAfterReplaceRef = useRef(true);
   const selectedOptionRef = useRef<PlaybackOption | null>(null);
 
+  // Adaptive HD plays as two players (muted video + separate audio). expo-video
+  // applies an audio mode per app, taking the highest-priority one across all
+  // players, and the default interrupts other output "even when muted" — which
+  // silences the audio player and leaves HD rows playing with no sound. Both
+  // players must opt into mixing for the pair to be audible.
   const player = useVideoPlayer(null, (p) => {
     p.loop = false;
     p.timeUpdateEventInterval = 1;
+    p.audioMixingMode = "mixWithOthers";
   });
   const audioPlayer = useVideoPlayer(null, (p) => {
     p.loop = false;
     p.timeUpdateEventInterval = 1;
+    p.audioMixingMode = "mixWithOthers";
   });
 
   // Playback detail (blocking) + SponsorBlock/related (best-effort, parallel).
   useEffect(() => {
     let cancelled = false;
     setState({ status: "loading" });
+    setHasSubtitles(false);
+    setSubtitlesOn(false);
     detailRef.current = null;
     currentTimeRef.current = 0;
     segmentsRef.current = [];
@@ -129,7 +210,7 @@ export function WatchScreen({
           status: "ready",
           detail,
           playbackOptions,
-          selectedOptionIndex: 0,
+          selectedOptionIndex: pickDefaultOptionIndex(playbackOptions),
         });
 
         trpcClient.sponsorblock.segments
@@ -148,6 +229,23 @@ export function WatchScreen({
           setState({ status: "error", message: errorMessage(err) });
       });
 
+    return () => {
+      cancelled = true;
+    };
+  }, [videoId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setRating(null);
+    setSaved(false);
+    trpcClient.interactions.state
+      .query({ videoId })
+      .then((st) => {
+        if (cancelled) return;
+        setRating(st.like ? "like" : st.dislike ? "dislike" : null);
+        setSaved(st.save);
+      })
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
@@ -252,10 +350,12 @@ export function WatchScreen({
 
   const fallbackToStablePlayback = useCallback(() => {
     if (state.status !== "ready") return;
-    const selectedOption = state.playbackOptions[state.selectedOptionIndex];
-    if (selectedOption?.kind !== "split") return;
+    // Step to the next single-player source. DASH can 502 if the upstream
+    // formats are missing, in which case HLS or a muxed rendition still plays.
     const fallbackIndex = state.playbackOptions.findIndex(
-      (option) => option.kind === "auto" || option.kind === "muxed",
+      (option, index) =>
+        index > state.selectedOptionIndex &&
+        (option.kind === "auto" || option.kind === "muxed"),
     );
     if (fallbackIndex < 0 || fallbackIndex === state.selectedOptionIndex)
       return;
@@ -271,7 +371,11 @@ export function WatchScreen({
   useEffect(() => {
     const sub = player.addListener("statusChange", ({ status }) => {
       setIsBuffering(status === "loading");
-      if (status === "readyToPlay") setDuration(player.duration);
+      if (status === "readyToPlay") {
+        setDuration(player.duration);
+        setHasSubtitles(player.availableSubtitleTracks.length > 0);
+        setSubtitlesOn(player.subtitleTrack !== null);
+      }
       if (status === "error") fallbackToStablePlayback();
     });
     return () => sub.remove();
@@ -294,11 +398,6 @@ export function WatchScreen({
   }, []);
 
   // Any remote key re-shows the controls (fires regardless of focus target).
-  useTVEventHandler((event) => {
-    if (event.eventType === "focus" || event.eventType === "blur") return;
-    revealControls();
-  });
-
   // While paused the overlay stays pinned; while playing it auto-hides.
   useEffect(() => {
     if (isPlaying) {
@@ -328,6 +427,45 @@ export function WatchScreen({
     }
   };
 
+  /**
+   * D-pad left/right scrub while the transport row owns focus, matching the TV
+   * YouTube app. The seek is debounced so a held key sweeps the bar and issues
+   * one seek at the end rather than one per repeat.
+   */
+  const scrubBy = (seconds: number) => {
+    const total = duration || detailRef.current?.durationSeconds || 0;
+    if (total <= 0) return;
+    const from = scrubRef.current ?? currentTimeRef.current;
+    const next = Math.max(0, Math.min(total, from + seconds));
+    scrubRef.current = next;
+    setScrubSeconds(next);
+    if (scrubCommitRef.current) clearTimeout(scrubCommitRef.current);
+    scrubCommitRef.current = setTimeout(() => {
+      player.currentTime = next;
+      if (selectedOptionRef.current?.kind === "split") {
+        audioPlayer.currentTime = next;
+      }
+      scrubRef.current = null;
+      setScrubSeconds(null);
+    }, SCRUB_COMMIT_MS);
+  };
+
+  const setRatingValue = (next: "like" | "dislike") => {
+    const active = rating !== next;
+    setRating(active ? next : null);
+    trpcClient.interactions.set
+      .mutate({ videoId, type: next, active })
+      .catch(() => {});
+  };
+
+  const toggleSaved = () => {
+    const next = !saved;
+    setSaved(next);
+    trpcClient.interactions.set
+      .mutate({ videoId, type: "save", active: next })
+      .catch(() => {});
+  };
+
   const seekBy = (seconds: number) => {
     player.seekBy(seconds);
     if (selectedOptionRef.current?.kind === "split") {
@@ -335,18 +473,58 @@ export function WatchScreen({
     }
   };
 
-  const cycleQuality = () => {
-    if (state.status !== "ready" || state.playbackOptions.length <= 1) return;
-    pendingSeekRef.current = currentTimeRef.current;
-    shouldPlayAfterReplaceRef.current = isPlayingRef.current;
-    setState((previous) => {
-      if (previous.status !== "ready") return previous;
-      return {
-        ...previous,
-        selectedOptionIndex:
-          (previous.selectedOptionIndex + 1) % previous.playbackOptions.length,
-      };
-    });
+  /**
+   * Remote transport keys never reach the on-screen buttons: Android delivers
+   * them as TV events rather than routing them to the focused view, so without
+   * this the remote's play/pause does nothing.
+   */
+  useTVEventHandler((event) => {
+    if (event.eventType === "focus" || event.eventType === "blur") return;
+    revealControls();
+    switch (event.eventType) {
+      case "playPause":
+        togglePlayback();
+        break;
+      case "play":
+        if (!isPlayingRef.current) togglePlayback();
+        break;
+      case "pause":
+        if (isPlayingRef.current) togglePlayback();
+        break;
+      case "fastForward":
+        seekBy(10);
+        break;
+      case "rewind":
+        seekBy(-10);
+        break;
+      // Left/right scrubs when the overlay is hidden (nothing to navigate) or
+      // when the scrubber itself holds focus; anywhere else it moves between
+      // controls as normal.
+      case "left":
+        if (!controlsVisibleRef.current || scrubberFocusedRef.current) {
+          scrubBy(-SCRUB_STEP_SECONDS);
+        }
+        break;
+      case "right":
+        if (!controlsVisibleRef.current || scrubberFocusedRef.current) {
+          scrubBy(SCRUB_STEP_SECONDS);
+        }
+        break;
+      default:
+        break;
+    }
+  });
+
+  /**
+   * Subtitles come from the stream's own tracks, so the toggle is only useful
+   * once ExoPlayer has surfaced at least one.
+   */
+  const toggleSubtitles = () => {
+    const tracks = player.availableSubtitleTracks;
+    if (tracks.length === 0) return;
+    const next = player.subtitleTrack ? null : tracks[0];
+    player.subtitleTrack = next;
+    setSubtitlesOn(next !== null);
   };
 
   if (state.status === "loading") {
@@ -369,8 +547,11 @@ export function WatchScreen({
   }
 
   const { detail } = state;
-  const selectedQuality =
-    state.playbackOptions[state.selectedOptionIndex]?.label ?? "Auto";
+
+  const totalSeconds = duration || detail.durationSeconds || 0;
+  const scrubTarget = scrubSeconds ?? currentTime;
+  const progressPct =
+    totalSeconds > 0 ? Math.min(100, (scrubTarget / totalSeconds) * 100) : 0;
 
   return (
     <View style={styles.container}>
@@ -385,91 +566,259 @@ export function WatchScreen({
           <ActivityIndicator size="large" color={colors.brand} />
         </View>
       ) : null}
+
       {/* Controls stay mounted (so a focused button always catches the next key
           to re-reveal them); visibility is just opacity. */}
       <View
         style={[StyleSheet.absoluteFill, { opacity: controlsVisible ? 1 : 0 }]}
         pointerEvents="box-none"
       >
-        <View style={styles.overlay}>
-          {/* Related rail only when paused — keeps playback uncluttered. */}
-          {!isPlaying && related.length > 0 ? (
-            <VideoRow title="Up next" videos={related} onSelect={onOpenVideo} />
-          ) : null}
+        <View style={styles.topInfo} pointerEvents="none">
+          <Text style={styles.title} numberOfLines={2}>
+            {detail.title}
+          </Text>
+          <Text style={styles.meta} numberOfLines={1}>
+            {[detail.channelName, formatViews(detail.viewCount)]
+              .filter(Boolean)
+              .join(" \u2022 ")}
+          </Text>
+        </View>
 
-          <View style={styles.info}>
-            <Text style={styles.title} numberOfLines={1}>
-              {detail.title}
-            </Text>
-            {detail.channelId && detail.channelName ? (
-              <Pressable
-                onFocus={() => setChannelFocused(true)}
-                onBlur={() => setChannelFocused(false)}
-                onPress={() => onOpenChannel(detail.channelId as string)}
-                style={[
-                  styles.channelButton,
-                  channelFocused && styles.channelButtonFocused,
-                ]}
+        <View style={styles.overlay}>
+          <View style={styles.timesRow}>
+            <Text style={styles.time}>{formatTime(scrubTarget)}</Text>
+            <Text style={styles.time}>{formatTime(totalSeconds)}</Text>
+          </View>
+          {/* Wrapper so the preview anchors to the bar, not the whole overlay. */}
+          <View style={styles.trackWrap}>
+            {scrubSeconds !== null && detail.storyboard ? (
+              <View
+                style={[styles.previewRow, { left: `${progressPct}%` }]}
+                pointerEvents="none"
               >
-                <Text
-                  style={[
-                    styles.channel,
-                    channelFocused && styles.channelFocused,
-                  ]}
-                >
-                  {detail.channelName}
-                </Text>
-              </Pressable>
+                <ScrubPreview
+                  storyboard={detail.storyboard}
+                  atSeconds={scrubSeconds}
+                />
+              </View>
             ) : null}
+            <Pressable
+              hasTVPreferredFocus
+              onFocus={() => setScrubberFocused(true)}
+              onBlur={() => setScrubberFocused(false)}
+              onPress={togglePlayback}
+              style={[
+                styles.scrubber,
+                scrubberFocused && styles.scrubberFocused,
+              ]}
+            >
+              <View style={styles.track}>
+                <View
+                  style={[styles.trackFill, { width: `${progressPct}%` }]}
+                />
+              </View>
+            </Pressable>
           </View>
 
-          <View style={styles.controlPanel}>
-            <View style={styles.controls}>
+          <View style={styles.controlRow}>
+            <View style={styles.sideCluster}>
+              {detail.channelId ? (
+                <Pressable
+                  onFocus={() => setChannelFocused(true)}
+                  onBlur={() => setChannelFocused(false)}
+                  onPress={() => onOpenChannel(detail.channelId as string)}
+                  style={[
+                    styles.avatarButton,
+                    channelFocused && styles.avatarButtonFocused,
+                  ]}
+                >
+                  {detail.channelAvatarUrl ? (
+                    <Image
+                      source={{ uri: detail.channelAvatarUrl }}
+                      style={styles.avatar}
+                    />
+                  ) : (
+                    <View style={[styles.avatar, styles.avatarFallback]}>
+                      <Text style={styles.avatarInitial}>
+                        {channelInitial(detail.channelName)}
+                      </Text>
+                    </View>
+                  )}
+                </Pressable>
+              ) : null}
+            </View>
+
+            <View style={styles.transport}>
               <IconButton icon="rotate-ccw" onPress={() => seekBy(-10)} />
               <IconButton
                 icon={isPlaying ? "pause" : "play"}
                 large
                 onPress={togglePlayback}
-                hasTVPreferredFocus
               />
               <IconButton icon="rotate-cw" onPress={() => seekBy(10)} />
-              <FocusButton
-                label={`Quality ${selectedQuality}`}
-                onPress={cycleQuality}
-                disabled={state.playbackOptions.length <= 1}
-                style={styles.qualityButton}
-              />
             </View>
 
-            <View style={styles.progressRow}>
-              <Text style={styles.time}>{formatTime(currentTime)}</Text>
-              <View style={styles.track}>
-                <View
-                  style={[
-                    styles.trackFill,
-                    {
-                      width: `${
-                        duration > 0
-                          ? Math.min(100, (currentTime / duration) * 100)
-                          : 0
-                      }%`,
-                    },
-                  ]}
+            {/* Mirrors the web player's action set. */}
+            <View style={styles.actions}>
+              <IconButton
+                icon="thumbs-up"
+                active={rating === "like"}
+                onPress={() => setRatingValue("like")}
+              />
+              <IconButton
+                icon="thumbs-down"
+                active={rating === "dislike"}
+                onPress={() => setRatingValue("dislike")}
+              />
+              <IconButton
+                icon="bookmark"
+                active={saved}
+                onPress={toggleSaved}
+              />
+              {/* Only offered when the stream actually carries subtitles. */}
+              {hasSubtitles ? (
+                <IconButton
+                  icon="type"
+                  active={subtitlesOn}
+                  onPress={toggleSubtitles}
                 />
-              </View>
-              <Text style={styles.time}>
-                {formatTime(duration || detail.durationSeconds || 0)}
-              </Text>
+              ) : null}
             </View>
           </View>
+
+          {related.length > 0 ? (
+            <View style={styles.relatedRow}>
+              <VideoRow videos={related} onSelect={onOpenVideo} />
+            </View>
+          ) : null}
         </View>
       </View>
     </View>
   );
 }
 
+const AVATAR = 44;
+/** Rendered size of a scrub preview; sprite cells are scaled to fit this. */
+const PREVIEW_WIDTH = 240;
+/** How much of the related rail stays on screen under the controls. */
+const RELATED_PEEK_HEIGHT = 104;
+
+/**
+ * One frame of the storyboard sprite sheet, cropped to the cell for `atSeconds`.
+ *
+ * React Native has no background-position, so the sheet is drawn oversized
+ * inside a clipping box and shifted so the wanted cell lands in view. The sheet
+ * geometry maths is shared with the web player (`@web/lib/video-scrub-frames`)
+ * rather than reimplemented here.
+ */
+function ScrubPreview({
+  storyboard,
+  atSeconds,
+}: {
+  storyboard: VideoStoryboard;
+  atSeconds: number;
+}) {
+  const { sheetIndex, column, row } = storyboardThumbAtTime(
+    storyboard,
+    atSeconds,
+  );
+  const scale = PREVIEW_WIDTH / storyboard.thumbWidth;
+  const height = storyboard.thumbHeight * scale;
+  return (
+    <View style={[styles.preview, { width: PREVIEW_WIDTH, height }]}>
+      <Image
+        source={{ uri: storyboardSheetUrl(storyboard.templateUrl, sheetIndex) }}
+        style={{
+          width: storyboard.columns * storyboard.thumbWidth * scale,
+          height: storyboard.rows * storyboard.thumbHeight * scale,
+          marginLeft: -column * storyboard.thumbWidth * scale,
+          marginTop: -row * storyboard.thumbHeight * scale,
+        }}
+      />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.videoBackground },
+  topInfo: {
+    position: "absolute",
+    top: spacing.screen,
+    left: spacing.screen,
+    right: spacing.screen,
+  },
+  meta: {
+    color: colors.mutedForeground,
+    fontSize: fontSize.md,
+    marginTop: spacing.xs,
+  },
+  timesRow: { flexDirection: "row", justifyContent: "space-between" },
+  controlRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: spacing.md,
+  },
+  // Side clusters flex equally so the transport stays centred on screen.
+  sideCluster: { flex: 1, flexDirection: "row", alignItems: "center" },
+  transport: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+  },
+  actions: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: spacing.sm,
+  },
+  avatarButton: {
+    borderRadius: AVATAR / 2 + 4,
+    padding: 3,
+    borderWidth: focus.borderWidth,
+    borderColor: "transparent",
+  },
+  avatarButtonFocused: {
+    borderColor: colors.ring,
+    backgroundColor: colors.accent,
+  },
+  avatar: { width: AVATAR, height: AVATAR, borderRadius: AVATAR / 2 },
+  avatarFallback: {
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.accent,
+  },
+  avatarInitial: { color: colors.foreground, fontWeight: "700" },
+  // Cropped: only the top of each card shows, so the rail reads as continuing
+  // off-screen and the controls keep their vertical position.
+  relatedRow: {
+    marginTop: spacing.md,
+    height: RELATED_PEEK_HEIGHT,
+    overflow: "hidden",
+  },
+  trackWrap: { position: "relative" },
+  // Padding gives the focus ring somewhere to sit without moving the bar.
+  scrubber: {
+    paddingVertical: spacing.xs,
+    borderRadius: radius.shell,
+    borderWidth: focus.borderWidth,
+    borderColor: "transparent",
+  },
+  scrubberFocused: { borderColor: colors.ring },
+  // Anchored to the playhead; the negative margin centres it on that point.
+  previewRow: {
+    position: "absolute",
+    bottom: "100%",
+    marginLeft: -PREVIEW_WIDTH / 2,
+    marginBottom: spacing.xs,
+  },
+  preview: {
+    overflow: "hidden",
+    borderRadius: radius.shell,
+    borderWidth: 2,
+    borderColor: colors.ring,
+    backgroundColor: colors.muted,
+  },
   centered: {
     flex: 1,
     alignItems: "center",
@@ -481,7 +830,9 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: spacing.screen,
     right: spacing.screen,
-    bottom: spacing.screen,
+    // Flush to the bottom edge so the related rail is cropped by the screen
+    // rather than sitting fully inside it, as in the TV YouTube app.
+    bottom: 0,
     gap: spacing.md,
   },
   bufferingOverlay: {
@@ -515,7 +866,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: spacing.md,
   },
-  qualityButton: { minWidth: 150 },
+  ccButton: { minWidth: 120 },
   controlPanel: {
     gap: spacing.md,
     paddingTop: spacing.xs,
@@ -577,10 +928,21 @@ function buildPlaybackOptions(detail: VideoDetail): PlaybackOption[] {
     options.push(option);
   };
 
+  // Server-generated DASH first: one manifest carrying both the video ladder
+  // (VP9 unlocks the rungs above 1080p that the AVC-only HLS path cannot) and
+  // the audio track, so ExoPlayer owns A/V sync instead of this screen nudging
+  // two players into alignment. See apps/web/src/server/services/dash.
+  addOption({
+    id: "dash-vp9",
+    label: "Auto",
+    videoUrl: `${OWNTUBE_BASE_URL}/dash/${detail.videoId}/manifest.mpd?video=vp9`,
+    kind: "auto",
+  });
+
   if (detail.hlsUrl) {
     addOption({
       id: "auto-hls",
-      label: "Auto",
+      label: "Auto (HLS)",
       videoUrl: detail.hlsUrl,
       kind: "auto",
     });
@@ -599,6 +961,7 @@ function buildPlaybackOptions(detail: VideoDetail): PlaybackOption[] {
         id: `muxed-${index}`,
         label: qualityLabel(source.quality, source.height),
         videoUrl: source.url,
+        height: source.height,
         kind: "muxed",
       });
     });
@@ -637,6 +1000,7 @@ function buildPlaybackOptions(detail: VideoDetail): PlaybackOption[] {
           label,
           videoUrl: source.url,
           audioUrl: audioSource.url,
+          height: source.height,
           kind: "split",
         });
       });

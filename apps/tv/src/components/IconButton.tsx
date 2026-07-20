@@ -9,6 +9,10 @@ type Props = {
   /** The primary control (play/pause) renders larger. */
   large?: boolean;
   hasTVPreferredFocus?: boolean;
+  /** Lets the player know when the transport button owns focus (for scrubbing). */
+  onFocusChange?: (focused: boolean) => void;
+  /** Highlights a toggled-on state, e.g. CC enabled. */
+  active?: boolean;
 };
 
 /** Circular D-pad focusable icon button — brand fill + light ring on focus. */
@@ -17,22 +21,31 @@ export function IconButton({
   onPress,
   large,
   hasTVPreferredFocus,
+  onFocusChange,
+  active,
 }: Props) {
   const [focused, setFocused] = useState(false);
   const size = large ? 72 : 56;
   const iconSize = large ? 32 : 24;
-  const activeFill = focused || large;
+  const activeFill = focused || large || Boolean(active);
 
   return (
     <Pressable
       hasTVPreferredFocus={hasTVPreferredFocus}
-      onFocus={() => setFocused(true)}
-      onBlur={() => setFocused(false)}
+      onFocus={() => {
+        setFocused(true);
+        onFocusChange?.(true);
+      }}
+      onBlur={() => {
+        setFocused(false);
+        onFocusChange?.(false);
+      }}
       onPress={onPress}
       style={[
         styles.button,
         { width: size, height: size, borderRadius: size / 2 },
         large && styles.primary,
+        active && styles.primary,
         focused && styles.focused,
       ]}
     >

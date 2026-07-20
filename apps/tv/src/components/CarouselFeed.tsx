@@ -88,6 +88,11 @@ export function CarouselFeed({
       ItemSeparatorComponent={Gap}
       contentContainerStyle={styles.list}
       showsVerticalScrollIndicator={false}
+      // Keep off-viewport shelves attached so D-pad focus reaches them on the
+      // first press rather than needing one press to scroll and another to act.
+      removeClippedSubviews={false}
+      initialNumToRender={4}
+      windowSize={7}
       onEndReached={feed.loadMore}
       onEndReachedThreshold={0.6}
       ListFooterComponent={

@@ -26,6 +26,12 @@ export function VideoRow({ title, videos, onSelect, preferFirstFocus }: Props) {
         keyExtractor={(video) => video.videoId}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.listContent}
+        // TV focus can only land on an attached view. With clipping on, the
+        // card just off the viewport edge isn't focusable yet, so the first
+        // D-pad press only scrolls it in and a second is needed to select.
+        removeClippedSubviews={false}
+        initialNumToRender={8}
+        windowSize={9}
         ItemSeparatorComponent={Separator}
         renderItem={({ item, index }) => (
           <VideoCard

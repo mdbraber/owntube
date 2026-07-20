@@ -5,12 +5,21 @@
     "version": "0.1.0",
     "orientation": "landscape",
     "userInterfaceStyle": "dark",
-    "platforms": ["android"],
+    "platforms": [
+      "android"
+    ],
     "android": {
-      "package": "tube.own.tv"
+      "package": "com.mdbraber.owntube.tv",
+      "icon": "./assets/icon.png"
     },
     "plugins": [
-      ["@react-native-tvos/config-tv", { "isTV": true }],
+      [
+        "@react-native-tvos/config-tv",
+        {
+          "isTV": true,
+          "androidTVBanner": "./assets/banner.png"
+        }
+      ],
       [
         "expo-build-properties",
         {
@@ -22,6 +31,7 @@
     ],
     "extra": {
       "owntubeUrl": "http://10.0.2.2:3000"
-    }
+    },
+    "icon": "./assets/icon.png"
   }
 }

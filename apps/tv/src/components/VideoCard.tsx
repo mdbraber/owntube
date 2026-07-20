@@ -8,11 +8,14 @@ import {
   formatThumbnailBadge,
   formatViews,
 } from "@/lib/format";
+import { useWatchedFraction } from "@/lib/watch-progress";
 import { colors, focus, fontSize, monoFont, radius, spacing } from "@/theme";
 
-const CARD_WIDTH = 272;
-const THUMBNAIL_WIDTH = 256;
-const THUMBNAIL_HEIGHT = 144;
+// dp, matching the Android TV YouTube app: its 528x297 physical-pixel
+// thumbnails are 264x148 dp on a density-2 panel.
+const CARD_WIDTH = 280;
+const THUMBNAIL_WIDTH = 264;
+const THUMBNAIL_HEIGHT = 148;
 
 type Props = {
   video: UnifiedVideo;
@@ -29,6 +32,7 @@ export function VideoCard({ video, onPress, hasTVPreferredFocus }: Props) {
     video.publishedAt,
   );
   const metadata = [views, published].filter(Boolean).join(" - ");
+  const watched = useWatchedFraction(video.videoId);
 
   return (
     <Pressable
@@ -53,6 +57,13 @@ export function VideoCard({ video, onPress, hasTVPreferredFocus }: Props) {
             <View style={styles.playBubble}>
               <Feather name="play" size={26} color={colors.primaryForeground} />
             </View>
+          </View>
+        ) : null}
+        {watched > 0 ? (
+          <View style={styles.progressTrack} pointerEvents="none">
+            <View
+              style={[styles.progressFill, { width: `${watched * 100}%` }]}
+            />
           </View>
         ) : null}
         {badge ? (
@@ -151,6 +162,16 @@ const styles = StyleSheet.create({
   },
   thumb: { width: "100%", height: "100%" },
   thumbPlaceholder: { backgroundColor: colors.muted },
+  // Sits on the thumbnail's bottom edge, like the web app's watched bar.
+  progressTrack: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 4,
+    backgroundColor: colors.progressTrack,
+  },
+  progressFill: { height: "100%", backgroundColor: colors.brand },
   playOverlay: {
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",

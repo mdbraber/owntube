@@ -31,6 +31,8 @@ export const colors = {
   overlay: "hsla(0, 0%, 0%, 0.56)",
   heroScrimSoft: "rgba(0,0,0,0.14)",
   durationBadge: "rgba(0,0,0,0.82)",
+  /** Unwatched remainder behind the watched-progress bar on thumbnails. */
+  progressTrack: "rgba(255,255,255,0.28)",
   avatarFallback: "hsl(240, 4%, 12%)",
 } as const;
 
@@ -51,6 +53,13 @@ export const spacing = {
   screen: 36,
 } as const;
 
+/**
+ * Sized in dp, matching the Android TV YouTube app. Measured off a 1080p
+ * capture of its Subscriptions screen and halved: TV panels report 320dpi
+ * (density 2), so a 1920x1080 screenshot is a 960x540 dp layout. Its video
+ * titles are ~15dp, secondary metadata ~12dp, section headings ~13dp and page
+ * titles ~20dp.
+ */
 export const fontSize = {
   sm: 13,
   base: 15,

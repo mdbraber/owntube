@@ -2,6 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { BackHandler, StyleSheet, View } from "react-native";
 import { RAIL_WIDTH, type Section, Sidebar } from "@/components/Sidebar";
 import type { Nav } from "@/lib/navigation";
+import {
+  useResumeLookup,
+  useWatchProgressRefresh,
+  WatchProgressProvider,
+} from "@/lib/watch-progress";
 import { ChannelScreen } from "@/screens/ChannelScreen";
 import { HistoryScreen } from "@/screens/HistoryScreen";
 import { HomeScreen } from "@/screens/HomeScreen";
@@ -21,21 +26,58 @@ type Route =
   | { name: "channel"; channelId: string };
 
 export function Shell({ onSignOut }: { onSignOut: () => void }) {
+  return (
+    <WatchProgressProvider>
+      <ShellBody onSignOut={onSignOut} />
+    </WatchProgressProvider>
+  );
+}
+
+function ShellBody({ onSignOut }: { onSignOut: () => void }) {
   const [section, setSection] = useState<Section>("home");
   const [stack, setStack] = useState<Route[]>([]);
   const top = stack[stack.length - 1];
 
+  const lookupResume = useResumeLookup();
+  const refreshProgress = useWatchProgressRefresh();
+
   const nav: Nav = useMemo(
     () => ({
+      // Callers that know a position (History) pass one; everything else
+      // resumes from the stored watch position, like the web app.
       openVideo: (videoId, resumeSeconds) =>
-        setStack((s) => [...s, { name: "watch", videoId, resumeSeconds }]),
+        setStack((s) => [
+          ...s,
+          {
+            name: "watch",
+            videoId,
+            resumeSeconds: resumeSeconds ?? lookupResume(videoId),
+          },
+        ]),
       openChannel: (channelId) =>
         setStack((s) => [...s, { name: "channel", channelId }]),
     }),
-    [],
+    [lookupResume],
   );
 
-  const pop = useCallback(() => setStack((s) => s.slice(0, -1)), []);
+  /**
+   * Choosing a section has to drop any watch/channel overlay: the overlay wins
+   * over `section` when rendering, so without this the sidebar appears dead
+   * while a channel page is open.
+   */
+  const selectSection = useCallback(
+    (next: Section) => {
+      setSection(next);
+      setStack([]);
+      refreshProgress();
+    },
+    [refreshProgress],
+  );
+
+  const pop = useCallback(() => {
+    setStack((s) => s.slice(0, -1));
+    refreshProgress();
+  }, [refreshProgress]);
 
   // Remote Back pops the overlay stack first; at the shell root it exits.
   useEffect(() => {
@@ -81,7 +123,11 @@ export function Shell({ onSignOut }: { onSignOut: () => void }) {
   return (
     <View style={styles.shell}>
       <View style={styles.content}>{body}</View>
-      <Sidebar active={section} onSelect={setSection} onSignOut={onSignOut} />
+      <Sidebar
+        active={section}
+        onSelect={selectSection}
+        onSignOut={onSignOut}
+      />
     </View>
   );
 }
