@@ -4,7 +4,7 @@ import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { LOGO, LOGO_WORDMARK } from "@/assets";
 import { colors, focus, fontSize, monoFont, radius, spacing } from "@/theme";
 
-export type Section = "home" | "search" | "subscriptions" | "history";
+export type Section = "home" | "search" | "subscriptions" | "queue" | "history";
 
 export const RAIL_WIDTH = 68;
 const EXPANDED_WIDTH = 228;
@@ -15,6 +15,7 @@ const SECTIONS: { key: Section; label: string; icon: FeatherName }[] = [
   { key: "home", label: "Home", icon: "home" },
   { key: "search", label: "Search", icon: "search" },
   { key: "subscriptions", label: "Subscriptions", icon: "tv" },
+  { key: "queue", label: "Queue", icon: "list" },
   { key: "history", label: "History", icon: "clock" },
 ];
 

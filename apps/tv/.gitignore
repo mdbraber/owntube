@@ -13,3 +13,6 @@ expo-env.d.ts
 
 # Debug
 *.log
+
+# Local, developer-specific configuration (OwnTube server URL)
+.env

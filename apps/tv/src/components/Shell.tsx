@@ -5,6 +5,7 @@ import type { Nav } from "@/lib/navigation";
 import { ChannelScreen } from "@/screens/ChannelScreen";
 import { HistoryScreen } from "@/screens/HistoryScreen";
 import { HomeScreen } from "@/screens/HomeScreen";
+import { QueueScreen } from "@/screens/QueueScreen";
 import { SearchScreen } from "@/screens/SearchScreen";
 import { SubscriptionsScreen } from "@/screens/SubscriptionsScreen";
 import { WatchScreen } from "@/screens/WatchScreen";
@@ -69,6 +70,8 @@ export function Shell({ onSignOut }: { onSignOut: () => void }) {
       <SearchScreen nav={nav} />
     ) : section === "subscriptions" ? (
       <SubscriptionsScreen nav={nav} />
+    ) : section === "queue" ? (
+      <QueueScreen nav={nav} />
     ) : (
       <HistoryScreen nav={nav} />
     );
