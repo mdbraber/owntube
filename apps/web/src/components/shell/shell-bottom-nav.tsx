@@ -3,8 +3,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
-import { activeForPath, BOTTOM_NAV } from "@/components/shell/nav-config";
+import {
+  activeForPath,
+  bottomNavItemsFromKeys,
+  BOTTOM_NAV,
+} from "@/components/shell/nav-config";
+import { DEFAULT_BOTTOM_NAV_KEYS } from "@/lib/bottom-nav";
 import { cn } from "@/lib/utils";
+import { trpc } from "@/trpc/react";
 
 type ShellBottomNavProps = {
   /** Server-rendered account button + sheet (knows the session). */
@@ -13,13 +19,29 @@ type ShellBottomNavProps = {
 
 export function ShellBottomNav({ account }: ShellBottomNavProps) {
   const pathname = usePathname();
+  const settings = trpc.settings.get.useQuery(undefined, {
+    staleTime: 60_000,
+  });
+
+  // Fall back to the built-in default until the setting loads (or if it's
+  // somehow empty), so the bar is never blank.
+  const keys = settings.data?.bottomNav;
+  const items =
+    keys && keys.length > 0
+      ? bottomNavItemsFromKeys(keys)
+      : bottomNavItemsFromKeys([...DEFAULT_BOTTOM_NAV_KEYS]);
+  const tabs = items.length > 0 ? items : BOTTOM_NAV;
 
   return (
     <nav
       aria-label="Primary"
-      className="ot-shell-bottom-nav grid shrink-0 grid-cols-5 border-t border-[hsl(var(--border))] bg-[hsl(var(--background))] pb-[env(safe-area-inset-bottom)] min-[901px]:hidden"
+      className="ot-shell-bottom-nav grid shrink-0 border-t border-[hsl(var(--border))] bg-[hsl(var(--background))] pb-[env(safe-area-inset-bottom)] min-[901px]:hidden"
+      // +1 column for the always-present Account button.
+      style={{
+        gridTemplateColumns: `repeat(${tabs.length + 1}, minmax(0, 1fr))`,
+      }}
     >
-      {BOTTOM_NAV.map((n) => {
+      {tabs.map((n) => {
         const active = activeForPath(pathname, n.href, n.key);
         return (
           <Link

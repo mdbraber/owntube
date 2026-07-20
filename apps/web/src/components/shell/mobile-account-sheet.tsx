@@ -1,9 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { MOBILE_SHEET_LINKS } from "@/components/shell/nav-config";
+import { useMemo, useState } from "react";
+import {
+  ACCOUNT_LINKS,
+  ASSIGNABLE_NAV,
+} from "@/components/shell/nav-config";
 import { Sheet } from "@/components/ui/sheet";
+import { DEFAULT_BOTTOM_NAV_KEYS } from "@/lib/bottom-nav";
+import { trpc } from "@/trpc/react";
 
 type MobileAccountSheetProps = {
   isLoggedIn: boolean;
@@ -13,9 +18,6 @@ type MobileAccountSheetProps = {
   signOutAction: () => Promise<void>;
 };
 
-// Subscriptions already has its own tab in the bottom bar, so drop it here.
-const SHEET_LINKS = MOBILE_SHEET_LINKS;
-
 export function MobileAccountSheet({
   isLoggedIn,
   initial,
@@ -24,6 +26,22 @@ export function MobileAccountSheet({
   signOutAction,
 }: MobileAccountSheetProps) {
   const [open, setOpen] = useState(false);
+  const settings = trpc.settings.get.useQuery(undefined, {
+    staleTime: 60_000,
+  });
+
+  // The sheet holds everything that isn't a bottom-bar tab: the overflow nav
+  // destinations (kept out of the bar) plus the account links. Items already in
+  // the bar are excluded so they aren't listed twice.
+  const sheetLinks = useMemo(() => {
+    const barKeys = new Set(
+      settings.data?.bottomNav ?? DEFAULT_BOTTOM_NAV_KEYS,
+    );
+    const overflow = ASSIGNABLE_NAV.filter((n) => !barKeys.has(n.key)).map(
+      (n) => ({ href: n.href, label: n.label, icon: n.icon }),
+    );
+    return [...overflow, ...ACCOUNT_LINKS];
+  }, [settings.data?.bottomNav]);
 
   return (
     <>
@@ -81,7 +99,7 @@ export function MobileAccountSheet({
         ) : null}
 
         <div className="flex flex-col py-1.5">
-          {SHEET_LINKS.map((link) => (
+          {sheetLinks.map((link) => (
             <Link
               key={link.href}
               href={link.href}

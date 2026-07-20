@@ -1,6 +1,11 @@
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { defaultPlaybackQualitySchema } from "@/lib/default-playback-quality";
+import {
+  DEFAULT_BOTTOM_NAV_KEYS,
+  MAX_BOTTOM_NAV,
+  MIN_BOTTOM_NAV,
+} from "@/lib/bottom-nav";
 import { DEFAULT_HOME_BLOCKS, HOME_BLOCK_TYPES } from "@/lib/home-blocks";
 import {
   DEFAULT_QUICK_ACTIONS,
@@ -167,6 +172,16 @@ export const appSettingsSchema = z.object({
     .max(16)
     .default(DEFAULT_HOME_BLOCKS),
   /**
+   * Ordered nav keys shown as tabs in the mobile bottom bar (1–5). Everything
+   * else lives under the Account button. Stored as plain strings — the renderer
+   * maps known keys to items and ignores any it doesn't recognize.
+   */
+  bottomNav: z
+    .array(z.string().min(1).max(32))
+    .min(MIN_BOTTOM_NAV)
+    .max(MAX_BOTTOM_NAV)
+    .default([...DEFAULT_BOTTOM_NAV_KEYS]),
+  /**
    * Per-section preferences — the single "base" shared by a section's page
    * and its home block (e.g. History's hide-completed filter), so the option
    * stays in sync wherever the section renders.
@@ -223,6 +238,7 @@ const defaultSettings: AppSettings = {
   },
   quickActions: DEFAULT_QUICK_ACTIONS,
   homeBlocks: DEFAULT_HOME_BLOCKS,
+  bottomNav: [...DEFAULT_BOTTOM_NAV_KEYS],
   sectionPrefs: {
     history: DEFAULT_SECTION_PAGE_PREFS,
     queue: DEFAULT_SECTION_PAGE_PREFS,

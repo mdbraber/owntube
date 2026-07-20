@@ -365,6 +365,35 @@ export const BOTTOM_NAV: NavItem[] = [
 ];
 
 /**
+ * Every destination that can be assigned to the mobile bottom bar (or fall
+ * through to the Account button). Order here is the editor's "available" order.
+ */
+export const ASSIGNABLE_NAV: NavItem[] = [
+  ...SIDEBAR_NAV,
+  SUBSCRIPTIONS_ITEM,
+  ...SECONDARY_NAV.filter((n) => n.key !== "subs"),
+];
+
+const NAV_ITEM_BY_KEY = new Map<string, NavItem>(
+  ASSIGNABLE_NAV.map((n) => [n.key, n]),
+);
+
+/** Resolve a stored bottom-nav key to its item (undefined for unknown keys). */
+export function navItemByKey(key: string): NavItem | undefined {
+  return NAV_ITEM_BY_KEY.get(key);
+}
+
+/** Ordered items for a stored bottom-nav key list (drops unknown keys). */
+export function bottomNavItemsFromKeys(keys: readonly string[]): NavItem[] {
+  const items: NavItem[] = [];
+  for (const key of keys) {
+    const item = NAV_ITEM_BY_KEY.get(key);
+    if (item) items.push(item);
+  }
+  return items;
+}
+
+/**
  * Links in the desktop avatar dropdown — only what the sidebar does *not*
  * carry (plus Sign out, rendered by the menu itself).
  */

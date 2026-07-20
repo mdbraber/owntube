@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { BottomNavEditor } from "@/components/settings/bottom-nav-editor";
 import { PageHeader } from "@/components/layout/page-header";
 import { SettingsPanel } from "@/components/settings/settings-panel";
 import { TakeoutImportPanel } from "@/components/settings/takeout-import-panel";
@@ -34,6 +35,11 @@ export default async function SettingsPage() {
         />
         <TakeoutImportPanel />
       </div>
+
+      <section className="ot-surface-card space-y-3 p-5 shadow-sm">
+        <h2 className="text-lg font-semibold tracking-tight">Navigation</h2>
+        <BottomNavEditor />
+      </section>
 
       <section className="ot-surface-card space-y-3 p-5 shadow-sm">
         <h2 className="text-lg font-semibold tracking-tight">
