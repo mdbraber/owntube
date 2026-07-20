@@ -4,6 +4,8 @@ import Link from "next/link";
 import { formatPublishedLabel } from "@/lib/video-display";
 import { watchHref } from "@/lib/yt-routes";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { PullToRefreshHint } from "@/components/ui/pull-to-refresh-hint";
+import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
 import {
   SubscriptionTagFilter,
   type TagState,
@@ -1127,8 +1129,47 @@ export function HomeBlocksClient({
   const patchBlock = (id: string, patch: Partial<HomeBlock>) =>
     persist(blocks.map((b) => (b.id === id ? { ...b, ...patch } : b)));
 
+  // Pull-to-refresh: refetch every block's query. Caches are kept warm by the
+  // background warmer, so this surfaces the latest without a hard reload.
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const doRefresh = useCallback(async () => {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    try {
+      await utils.invalidate();
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [isRefreshing, utils]);
+  const { pull, handlers } = usePullToRefresh({
+    onRefresh: doRefresh,
+    // Editing uses touch-drag to reorder blocks — don't fight it with a pull.
+    disabled: editing || isRefreshing,
+  });
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-8" {...handlers}>
+      {isRefreshing ? (
+        <div className="flex items-center justify-center gap-2 py-1 text-xs text-[hsl(var(--muted-foreground))]">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            className="h-3.5 w-3.5 animate-spin"
+            aria-hidden
+          >
+            <title>Refreshing</title>
+            <path
+              d="M21 12a9 9 0 1 1-6.219-8.56"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+          </svg>
+          Refreshing…
+        </div>
+      ) : (
+        <PullToRefreshHint pull={pull} />
+      )}
       <div className="flex items-center justify-between gap-3">
         <h1 className="m-0 text-2xl font-extrabold tracking-tight">Home</h1>
         <div className="flex items-center gap-2">
