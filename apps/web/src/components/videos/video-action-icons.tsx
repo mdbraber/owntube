@@ -1,4 +1,5 @@
 import type { SVGProps } from "react";
+import { FILLED_ICON_PATHS } from "@/lib/action-icon-paths";
 
 /**
  * Canonical icon per video action verb. Every surface (cards, rows, menus,
@@ -22,7 +23,7 @@ export function LikeIcon(props: IconProps) {
       aria-hidden="true"
       {...base(props)}
     >
-      <path d="M9 21h8a2 2 0 0 0 2-1.6l1-5A2 2 0 0 0 18 12h-5l.7-3.3A2 2 0 0 0 11.8 6L9 9v12ZM4 10h3v11H4z" />
+      <path d={FILLED_ICON_PATHS.like} />
     </svg>
   );
 }
@@ -35,7 +36,7 @@ export function DislikeIcon(props: IconProps) {
       aria-hidden="true"
       {...base(props)}
     >
-      <path d="M15 3H7a2 2 0 0 0-2 1.6l-1 5A2 2 0 0 0 6 12h5l-.7 3.3A2 2 0 0 0 12.2 18L15 15V3Zm5 1h-3v11h3z" />
+      <path d={FILLED_ICON_PATHS.dislike} />
     </svg>
   );
 }

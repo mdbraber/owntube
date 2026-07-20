@@ -1,3 +1,8 @@
+import {
+  CAPTIONS_FRAME,
+  FILLED_ICON_PATHS,
+  STROKED_ICON_PATHS,
+} from "@/lib/action-icon-paths";
 export function PlayIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -8,7 +13,7 @@ export function PlayIcon({ className }: { className?: string }) {
       aria-label="Play"
     >
       <title>Play</title>
-      <path d="M8 5v14l11-7z" />
+      <path d={FILLED_ICON_PATHS.play} />
     </svg>
   );
 }
@@ -23,7 +28,7 @@ export function BigPlayOverlayIcon({ className }: { className?: string }) {
       aria-label="Play"
     >
       <title>Play</title>
-      <path d="M8 5v14l11-7z" />
+      <path d={FILLED_ICON_PATHS.play} />
     </svg>
   );
 }
@@ -37,7 +42,7 @@ export function PauseIcon({ className }: { className?: string }) {
       aria-label="Pause"
     >
       <title>Pause</title>
-      <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+      <path d={FILLED_ICON_PATHS.pause} />
     </svg>
   );
 }
@@ -185,8 +190,14 @@ export function CaptionsIcon({ className }: { className?: string }) {
       aria-label="Subtitles"
     >
       <title>Subtitles</title>
-      <rect x="3" y="5" width="18" height="14" rx="2.5" />
-      <path d="M7 11h2M13 11h4M7 15h4M15 15h2" />
+      <rect
+        x={CAPTIONS_FRAME.x}
+        y={CAPTIONS_FRAME.y}
+        width={CAPTIONS_FRAME.width}
+        height={CAPTIONS_FRAME.height}
+        rx={CAPTIONS_FRAME.rx}
+      />
+      <path d={STROKED_ICON_PATHS.captionsLines} />
     </svg>
   );
 }
@@ -201,7 +212,7 @@ export function SkipBack15Icon({ className }: { className?: string }) {
       aria-label="Back 15 seconds"
     >
       <title>Back 15 seconds</title>
-      <path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z" />
+      <path d={FILLED_ICON_PATHS.skip} />
       <text
         x="12"
         y="16.5"
@@ -227,7 +238,7 @@ export function SkipForward15Icon({ className }: { className?: string }) {
     >
       <title>Forward 15 seconds</title>
       <g transform="translate(24,0) scale(-1,1)">
-        <path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z" />
+        <path d={FILLED_ICON_PATHS.skip} />
       </g>
       <text
         x="12"
