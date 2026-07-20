@@ -164,6 +164,21 @@ describe("buildMpd", () => {
     );
   });
 
+  it("reads Invidious's snake_case language_code", () => {
+    const mpd = buildMpd([vp9_1080], aac, 562, "dQw4w9WgXcQ", [
+      { label: "English", language_code: "en" },
+    ]);
+    expect(mpd).toContain('lang="en"');
+    expect(mpd).toContain("<BaseURL>/captions/dQw4w9WgXcQ?lang=en</BaseURL>");
+  });
+
+  it("always emits lang, since a track without one is dropped by the client", () => {
+    const mpd = buildMpd([vp9_1080], aac, 562, "dQw4w9WgXcQ", [
+      { label: "English (auto-generated)" },
+    ]);
+    expect(mpd).toContain('lang="und"');
+  });
+
   it("omits caption sets entirely when there are none", () => {
     const mpd = buildMpd([vp9_1080], aac, 562, "dQw4w9WgXcQ", []);
     expect(mpd).not.toContain("text/vtt");

@@ -104,9 +104,14 @@ export function segmentUri(url: string): string {
   }
 }
 
-/** A caption track as Invidious reports it on `/api/v1/videos`. */
+/**
+ * A caption track as Invidious reports it on `/api/v1/videos`. The language
+ * arrives as `language_code`; the camelCase spelling is only our own shape, so
+ * both are accepted (see mapInvidiousCaptions).
+ */
 export type InvidiousCaption = {
   label?: string;
+  language_code?: string;
   languageCode?: string;
   url?: string;
 };

@@ -166,7 +166,7 @@ function captionAdaptationSets(
   firstId: number,
 ): string[] {
   return captions.flatMap((caption, i) => {
-    const lang = caption.languageCode?.trim();
+    const lang = (caption.language_code ?? caption.languageCode)?.trim();
     const label = caption.label?.trim();
     // The endpoint needs one of the two to identify the track upstream.
     if (!lang && !label) return [];
@@ -174,10 +174,14 @@ function captionAdaptationSets(
       ? `lang=${encodeURIComponent(lang)}`
       : `label=${encodeURIComponent(label as string)}`;
     const id = firstId + i;
+    // lang is mandatory in practice: expo-video drops any subtitle track whose
+    // Format has no language, so an omitted attribute makes the track invisible
+    // to the app. "und" (undetermined) keeps it selectable when upstream gives
+    // us only a label.
     return [
-      `    <AdaptationSet id="${id}" contentType="text" mimeType="text/vtt"${
-        lang ? ` lang="${xmlEscape(lang)}"` : ""
-      }>`,
+      `    <AdaptationSet id="${id}" contentType="text" mimeType="text/vtt" lang="${xmlEscape(
+        lang || "und",
+      )}">`,
       `      <Role schemeIdUri="urn:mpeg:dash:role:2011" value="subtitle"/>`,
       `      <Representation id="cap-${id}" bandwidth="256">`,
       `        <BaseURL>${xmlEscape(`/captions/${encodeURIComponent(videoId)}?${query}`)}</BaseURL>`,
