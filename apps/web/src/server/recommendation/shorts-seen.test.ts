@@ -5,7 +5,6 @@ import {
   loadShortSeenVideoIds,
   loadSoftSeenShortVideoIds,
   recordShortSeen,
-  SHORTS_SEEN_HARD_WINDOW_SEC,
 } from "@/server/recommendation/shorts-seen";
 import { createTestDb } from "@/test/db";
 
@@ -38,7 +37,7 @@ describe("shorts-seen", () => {
     sqlite.close();
   });
 
-  it("ages rows out of the hard window into the soft band, then out entirely", () => {
+  it("never recycles: excludes seen shorts regardless of age, no soft band", () => {
     const { db, sqlite } = createTestDb();
     const userId = createUser(db);
     const now = Math.floor(Date.now() / 1000);
@@ -52,19 +51,19 @@ describe("shorts-seen", () => {
     insertSeenAt("softband001", now - 60 * 24 * 3600);
     insertSeenAt("ancient0001", now - 120 * 24 * 3600);
 
+    // Every seen short is hard-excluded, however long ago it was seen.
     const hard = loadShortSeenVideoIds(db, userId);
     expect(hard.has("recent00001")).toBe(true);
-    expect(hard.has("softband001")).toBe(false);
-    expect(hard.has("ancient0001")).toBe(false);
+    expect(hard.has("softband001")).toBe(true);
+    expect(hard.has("ancient0001")).toBe(true);
 
+    // Nothing resurfaces — the soft band is always empty now.
     const soft = loadSoftSeenShortVideoIds(db, userId);
-    expect(soft.has("softband001")).toBe(true);
-    expect(soft.has("recent00001")).toBe(false);
-    expect(soft.has("ancient0001")).toBe(false);
+    expect(soft.size).toBe(0);
     sqlite.close();
   });
 
-  it("re-seeing a short refreshes seenAt back into the hard window", () => {
+  it("re-seeing a short refreshes seenAt and keeps it excluded", () => {
     const { db, sqlite } = createTestDb();
     const userId = createUser(db);
     const now = Math.floor(Date.now() / 1000);
@@ -74,10 +73,11 @@ describe("shorts-seen", () => {
         userId,
         videoId: "resurfaced1",
         channelId: "chan1",
-        seenAt: now - SHORTS_SEEN_HARD_WINDOW_SEC - 24 * 3600,
+        seenAt: now - 400 * 24 * 3600,
       })
       .run();
-    expect(loadShortSeenVideoIds(db, userId).has("resurfaced1")).toBe(false);
+    // Even a very old seen short stays excluded (no recycle window).
+    expect(loadShortSeenVideoIds(db, userId).has("resurfaced1")).toBe(true);
 
     recordShortSeen(db, userId, "resurfaced1", "chan1");
     expect(loadShortSeenVideoIds(db, userId).has("resurfaced1")).toBe(true);

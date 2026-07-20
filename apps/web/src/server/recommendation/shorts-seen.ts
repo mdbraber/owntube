@@ -1,51 +1,45 @@
-import { and, eq, gt, lte } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import type { AppDb } from "@/server/db/client";
 import { shortsSeen } from "@/server/db/schema";
 
-/** Shorts scrolled past within this window are hard-excluded from the feed. */
-export const SHORTS_SEEN_HARD_WINDOW_SEC = 45 * 24 * 3600;
-/** Shorts seen between the hard and soft windows may resurface, down-ranked. */
-export const SHORTS_SEEN_SOFT_WINDOW_SEC = 90 * 24 * 3600;
+/**
+ * Safety cap on how many seen ids we hard-exclude — effectively unbounded for
+ * any realistic history, but keeps the exclusion set (and its IN clause) sane.
+ * The newest ids are kept, so if a user ever exceeds this the feed still favors
+ * excluding what they saw most recently.
+ */
+const SHORTS_SEEN_MAX = 50_000;
 
 function nowUnix(): number {
   return Math.floor(Date.now() / 1000);
 }
 
 /**
- * Shorts the user scrolled past recently (hard window). Older rows age out so
- * the candidate pool does not shrink forever; re-seeing a short refreshes its
- * timestamp (`recordShortSeen`), so only genuinely unseen-for-weeks ids recycle.
+ * Every short the user has seen or been offered — hard-excluded from the feed
+ * for good. No recycle window: once shown, a short is never proposed again
+ * (the user's explicit preference). Newest-first, capped by SHORTS_SEEN_MAX.
  */
 export function loadShortSeenVideoIds(db: AppDb, userId: number): Set<string> {
-  const cutoff = nowUnix() - SHORTS_SEEN_HARD_WINDOW_SEC;
   const rows = db
     .select({ videoId: shortsSeen.videoId })
     .from(shortsSeen)
-    .where(and(eq(shortsSeen.userId, userId), gt(shortsSeen.seenAt, cutoff)))
-    .limit(20_000)
+    .where(eq(shortsSeen.userId, userId))
+    .orderBy(desc(shortsSeen.seenAt))
+    .limit(SHORTS_SEEN_MAX)
     .all();
   return new Set(rows.map((r) => r.videoId));
 }
 
-/** Shorts in the soft band (seen 45–90 days ago) — resurfaceable but down-ranked in the pool. */
+/**
+ * Previously the 45–90-day "soft band" that could resurface down-ranked. Seen
+ * shorts no longer recycle, so nothing resurfaces — kept as an empty set so
+ * callers (the recommendation pool) need no change.
+ */
 export function loadSoftSeenShortVideoIds(
-  db: AppDb,
-  userId: number,
+  _db: AppDb,
+  _userId: number,
 ): Set<string> {
-  const now = nowUnix();
-  const rows = db
-    .select({ videoId: shortsSeen.videoId })
-    .from(shortsSeen)
-    .where(
-      and(
-        eq(shortsSeen.userId, userId),
-        gt(shortsSeen.seenAt, now - SHORTS_SEEN_SOFT_WINDOW_SEC),
-        lte(shortsSeen.seenAt, now - SHORTS_SEEN_HARD_WINDOW_SEC),
-      ),
-    )
-    .limit(20_000)
-    .all();
-  return new Set(rows.map((r) => r.videoId));
+  return new Set();
 }
 
 export function recordShortSeen(

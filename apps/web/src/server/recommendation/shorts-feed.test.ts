@@ -63,7 +63,7 @@ describe("buildShortsExclusionSet", () => {
     vi.restoreAllMocks();
   });
 
-  it("excludes recently seen shorts but lets old ones recycle", () => {
+  it("excludes every seen short regardless of age (never recycles)", () => {
     const { db, sqlite } = createTestDb();
     const now = Math.floor(Date.now() / 1000);
     const userId = db
@@ -95,7 +95,7 @@ describe("buildShortsExclusionSet", () => {
 
     const set = buildShortsExclusionSet(db, userId, []);
     expect(set?.has("seenLastWk1")).toBe(true);
-    expect(set?.has("seenAges001")).toBe(false);
+    expect(set?.has("seenAges001")).toBe(true);
     sqlite.close();
   });
 });
