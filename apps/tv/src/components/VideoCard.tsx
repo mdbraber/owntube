@@ -8,7 +8,7 @@ import {
   formatThumbnailBadge,
   formatViews,
 } from "@/lib/format";
-import { useWatchedFraction } from "@/lib/watch-progress";
+import { useWatchProgress } from "@/lib/watch-progress";
 import { colors, focus, fontSize, monoFont, radius, spacing } from "@/theme";
 
 // dp, matching the Android TV YouTube app: its 528x297 physical-pixel
@@ -39,7 +39,7 @@ export function VideoCard({
     video.publishedAt,
   );
   const metadata = [views, published].filter(Boolean).join(" - ");
-  const watched = useWatchedFraction(video.videoId);
+  const watched = useWatchProgress(video.videoId);
 
   return (
     <Pressable
@@ -72,10 +72,16 @@ export function VideoCard({
             </View>
           </View>
         ) : null}
-        {watched > 0 ? (
+        {watched ? (
           <View style={styles.progressTrack} pointerEvents="none">
             <View
-              style={[styles.progressFill, { width: `${watched * 100}%` }]}
+              style={[
+                styles.progressFill,
+                // Finished videos read green, partial ones brand — the same
+                // distinction the web card makes.
+                watched.completed && styles.progressFillComplete,
+                { width: `${watched.fraction * 100}%` },
+              ]}
             />
           </View>
         ) : null}
@@ -185,6 +191,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.progressTrack,
   },
   progressFill: { height: "100%", backgroundColor: colors.brand },
+  progressFillComplete: { backgroundColor: colors.success },
   playOverlay: {
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",

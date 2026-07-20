@@ -8,11 +8,7 @@ import {
 } from "@/components/Sidebar";
 import type { Nav } from "@/lib/navigation";
 import { loadSidebarPrefs } from "@/lib/sidebar-prefs";
-import {
-  useResumeLookup,
-  useWatchProgressRefresh,
-  WatchProgressProvider,
-} from "@/lib/watch-progress";
+import { useResumeLookup, useWatchProgressRefresh } from "@/lib/watch-progress";
 import { ChannelScreen } from "@/screens/ChannelScreen";
 import { HistoryScreen } from "@/screens/HistoryScreen";
 import { HomeScreen } from "@/screens/HomeScreen";
@@ -35,14 +31,6 @@ type Route =
   | { name: "channel"; channelId: string };
 
 export function Shell({ onSignOut }: { onSignOut: () => void }) {
-  return (
-    <WatchProgressProvider>
-      <ShellBody onSignOut={onSignOut} />
-    </WatchProgressProvider>
-  );
-}
-
-function ShellBody({ onSignOut }: { onSignOut: () => void }) {
   const [section, setSection] = useState<Section>("home");
   const [stack, setStack] = useState<Route[]>([]);
   const [searchQuery, setSearchQuery] = useState<string | undefined>(undefined);

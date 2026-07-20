@@ -32,7 +32,7 @@ export const colors = {
   heroScrimSoft: "rgba(0,0,0,0.14)",
   durationBadge: "rgba(0,0,0,0.82)",
   /** Unwatched remainder behind the watched-progress bar on thumbnails. */
-  progressTrack: "rgba(255,255,255,0.28)",
+  progressTrack: "rgba(0,0,0,0.4)",
   avatarFallback: "hsl(240, 4%, 12%)",
 } as const;
 

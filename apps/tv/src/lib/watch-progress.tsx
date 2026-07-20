@@ -1,14 +1,16 @@
-import {
-  createContext,
-  type ReactNode,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import { trpcClient } from "@/lib/trpc";
+import { useQueryClient } from "@tanstack/react-query";
+import { useCallback } from "react";
+import { trpc } from "@/lib/trpc-react";
+
+/**
+ * Watch positions for every video, shared by thumbnails and by "open video"
+ * so a card can show progress and playback can resume where it left off.
+ *
+ * One react-query entry backs all of them: cards call the hook individually and
+ * react-query dedupes to a single request, so this needs no provider or manual
+ * fetch — and it inherits the caching, retry and persistence everything else
+ * uses. The web reaches the same result through a page-level context.
+ */
 
 /** Below this the bar is noise; above it the video counts as finished. */
 const MIN_FRACTION = 0.01;
@@ -16,99 +18,57 @@ const COMPLETE_FRACTION = 0.97;
 /** Don't resume from the first few seconds — starting over is what's wanted. */
 const MIN_RESUME_SECONDS = 5;
 
-type ProgressRow = {
-  positionSeconds: number;
-  videoDurationSeconds: number | null;
-  completed: number;
-};
+export type WatchProgress = { fraction: number; completed: boolean };
 
-type Store = {
-  rows: Map<string, ProgressRow>;
-  /** Called after playback so the bars reflect what was just watched. */
-  refresh: () => void;
-};
+function useProgressRows() {
+  const query = trpc.history.progressAll.useQuery(undefined, {
+    // Progress is decoration; a failure shouldn't retry aggressively.
+    retry: 1,
+  });
+  return query.data;
+}
 
-const WatchProgressContext = createContext<Store>({
-  rows: new Map(),
-  refresh: () => {},
-});
+/** Progress for one video, or null when there is nothing worth drawing. */
+export function useWatchProgress(videoId: string): WatchProgress | null {
+  const rows = useProgressRows();
+  const row = rows?.find((r) => r.videoId === videoId);
+  if (!row) return null;
+  if (row.completed) return { fraction: 1, completed: true };
+  const duration = row.videoDurationSeconds;
+  if (!duration || duration <= 0) return null;
+  const fraction = row.positionSeconds / duration;
+  if (fraction < MIN_FRACTION) return null;
+  return { fraction: Math.min(fraction, 1), completed: false };
+}
 
 /**
- * One shared fetch of watch positions, so every thumbnail can show a progress
- * bar and every "open video" can resume — matching the web app. Fetched once
- * per mount and refreshed when returning from the player, rather than queried
- * per card.
+ * Seconds to resume from, or undefined to start at the beginning — which is
+ * what a finished (or barely started) video should do.
  */
-export function WatchProgressProvider({ children }: { children: ReactNode }) {
-  const [rows, setRows] = useState<Map<string, ProgressRow>>(new Map());
-  const inFlight = useRef(false);
-
-  const load = useCallback(() => {
-    if (inFlight.current) return;
-    inFlight.current = true;
-    trpcClient.history.progressAll
-      .query()
-      .then((list) => {
-        const next = new Map<string, ProgressRow>();
-        for (const row of list) {
-          next.set(row.videoId, {
-            positionSeconds: row.positionSeconds,
-            videoDurationSeconds: row.videoDurationSeconds,
-            completed: row.completed,
-          });
-        }
-        setRows(next);
-      })
-      // Progress is decoration; a failure shouldn't break browsing.
-      .catch(() => {})
-      .finally(() => {
-        inFlight.current = false;
-      });
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  const value = useMemo(() => ({ rows, refresh: load }), [rows, load]);
-  return (
-    <WatchProgressContext.Provider value={value}>
-      {children}
-    </WatchProgressContext.Provider>
+export function useResumeLookup(): (videoId: string) => number | undefined {
+  const rows = useProgressRows();
+  return useCallback(
+    (videoId: string) => {
+      const row = rows?.find((r) => r.videoId === videoId);
+      if (!row || row.completed) return undefined;
+      const duration = row.videoDurationSeconds;
+      if (duration && row.positionSeconds / duration > COMPLETE_FRACTION) {
+        return undefined;
+      }
+      return row.positionSeconds > MIN_RESUME_SECONDS
+        ? row.positionSeconds
+        : undefined;
+    },
+    [rows],
   );
 }
 
-/** Fraction watched (0..1), or 0 when there is nothing worth drawing. */
-export function useWatchedFraction(videoId: string): number {
-  const { rows } = useContext(WatchProgressContext);
-  const row = rows.get(videoId);
-  if (!row) return 0;
-  if (row.completed) return 1;
-  const duration = row.videoDurationSeconds;
-  if (!duration || duration <= 0) return 0;
-  const fraction = row.positionSeconds / duration;
-  if (fraction < MIN_FRACTION) return 0;
-  return Math.min(fraction, 1);
-}
-
-/**
- * Seconds to resume a video from, or undefined to start at the beginning —
- * which is what a finished (or barely started) video should do.
- */
-export function useResumeLookup(): (videoId: string) => number | undefined {
-  const { rows } = useContext(WatchProgressContext);
-  return (videoId: string) => {
-    const row = rows.get(videoId);
-    if (!row || row.completed) return undefined;
-    const duration = row.videoDurationSeconds;
-    if (duration && row.positionSeconds / duration > COMPLETE_FRACTION)
-      return undefined;
-    return row.positionSeconds > MIN_RESUME_SECONDS
-      ? row.positionSeconds
-      : undefined;
-  };
-}
-
+/** Leaving the player writes new progress; pull it so the bars update. */
 export function useWatchProgressRefresh(): () => void {
-  return useContext(WatchProgressContext).refresh;
+  const queryClient = useQueryClient();
+  return useCallback(() => {
+    void queryClient.invalidateQueries({
+      queryKey: [["history", "progressAll"]],
+    });
+  }, [queryClient]);
 }
