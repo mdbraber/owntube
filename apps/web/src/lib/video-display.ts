@@ -146,5 +146,32 @@ export function formatPublishedLabel(
       if (fromIso) return fromIso;
     }
   }
+  // Upstream sometimes emits a bogus relative string like "56 years ago" when
+  // its own published timestamp was 0. If the text resolves to an implausible
+  // (pre-2005) date, drop it rather than display the garbage.
+  const approx = relativeAgoToApproxUnix(t);
+  if (approx !== null && !isPlausiblePublishedUnix(approx)) return null;
   return t.length > 56 ? `${t.slice(0, 55)}…` : t;
+}
+
+const RELATIVE_UNIT_SECONDS: Record<string, number> = {
+  second: 1,
+  minute: 60,
+  hour: 3600,
+  day: 86_400,
+  week: 604_800,
+  month: 2_592_000,
+  year: 31_536_000,
+};
+
+/** Approx unix seconds for an English "N unit(s) ago" string; null if not one. */
+function relativeAgoToApproxUnix(text: string): number | null {
+  const m = /(\d+)\s*(second|minute|hour|day|week|month|year)s?\s+ago/i.exec(
+    text,
+  );
+  if (!m) return null;
+  const n = Number.parseInt(m[1], 10);
+  const mult = RELATIVE_UNIT_SECONDS[m[2].toLowerCase()];
+  if (!Number.isFinite(n) || !mult) return null;
+  return Math.floor(Date.now() / 1000) - n * mult;
 }
