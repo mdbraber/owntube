@@ -26,6 +26,19 @@ function getBaseUrl() {
   return `http://localhost:${process.env.PORT ?? 3000}`;
 }
 
+/**
+ * True for failures worth retrying: a dropped connection (no HTTP response, so
+ * no httpStatus) or a transient server error (5xx). A tRPC error that reached
+ * the server with a 4xx is permanent (not found, bad input, auth) — don't retry.
+ */
+function isTransientNetworkError(error: unknown): boolean {
+  const status = (
+    error as { data?: { httpStatus?: number } } | null | undefined
+  )?.data?.httpStatus;
+  if (status === undefined || status === 0) return true;
+  return status >= 500;
+}
+
 export function Providers({
   children,
   invidiousOrigins = [],
@@ -40,6 +53,21 @@ export function Providers({
         defaultOptions: {
           queries: {
             staleTime: 60_000,
+            // Retry transient connection drops (Safari recycling an idle HTTP/2
+            // connection → "network connection was lost"). Only network-level
+            // failures — a tRPC error from the server carries an httpStatus and
+            // shouldn't be retried blindly.
+            retry: (failureCount, error) =>
+              isTransientNetworkError(error) && failureCount < 3,
+          },
+          mutations: {
+            // Mutations don't retry by default, so a dropped connection surfaces
+            // (e.g. the ~20s history.upsertEvent ping). Our mutations are
+            // idempotent (upsert/set/conflict-safe), so retrying a lost
+            // connection is safe and makes the error vanish.
+            retry: (failureCount, error) =>
+              isTransientNetworkError(error) && failureCount < 2,
+            retryDelay: (attempt) => Math.min(500 * 2 ** attempt, 3000),
           },
         },
       }),
