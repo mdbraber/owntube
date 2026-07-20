@@ -9,6 +9,7 @@ apps/web/data/*.db-*
 **/.env
 **/.env.*
 !**/.env.example
-# TV client is not part of the web image
+# TV / iOS clients are not part of the web image; the shared brand-icon
+# package IS needed by the web build, so packages/ is kept in the context.
 apps/tv
-packages
+apps/ios

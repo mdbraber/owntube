@@ -15,8 +15,11 @@ RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
 # Install only the web workspace (and its deps) from the root lockfile.
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY apps/web/package.json apps/web/package.json
+# Shared workspace package the web app depends on (@owntube/brand-icon).
+COPY packages/brand-icon/package.json packages/brand-icon/package.json
 RUN pnpm install --frozen-lockfile --filter web...
 
+COPY packages/brand-icon packages/brand-icon
 COPY apps/web apps/web
 
 ENV NEXT_TELEMETRY_DISABLED=1
