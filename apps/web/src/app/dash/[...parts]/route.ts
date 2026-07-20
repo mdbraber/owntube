@@ -1,8 +1,44 @@
+import { getDb } from "@/server/db/client";
 import {
   DASH_VIDEO_FAMILIES,
   type DashVideoFamily,
   generateMpd,
 } from "@/server/services/dash/generate";
+import { fetchVideoDetail } from "@/server/services/proxy";
+import { getUserProxyOverrides } from "@/server/settings/profile";
+import { createCaller } from "@/server/trpc/caller";
+
+/**
+ * Requesting a manifest is a play, so the server records it rather than
+ * trusting a client to report one. Clients that authenticate (the TV sends a
+ * device-token Bearer header) get the watch written here; the position they
+ * later reach still has to come from the player, since nothing about a manifest
+ * fetch reveals a playhead.
+ *
+ * Best-effort throughout: a failure here must never stop the manifest.
+ */
+async function recordPlay(request: Request, videoId: string): Promise<void> {
+  try {
+    const caller = await createCaller(request);
+    const db = getDb();
+    // channelId is required by the history event; the detail is already cached
+    // from the same upstream fetch the manifest used.
+    const detail = await fetchVideoDetail(
+      db,
+      { videoId },
+      getUserProxyOverrides(db, null),
+    );
+    if (!detail.channelId) return;
+    await caller.history.upsertEvent({
+      videoId,
+      channelId: detail.channelId,
+      videoTitle: detail.title,
+      videoDurationSeconds: detail.durationSeconds,
+    });
+  } catch {
+    // Unauthenticated callers and upstream hiccups both land here.
+  }
+}
 
 const MPD_CONTENT_TYPE = "application/dash+xml";
 const VIDEO_ID_RE = /^[\w-]{6,20}$/;
@@ -27,6 +63,9 @@ export async function GET(
   const family = DASH_VIDEO_FAMILIES.includes(raw as DashVideoFamily)
     ? (raw as DashVideoFamily)
     : "avc";
+
+  // Fire and forget: the manifest response shouldn't wait on history.
+  void recordPlay(request, videoId);
 
   try {
     const body = await generateMpd(videoId, family);
