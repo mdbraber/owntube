@@ -130,6 +130,25 @@ export function useNativeAdapter(opts: {
     return () => v.removeEventListener("volumechange", onVolumeChange);
   }, [videoRef.current]);
 
+  // macOS/desktop Safari (hls.js over MSE) can leave the `poster` painted over a
+  // video that's already decoding, so the frame doesn't show until a seek. Drop
+  // the poster once playback starts. React won't re-add it — the poster prop is
+  // unchanged across re-renders, so it never re-writes the attribute.
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    const clearPoster = () => {
+      if (v.hasAttribute("poster")) v.removeAttribute("poster");
+    };
+    if (!v.paused && v.readyState >= 2) clearPoster();
+    v.addEventListener("playing", clearPoster);
+    v.addEventListener("timeupdate", clearPoster);
+    return () => {
+      v.removeEventListener("playing", clearPoster);
+      v.removeEventListener("timeupdate", clearPoster);
+    };
+  }, [videoRef.current]);
+
   // Attach the limiter when playback actually starts (the element src/buffer
   // may not have been ready during the initial play gesture).
   useEffect(() => {
