@@ -36,6 +36,10 @@ import {
   fetchChannelPage,
   type ProxySourceOverrides,
 } from "@/server/services/proxy";
+import {
+  channelCacheKey,
+  readLatestCacheRow,
+} from "@/server/services/proxy/cache";
 import type {
   ChannelPageResult,
   UnifiedVideo,
@@ -295,7 +299,10 @@ async function patchVisibleVideosWithRssDates(
   );
   if (channelIds.length === 0 || videos.length === 0) return videos;
 
-  const rssByVideoId = new Map<string, number>();
+  const rssByVideoId = new Map<
+    string,
+    { publishedAt: number; channelName?: string }
+  >();
   const all = await Promise.all(
     channelIds.map((c) => getChannelRssEntries(db, c)),
   );
@@ -305,19 +312,29 @@ async function patchVisibleVideosWithRssDates(
         typeof item.publishedAt === "number" &&
         Number.isFinite(item.publishedAt)
       ) {
-        rssByVideoId.set(item.videoId, item.publishedAt);
+        rssByVideoId.set(item.videoId, {
+          publishedAt: item.publishedAt,
+          channelName: item.channelName,
+        });
       }
     }
   }
   if (rssByVideoId.size === 0) return videos;
 
   return videos.map((v) => {
-    const rssPublishedAt = rssByVideoId.get(v.videoId);
-    if (rssPublishedAt === undefined) return v;
+    const rss = rssByVideoId.get(v.videoId);
+    if (rss === undefined) return v;
     return {
       ...v,
-      publishedAt: rssPublishedAt,
-      publishedText: new Date(rssPublishedAt * 1000).toISOString(),
+      publishedAt: rss.publishedAt,
+      publishedText: new Date(rss.publishedAt * 1000).toISOString(),
+      // A freshly-subscribed channel has no channel_meta row yet, so its
+      // upstream video list may omit the name and the UI falls back to the raw
+      // UC id. The RSS feed carries the author name — use it as a fallback.
+      channelName:
+        v.channelName && v.channelName.trim().length > 0
+          ? v.channelName
+          : (rss.channelName ?? v.channelName),
     };
   });
 }
@@ -358,6 +375,60 @@ function enrichSubscriptionVideosWithChannelMeta(
       channelName,
       ...(channelAvatarUrl !== undefined ? { channelAvatarUrl } : {}),
     };
+  });
+}
+
+/**
+ * RSS-seeded newest videos have no duration (the RSS feed doesn't carry one),
+ * so their thumbnails show no length badge. The same video usually also sits in
+ * the channel's cached video list (from the warmer/prior loads) WITH a duration
+ * — backfill from there. Brand-new uploads not yet in any cached channel page
+ * simply stay length-less until the next channel fetch, which is expected.
+ */
+function backfillMissingDurationsFromChannelCache(
+  db: AppDb,
+  videos: UnifiedVideo[],
+): UnifiedVideo[] {
+  const channelIdsNeedingDurations = new Set<string>();
+  for (const v of videos) {
+    if (
+      typeof v.durationSeconds !== "number" &&
+      typeof v.channelId === "string" &&
+      v.channelId.length > 0
+    ) {
+      channelIdsNeedingDurations.add(v.channelId);
+    }
+  }
+  if (channelIdsNeedingDurations.size === 0) return videos;
+
+  const durationByVideoId = new Map<string, number>();
+  for (const channelId of channelIdsNeedingDurations) {
+    const row = readLatestCacheRow(db, channelCacheKey({ channelId }));
+    if (!row) continue;
+    try {
+      const payload = JSON.parse(row.payloadJson) as {
+        videos?: { videoId?: string; durationSeconds?: number }[];
+      };
+      for (const cv of payload.videos ?? []) {
+        if (
+          typeof cv.videoId === "string" &&
+          typeof cv.durationSeconds === "number" &&
+          cv.durationSeconds > 0 &&
+          !durationByVideoId.has(cv.videoId)
+        ) {
+          durationByVideoId.set(cv.videoId, cv.durationSeconds);
+        }
+      }
+    } catch {
+      // Corrupt/legacy payload — skip this channel.
+    }
+  }
+  if (durationByVideoId.size === 0) return videos;
+
+  return videos.map((v) => {
+    if (typeof v.durationSeconds === "number") return v;
+    const duration = durationByVideoId.get(v.videoId);
+    return duration === undefined ? v : { ...v, durationSeconds: duration };
   });
 }
 
@@ -1104,10 +1175,14 @@ export const subscriptionsRouter = router({
         ctx.db,
         sortedPatchedVideos,
       );
+      const withDurations = backfillMissingDurationsFromChannelCache(
+        ctx.db,
+        withMeta,
+      );
       const settings = getUserSettings(ctx.db, ctx.userId);
       const restrictedFiltered = settings.hideRestrictedVideos
-        ? stripRestrictedListVideos(withMeta)
-        : withMeta;
+        ? stripRestrictedListVideos(withDurations)
+        : withDurations;
       const visibleVideos =
         (input.hideShorts ?? settings.hideShortsInSubscriptions)
           ? await stripShortsFromSubscriptionFeed(ctx.db, restrictedFiltered)

@@ -499,6 +499,8 @@ export default async function WatchPage({ searchParams }: WatchPageProps) {
                 <WatchDescription
                   videoId={detail.videoId}
                   description={detail.description}
+                  viewsLabel={viewsLabel}
+                  publishedLabel={publishedLabel}
                 />
               </div>
             ) : null}

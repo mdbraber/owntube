@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { formatPublishedLabel } from "@/lib/video-display";
 import { watchHref } from "@/lib/yt-routes";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -78,6 +79,8 @@ type BlockVideo = {
   channelAvatarUrl?: string | null;
   thumbnailUrl?: string | null;
   durationSeconds?: number;
+  publishedText?: string;
+  publishedAt?: number;
 };
 
 function toUnified(v: BlockVideo): UnifiedVideo {
@@ -89,6 +92,8 @@ function toUnified(v: BlockVideo): UnifiedVideo {
     channelAvatarUrl: v.channelAvatarUrl ?? undefined,
     thumbnailUrl: v.thumbnailUrl ?? undefined,
     durationSeconds: v.durationSeconds,
+    publishedText: v.publishedText,
+    publishedAt: v.publishedAt,
   } as UnifiedVideo;
 }
 
@@ -101,6 +106,8 @@ function fromUnified(v: UnifiedVideo): BlockVideo {
     channelAvatarUrl: v.channelAvatarUrl,
     thumbnailUrl: v.thumbnailUrl,
     durationSeconds: v.durationSeconds,
+    publishedText: v.publishedText,
+    publishedAt: v.publishedAt,
   };
 }
 
@@ -160,6 +167,8 @@ function HorizontalShelf({
             channelAvatarUrl={v.channelAvatarUrl ?? undefined}
             thumbnailUrl={v.thumbnailUrl ?? undefined}
             durationSeconds={v.durationSeconds}
+            publishedText={v.publishedText}
+            publishedAt={v.publishedAt}
             surface={surface}
           />
         </li>
@@ -245,6 +254,7 @@ function VideoBlockBody({
             channelName={v.channelName}
             thumbnailUrl={v.thumbnailUrl}
             durationSeconds={v.durationSeconds}
+            meta={formatPublishedLabel(v.publishedText, v.publishedAt) ?? undefined}
             surface={surface}
             size={singleColumn ? "sm" : block.size}
             enableSwipe
