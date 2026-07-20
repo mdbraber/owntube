@@ -21,6 +21,8 @@ import {
   codecsOf,
   companionDirectSegmentUri,
   fetchAdaptiveFormats,
+  fetchVideoCaptions,
+  type InvidiousCaption,
   segmentUri,
 } from "@/server/services/hls/generate";
 
@@ -149,11 +151,49 @@ function representationXml(f: AdaptiveFormat, indent: string): string {
   ].join("\n");
 }
 
+/**
+ * Subtitle AdaptationSets, one per caption track.
+ *
+ * Players can only expose subtitles that arrive inside the manifest — ExoPlayer
+ * has no sidecar-VTT API, and expo-video's `VideoSource` has no field for one —
+ * so the TV app's CC toggle stays dead unless the MPD advertises them. Each
+ * Representation points at the app's own `/captions/<videoId>` endpoint, which
+ * already fetches, validates and caches the upstream WebVTT.
+ */
+function captionAdaptationSets(
+  videoId: string,
+  captions: InvidiousCaption[],
+  firstId: number,
+): string[] {
+  return captions.flatMap((caption, i) => {
+    const lang = caption.languageCode?.trim();
+    const label = caption.label?.trim();
+    // The endpoint needs one of the two to identify the track upstream.
+    if (!lang && !label) return [];
+    const query = lang
+      ? `lang=${encodeURIComponent(lang)}`
+      : `label=${encodeURIComponent(label as string)}`;
+    const id = firstId + i;
+    return [
+      `    <AdaptationSet id="${id}" contentType="text" mimeType="text/vtt"${
+        lang ? ` lang="${xmlEscape(lang)}"` : ""
+      }>`,
+      `      <Role schemeIdUri="urn:mpeg:dash:role:2011" value="subtitle"/>`,
+      `      <Representation id="cap-${id}" bandwidth="256">`,
+      `        <BaseURL>${xmlEscape(`/captions/${encodeURIComponent(videoId)}?${query}`)}</BaseURL>`,
+      `      </Representation>`,
+      `    </AdaptationSet>`,
+    ];
+  });
+}
+
 /** Pure MPD builder (exported for tests). */
 export function buildMpd(
   videos: AdaptiveFormat[],
   audio: AdaptiveFormat,
   durationSeconds: number,
+  videoId?: string,
+  captions: InvidiousCaption[] = [],
 ): string {
   const videoMime = videos[0]?.type.split(";")[0]?.trim() ?? "video/mp4";
   const dur = durationSeconds > 0 ? durationSeconds.toFixed(3) : "0";
@@ -167,6 +207,7 @@ export function buildMpd(
     `    <AdaptationSet id="1" mimeType="${xmlEscape(audio.type.split(";")[0]?.trim() ?? "audio/mp4")}" startWithSAP="1" subsegmentAlignment="true">`,
     representationXml(audio, "      "),
     `    </AdaptationSet>`,
+    ...(videoId ? captionAdaptationSets(videoId, captions, 2) : []),
     `  </Period>`,
     `</MPD>`,
   ];
@@ -189,5 +230,15 @@ export async function generateMpd(
   if (videos.length === 0 || !audio) {
     throw new Error("no usable adaptive video + AAC audio streams");
   }
-  return buildMpd(videos, audio, durationSecondsFromFormats(af));
+  // Subtitles are best-effort: a caption lookup failure shouldn't cost playback.
+  const captions = await fetchVideoCaptions(videoId).catch(
+    () => [] as InvidiousCaption[],
+  );
+  return buildMpd(
+    videos,
+    audio,
+    durationSecondsFromFormats(af),
+    videoId,
+    captions,
+  );
 }

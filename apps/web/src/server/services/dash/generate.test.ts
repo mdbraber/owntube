@@ -143,4 +143,29 @@ describe("buildMpd", () => {
     expect(mpd).toContain("itag=313&amp;dur=562.433&amp;x=1");
     expect(mpd).not.toMatch(/<BaseURL>[^<]*&(?!amp;)/);
   });
+
+  it("advertises caption tracks as text AdaptationSets", () => {
+    const mpd = buildMpd([vp9_1080], aac, 562, "dQw4w9WgXcQ", [
+      { label: "English", languageCode: "en" },
+      { label: "Nederlands", languageCode: "nl" },
+    ]);
+    expect(mpd).toContain('contentType="text" mimeType="text/vtt" lang="en"');
+    expect(mpd).toContain('contentType="text" mimeType="text/vtt" lang="nl"');
+    expect(mpd).toContain("<BaseURL>/captions/dQw4w9WgXcQ?lang=en</BaseURL>");
+    expect(mpd).toContain('value="subtitle"');
+  });
+
+  it("falls back to the label when a track has no language code", () => {
+    const mpd = buildMpd([vp9_1080], aac, 562, "dQw4w9WgXcQ", [
+      { label: "Auto-generated" },
+    ]);
+    expect(mpd).toContain(
+      "<BaseURL>/captions/dQw4w9WgXcQ?label=Auto-generated</BaseURL>",
+    );
+  });
+
+  it("omits caption sets entirely when there are none", () => {
+    const mpd = buildMpd([vp9_1080], aac, 562, "dQw4w9WgXcQ", []);
+    expect(mpd).not.toContain("text/vtt");
+  });
 });

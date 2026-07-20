@@ -104,9 +104,21 @@ export function segmentUri(url: string): string {
   }
 }
 
-async function fetchAdaptiveFormatsUncached(
+/** A caption track as Invidious reports it on `/api/v1/videos`. */
+export type InvidiousCaption = {
+  label?: string;
+  languageCode?: string;
+  url?: string;
+};
+
+type VideoPayload = {
+  formats: AdaptiveFormat[];
+  captions: InvidiousCaption[];
+};
+
+async function fetchVideoPayloadUncached(
   videoId: string,
-): Promise<AdaptiveFormat[]> {
+): Promise<VideoPayload> {
   const inv = invidiousBase();
   if (!inv) throw new Error("INVIDIOUS_BASE_URL not configured");
   const controller = new AbortController();
@@ -119,8 +131,11 @@ async function fetchAdaptiveFormatsUncached(
       { signal: controller.signal, cache: "no-store" },
     );
     if (!r.ok) throw new Error(`upstream ${r.status}`);
-    const j = (await r.json()) as { adaptiveFormats?: AdaptiveFormat[] };
-    return j.adaptiveFormats ?? [];
+    const j = (await r.json()) as {
+      adaptiveFormats?: AdaptiveFormat[];
+      captions?: InvidiousCaption[];
+    };
+    return { formats: j.adaptiveFormats ?? [], captions: j.captions ?? [] };
   } finally {
     clearTimeout(t);
   }
@@ -137,23 +152,37 @@ async function fetchAdaptiveFormatsUncached(
  * replay/seek/quality-switch within the window.
  */
 const ADAPTIVE_CACHE_TTL_MS = 30 * 60_000;
-const adaptiveFormatsCache = new Map<
+const videoPayloadCache = new Map<
   string,
-  { at: number; formats: Promise<AdaptiveFormat[]> }
+  { at: number; payload: Promise<VideoPayload> }
 >();
+
+function fetchVideoPayload(videoId: string): Promise<VideoPayload> {
+  const hit = videoPayloadCache.get(videoId);
+  if (hit && Date.now() - hit.at < ADAPTIVE_CACHE_TTL_MS) return hit.payload;
+  const payload = fetchVideoPayloadUncached(videoId).catch((e) => {
+    // Don't cache failures: let the next request retry.
+    videoPayloadCache.delete(videoId);
+    throw e;
+  });
+  videoPayloadCache.set(videoId, { at: Date.now(), payload });
+  return payload;
+}
 
 export function fetchAdaptiveFormats(
   videoId: string,
 ): Promise<AdaptiveFormat[]> {
-  const hit = adaptiveFormatsCache.get(videoId);
-  if (hit && Date.now() - hit.at < ADAPTIVE_CACHE_TTL_MS) return hit.formats;
-  const formats = fetchAdaptiveFormatsUncached(videoId).catch((e) => {
-    // Don't cache failures: let the next request retry.
-    adaptiveFormatsCache.delete(videoId);
-    throw e;
-  });
-  adaptiveFormatsCache.set(videoId, { at: Date.now(), formats });
-  return formats;
+  return fetchVideoPayload(videoId).then((p) => p.formats);
+}
+
+/**
+ * Caption tracks from the same `/api/v1/videos` response the formats come from,
+ * so the DASH manifest can advertise subtitles without a second round trip.
+ */
+export function fetchVideoCaptions(
+  videoId: string,
+): Promise<InvidiousCaption[]> {
+  return fetchVideoPayload(videoId).then((p) => p.captions);
 }
 
 /** The `sidx` box: per-fragment byte size + duration, plus where media begins. */
