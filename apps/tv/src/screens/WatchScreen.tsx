@@ -1,5 +1,9 @@
 import type { SponsorBlockSegment } from "@web/lib/sponsorblock";
 import {
+  chapterIndexAt,
+  parseChaptersFromDescription,
+} from "@web/lib/video-chapters";
+import {
   storyboardSheetUrl,
   storyboardThumbAtTime,
 } from "@web/lib/video-scrub-frames";
@@ -8,10 +12,14 @@ import type {
   VideoDetail,
   VideoStoryboard,
 } from "@web/server/services/proxy.types";
+import { useKeepAwake } from "expo-keep-awake";
 import { useVideoPlayer, VideoView } from "expo-video";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Animated,
+  BackHandler,
+  findNodeHandle,
   Image,
   Pressable,
   StyleSheet,
@@ -22,9 +30,12 @@ import {
 import { FocusButton } from "@/components/FocusButton";
 import { IconButton } from "@/components/IconButton";
 import { VideoRow } from "@/components/VideoRow";
+import { getToken } from "@/lib/auth-token";
 import { OWNTUBE_BASE_URL } from "@/lib/config";
 import { channelInitial, formatTime, formatViews } from "@/lib/format";
+import { queryClient } from "@/lib/query-client";
 import { trpcClient } from "@/lib/trpc";
+import { trpc } from "@/lib/trpc-react";
 import { errorMessage } from "@/lib/use-query";
 import { colors, focus, fontSize, monoFont, radius, spacing } from "@/theme";
 
@@ -63,8 +74,27 @@ type PlaybackOption = {
 const SCRUB_STEP_SECONDS = 10;
 const SCRUB_HOLD_TICK_MS = 120;
 
-/** Preferred ceiling when picking among fixed-resolution streams. */
+/** Fallback ceiling if settings can't be read. */
 const DEFAULT_HEIGHT = 1080;
+
+/** Maps the shared `defaultPlaybackQuality` setting to a pixel ceiling. */
+function heightForQuality(quality: string | undefined): number {
+  switch (quality) {
+    case "best":
+      return Number.POSITIVE_INFINITY;
+    case "1080p":
+      return 1080;
+    case "720p":
+      return 720;
+    case "480p":
+      return 480;
+    case "360p":
+    case "360p-muxed":
+      return 360;
+    default:
+      return DEFAULT_HEIGHT;
+  }
+}
 
 /**
  * Picks the stream to start with.
@@ -81,7 +111,10 @@ const DEFAULT_HEIGHT = 1080;
  * than ship broken audio; split sources are a last resort when nothing muxed
  * exists.
  */
-function pickDefaultOptionIndex(options: PlaybackOption[]): number {
+function pickDefaultOptionIndex(
+  options: PlaybackOption[],
+  maxHeight: number,
+): number {
   const auto = options.findIndex((option) => option.kind === "auto");
   if (auto >= 0) return auto;
 
@@ -90,9 +123,7 @@ function pickDefaultOptionIndex(options: PlaybackOption[]): number {
       .map((option, index) => ({ option, index }))
       .filter((e) => e.option.kind === kind && e.option.height !== undefined);
     if (graded.length === 0) return -1;
-    const atOrBelow = graded.filter(
-      (e) => (e.option.height ?? 0) <= DEFAULT_HEIGHT,
-    );
+    const atOrBelow = graded.filter((e) => (e.option.height ?? 0) <= maxHeight);
     const pool = atOrBelow.length > 0 ? atOrBelow : graded;
     return pool.reduce((a, b) =>
       (b.option.height ?? 0) > (a.option.height ?? 0) ? b : a,
@@ -126,6 +157,10 @@ export function WatchScreen({
   onOpenChannel: (channelId: string) => void;
   onBack: () => void;
 }) {
+  // Android TV drops into its screensaver on ~5 minutes without input, and a
+  // playing video is not input. Hold the screen on for the whole screen.
+  useKeepAwake();
+
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [isPlaying, setIsPlaying] = useState(true);
   const [controlsVisible, setControlsVisible] = useState(true);
@@ -141,8 +176,46 @@ export function WatchScreen({
   // so holding the D-pad sweeps the bar instead of firing a seek per press.
   const [scrubSeconds, setScrubSeconds] = useState<number | null>(null);
   const [scrubberFocused, setScrubberFocused] = useState(false);
+  // The related rail is cropped by the screen edge until one of its cards takes
+  // focus, at which point it expands so the focused card is fully visible.
+  const [relatedFocused, setRelatedFocused] = useState(false);
+  const relatedFocusCount = useRef(0);
+  /**
+   * Android moves focus horizontally on left/right regardless of what the key
+   * handler does, so without pinning next-focus back to the bar itself a scrub
+   * press would also jump focus into the control row. Trapping it means the bar
+   * keeps focus and left/right can only scrub.
+   */
+  const scrubberRef = useRef<View>(null);
+  const [scrubberHandle, setScrubberHandle] = useState<number | null>(null);
+  // Animated between the cropped peek and the row's measured natural height.
+  const relatedHeight = useRef(new Animated.Value(RELATED_PEEK_HEIGHT)).current;
+  const relatedFullHeight = useRef(RELATED_PEEK_HEIGHT);
   const [rating, setRating] = useState<"like" | "dislike" | null>(null);
   const [saved, setSaved] = useState(false);
+  const [queued, setQueued] = useState(false);
+  /**
+   * Sent with the manifest request so the server can attribute the play to this
+   * user — ExoPlayer fetches the manifest itself, outside the tRPC client that
+   * normally carries the token.
+   */
+  const [authHeader, setAuthHeader] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    getToken().then((token) => {
+      if (token) setAuthHeader({ Authorization: `Bearer ${token}` });
+    });
+  }, []);
+  // Shared with the web app rather than hardcoded here.
+  const settingsRef = useRef<{
+    maxHeight: number;
+    sponsorBlockEnabled: boolean;
+    sponsorBlockAutoSkip: boolean;
+  }>({
+    maxHeight: DEFAULT_HEIGHT,
+    sponsorBlockEnabled: true,
+    sponsorBlockAutoSkip: true,
+  });
   const scrubRef = useRef<number | null>(null);
   const holdTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   /**
@@ -205,12 +278,31 @@ export function WatchScreen({
     shouldPlayAfterReplaceRef.current = true;
     selectedOptionRef.current = null;
 
-    trpcClient.video.detail
-      .query({ videoId })
+    queryClient
+      .fetchQuery({
+        queryKey: [["settings", "get"]],
+        queryFn: () => trpcClient.settings.get.query(),
+      })
+      .then((st) => {
+        settingsRef.current = {
+          maxHeight: heightForQuality(st.defaultPlaybackQuality),
+          sponsorBlockEnabled: st.sponsorBlockEnabled,
+          sponsorBlockAutoSkip: st.sponsorBlockAutoSkip,
+        };
+      })
+      // Defaults already sit in the ref; a settings failure shouldn't block play.
+      .catch(() => {})
+      .then(() =>
+        queryClient.fetchQuery({
+          queryKey: [["video", "detail"], { videoId }],
+          queryFn: () => trpcClient.video.detail.query({ videoId }),
+        }),
+      )
       .then((detail) => {
         if (cancelled) return;
         detailRef.current = detail;
         const playbackOptions = buildPlaybackOptions(detail);
+        const maxHeight = settingsRef.current.maxHeight;
         if (playbackOptions.length === 0) {
           setState({
             status: "error",
@@ -222,14 +314,22 @@ export function WatchScreen({
           status: "ready",
           detail,
           playbackOptions,
-          selectedOptionIndex: pickDefaultOptionIndex(playbackOptions),
+          selectedOptionIndex: pickDefaultOptionIndex(
+            playbackOptions,
+            maxHeight,
+          ),
         });
 
-        trpcClient.sponsorblock.segments
-          .query({
-            videoId,
-            categories: [...SKIP_CATEGORIES],
-            durationSeconds: detail.durationSeconds,
+        if (!settingsRef.current.sponsorBlockEnabled) return;
+        queryClient
+          .fetchQuery({
+            queryKey: [["sponsorblock", "segments"], { videoId }],
+            queryFn: () =>
+              trpcClient.sponsorblock.segments.query({
+                videoId,
+                categories: [...SKIP_CATEGORIES],
+                durationSeconds: detail.durationSeconds,
+              }),
           })
           .then((segments) => {
             if (!cancelled) segmentsRef.current = segments;
@@ -246,6 +346,15 @@ export function WatchScreen({
     };
   }, [videoId]);
 
+  useEffect(() => {
+    Animated.timing(relatedHeight, {
+      toValue: relatedFocused ? relatedFullHeight.current : RELATED_PEEK_HEIGHT,
+      duration: RELATED_REVEAL_MS,
+      // Height can't run on the UI thread; the row is small enough to be smooth.
+      useNativeDriver: false,
+    }).start();
+  }, [relatedFocused, relatedHeight]);
+
   // Clear via the ref so the cleanup needs no dependency on the callback.
   useEffect(
     () => () => {
@@ -258,6 +367,14 @@ export function WatchScreen({
     let cancelled = false;
     setRating(null);
     setSaved(false);
+    setQueued(false);
+    trpcClient.queue.list
+      .query()
+      .then((rows) => {
+        if (!cancelled) setQueued(rows.some((r) => r.videoId === videoId));
+      })
+      .catch(() => {});
+
     trpcClient.interactions.state
       .query({ videoId })
       .then((st) => {
@@ -271,20 +388,8 @@ export function WatchScreen({
     };
   }, [videoId]);
 
-  const [related, setRelated] = useState<UnifiedVideo[]>([]);
-  useEffect(() => {
-    let cancelled = false;
-    setRelated([]);
-    trpcClient.video.related
-      .query({ videoId })
-      .then((result) => {
-        if (!cancelled) setRelated(result.videos);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [videoId]);
+  const relatedQuery = trpc.video.related.useQuery({ videoId });
+  const related: UnifiedVideo[] = relatedQuery.data?.videos ?? [];
 
   // Load the stream and resume from the saved offset.
   useEffect(() => {
@@ -295,11 +400,11 @@ export function WatchScreen({
     selectedOptionRef.current = selectedOption;
     if (selectedOption.kind === "split") {
       player.muted = true;
-      player.replace(selectedOption.videoUrl);
+      player.replace({ uri: selectedOption.videoUrl, headers: authHeader });
       audioPlayer.replace(selectedOption.audioUrl);
     } else {
       player.muted = false;
-      player.replace(selectedOption.videoUrl);
+      player.replace({ uri: selectedOption.videoUrl, headers: authHeader });
       audioPlayer.pause();
       audioPlayer.replace(null);
     }
@@ -320,7 +425,7 @@ export function WatchScreen({
       audioPlayer.pause();
     }
     setIsPlaying(shouldPlay);
-  }, [state, player, audioPlayer, resumeSeconds]);
+  }, [state, player, audioPlayer, resumeSeconds, authHeader]);
 
   // SponsorBlock auto-skip: on each tick, jump past any segment we're inside.
   useEffect(() => {
@@ -332,7 +437,7 @@ export function WatchScreen({
           currentTime >= s.startSeconds && currentTime < s.endSeconds - 0.5,
       );
       const selectedOption = selectedOptionRef.current;
-      if (hit) {
+      if (hit && settingsRef.current.sponsorBlockAutoSkip) {
         player.currentTime = hit.endSeconds;
         if (selectedOption?.kind === "split") {
           audioPlayer.currentTime = hit.endSeconds;
@@ -347,6 +452,46 @@ export function WatchScreen({
     });
     return () => sub.remove();
   }, [player, audioPlayer]);
+
+  /**
+   * Back dismisses the controls before it leaves the video, so the first press
+   * returns you to an unobstructed picture and only the second exits. Registered
+   * here so it runs before the shell's handler.
+   */
+  useEffect(() => {
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (!controlsVisibleRef.current) return false;
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+      setControlsVisible(false);
+      return true;
+    });
+    return () => sub.remove();
+  }, []);
+
+  /**
+   * Report progress periodically, not only when leaving: a session that ends by
+   * pulling the plug (or the box sleeping) would otherwise record nothing, and
+   * the web app's resume position would sit stale.
+   */
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const detail = detailRef.current;
+      const watched = Math.floor(currentTimeRef.current);
+      if (!detail?.channelId || watched < PROGRESS_MIN_SECONDS) return;
+      if (!isPlayingRef.current) return;
+      trpcClient.history.upsertEvent
+        .mutate({
+          videoId,
+          channelId: detail.channelId,
+          durationWatched: watched,
+          positionSeconds: watched,
+          videoDurationSeconds: detail.durationSeconds,
+          videoTitle: detail.title,
+        })
+        .catch(() => {});
+    }, PROGRESS_REPORT_MS);
+    return () => clearInterval(timer);
+  }, [videoId]);
 
   // Record watch progress to history on leave (feeds the recommender).
   useEffect(() => {
@@ -534,6 +679,29 @@ export function WatchScreen({
       .catch(() => {});
   };
 
+  /** Queue is the most useful couch action: far easier than typing later. */
+  const toggleQueued = () => {
+    const detail = detailRef.current;
+    if (!detail) return;
+    const next = !queued;
+    setQueued(next);
+    const call = next
+      ? trpcClient.queue.add.mutate({
+          videoId,
+          title: detail.title,
+          channelId: detail.channelId ?? undefined,
+        })
+      : trpcClient.queue.remove.mutate({ videoId });
+    call
+      .then(() =>
+        queryClient.invalidateQueries({
+          queryKey: ["feed", "queue.listDetailed"],
+        }),
+      )
+      // Put the toggle back if the server rejected it.
+      .catch(() => setQueued(!next));
+  };
+
   const toggleSaved = () => {
     const next = !saved;
     setSaved(next);
@@ -639,6 +807,13 @@ export function WatchScreen({
   const scrubTarget = scrubSeconds ?? currentTime;
   const progressPct =
     totalSeconds > 0 ? Math.min(100, (scrubTarget / totalSeconds) * 100) : 0;
+  // Chapters are derived from the description, exactly as the web player does.
+  const chapters = parseChaptersFromDescription(
+    detail.description,
+    detail.durationSeconds,
+  );
+  const chapterIndex = chapterIndexAt(chapters, scrubTarget);
+  const chapterTitle = chapterIndex >= 0 ? chapters[chapterIndex]?.title : null;
 
   return (
     <View style={styles.container}>
@@ -674,6 +849,11 @@ export function WatchScreen({
         <View style={styles.overlay}>
           <View style={styles.timesRow}>
             <Text style={styles.time}>{formatTime(scrubTarget)}</Text>
+            {chapterTitle ? (
+              <Text style={styles.chapterTitle} numberOfLines={1}>
+                {chapterTitle}
+              </Text>
+            ) : null}
             <Text style={styles.time}>{formatTime(totalSeconds)}</Text>
           </View>
           {/* Wrapper so the preview anchors to the bar, not the whole overlay. */}
@@ -693,6 +873,14 @@ export function WatchScreen({
               </View>
             ) : null}
             <Pressable
+              ref={scrubberRef}
+              onLayout={() => {
+                if (scrubberHandle === null) {
+                  setScrubberHandle(findNodeHandle(scrubberRef.current));
+                }
+              }}
+              nextFocusLeft={scrubberHandle ?? undefined}
+              nextFocusRight={scrubberHandle ?? undefined}
               hasTVPreferredFocus
               onFocus={() => setScrubberFocused(true)}
               onBlur={() => setScrubberFocused(false)}
@@ -710,6 +898,23 @@ export function WatchScreen({
                   ]}
                 />
               </View>
+              {totalSeconds > 0
+                ? chapters.map((chapter) => (
+                    <View
+                      key={chapter.startSeconds}
+                      pointerEvents="none"
+                      style={[
+                        styles.chapterTick,
+                        {
+                          left: `${Math.min(
+                            100,
+                            (chapter.startSeconds / totalSeconds) * 100,
+                          )}%`,
+                        },
+                      ]}
+                    />
+                  ))
+                : null}
               {scrubberFocused ? (
                 <View
                   style={[styles.knob, { left: `${progressPct}%` }]}
@@ -756,17 +961,20 @@ export function WatchScreen({
             <View style={styles.transport}>
               <IconButton
                 icon="rotate-ccw"
+                action="skip"
                 onPress={() => seekBy(-10)}
                 onFocusChange={onButtonFocusChange}
               />
               <IconButton
                 icon={isPlaying ? "pause" : "play"}
+                action={isPlaying ? "pause" : "play"}
                 large
                 onPress={togglePlayback}
                 onFocusChange={onButtonFocusChange}
               />
               <IconButton
                 icon="rotate-cw"
+                action="skipForward"
                 onPress={() => seekBy(10)}
                 onFocusChange={onButtonFocusChange}
               />
@@ -776,14 +984,22 @@ export function WatchScreen({
             <View style={styles.actions}>
               <IconButton
                 icon="thumbs-up"
+                action="like"
                 active={rating === "like"}
                 onPress={() => setRatingValue("like")}
                 onFocusChange={onButtonFocusChange}
               />
               <IconButton
                 icon="thumbs-down"
+                action="dislike"
                 active={rating === "dislike"}
                 onPress={() => setRatingValue("dislike")}
+                onFocusChange={onButtonFocusChange}
+              />
+              <IconButton
+                icon={queued ? "check" : "plus"}
+                active={queued}
+                onPress={toggleQueued}
                 onFocusChange={onButtonFocusChange}
               />
               <IconButton
@@ -796,6 +1012,7 @@ export function WatchScreen({
               {hasSubtitles ? (
                 <IconButton
                   icon="type"
+                  action="captions"
                   active={subtitlesOn}
                   onPress={toggleSubtitles}
                   onFocusChange={onButtonFocusChange}
@@ -805,9 +1022,30 @@ export function WatchScreen({
           </View>
 
           {related.length > 0 ? (
-            <View style={styles.relatedRow}>
-              <VideoRow videos={related} onSelect={onOpenVideo} />
-            </View>
+            <Animated.View
+              style={[styles.relatedRow, { height: relatedHeight }]}
+            >
+              {/* Clipping doesn't affect child layout, so this reports the
+                  row's full height even while cropped. */}
+              <View
+                onLayout={(e) => {
+                  relatedFullHeight.current = e.nativeEvent.layout.height;
+                }}
+              >
+                <VideoRow
+                  videos={related}
+                  onSelect={onOpenVideo}
+                  onCardFocusChange={(focused) => {
+                    relatedFocusCount.current = Math.max(
+                      0,
+                      relatedFocusCount.current + (focused ? 1 : -1),
+                    );
+                    setRelatedFocused(relatedFocusCount.current > 0);
+                    onButtonFocusChange(focused);
+                  }}
+                />
+              </View>
+            </Animated.View>
           ) : null}
         </View>
       </View>
@@ -832,6 +1070,10 @@ function clampPreviewPct(pct: number): number {
 /** Layout width in dp of a 1080p TV panel (density 2). */
 const TV_WIDTH_DP = 960;
 
+/** How often playback position is pushed to the server, and the floor for it. */
+const PROGRESS_REPORT_MS = 15_000;
+const PROGRESS_MIN_SECONDS = 5;
+
 /** Playhead knob shown while the scrubber holds focus. */
 const SCRUB_KNOB = 18;
 const TRACK_HEIGHT = 7;
@@ -840,6 +1082,7 @@ const SCRUB_PAD = 8;
 
 /** How much of the related rail stays on screen under the controls. */
 const RELATED_PEEK_HEIGHT = 104;
+const RELATED_REVEAL_MS = 180;
 
 /**
  * One frame of the storyboard sprite sheet, cropped to the cell for `atSeconds`.
@@ -925,11 +1168,9 @@ const styles = StyleSheet.create({
   avatarInitial: { color: colors.foreground, fontWeight: "700" },
   // Cropped: only the top of each card shows, so the rail reads as continuing
   // off-screen and the controls keep their vertical position.
-  relatedRow: {
-    marginTop: spacing.md,
-    height: RELATED_PEEK_HEIGHT,
-    overflow: "hidden",
-  },
+  // Height is animated; the overlay is bottom-anchored, so growing the row
+  // pushes the controls up and brings the focused card into view.
+  relatedRow: { marginTop: spacing.md, overflow: "hidden" },
   trackWrap: { position: "relative" },
   // Padding gives the focus ring somewhere to sit without moving the bar.
   // Deliberately no focus ring: the bar shows selection by turning brand-red,
@@ -990,6 +1231,20 @@ const styles = StyleSheet.create({
   },
   // Selected: the whole bar reads red, played portion solid over a red bed.
   trackActive: { backgroundColor: colors.brandSoft },
+  chapterTick: {
+    position: "absolute",
+    top: SCRUB_PAD,
+    width: 2,
+    height: TRACK_HEIGHT,
+    backgroundColor: colors.background,
+  },
+  chapterTitle: {
+    flex: 1,
+    textAlign: "center",
+    color: colors.foreground,
+    fontSize: fontSize.sm,
+    fontWeight: "600",
+  },
   trackFillActive: { backgroundColor: colors.brand },
   knob: {
     position: "absolute",

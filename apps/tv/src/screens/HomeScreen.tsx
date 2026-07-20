@@ -54,6 +54,7 @@ export function HomeScreen({ nav }: { nav: Nav }) {
         };
       }),
     [],
+    "feed.home",
   );
 
   useEffect(() => {

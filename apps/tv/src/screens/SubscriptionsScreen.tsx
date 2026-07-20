@@ -1,6 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { useEffect, useRef, useState } from "react";
 import {
+  BackHandler,
   FlatList,
   Image,
   Pressable,
@@ -12,6 +13,7 @@ import { CarouselFeed } from "@/components/CarouselFeed";
 import { channelInitial } from "@/lib/format";
 import type { Nav } from "@/lib/navigation";
 import { trpcClient } from "@/lib/trpc";
+import { trpc } from "@/lib/trpc-react";
 import { useInfiniteFeed } from "@/lib/use-infinite-feed";
 import { errorMessage } from "@/lib/use-query";
 import { colors, focus, fontSize, radius, spacing } from "@/theme";
@@ -30,12 +32,6 @@ const AVATAR_SIZE = 28;
  * the D-pad down through a long channel list fires a request per row.
  */
 const FOCUS_SELECT_DELAY_MS = 350;
-
-type SidebarChannel = {
-  channelId: string;
-  channelName: string;
-  avatarUrl: string | null;
-};
 
 /**
  * What the videos pane is showing. The channel pane is a two-level menu: the
@@ -59,43 +55,39 @@ type PaneLevel = "root" | "tags";
  * returning anything, so it gets slower the more channels you follow.
  */
 export function SubscriptionsScreen({ nav }: { nav: Nav }) {
-  const [channels, setChannels] = useState<SidebarChannel[]>([]);
   const [selected, setSelected] = useState<Selection>({ kind: "all" });
   const [level, setLevel] = useState<PaneLevel>("root");
-  const [tags, setTags] = useState<{ tag: string; count: number }[]>([]);
-  const [channelsError, setChannelsError] = useState<string | null>(null);
   const selectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    trpcClient.subscriptions.listSidebar
-      .query({ limit: CHANNEL_LIMIT })
-      .then((rows) => {
-        if (!cancelled) setChannels(rows);
-      })
-      // Don't swallow this: an empty channel list is indistinguishable from a
-      // failed query otherwise.
-      .catch((err: unknown) => {
-        if (!cancelled) setChannelsError(errorMessage(err));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const sidebar = trpc.subscriptions.listSidebar.useQuery({
+    limit: CHANNEL_LIMIT,
+  });
+  const channels = sidebar.data ?? [];
+  const channelsError = sidebar.error ? errorMessage(sidebar.error) : null;
+
+  const tagList = trpc.channelTags.listAll.useQuery();
+  const tags = tagList.data ?? [];
 
   useEffect(() => {
-    let cancelled = false;
-    trpcClient.channelTags.listAll
-      .query()
-      .then((rows) => {
-        if (!cancelled) setTags(rows);
-      })
-      // Tags are optional; the rest of the pane still works without them.
+    // listSidebar orders by newest upload, but that field is only populated by
+    // the recency backfill — without it the list falls back to subscription
+    // date. Fire once, then let the cached list refresh.
+    trpcClient.subscriptions.refreshRecency
+      .mutate()
+      .then(() => sidebar.refetch())
       .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  }, [sidebar.refetch]);
+
+  // Back leaves the tag submenu before it leaves Subscriptions, matching the
+  // player's controls-then-video order.
+  useEffect(() => {
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (level !== "tags") return false;
+      setLevel("root");
+      return true;
+    });
+    return () => sub.remove();
+  }, [level]);
 
   // Drop a pending selection if the screen goes away mid-debounce.
   useEffect(
@@ -137,6 +129,7 @@ export function SubscriptionsScreen({ nav }: { nav: Nav }) {
         .then((r) => ({ items: r.videos, next: r.nextCursor ?? undefined }));
     },
     [selected],
+    "subscriptions.feed",
   );
 
   const heading =

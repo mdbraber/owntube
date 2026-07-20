@@ -24,6 +24,7 @@ export function QueueScreen({ nav }: { nav: Nav }) {
         next: undefined,
       })),
     [],
+    "queue.listDetailed",
   );
 
   return (

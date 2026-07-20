@@ -4,7 +4,9 @@ import { CarouselFeed } from "@/components/CarouselFeed";
 import { FocusButton } from "@/components/FocusButton";
 import { channelInitial, formatSubscribersLabel } from "@/lib/format";
 import type { Nav } from "@/lib/navigation";
+import { queryClient } from "@/lib/query-client";
 import { trpcClient } from "@/lib/trpc";
+import { trpc } from "@/lib/trpc-react";
 import { useInfiniteFeed } from "@/lib/use-infinite-feed";
 import { colors, fontSize, radius, spacing } from "@/theme";
 
@@ -23,22 +25,18 @@ export function ChannelScreen({
   nav: Nav;
 }) {
   const [meta, setMeta] = useState<ChannelMeta>({});
-  const [subscribed, setSubscribed] = useState<boolean | null>(null);
   const [pending, setPending] = useState(false);
+  // Unknown state hides the button rather than showing a wrong label, so an
+  // error leaves this undefined on purpose.
+  const status = trpc.subscriptions.status.useQuery({ channelId });
+  const [override, setOverride] = useState<boolean | null>(null);
+  const subscribed = override ?? status.data?.subscribed ?? null;
 
+  // Drop the optimistic value when the channel changes, so it can't leak
+  // across screens; channelId is the only trigger.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset on channel
   useEffect(() => {
-    let cancelled = false;
-    setSubscribed(null);
-    trpcClient.subscriptions.status
-      .query({ channelId })
-      .then((r) => {
-        if (!cancelled) setSubscribed(r.subscribed);
-      })
-      // Unknown state hides the button rather than showing a wrong label.
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
+    setOverride(null);
   }, [channelId]);
 
   const toggleSubscription = () => {
@@ -49,8 +47,12 @@ export function ChannelScreen({
       ? trpcClient.subscriptions.add.mutate({ channelId })
       : trpcClient.subscriptions.remove.mutate({ channelId });
     call
-      .then(() => setSubscribed(next))
-      .catch(() => {})
+      .then(() => {
+        setOverride(next);
+        // The subscriptions feed and channel rail both change on subscribe.
+        void queryClient.invalidateQueries({ queryKey: ["feed"] });
+      })
+      .catch(() => setOverride(null))
       .finally(() => setPending(false));
   };
 
@@ -70,6 +72,7 @@ export function ChannelScreen({
           return { items: page.videos, next: page.continuation ?? undefined };
         }),
     [channelId],
+    `channel.page:${channelId}`,
   );
 
   const subscribersLabel = formatSubscribersLabel(meta.subscriberCount);

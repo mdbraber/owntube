@@ -41,10 +41,14 @@ export function CarouselFeed({
   const rows = useMemo(() => chunk(listVideos, ROW_SIZE), [listVideos]);
 
   if (feed.status === "loading") {
+    // Header keeps its place; the spinner centres in the space left over,
+    // rather than sitting against the left edge.
     return (
-      <View style={styles.centered}>
+      <View style={styles.loadingWrap}>
         {header}
-        <ActivityIndicator size="large" color={colors.brand} />
+        <View style={styles.loadingCenter}>
+          <ActivityIndicator size="large" color={colors.brand} />
+        </View>
       </View>
     );
   }
@@ -129,6 +133,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "flex-start",
     gap: spacing.md,
+  },
+  loadingWrap: { flex: 1 },
+  loadingCenter: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
   emptyContainer: {
     flex: 1,

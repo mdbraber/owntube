@@ -1,31 +1,69 @@
 import { Feather } from "@expo/vector-icons";
 import { useRef, useState } from "react";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Animated,
+  Image,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { LOGO, LOGO_WORDMARK } from "@/assets";
-import { colors, focus, fontSize, monoFont, radius, spacing } from "@/theme";
+import { colors, focus, fontSize, radius, spacing } from "@/theme";
 
-export type Section = "home" | "search" | "subscriptions" | "queue" | "history";
+export type Section =
+  | "home"
+  | "recommended"
+  | "search"
+  | "subscriptions"
+  | "playlists"
+  | "queue"
+  | "history"
+  | "settings";
 
 export const RAIL_WIDTH = 68;
-const EXPANDED_WIDTH = 228;
+export const EXPANDED_WIDTH = 228;
 
-type FeatherName = keyof typeof Feather.glyphMap;
+export type FeatherName = keyof typeof Feather.glyphMap;
 
-const SECTIONS: { key: Section; label: string; icon: FeatherName }[] = [
+export const SECTIONS: { key: Section; label: string; icon: FeatherName }[] = [
   { key: "home", label: "Home", icon: "home" },
   { key: "search", label: "Search", icon: "search" },
-  { key: "subscriptions", label: "Subscriptions", icon: "tv" },
   { key: "queue", label: "Queue", icon: "list" },
+  { key: "subscriptions", label: "Subscriptions", icon: "tv" },
+  { key: "recommended", label: "Recommended", icon: "star" },
+  { key: "playlists", label: "Playlists", icon: "folder" },
   { key: "history", label: "History", icon: "clock" },
+  { key: "settings", label: "Settings", icon: "settings" },
 ];
 
 type Props = {
   active: Section;
   onSelect: (section: Section) => void;
-  onSignOut: () => void;
+  /** Lets the shell make room instead of letting the rail cover content. */
+  onExpandedChange?: (expanded: boolean) => void;
+  /**
+   * Shared with the shell's content inset so the rail and the page it displaces
+   * move as one. Animating them separately let the content lag and slide under
+   * the rail, and rapid focus changes made it jitter.
+   */
+  width?: Animated.Value;
+  /** Ordered visible sections; omitted ones are hidden (see sidebar-prefs). */
+  sections?: Section[];
 };
 
-export function Sidebar({ active, onSelect, onSignOut }: Props) {
+export function Sidebar({
+  active,
+  onSelect,
+  sections,
+  onExpandedChange,
+  width,
+}: Props) {
+  const visible = sections
+    ? sections
+        .map((key) => SECTIONS.find((s) => s.key === key))
+        .filter((s): s is (typeof SECTIONS)[number] => Boolean(s))
+    : SECTIONS;
   const [expanded, setExpanded] = useState(false);
   const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -33,18 +71,26 @@ export function Sidebar({ active, onSelect, onSignOut }: Props) {
   // last one blurs (the timer absorbs the blur→focus gap between rows).
   const handleFocus = () => {
     if (blurTimer.current) clearTimeout(blurTimer.current);
-    setExpanded(true);
+    setExpanded((prev) => {
+      if (!prev) onExpandedChange?.(true);
+      return true;
+    });
   };
   const handleBlur = () => {
     if (blurTimer.current) clearTimeout(blurTimer.current);
-    blurTimer.current = setTimeout(() => setExpanded(false), 60);
+    blurTimer.current = setTimeout(() => {
+      setExpanded((prev) => {
+        if (prev) onExpandedChange?.(false);
+        return false;
+      });
+    }, 60);
   };
 
   return (
-    <View
+    <Animated.View
       style={[
         styles.sidebar,
-        { width: expanded ? EXPANDED_WIDTH : RAIL_WIDTH },
+        { width: width ?? (expanded ? EXPANDED_WIDTH : RAIL_WIDTH) },
       ]}
     >
       <View style={styles.brandRow}>
@@ -56,7 +102,7 @@ export function Sidebar({ active, onSelect, onSignOut }: Props) {
       </View>
 
       <View style={styles.nav}>
-        {SECTIONS.map((section) => (
+        {visible.map((section) => (
           <NavRow
             key={section.key}
             icon={section.icon}
@@ -69,28 +115,7 @@ export function Sidebar({ active, onSelect, onSignOut }: Props) {
           />
         ))}
       </View>
-
-      <NavRow
-        icon="log-out"
-        label="Sign out"
-        active={false}
-        expanded={expanded}
-        onFocus={handleFocus}
-        onBlur={handleBlur}
-        onPress={onSignOut}
-      />
-      {expanded ? (
-        <View style={styles.footer}>
-          <View style={styles.footerStatus}>
-            <View style={styles.statusDot} />
-            <Text style={styles.footerText} numberOfLines={1}>
-              Feed from your instance
-            </Text>
-          </View>
-          <Text style={styles.footerBrand}>owntube</Text>
-        </View>
-      ) : null}
-    </View>
+    </Animated.View>
   );
 }
 
@@ -196,32 +221,5 @@ const styles = StyleSheet.create({
     alignSelf: "stretch",
     backgroundColor: colors.foreground,
     borderRadius: 2,
-  },
-  footer: {
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingHorizontal: spacing.sm,
-    paddingTop: spacing.md,
-    gap: spacing.xs,
-  },
-  footerStatus: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.success,
-  },
-  footerText: {
-    color: colors.mutedForeground,
-    fontSize: 13,
-  },
-  footerBrand: {
-    color: colors.mutedForeground,
-    fontSize: 12,
-    fontFamily: monoFont,
   },
 });

@@ -20,6 +20,8 @@ type Props = {
   loading?: boolean;
   hasTVPreferredFocus?: boolean;
   style?: StyleProp<ViewStyle>;
+  /** Lets a parent follow focus, e.g. to preview the selected row. */
+  onFocusChange?: (focused: boolean) => void;
 };
 
 export function FocusButton({
@@ -30,12 +32,19 @@ export function FocusButton({
   loading = false,
   hasTVPreferredFocus,
   style,
+  onFocusChange,
 }: Props) {
   const [focused, setFocused] = useState(false);
   const isDisabled = disabled || loading;
 
-  const onFocus: PressableProps["onFocus"] = () => setFocused(true);
-  const onBlur: PressableProps["onBlur"] = () => setFocused(false);
+  const onFocus: PressableProps["onFocus"] = () => {
+    setFocused(true);
+    onFocusChange?.(true);
+  };
+  const onBlur: PressableProps["onBlur"] = () => {
+    setFocused(false);
+    onFocusChange?.(false);
+  };
 
   return (
     <Pressable

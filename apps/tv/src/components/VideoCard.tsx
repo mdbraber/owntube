@@ -21,9 +21,16 @@ type Props = {
   video: UnifiedVideo;
   onPress: (videoId: string) => void;
   hasTVPreferredFocus?: boolean;
+  /** Lets a parent react to focus, e.g. to scroll the card into view. */
+  onFocusChange?: (focused: boolean) => void;
 };
 
-export function VideoCard({ video, onPress, hasTVPreferredFocus }: Props) {
+export function VideoCard({
+  video,
+  onPress,
+  hasTVPreferredFocus,
+  onFocusChange,
+}: Props) {
   const [focused, setFocused] = useState(false);
   const badge = formatThumbnailBadge(video);
   const views = formatViews(video.viewCount);
@@ -37,8 +44,14 @@ export function VideoCard({ video, onPress, hasTVPreferredFocus }: Props) {
   return (
     <Pressable
       hasTVPreferredFocus={hasTVPreferredFocus}
-      onFocus={() => setFocused(true)}
-      onBlur={() => setFocused(false)}
+      onFocus={() => {
+        setFocused(true);
+        onFocusChange?.(true);
+      }}
+      onBlur={() => {
+        setFocused(false);
+        onFocusChange?.(false);
+      }}
       onPress={() => onPress(video.videoId)}
       style={[styles.card, focused && styles.cardFocused]}
     >

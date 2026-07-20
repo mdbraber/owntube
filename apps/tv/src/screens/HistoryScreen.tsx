@@ -34,6 +34,7 @@ export function HistoryScreen({ nav }: { nav: Nav }) {
           };
         }),
     [],
+    "history.list",
   );
 
   return (

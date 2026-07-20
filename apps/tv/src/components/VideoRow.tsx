@@ -1,4 +1,5 @@
 import type { UnifiedVideo } from "@web/server/services/proxy.types";
+import { useRef } from "react";
 import { FlatList, StyleSheet, Text, View } from "react-native";
 import { VIDEO_CARD_WIDTH, VideoCard } from "@/components/VideoCard";
 import { colors, fontSize, spacing } from "@/theme";
@@ -9,6 +10,8 @@ type Props = {
   onSelect: (videoId: string) => void;
   /** Focus the first card of this row when the content area first gains focus. */
   preferFirstFocus?: boolean;
+  /** Bubbles card focus so a parent can bring the row fully into view. */
+  onCardFocusChange?: (focused: boolean) => void;
 };
 
 /**
@@ -16,11 +19,33 @@ type Props = {
  * FlatList keeps long upstream feeds virtualized, and TV focus naturally scrolls
  * the row as the user moves right past the viewport edge.
  */
-export function VideoRow({ title, videos, onSelect, preferFirstFocus }: Props) {
+export function VideoRow({
+  title,
+  videos,
+  onSelect,
+  preferFirstFocus,
+  onCardFocusChange,
+}: Props) {
+  const listRef = useRef<FlatList<UnifiedVideo>>(null);
+
+  /**
+   * TV focus can move to a card outside the viewport without the list
+   * scrolling, so the card lands off screen. Drive the scroll from focus and
+   * centre the focused card.
+   */
+  const revealIndex = (index: number) => {
+    listRef.current?.scrollToIndex({
+      index,
+      animated: true,
+      viewPosition: 0.5,
+    });
+  };
+
   return (
     <View style={styles.row}>
       {title ? <Text style={styles.heading}>{title}</Text> : null}
       <FlatList
+        ref={listRef}
         horizontal
         data={videos}
         keyExtractor={(video) => video.videoId}
@@ -38,8 +63,13 @@ export function VideoRow({ title, videos, onSelect, preferFirstFocus }: Props) {
             video={item}
             onPress={onSelect}
             hasTVPreferredFocus={preferFirstFocus && index === 0}
+            onFocusChange={(focused) => {
+              if (focused) revealIndex(index);
+              onCardFocusChange?.(focused);
+            }}
           />
         )}
+        onScrollToIndexFailed={() => {}}
         getItemLayout={(_, index) => ({
           length: VIDEO_CARD_WIDTH + spacing.md,
           offset: (VIDEO_CARD_WIDTH + spacing.md) * index,

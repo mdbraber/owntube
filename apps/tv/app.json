@@ -27,11 +27,14 @@
             "usesCleartextTraffic": true
           }
         }
-      ]
+      ],
+      "expo-speech-recognition",
+      "./plugins/with-tv-search"
     ],
     "extra": {
       "owntubeUrl": "http://10.0.2.2:3000"
     },
-    "icon": "./assets/icon.png"
+    "icon": "./assets/icon.png",
+    "scheme": "owntube"
   }
 }
