@@ -1,11 +1,11 @@
 import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { defaultPlaybackQualitySchema } from "@/lib/default-playback-quality";
 import {
   DEFAULT_BOTTOM_NAV_KEYS,
   MAX_BOTTOM_NAV,
   MIN_BOTTOM_NAV,
 } from "@/lib/bottom-nav";
+import { defaultPlaybackQualitySchema } from "@/lib/default-playback-quality";
 import { DEFAULT_HOME_BLOCKS, HOME_BLOCK_TYPES } from "@/lib/home-blocks";
 import {
   DEFAULT_QUICK_ACTIONS,
@@ -102,6 +102,12 @@ export const appSettingsSchema = z.object({
   autoplayNext: z.boolean().default(true),
   /** Default watch-page quality rung (1080p, 720p, muxed 360p, …). */
   defaultPlaybackQuality: defaultPlaybackQualitySchema.default("1080p"),
+  /**
+   * DASH: jump to the single best available quality on entering fullscreen,
+   * then revert to whatever was active (default-capped auto, or a manual
+   * pick) on exit. Off by default — it's an explicit bandwidth-usage opt-in.
+   */
+  fullscreenAutoBestQuality: z.boolean().default(false),
   /**
    * Buffer the next short's video ahead of time so swiping starts it instantly.
    * Costs extra bandwidth (downloads a short you might skip) — off-switch for
@@ -227,6 +233,7 @@ const defaultSettings: AppSettings = {
   autoplayNext: true,
   shortsPreloadNext: true,
   defaultPlaybackQuality: "1080p",
+  fullscreenAutoBestQuality: false,
   blockedRecommendationChannels: [],
   excludeSubscribedFromRecommendations: true,
   personalizedFeedOnly: true,

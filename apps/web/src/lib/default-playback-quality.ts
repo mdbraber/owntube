@@ -105,6 +105,30 @@ export function variantIndexForDefaultQuality(
   return 0;
 }
 
+/**
+ * Plain height ceiling for a default-quality preference — used by DASH's ABR cap
+ * (no `{label,t}` variant list to match against, just a number). `null` means no
+ * cap ("best"). `"360p-muxed"` has no DASH equivalent (no muxed representations),
+ * so it maps to the same 360 ceiling as `"360p"`.
+ */
+export function heightCapForDefaultQuality(
+  preference: DefaultPlaybackQuality = DEFAULT_PLAYBACK_QUALITY,
+): number | null {
+  switch (preference) {
+    case "best":
+      return null;
+    case "1080p":
+      return 1080;
+    case "720p":
+      return 720;
+    case "480p":
+      return 480;
+    case "360p":
+    case "360p-muxed":
+      return 360;
+  }
+}
+
 /** Move the preferred default variant to the front of the list (Piped watch page). */
 export function reorderVariantsForDefaultQuality<
   T extends { label: string; t?: string },

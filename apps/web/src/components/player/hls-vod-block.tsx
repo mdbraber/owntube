@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNativeAdapter } from "@/components/player/player-adapters";
 import { usePlayerCaptions } from "@/components/player/player-captions";
 import { PlayerChrome } from "@/components/player/player-chrome";
@@ -10,15 +10,17 @@ import {
   useShortsNativeAutoplay,
 } from "@/components/player/player-media-hooks";
 import type { CaptionTrack } from "@/components/player/player-payload";
+import type { QualityModel } from "@/components/player/player-quality";
 import type { SponsorBlockChromeProps } from "@/components/player/player-types";
 import { useBackgroundPlayback } from "@/hooks/use-background-playback";
-import type { ScrubPreviewConfig } from "@/hooks/use-scrub-frame-preview";
 import {
   pickDashVideoFamily,
   useDashPlayback,
 } from "@/hooks/use-dash-playback";
 import { useHlsVodPlayback } from "@/hooks/use-hls-vod-playback";
+import type { ScrubPreviewConfig } from "@/hooks/use-scrub-frame-preview";
 import { isIosLikeBrowser } from "@/lib/ios-playback";
+import { getMediaOrigin } from "@/lib/media-origin";
 import {
   getShortsMuted,
   useShortsAudioPersist,
@@ -74,6 +76,8 @@ export function HlsVodBlock({
   restoredVolume,
   restoredMuted,
   onVideoIntrinsics,
+  defaultQualityHeightCap = 1080,
+  fullscreenAutoBestQuality = false,
 }: SponsorBlockChromeProps & {
   src: string;
   poster?: string;
@@ -105,6 +109,10 @@ export function HlsVodBlock({
   restoredVolume?: number;
   restoredMuted?: boolean;
   onVideoIntrinsics?: (width: number, height: number) => void;
+  /** DASH ABR ceiling (both windowed and fullscreen) — null means uncapped. */
+  defaultQualityHeightCap?: number | null;
+  /** Jump to the best DASH quality on entering fullscreen, restore on exit. */
+  fullscreenAutoBestQuality?: boolean;
 }) {
   const shellRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -131,11 +139,21 @@ export function HlsVodBlock({
   const [dashFailedKey, setDashFailedKey] = useState<string | null>(null);
   const dashFailed = dashFailedKey === reactKey;
   useEffect(() => {
+    // `src` is our own synthesized HLS manifest (absolute, on the media
+    // origin — see media-origin.ts) whenever it's this pathname; check the
+    // path rather than a "/hls/" prefix since it's no longer relative.
+    const srcPathname = (() => {
+      try {
+        return new URL(src, window.location.href).pathname;
+      } catch {
+        return "";
+      }
+    })();
     if (
       dashFailed ||
       shortsMode ||
       !videoId ||
-      !src.startsWith("/hls/") ||
+      !srcPathname.startsWith("/hls/") ||
       isIosLikeBrowser()
     ) {
       setDashDecision({ key: reactKey, src: null });
@@ -145,7 +163,7 @@ export function HlsVodBlock({
     setDashDecision({
       key: reactKey,
       src: family
-        ? `/dash/${encodeURIComponent(videoId)}/manifest.mpd?video=${family}`
+        ? `${getMediaOrigin(window.location.origin)}/dash/${encodeURIComponent(videoId)}/manifest.mpd?video=${family}`
         : null,
     });
   }, [src, videoId, reactKey, shortsMode, dashFailed]);
@@ -194,14 +212,47 @@ export function HlsVodBlock({
     emitPlaybackError,
   );
 
-  useDashPlayback(
+  const dashQuality = useDashPlayback(
     videoRef,
     dashSrc ?? "",
     reactKey,
     startAtSeconds,
     shortsShouldPlay || miniShouldAutoplay || autoplay,
     () => setDashFailedKey(reactKey),
+    defaultQualityHeightCap,
+    fullscreenAutoBestQuality,
   );
+  // "Auto" (capped default) is a synthetic item at index 0, followed by
+  // dash.js's own representation list. QualityModel is index-based (menu
+  // position), but useDashPlayback works in representation ids (stable
+  // regardless of dash.js's live, bitrate-filtered array reordering) — this
+  // is the translation layer between the two. No selector at all for the
+  // HLS-only case (AVC caps at 1080p — nothing to select among) or before
+  // the manifest has parsed (empty items).
+  const dashQualityModel: QualityModel = useMemo(() => {
+    if (!dashSrc || dashQuality.items.length === 0) return { kind: "none" };
+    const activeItemIndex = dashQuality.items.findIndex(
+      (it) => it.id === dashQuality.activeId,
+    );
+    return {
+      kind: "progressive",
+      items: [{ label: "Auto" }, ...dashQuality.items],
+      index:
+        dashQuality.mode === "auto"
+          ? 0
+          : activeItemIndex >= 0
+            ? activeItemIndex + 1
+            : 0,
+      setIndex: (i: number) => {
+        if (i === 0) {
+          dashQuality.setQuality(null);
+          return;
+        }
+        const picked = dashQuality.items[i - 1];
+        if (picked) dashQuality.setQuality(picked.id);
+      },
+    };
+  }, [dashSrc, dashQuality]);
 
   const adapter = useNativeAdapter({
     videoRef,
@@ -295,6 +346,12 @@ export function HlsVodBlock({
         muted={shortsMode}
         playsInline
         preload="auto"
+        // Video/segments (dash.js/hls.js fetch these themselves, unaffected
+        // by this attribute) and caption <track>s now live on the media
+        // origin (see media-origin.ts) — cross-origin <track> loading
+        // requires this. No credentials needed (media routes don't check
+        // session), so "anonymous" (no cookies) is correct.
+        crossOrigin="anonymous"
         onError={emitPlaybackError}
         onEnded={onEnded}
         className="absolute inset-0 h-full w-full object-contain"
@@ -317,7 +374,7 @@ export function HlsVodBlock({
         videoId={videoId}
         sponsorSegments={sponsorSegments}
         sponsorBlockPrefs={sponsorBlockPrefs}
-        quality={{ kind: "none" }}
+        quality={dashQualityModel}
         audio={{ kind: "none" }}
         captions={captionModel}
         settingsOpen={settingsOpen}

@@ -1,9 +1,13 @@
 "use client";
 
 import type { MediaPlayerClass, Representation } from "dashjs";
-import { useEffect, useRef } from "react";
-import { installSameOriginMediaFetchGuard } from "@/lib/hls-same-origin";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  getClientAppOrigin,
+  installSameOriginMediaFetchGuard,
+} from "@/lib/hls-same-origin";
 import { isIosLikeBrowser } from "@/lib/ios-playback";
+import { getMediaOrigin } from "@/lib/media-origin";
 
 type IsTypeSupported = { isTypeSupported?(type: string): boolean };
 
@@ -87,6 +91,23 @@ function videoRepresentationPlayable(rep: RepresentationLike): boolean {
  * cross-origin. The fetch guard is a belt-and-suspenders fallback for any
  * stray absolute URL.
  */
+export type DashQualityState = {
+  /**
+   * Video representations, keyed by dash.js's own representation `id` (a
+   * stable string, e.g. the itag) rather than array position — the live
+   * array `getRepresentationsByType` returns is dynamically re-filtered by
+   * the current `maxBitrate` cap (confirmed empirically: capping shrinks AND
+   * re-indexes it), so array positions captured once go stale the moment the
+   * cap changes. IDs stay valid regardless.
+   */
+  items: { id: string; label: string }[];
+  /** id of the representation actually rendering (tracked via qualityChangeRendered, not just the last request). */
+  activeId: string | null;
+  mode: "auto" | "manual";
+  /** `null` reverts to capped auto-ABR; an id pins to that representation (above or below the cap) until the next video. */
+  setQuality: (id: string | null) => void;
+};
+
 export function useDashPlayback(
   videoRef: React.RefObject<HTMLVideoElement | null>,
   src: string,
@@ -94,7 +115,11 @@ export function useDashPlayback(
   startAtSeconds?: number,
   autoPlay = false,
   onFatalError?: () => void,
-): void {
+  /** Ceiling for auto-ABR (both windowed and fullscreen) — `null` means uncapped. Defaults to 1080p, matching defaultPlaybackQuality's own default. */
+  defaultQualityHeightCap: number | null = 1080,
+  /** Jump to the single best representation on entering fullscreen, restoring whatever was active on exit. */
+  fullscreenAutoBest = false,
+): DashQualityState {
   const playerRef = useRef<MediaPlayerClass | null>(null);
   // Held in a ref so a new callback identity (parent re-render) does not tear
   // down and rebuild the dash.js instance mid-playback.
@@ -104,6 +129,21 @@ export function useDashPlayback(
   startAtRef.current = startAtSeconds;
   const autoPlayRef = useRef(autoPlay);
   autoPlayRef.current = autoPlay;
+  const defaultCapRef = useRef(defaultQualityHeightCap);
+  defaultCapRef.current = defaultQualityHeightCap;
+  const fullscreenAutoBestRef = useRef(fullscreenAutoBest);
+  fullscreenAutoBestRef.current = fullscreenAutoBest;
+
+  const [items, setItems] = useState<{ id: string; label: string }[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [mode, setMode] = useState<"auto" | "manual">("auto");
+  // Imperative escape hatch the effect below wires up once the dash.js
+  // instance exists; `setQuality` itself has a stable identity across
+  // re-renders so it's safe for consumers to pass directly as a prop/callback.
+  const setQualityImplRef = useRef<(id: string | null) => void>(() => {});
+  const setQuality = useCallback((id: string | null) => {
+    setQualityImplRef.current(id);
+  }, []);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: streamKey forces a fresh dash.js instance when the player swaps sources without changing the URL.
   useEffect(() => {
@@ -114,7 +154,23 @@ export function useDashPlayback(
     let player: MediaPlayerClass | null = null;
     let portalObserver: ResizeObserver | null = null;
     let onFullscreenChange: (() => void) | null = null;
-    const releaseFetchGuard = installSameOriginMediaFetchGuard();
+    const mediaOrigin = getMediaOrigin(getClientAppOrigin());
+    const releaseFetchGuard = installSameOriginMediaFetchGuard(mediaOrigin);
+
+    // Fresh source: reset the UI-facing quality state; repopulated once the
+    // new manifest parses (streamInitialized).
+    setItems([]);
+    setActiveId(null);
+    setMode("auto");
+    type QualityInternalState =
+      | { mode: "auto" }
+      | { mode: "manual"; id: string };
+    const qualityStateRef: { current: QualityInternalState } = {
+      current: { mode: "auto" },
+    };
+    // Snapshot of whatever was active before a fullscreen-auto-best boost, so
+    // exiting fullscreen restores it exactly (a prior manual pin, not just "auto").
+    let preFullscreenSnapshot: QualityInternalState | null = null;
 
     void (async () => {
       const mod = await import("dashjs");
@@ -166,9 +222,15 @@ export function useDashPlayback(
             // while that burst saturates the downlink every small fetch a
             // subsequent seek needs queues behind it in the AP/link buffers.
             // 30s (≈80MB burst, ~9s of saturated Wi-Fi) made rapid re-seeks
-            // stall for seconds; 12s keeps ~4× real-time headroom against
+            // stall for seconds; 12s kept ~4× real-time headroom against
             // stalls while the burst clears in ~3s.
-            bufferTimeAtTopQuality: 12,
+            // EXPERIMENT (see chat): 20s — a smaller step up than the
+            // already-rejected 30s, trading some of that rapid-re-seek
+            // headroom for a deeper "already buffered, seeks locally" window
+            // during normal forward playback. Watch specifically for stalls
+            // on RAPID back-to-back seeks (scrub-heavy use), which is the
+            // exact case 12s was originally chosen to protect.
+            bufferTimeAtTopQuality: 20,
             fastSwitchEnabled: true,
           },
           capabilities: {
@@ -197,40 +259,39 @@ export function useDashPlayback(
         });
       };
 
+      // The FULL video ladder, captured once at streamInitialized while the
+      // opening cap is still generous (INITIAL_MAX_KBPS). Empirically,
+      // `getRepresentationsByType` is NOT a static manifest snapshot — it's
+      // dynamically re-filtered (and re-indexed!) by the current maxBitrate
+      // cap. Recomputing "what's the best available rung" against that live,
+      // possibly-already-shrunk array would only ever see what a PREVIOUS cap
+      // allowed, unable to discover a higher rung to promote back to — so all
+      // "what representations exist" reasoning below uses this static cache
+      // instead; only the actual switch call touches the live, cap-filtered
+      // array (and only after lifting the cap so the target is present in it).
+      let allVideoReps: Representation[] = [];
       // Don't decode more pixels than the player shows: LAN throughput always
       // says "top rung", but 4K VP9 decode freezes the main thread for seconds
       // (observed 13s seeked delays, and multi-second scrubs on 36Mbps videos)
       // and each rung step roughly doubles the buffer-refill burst. Cap ABR at
-      // the cheapest rung whose height covers the portal.
-      //
-      // Windowed playback is additionally capped at 1080p: on a Retina display
-      // the devicePixelRatio factor alone demands ~1460px for a normal-sized
-      // player, which selects 2160p — a rung this machine cannot decode
-      // smoothly, for detail nobody can see in a windowed player. Fullscreen
-      // (tracked by the ResizeObserver + fullscreenchange below) lifts it, so
-      // a 4K display still gets the full ladder where it counts.
-      const WINDOWED_MAX_HEIGHT = 1080;
+      // the cheapest rung whose height covers the portal, ALSO bounded by
+      // defaultCapRef (the user's default-quality setting, e.g. 1080p) — in
+      // both windowed and fullscreen. Fullscreen no longer auto-lifts this on
+      // its own (it used to); a display that wants higher than the default
+      // needs either a manual pick or the fullscreen-auto-best setting, both
+      // of which bypass this function entirely (see qualityStateRef).
       const portalCapKbps = (): number => {
         try {
-          const reps = player?.getRepresentationsByType("video") ?? [];
           const rect = video.getBoundingClientRect();
-          const fullscreen = Boolean(
-            document.fullscreenElement ??
-              (
-                video as HTMLVideoElement & {
-                  webkitDisplayingFullscreen?: boolean;
-                }
-              ).webkitDisplayingFullscreen,
-          );
           const cssPortalH = Math.max(rect.height, (rect.width * 9) / 16);
           const wanted = cssPortalH * (window.devicePixelRatio || 1);
-          const portalH = fullscreen
-            ? wanted
-            : Math.min(wanted, WINDOWED_MAX_HEIGHT);
+          const heightCeiling =
+            defaultCapRef.current ?? Number.POSITIVE_INFINITY;
+          const portalH = Math.min(wanted, heightCeiling);
           if (!(portalH > 0)) return -1;
           let cap = -1;
           let capHeight = Number.POSITIVE_INFINITY;
-          for (const r of reps) {
+          for (const r of allVideoReps) {
             if (!r.height || !r.bitrateInKbit) continue;
             if (r.height >= portalH && r.height < capHeight) {
               capHeight = r.height;
@@ -242,20 +303,99 @@ export function useDashPlayback(
           return -1;
         }
       };
+      // Only auto-mode should be touched by resize/fullscreen/streamInit —
+      // a manual pin (direct pick or a fullscreen-auto-best boost) must not
+      // get silently overridden by these.
       const applyPortalCap = () => {
+        if (qualityStateRef.current.mode !== "auto") return;
         player?.updateSettings({
           streaming: { abr: { maxBitrate: { video: portalCapKbps() } } },
         });
       };
-      player.on("streamInitialized", applyPortalCap);
+      const bestRepresentationId = (): string | null => {
+        let best: Representation | null = null;
+        for (const r of allVideoReps) {
+          if (!best || r.bitrateInKbit > best.bitrateInKbit) best = r;
+        }
+        return best?.id ?? null;
+      };
+      /** Live index of a representation id — only meaningful right after
+       *  lifting the cap, since the live array is filtered by whatever
+       *  maxBitrate is currently set. */
+      const liveIndexForId = (id: string): number => {
+        const liveReps = player?.getRepresentationsByType("video") ?? [];
+        return liveReps.findIndex((r) => r.id === id);
+      };
+      /** The single place that actually changes what's rendering — used by
+       *  the public setQuality(), and internally by fullscreen-auto-best. */
+      const applyQuality = (id: string | null) => {
+        if (!player) return;
+        if (id === null) {
+          qualityStateRef.current = { mode: "auto" };
+          setAutoSwitch(true);
+          applyPortalCap();
+        } else {
+          qualityStateRef.current = { mode: "manual", id };
+          setAutoSwitch(false);
+          // Lift the cap FIRST — the target representation only exists in
+          // the live array once nothing is filtering it out.
+          player.updateSettings({
+            streaming: { abr: { maxBitrate: { video: -1 } } },
+          });
+          const liveIndex = liveIndexForId(id);
+          if (liveIndex >= 0) {
+            player.setRepresentationForTypeByIndex("video", liveIndex, true);
+          }
+        }
+        setMode(qualityStateRef.current.mode);
+      };
+      setQualityImplRef.current = applyQuality;
+      player.on("streamInitialized", () => {
+        allVideoReps = player?.getRepresentationsByType("video") ?? [];
+        setItems(
+          allVideoReps.map((r) => ({
+            id: r.id,
+            label: r.height ? `${r.height}p` : "?",
+          })),
+        );
+        applyPortalCap();
+      });
+      player.on("qualityChangeRendered", (e) => {
+        if (e.mediaType !== "video" || !e.newRepresentation) return;
+        setActiveId(e.newRepresentation.id);
+      });
       if (typeof ResizeObserver !== "undefined") {
         portalObserver = new ResizeObserver(applyPortalCap);
         portalObserver.observe(video);
       }
       // Entering/leaving fullscreen may not resize the element (it can already
-      // fill its shell), so the observer alone would miss the cap change.
-      document.addEventListener("fullscreenchange", applyPortalCap);
-      onFullscreenChange = applyPortalCap;
+      // fill its shell), so the observer alone would miss the cap change. Also
+      // drives the fullscreen-auto-best boost/restore.
+      const handleFullscreenChange = () => {
+        const fullscreen = Boolean(
+          document.fullscreenElement ??
+            (
+              video as HTMLVideoElement & {
+                webkitDisplayingFullscreen?: boolean;
+              }
+            ).webkitDisplayingFullscreen,
+        );
+        if (fullscreen && fullscreenAutoBestRef.current) {
+          preFullscreenSnapshot = qualityStateRef.current;
+          const best = bestRepresentationId();
+          if (best !== null) applyQuality(best);
+          return;
+        }
+        if (!fullscreen && preFullscreenSnapshot) {
+          const snapshot = preFullscreenSnapshot;
+          preFullscreenSnapshot = null;
+          applyQuality(snapshot.mode === "manual" ? snapshot.id : null);
+          return;
+        }
+        applyPortalCap();
+      };
+      document.addEventListener("fullscreenchange", handleFullscreenChange);
+      onFullscreenChange = handleFullscreenChange;
       let seekActive = false;
       let jumpTimer: number | null = null;
       player.on("playbackSeeking", () => {
@@ -290,36 +430,58 @@ export function useDashPlayback(
           jumpTimer = null;
           seekActive = false;
           try {
-            const reps = player?.getRepresentationsByType("video") ?? [];
-            const throughput = player?.getAverageThroughput("video") ?? 0;
-            // Mirror the portal cap for this imperative jump — it bypasses
-            // ABR, so without it the jump lands on 2160p in a small player
-            // and the capped autoSwitch immediately re-switches away.
-            const capKbps = portalCapKbps();
-            let jump = -1;
-            reps.forEach((r, i) => {
-              if (capKbps > 0 && r.bitrateInKbit > capKbps) return;
-              if (
-                r.bitrateInKbit < throughput * POST_SEEK_THROUGHPUT_SAFETY &&
-                (jump < 0 || r.bitrateInKbit > (reps[jump]?.bitrateInKbit ?? 0))
-              ) {
-                jump = i;
+            if (qualityStateRef.current.mode === "manual") {
+              // A manual pick (or a fullscreen-auto-best boost) must survive
+              // the seek's cheap-rung softening — jump back to exactly that
+              // representation instead of the throughput-based auto jump.
+              // Re-resolve the live index by id rather than trusting a index
+              // captured earlier — maxBitrate dynamically re-filters (and
+              // re-indexes) the array dash.js exposes.
+              const liveIndex = liveIndexForId(qualityStateRef.current.id);
+              if (liveIndex >= 0) {
+                player?.setRepresentationForTypeByIndex(
+                  "video",
+                  liveIndex,
+                  false,
+                );
               }
-            });
-            if (jump >= 0) {
-              player?.setRepresentationForTypeByIndex("video", jump, false);
+            } else {
+              const reps = player?.getRepresentationsByType("video") ?? [];
+              const throughput = player?.getAverageThroughput("video") ?? 0;
+              // Mirror the portal cap for this imperative jump — it bypasses
+              // ABR, so without it the jump lands on 2160p in a small player
+              // and the capped autoSwitch immediately re-switches away.
+              const capKbps = portalCapKbps();
+              let jump = -1;
+              reps.forEach((r, i) => {
+                if (capKbps > 0 && r.bitrateInKbit > capKbps) return;
+                if (
+                  r.bitrateInKbit < throughput * POST_SEEK_THROUGHPUT_SAFETY &&
+                  (jump < 0 ||
+                    r.bitrateInKbit > (reps[jump]?.bitrateInKbit ?? 0))
+                ) {
+                  jump = i;
+                }
+              });
+              if (jump >= 0) {
+                player?.setRepresentationForTypeByIndex("video", jump, false);
+              }
             }
           } catch {
             /* stream torn down mid-debounce */
           }
-          setAutoSwitch(true);
+          // Only auto mode should have dash.js's own ABR re-enabled — a
+          // manual/fullscreen-boost pin must stay pinned through the seek.
+          if (qualityStateRef.current.mode === "auto") setAutoSwitch(true);
         }, 200);
       });
 
       const start = startAtRef.current;
-      // Absolute URL: dash.js subsystems (e.g. CmcdController) construct
-      // URL objects from the manifest URL and throw on app-relative paths.
-      const manifestUrl = new URL(src, window.location.href).toString();
+      // Absolute URL: dash.js subsystems (e.g. CmcdController) construct URL
+      // objects from the manifest URL and throw on app-relative paths. Base
+      // against the media origin (not window.location.href) so a
+      // still-relative `src` resolves there, not the page's own origin.
+      const manifestUrl = new URL(src, mediaOrigin).toString();
       player.initialize(
         video,
         manifestUrl,
@@ -337,6 +499,7 @@ export function useDashPlayback(
       if (onFullscreenChange) {
         document.removeEventListener("fullscreenchange", onFullscreenChange);
       }
+      setQualityImplRef.current = () => {};
       releaseFetchGuard();
       try {
         player?.destroy();
@@ -351,6 +514,8 @@ export function useDashPlayback(
       }
     };
   }, [videoRef, src, streamKey]);
+
+  return { items, activeId, mode, setQuality };
 }
 
 /**

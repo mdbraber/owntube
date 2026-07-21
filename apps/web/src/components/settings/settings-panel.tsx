@@ -195,6 +195,9 @@ export function SettingsPanel({
   );
   const [defaultPlaybackQuality, setDefaultPlaybackQuality] =
     useState<DefaultPlaybackQuality>(initial.defaultPlaybackQuality ?? "1080p");
+  const [fullscreenAutoBestQuality, setFullscreenAutoBestQuality] = useState(
+    initial.fullscreenAutoBestQuality ?? false,
+  );
   const [enableSwipeGestures, setEnableSwipeGestures] = useState(
     initial.enableSwipeGestures ?? true,
   );
@@ -249,6 +252,10 @@ export function SettingsPanel({
   useEffect(() => {
     setDefaultCinemaMode(initial.defaultCinemaMode ?? false);
   }, [initial.defaultCinemaMode]);
+
+  useEffect(() => {
+    setFullscreenAutoBestQuality(initial.fullscreenAutoBestQuality ?? false);
+  }, [initial.fullscreenAutoBestQuality]);
 
   useEffect(() => {
     setEnableMiniPlayer(initial.enableMiniPlayer ?? true);
@@ -413,6 +420,7 @@ export function SettingsPanel({
       autoplayOnWatch,
       shortsPreloadNext,
       defaultPlaybackQuality,
+      fullscreenAutoBestQuality,
       sponsorBlockEnabled,
       sponsorBlockAutoSkip,
       sponsorBlockCategories,
@@ -764,6 +772,17 @@ export function SettingsPanel({
               sensitive at 2× speed).
             </p>
           </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={fullscreenAutoBestQuality}
+              onChange={(e) =>
+                setFullscreenAutoBestQuality(e.currentTarget.checked)
+              }
+            />
+            Switch to the best available quality in fullscreen (uses more data;
+            reverts on exit)
+          </label>
         </div>
       </section>
 

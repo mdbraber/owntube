@@ -47,6 +47,7 @@ const settingsPatchSchema = z.object({
   autoplayNext: z.boolean().optional(),
   shortsPreloadNext: z.boolean().optional(),
   defaultPlaybackQuality: defaultPlaybackQualitySchema.optional(),
+  fullscreenAutoBestQuality: z.boolean().optional(),
   sponsorBlockEnabled: z.boolean().optional(),
   sponsorBlockAutoSkip: z.boolean().optional(),
   sponsorBlockCategories: z.array(sponsorBlockCategorySchema).optional(),

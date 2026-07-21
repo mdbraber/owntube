@@ -1,7 +1,6 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { videoIdFromWatchHref } from "@/lib/yt-routes";
 import {
   type Dispatch,
   type SetStateAction,
@@ -46,6 +45,7 @@ import { useSponsorBlockSegments } from "@/hooks/use-sponsorblock-segments";
 import {
   DEFAULT_PLAYBACK_QUALITY,
   type DefaultPlaybackQuality,
+  heightCapForDefaultQuality,
   readDefaultPlaybackQuality,
 } from "@/lib/default-playback-quality";
 import { nextPlaybackVariantIndex } from "@/lib/playback-variant-fallback";
@@ -56,6 +56,7 @@ import {
 import type { SponsorBlockPrefs } from "@/lib/sponsorblock-prefs";
 import { cn } from "@/lib/utils";
 import type { VideoChapter } from "@/lib/video-chapters";
+import { videoIdFromWatchHref } from "@/lib/yt-routes";
 import type { VideoStoryboard } from "@/server/services/proxy.types";
 import { trpc } from "@/trpc/react";
 
@@ -89,6 +90,8 @@ export type VideoPlayerProps = {
   /** Fired when the &lt;video&gt; element exposes intrinsic dimensions. */
   onVideoIntrinsics?: (width: number, height: number) => void;
   defaultPlaybackQuality?: DefaultPlaybackQuality;
+  /** DASH: jump to the best quality on entering fullscreen, restore on exit. */
+  fullscreenAutoBestQuality?: boolean;
   /** Resume quality rung when restoring from mini player state. */
   initialQualityIndex?: number;
   /** Volume / mute captured at handoff from watch (optional). */
@@ -139,6 +142,7 @@ export function VideoPlayer({
   onEnded: onEndedExternal,
   onVideoIntrinsics,
   defaultPlaybackQuality: defaultPlaybackQualityProp,
+  fullscreenAutoBestQuality = false,
   initialQualityIndex: initialQualityIndexProp,
   restoredVolume,
   restoredMuted,
@@ -226,6 +230,11 @@ export function VideoPlayer({
     (typeof window === "undefined"
       ? DEFAULT_PLAYBACK_QUALITY
       : readDefaultPlaybackQuality());
+  // DASH ABR ceiling — same source of truth as the progressive start rung
+  // above, translated to a plain height since DASH has no {label,t} variants.
+  const dashQualityHeightCap = heightCapForDefaultQuality(
+    resolvedDefaultQuality,
+  );
   // Shorts start on the lowest muxed rung (single-file, instant start) no matter
   // the user's default, then bump up after a few seconds of watching (see the
   // upgrade effect below). Skim past a short and it never pays for the upgrade.
@@ -623,6 +632,8 @@ export function VideoPlayer({
               restoredVolume={restoredVolume}
               restoredMuted={restoredMuted}
               onVideoIntrinsics={onVideoIntrinsics}
+              defaultQualityHeightCap={dashQualityHeightCap}
+              fullscreenAutoBestQuality={fullscreenAutoBestQuality}
             />
           )
         ) : null}
