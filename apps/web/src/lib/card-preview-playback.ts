@@ -187,10 +187,12 @@ export function cardPreviewPlaybackFromDetail(
 
   const raw = buildWatchPlayback(detail);
   if (raw.kind === "hls") {
-    // The synthesized `/hls/<id>/master.m3u8` is app-relative — use as is.
-    const src = raw.url.startsWith("/")
-      ? raw.url
-      : toProxiedOrDirectPlayback(raw.url, appOrigin, requestHost, detail);
+    const src = toProxiedOrDirectPlayback(
+      raw.url,
+      appOrigin,
+      requestHost,
+      detail,
+    );
     return { kind: "hls", src };
   }
   if (raw.kind === "progressive") {

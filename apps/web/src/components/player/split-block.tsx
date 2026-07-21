@@ -482,6 +482,9 @@ export function SplitBlock({
         muted
         preload="auto"
         autoPlay={shortsMode || autoplay}
+        // src + caption <track>s are on the media origin (media-origin.ts);
+        // cross-origin <track> loading requires this. No credentials needed.
+        crossOrigin="anonymous"
         onError={emitPlaybackError}
         onEnded={onEnded}
         className={cn("absolute inset-0 h-full w-full", "object-contain")}

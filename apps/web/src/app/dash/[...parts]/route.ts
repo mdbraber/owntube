@@ -1,3 +1,4 @@
+import { mediaCorsPreflight, withMediaCors } from "@/lib/media-cors";
 import { getDb } from "@/server/db/client";
 import {
   DASH_VIDEO_FAMILIES,
@@ -51,6 +52,17 @@ const VIDEO_ID_RE = /^[\w-]{6,20}$/;
  * Representations resolve to the same-origin `/invidious/videoplayback` proxy.
  */
 export async function GET(
+  request: Request,
+  context: { params: Promise<{ parts?: string[] }> },
+): Promise<Response> {
+  return withMediaCors(await handleGET(request, context));
+}
+
+export function OPTIONS(): Response {
+  return mediaCorsPreflight();
+}
+
+async function handleGET(
   request: Request,
   context: { params: Promise<{ parts?: string[] }> },
 ): Promise<Response> {

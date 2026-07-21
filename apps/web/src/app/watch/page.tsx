@@ -5,6 +5,7 @@ import { unstable_noStore as noStore } from "next/cache";
 import { headers } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import superjson from "superjson";
 import { ChannelSubscribeButton } from "@/components/channel/channel-subscribe-button";
 import { InteractionButtons } from "@/components/player/interaction-buttons";
 import { WatchChannelTags } from "@/components/player/watch-channel-tags";
@@ -20,13 +21,13 @@ import { WatchPageGrid } from "@/components/watch/watch-page-grid";
 import { WatchPlayerMount } from "@/components/watch/watch-player-mount";
 import { WatchUpcomingLive } from "@/components/watch/watch-upcoming-live";
 import { stripRestrictedListVideos } from "@/lib/feed-exclude-restricted";
-import { watchHref } from "@/lib/yt-routes";
 import {
   getAppOriginFromRequestHeaders,
   toProxiedOrDirectPlayback,
   toProxiedOrDirectPoster,
   toProxiedOrDirectVariants,
 } from "@/lib/invidious-proxy";
+import { getMediaOrigin } from "@/lib/media-origin";
 import { buildWatchPlayback } from "@/lib/pick-playback";
 import { scrubPreviewStreamFromDetail } from "@/lib/scrub-preview-stream";
 import { sponsorBlockPrefsFromAppSettings } from "@/lib/sponsorblock-prefs";
@@ -37,11 +38,9 @@ import {
   formatSubscribersLabel,
   formatViews,
 } from "@/lib/video-display";
-import superjson from "superjson";
+import { watchHref } from "@/lib/yt-routes";
 import { auth } from "@/server/auth";
 import { getDb } from "@/server/db/client";
-import { createTRPCContext } from "@/server/trpc/context";
-import { appRouter } from "@/server/trpc/root";
 import { UpstreamAgeRestrictedError } from "@/server/errors/upstream-age-restricted";
 import { UpstreamLiveUpcomingError } from "@/server/errors/upstream-live-upcoming";
 import {
@@ -65,6 +64,8 @@ import {
   getUserSettings,
   normalizeTrendingRegionStored,
 } from "@/server/settings/profile";
+import { createTRPCContext } from "@/server/trpc/context";
+import { appRouter } from "@/server/trpc/root";
 
 type WatchPageProps = {
   searchParams: Promise<{
@@ -139,6 +140,9 @@ export default async function WatchPage({ searchParams }: WatchPageProps) {
   const requestHost =
     h.get("x-forwarded-host")?.split(",")[0]?.trim() ?? h.get("host") ?? "";
   const appOrigin = getAppOriginFromRequestHeaders(h);
+  // Video/manifest/caption URLs are built against this instead of appOrigin —
+  // see media-origin.ts for why (Safari HTTP/2 connection-loss bug).
+  const mediaOrigin = getMediaOrigin(appOrigin);
   const isAuthed = Boolean(session?.user?.id);
   const userSettings =
     Number.isFinite(userId) && userId > 0 ? getUserSettings(db, userId) : null;
@@ -264,7 +268,7 @@ export default async function WatchPage({ searchParams }: WatchPageProps) {
             mode: "hls" as const,
             src: toProxiedOrDirectPlayback(
               rawPlayback.url,
-              appOrigin,
+              mediaOrigin,
               requestHost,
               detail,
             ),
@@ -274,7 +278,7 @@ export default async function WatchPage({ searchParams }: WatchPageProps) {
               mode: "progressive" as const,
               variants: toProxiedOrDirectVariants(
                 rawPlayback.variants,
-                appOrigin,
+                mediaOrigin,
                 requestHost,
                 detail,
               ),
@@ -287,7 +291,7 @@ export default async function WatchPage({ searchParams }: WatchPageProps) {
     ? detail.captions.map((c) => ({
         label: c.label,
         languageCode: c.languageCode,
-        src: `/captions/${encodeURIComponent(detail.videoId)}?label=${encodeURIComponent(
+        src: `${mediaOrigin}/captions/${encodeURIComponent(detail.videoId)}?label=${encodeURIComponent(
           c.label,
         )}`,
       }))
@@ -296,7 +300,7 @@ export default async function WatchPage({ searchParams }: WatchPageProps) {
     detail &&
     toProxiedOrDirectPoster(
       detail.thumbnailUrl,
-      appOrigin,
+      mediaOrigin,
       requestHost,
       detail,
     );
@@ -315,7 +319,7 @@ export default async function WatchPage({ searchParams }: WatchPageProps) {
   );
   const scrubPreviewStreamSrc =
     detail && !isLive
-      ? (scrubPreviewStreamFromDetail(detail, appOrigin, requestHost) ??
+      ? (scrubPreviewStreamFromDetail(detail, mediaOrigin, requestHost) ??
         undefined)
       : undefined;
   const pageTitle =
@@ -343,248 +347,257 @@ export default async function WatchPage({ searchParams }: WatchPageProps) {
 
   return (
     <HydrationBoundary state={commentsHelpers.dehydrate()}>
-    <WatchCinemaProvider
-      initialCinemaMode={Boolean(userSettings?.defaultCinemaMode)}
-    >
-      <WatchPageGrid
-        primary={
-          <>
-            {pipedQualityLimited ? (
-              <p className="mb-3 rounded-[var(--radius-card)] border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-4 py-3 text-sm text-[hsl(var(--muted-foreground))]">
-                This video is only available in 360p from your Piped instance
-                (no HD streams in the API response). Enable{" "}
-                <code className="ot-mono-data text-xs">INVIDIOUS_BASE_URL</code>{" "}
-                as a fallback in Settings or fix your Piped extractor so{" "}
-                <code className="ot-mono-data text-xs">audioStreams</code> and
-                HD <code className="ot-mono-data text-xs">videoStreams</code>{" "}
-                are returned.
-              </p>
-            ) : null}
-            {isUpcoming ? (
-              <WatchUpcomingLive
-                title={pageTitle}
-                message={upcomingMessage}
-                premiereTimestamp={upcomingLive?.premiereTimestamp}
-                publishedText={detail?.publishedText}
-              />
-            ) : ageRestricted ? (
-              <WatchAgeRestricted
-                title={pageTitle}
-                message={ageRestricted.message}
-              />
-            ) : videoPayload && detail ? (
-              <WatchPlayerMount
-                key={detail.videoId}
-                isAuthed={isAuthed}
-                videoId={detail.videoId}
-                payload={videoPayload}
-                captions={videoCaptions}
-                title={detail.title}
-                poster={poster ?? undefined}
-                chapters={chapters}
-                startAtSeconds={effectiveStartAtSeconds}
-                isLive={isLive}
-                playbackSourceUsed={
-                  detail.sourceUsed === "cache" ? undefined : detail.sourceUsed
-                }
-                defaultPlaybackQuality={
-                  userSettings?.defaultPlaybackQuality ?? "1080p"
-                }
-                autoplayOnWatch={
-                  (userSettings?.autoplayOnWatch ?? true) && !videoWatched
-                }
-                autoplayNextDefault={userSettings?.autoplayNext}
-                sponsorBlockPrefs={
-                  userSettings && !isLive
-                    ? sponsorBlockPrefsFromAppSettings(userSettings)
-                    : undefined
-                }
-                durationSeconds={detail.durationSeconds}
-                storyboard={isLive ? undefined : detail.storyboard}
-                scrubPreviewStreamSrc={scrubPreviewStreamSrc}
-              />
-            ) : (
-              <div className="rounded-xl border bg-[hsl(var(--muted))] p-6 text-sm text-[hsl(var(--muted-foreground))]">
-                {onlyDashOrUnsupported ? (
-                  <span>
-                    DASH/MPD is not supported by this player (Invidious only
-                    returned an adaptive MPD and no HLS or combined MP4). Try
-                    another instance, enable or fix HLS on your Invidious, or
-                    check that format streams are not proxy-blocked.
-                  </span>
-                ) : (
-                  "No playable stream is available for this video."
-                )}
-              </div>
-            )}
-
-            <div className="space-y-3">
-              <div className="space-y-1">
-                <h1 className="ot-video-card-title m-0 text-2xl font-extrabold leading-8 tracking-tight text-[hsl(var(--foreground))] sm:text-3xl sm:leading-9">
-                  {pageTitle}
-                </h1>
-                <p className="m-0 flex flex-wrap items-center gap-2 text-sm text-[hsl(var(--muted-foreground))]">
-                  {isLive ? (
-                    <span className="rounded-md bg-[hsl(var(--primary))] px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-white">
-                      LIVE
-                    </span>
-                  ) : null}
-                  <span>
-                    {viewsLabel ?? null}
-                    {viewsLabel && publishedLabel ? " · " : null}
-                    {publishedLabel ?? null}
-                  </span>
+      <WatchCinemaProvider
+        initialCinemaMode={Boolean(userSettings?.defaultCinemaMode)}
+      >
+        <WatchPageGrid
+          primary={
+            <>
+              {pipedQualityLimited ? (
+                <p className="mb-3 rounded-[var(--radius-card)] border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-4 py-3 text-sm text-[hsl(var(--muted-foreground))]">
+                  This video is only available in 360p from your Piped instance
+                  (no HD streams in the API response). Enable{" "}
+                  <code className="ot-mono-data text-xs">
+                    INVIDIOUS_BASE_URL
+                  </code>{" "}
+                  as a fallback in Settings or fix your Piped extractor so{" "}
+                  <code className="ot-mono-data text-xs">audioStreams</code> and
+                  HD <code className="ot-mono-data text-xs">videoStreams</code>{" "}
+                  are returned.
                 </p>
-              </div>
-              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-[hsl(var(--border))] pb-4">
-                <div className="flex min-w-0 flex-1 items-center gap-3">
-                  {detail?.channelId ? (
-                    <Link
-                      href={`/channel/${encodeURIComponent(detail.channelId)}`}
-                    >
-                      <ChannelAvatarCircle
-                        imageUrl={detail.channelAvatarUrl}
-                        label={channelLabel}
-                        size="md"
-                      />
-                    </Link>
+              ) : null}
+              {isUpcoming ? (
+                <WatchUpcomingLive
+                  title={pageTitle}
+                  message={upcomingMessage}
+                  premiereTimestamp={upcomingLive?.premiereTimestamp}
+                  publishedText={detail?.publishedText}
+                />
+              ) : ageRestricted ? (
+                <WatchAgeRestricted
+                  title={pageTitle}
+                  message={ageRestricted.message}
+                />
+              ) : videoPayload && detail ? (
+                <WatchPlayerMount
+                  key={detail.videoId}
+                  isAuthed={isAuthed}
+                  videoId={detail.videoId}
+                  payload={videoPayload}
+                  captions={videoCaptions}
+                  title={detail.title}
+                  poster={poster ?? undefined}
+                  chapters={chapters}
+                  startAtSeconds={effectiveStartAtSeconds}
+                  isLive={isLive}
+                  playbackSourceUsed={
+                    detail.sourceUsed === "cache"
+                      ? undefined
+                      : detail.sourceUsed
+                  }
+                  defaultPlaybackQuality={
+                    userSettings?.defaultPlaybackQuality ?? "1080p"
+                  }
+                  fullscreenAutoBestQuality={
+                    userSettings?.fullscreenAutoBestQuality ?? false
+                  }
+                  autoplayOnWatch={
+                    (userSettings?.autoplayOnWatch ?? true) && !videoWatched
+                  }
+                  autoplayNextDefault={userSettings?.autoplayNext}
+                  sponsorBlockPrefs={
+                    userSettings && !isLive
+                      ? sponsorBlockPrefsFromAppSettings(userSettings)
+                      : undefined
+                  }
+                  durationSeconds={detail.durationSeconds}
+                  storyboard={isLive ? undefined : detail.storyboard}
+                  scrubPreviewStreamSrc={scrubPreviewStreamSrc}
+                />
+              ) : (
+                <div className="rounded-xl border bg-[hsl(var(--muted))] p-6 text-sm text-[hsl(var(--muted-foreground))]">
+                  {onlyDashOrUnsupported ? (
+                    <span>
+                      DASH/MPD is not supported by this player (Invidious only
+                      returned an adaptive MPD and no HLS or combined MP4). Try
+                      another instance, enable or fix HLS on your Invidious, or
+                      check that format streams are not proxy-blocked.
+                    </span>
                   ) : (
-                    <ChannelAvatarCircle
-                      imageUrl={detail?.channelAvatarUrl}
-                      label={channelLabel}
-                      size="md"
-                    />
+                    "No playable stream is available for this video."
                   )}
-                  <div className="min-w-0">
+                </div>
+              )}
+
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <h1 className="ot-video-card-title m-0 text-2xl font-extrabold leading-8 tracking-tight text-[hsl(var(--foreground))] sm:text-3xl sm:leading-9">
+                    {pageTitle}
+                  </h1>
+                  <p className="m-0 flex flex-wrap items-center gap-2 text-sm text-[hsl(var(--muted-foreground))]">
+                    {isLive ? (
+                      <span className="rounded-md bg-[hsl(var(--primary))] px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-white">
+                        LIVE
+                      </span>
+                    ) : null}
+                    <span>
+                      {viewsLabel ?? null}
+                      {viewsLabel && publishedLabel ? " · " : null}
+                      {publishedLabel ?? null}
+                    </span>
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-[hsl(var(--border))] pb-4">
+                  <div className="flex min-w-0 flex-1 items-center gap-3">
                     {detail?.channelId ? (
                       <Link
                         href={`/channel/${encodeURIComponent(detail.channelId)}`}
-                        className="line-clamp-1 text-sm font-semibold text-[hsl(var(--foreground))] hover:underline"
                       >
-                        {channelLabel}
+                        <ChannelAvatarCircle
+                          imageUrl={detail.channelAvatarUrl}
+                          label={channelLabel}
+                          size="md"
+                        />
                       </Link>
                     ) : (
-                      <p className="line-clamp-1 text-sm font-semibold text-[hsl(var(--foreground))]">
-                        {channelLabel}
-                      </p>
+                      <ChannelAvatarCircle
+                        imageUrl={detail?.channelAvatarUrl}
+                        label={channelLabel}
+                        size="md"
+                      />
                     )}
-                    <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                      {subscribersLabel ?? "Channel"}
-                    </p>
+                    <div className="min-w-0">
+                      {detail?.channelId ? (
+                        <Link
+                          href={`/channel/${encodeURIComponent(detail.channelId)}`}
+                          className="line-clamp-1 text-sm font-semibold text-[hsl(var(--foreground))] hover:underline"
+                        >
+                          {channelLabel}
+                        </Link>
+                      ) : (
+                        <p className="line-clamp-1 text-sm font-semibold text-[hsl(var(--foreground))]">
+                          {channelLabel}
+                        </p>
+                      )}
+                      <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                        {subscribersLabel ?? "Channel"}
+                      </p>
+                      {detail?.channelId ? (
+                        <div className="mt-1">
+                          <WatchChannelTags
+                            channelId={detail.channelId}
+                            isAuthenticated={isAuthed}
+                          />
+                        </div>
+                      ) : null}
+                    </div>
                     {detail?.channelId ? (
-                      <div className="mt-1">
-                        <WatchChannelTags
+                      <div className="ml-auto shrink-0">
+                        <ChannelSubscribeButton
                           channelId={detail.channelId}
-                          isAuthenticated={isAuthed}
+                          isAuthed={isAuthed}
+                          hideUnsubscribeOnMobile
                         />
                       </div>
                     ) : null}
                   </div>
-                  {detail?.channelId ? (
-                    <div className="ml-auto shrink-0">
-                      <ChannelSubscribeButton
-                        channelId={detail.channelId}
-                        isAuthed={isAuthed}
-                        hideUnsubscribeOnMobile
-                      />
-                    </div>
+                  {detail ? (
+                    <InteractionButtons
+                      videoId={detail.videoId}
+                      channelId={detail.channelId}
+                      channelName={detail.channelName ?? undefined}
+                      title={detail.title}
+                      thumbnailUrl={poster ?? undefined}
+                      isAuthenticated={isAuthed}
+                    />
                   ) : null}
                 </div>
-                {detail ? (
-                  <InteractionButtons
-                    videoId={detail.videoId}
-                    channelId={detail.channelId}
-                    channelName={detail.channelName ?? undefined}
-                    title={detail.title}
-                    thumbnailUrl={poster ?? undefined}
-                    isAuthenticated={isAuthed}
-                  />
+                {detail?.warning ? (
+                  <p className="text-sm text-amber-600">{detail.warning}</p>
                 ) : null}
               </div>
-              {detail?.warning ? (
-                <p className="text-sm text-amber-600">{detail.warning}</p>
-              ) : null}
-            </div>
-            {isAuthed && detail && !isUpcoming ? (
-              <WatchTracker
-                videoId={detail.videoId}
-                channelId={detail.channelId}
-                videoTitle={detail.title}
-                channelName={detail.channelName}
-                durationSeconds={detail.durationSeconds}
-                isLive={isLive}
-              />
-            ) : null}
-
-            {detail ? (
-              <div className="space-y-3">
-                <h2 className="text-lg font-medium">Description</h2>
-                <WatchDescription
+              {isAuthed && detail && !isUpcoming ? (
+                <WatchTracker
                   videoId={detail.videoId}
-                  description={detail.description}
-                  viewsLabel={viewsLabel}
-                  publishedLabel={publishedLabel}
+                  channelId={detail.channelId}
+                  videoTitle={detail.title}
+                  channelName={detail.channelName}
+                  durationSeconds={detail.durationSeconds}
+                  isLive={isLive}
                 />
-              </div>
-            ) : null}
+              ) : null}
 
-            {detail ? <WatchCommentsSection videoId={detail.videoId} /> : null}
-          </>
-        }
-        sidebar={
-          <>
-            {detail && !isLive ? (
-              <WatchChaptersSection
-                videoId={detail.videoId}
-                chapters={chapters}
-                durationSeconds={detail.durationSeconds}
-                storyboard={detail.storyboard}
-                scrubPreviewStreamSrc={scrubPreviewStreamSrc}
-              />
-            ) : null}
-            <h2 className="text-lg font-bold tracking-tight">
-              {sidebarFromFeedFallback
-                ? "From your feed"
-                : sidebarVideos.length > 0
-                  ? "Related"
-                  : "More to watch"}
-            </h2>
-            {sidebarVideos.length === 0 ? (
-              <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                No related videos are available right now. Check your Piped
-                instance or try again later.
-              </p>
-            ) : null}
-            <ul className="space-y-3">
-              {sidebarVideos.map((video) => (
-                <li key={video.videoId}>
-                  <VideoCardCompact
-                    href={watchHref(video.videoId)}
-                    videoId={video.videoId}
-                    title={video.title}
-                    channelId={video.channelId}
-                    channelName={video.channelName}
-                    channelHref={
-                      video.channelId
-                        ? `/channel/${encodeURIComponent(video.channelId)}`
-                        : undefined
-                    }
-                    channelAvatarUrl={video.channelAvatarUrl}
-                    thumbnailUrl={video.thumbnailUrl}
-                    durationSeconds={video.durationSeconds}
-                    isLive={video.isLive}
-                    isUpcoming={video.isUpcoming}
-                    publishedText={video.publishedText}
-                    showChannelAvatar={false}
-                    size="large"
+              {detail ? (
+                <div className="space-y-3">
+                  <h2 className="text-lg font-medium">Description</h2>
+                  <WatchDescription
+                    videoId={detail.videoId}
+                    description={detail.description}
+                    viewsLabel={viewsLabel}
+                    publishedLabel={publishedLabel}
                   />
-                </li>
-              ))}
-            </ul>
-          </>
-        }
-      />
-    </WatchCinemaProvider>
+                </div>
+              ) : null}
+
+              {detail ? (
+                <WatchCommentsSection videoId={detail.videoId} />
+              ) : null}
+            </>
+          }
+          sidebar={
+            <>
+              {detail && !isLive ? (
+                <WatchChaptersSection
+                  videoId={detail.videoId}
+                  chapters={chapters}
+                  durationSeconds={detail.durationSeconds}
+                  storyboard={detail.storyboard}
+                  scrubPreviewStreamSrc={scrubPreviewStreamSrc}
+                />
+              ) : null}
+              <h2 className="text-lg font-bold tracking-tight">
+                {sidebarFromFeedFallback
+                  ? "From your feed"
+                  : sidebarVideos.length > 0
+                    ? "Related"
+                    : "More to watch"}
+              </h2>
+              {sidebarVideos.length === 0 ? (
+                <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                  No related videos are available right now. Check your Piped
+                  instance or try again later.
+                </p>
+              ) : null}
+              <ul className="space-y-3">
+                {sidebarVideos.map((video) => (
+                  <li key={video.videoId}>
+                    <VideoCardCompact
+                      href={watchHref(video.videoId)}
+                      videoId={video.videoId}
+                      title={video.title}
+                      channelId={video.channelId}
+                      channelName={video.channelName}
+                      channelHref={
+                        video.channelId
+                          ? `/channel/${encodeURIComponent(video.channelId)}`
+                          : undefined
+                      }
+                      channelAvatarUrl={video.channelAvatarUrl}
+                      thumbnailUrl={video.thumbnailUrl}
+                      durationSeconds={video.durationSeconds}
+                      isLive={video.isLive}
+                      isUpcoming={video.isUpcoming}
+                      publishedText={video.publishedText}
+                      showChannelAvatar={false}
+                      size="large"
+                    />
+                  </li>
+                ))}
+              </ul>
+            </>
+          }
+        />
+      </WatchCinemaProvider>
     </HydrationBoundary>
   );
 }

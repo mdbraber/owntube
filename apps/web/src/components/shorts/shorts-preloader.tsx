@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { initialQualityIndexForPayload } from "@/components/player/player-quality";
 import { isIosLikeBrowser } from "@/lib/ios-playback";
+import { getMediaOrigin } from "@/lib/media-origin";
 import { buildVideoPlayerPayloadFromDetail } from "@/lib/watch-player-payload";
 import { trpc } from "@/trpc/react";
 
@@ -29,7 +30,10 @@ async function warmPlaylistSegments(
   if (!mediaUrl) return;
   // Warm through the end of the 2nd media segment (enough to begin playback);
   // fall back to a flat size if the byte ranges aren't parseable.
-  const ranges = [...text.matchAll(/#EXT-X-BYTERANGE:(\d+)@(\d+)/g)].slice(0, 2);
+  const ranges = [...text.matchAll(/#EXT-X-BYTERANGE:(\d+)@(\d+)/g)].slice(
+    0,
+    2,
+  );
   let end = SEGMENT_WARM_FALLBACK_BYTES;
   const last = ranges[ranges.length - 1];
   if (last) {
@@ -92,7 +96,7 @@ export function ShortsPreloader({ videoId }: { videoId: string }) {
     if (!detail || typeof window === "undefined") return;
     const built = buildVideoPlayerPayloadFromDetail(
       detail,
-      window.location.origin,
+      getMediaOrigin(window.location.origin),
       window.location.host,
       { avoidSplitAudioVideo: isIosLikeBrowser() },
     );

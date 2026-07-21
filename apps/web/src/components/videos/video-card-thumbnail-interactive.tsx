@@ -15,12 +15,13 @@ import {
 } from "@/lib/card-preview-playback";
 import { toBrowserUpstreamImageUrl } from "@/lib/channel-avatar-proxy";
 import { buildHlsSameOriginConfig } from "@/lib/hls-same-origin";
+import { getMediaOrigin } from "@/lib/media-origin";
 import { cn } from "@/lib/utils";
-import { COMPLETION_RATIO } from "@/lib/watch-event";
 import {
   applyVideoThumbnailImgError,
   preferHighResVideoThumbnailUrl,
 } from "@/lib/video-thumbnail-url";
+import { COMPLETION_RATIO } from "@/lib/watch-event";
 import { trpc } from "@/trpc/react";
 
 const DWELL_MS = 400;
@@ -201,7 +202,7 @@ export function VideoCardThumbnailInteractive({
     if (typeof window === "undefined") return null;
     return cardPreviewPlaybackFromDetail(
       detailQuery.data,
-      window.location.origin,
+      getMediaOrigin(window.location.origin),
       window.location.host ?? "",
     );
   }, [pointerInside, detailQuery.data]);
@@ -359,7 +360,7 @@ export function VideoCardThumbnailInteractive({
           const hls = new Hls({
             maxBufferLength: 8,
             maxMaxBufferLength: 20,
-            ...buildHlsSameOriginConfig(),
+            ...buildHlsSameOriginConfig(getMediaOrigin(window.location.origin)),
           });
           hls.loadSource(playback.src);
           hls.attachMedia(v);

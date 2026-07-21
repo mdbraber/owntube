@@ -2,6 +2,7 @@ import {
   hostnameFromRequestHostHeader,
   rewriteStreamUrlForRequestHost,
 } from "@/lib/invidious-playback-url";
+import { toMediaOriginUrl } from "@/lib/media-origin";
 import type { PlayableVariant } from "@/lib/pick-playback";
 import type { VideoDetail } from "@/server/services/proxy.types";
 
@@ -428,10 +429,14 @@ export function toProxiedOrDirectPlayback(
   if (shouldUseYouTubeHopProxyForUrl(rawPlayback)) {
     return toYouTubeHopProxyUrl(rawPlayback, appOrigin);
   }
-  if (requestHost) {
-    return rewriteStreamUrlForRequestHost(rawPlayback, requestHost);
-  }
-  return rawPlayback;
+  // OwnTube's own synthesized `/hls/<id>/master.m3u8` (or any other
+  // already-relative path) reaches here unchanged — absolutize it against the
+  // media origin so it doesn't implicitly resolve to whatever origin the page
+  // happens to be served from.
+  const rewritten = requestHost
+    ? rewriteStreamUrlForRequestHost(rawPlayback, requestHost)
+    : rawPlayback;
+  return toMediaOriginUrl(rewritten, appOrigin);
 }
 
 export function toProxiedOrDirectPoster(
@@ -444,10 +449,10 @@ export function toProxiedOrDirectPoster(
   if (shouldUseInvidiousProxyForUrl(detail, rawPoster)) {
     return toInvidiousProxyUrl(rawPoster, appOrigin);
   }
-  if (requestHost) {
-    return rewriteStreamUrlForRequestHost(rawPoster, requestHost);
-  }
-  return rawPoster;
+  const rewritten = requestHost
+    ? rewriteStreamUrlForRequestHost(rawPoster, requestHost)
+    : rawPoster;
+  return toMediaOriginUrl(rewritten, appOrigin);
 }
 
 export type ProxiedPlayableVariant =

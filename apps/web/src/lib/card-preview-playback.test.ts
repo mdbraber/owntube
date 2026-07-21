@@ -179,7 +179,7 @@ describe("cardPreviewPlaybackFromDetail", () => {
     );
     expect(playback).toEqual({
       kind: "hls",
-      src: "/hls/abcdefghijk/master.m3u8",
+      src: "http://192.168.1.14:3000/hls/abcdefghijk/master.m3u8",
     });
   });
 

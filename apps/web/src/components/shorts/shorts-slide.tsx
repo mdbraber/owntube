@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { watchHref } from "@/lib/yt-routes";
 import {
   type ReactNode,
   useCallback,
@@ -14,16 +13,18 @@ import { WatchTracker } from "@/components/player/watch-tracker";
 import { ShortsVerticalActions } from "@/components/shorts/shorts-vertical-actions";
 import { VideoThumbnailImg } from "@/components/videos/video-thumbnail-img";
 import { isIosLikeBrowser } from "@/lib/ios-playback";
+import { getMediaOrigin } from "@/lib/media-origin";
 import {
   aspectRatioFromPixelDimensions,
   inferShortAspectRatioFromDetail,
 } from "@/lib/short-video-aspect";
+import { cn } from "@/lib/utils";
 import {
   formatPublishedAbsoluteLabel,
   formatPublishedLabel,
 } from "@/lib/video-display";
-import { cn } from "@/lib/utils";
 import { buildVideoPlayerPayloadFromDetail } from "@/lib/watch-player-payload";
+import { watchHref } from "@/lib/yt-routes";
 import type { UnifiedVideo, VideoDetail } from "@/server/services/proxy.types";
 import { trpc } from "@/trpc/react";
 
@@ -68,7 +69,7 @@ export function ShortsSlide({
     if (!detailQuery.data || typeof window === "undefined") return null;
     return buildVideoPlayerPayloadFromDetail(
       detailQuery.data,
-      window.location.origin,
+      getMediaOrigin(window.location.origin),
       window.location.host,
       { avoidSplitAudioVideo: isIosLikeBrowser() },
     );

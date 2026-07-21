@@ -4,8 +4,10 @@ import type Hls from "hls.js";
 import { useEffect, useRef } from "react";
 import {
   buildHlsSameOriginConfig,
+  getClientAppOrigin,
   installSameOriginMediaFetchGuard,
 } from "@/lib/hls-same-origin";
+import { getMediaOrigin } from "@/lib/media-origin";
 
 /**
  * Play our server-generated VOD HLS on a plain `<video>`.
@@ -120,7 +122,8 @@ export function useHlsVodPlayback(
     // proxies any stray CDN URL.
     let cancelled = false;
     let hls: Hls | null = null;
-    const releaseFetchGuard = installSameOriginMediaFetchGuard();
+    const mediaOrigin = getMediaOrigin(getClientAppOrigin());
+    const releaseFetchGuard = installSameOriginMediaFetchGuard(mediaOrigin);
     void (async () => {
       const { default: HlsCtor } = await import("hls.js");
       if (cancelled || !videoRef.current) return;
@@ -131,7 +134,7 @@ export function useHlsVodPlayback(
         });
         return;
       }
-      hls = new HlsCtor(buildHlsSameOriginConfig());
+      hls = new HlsCtor(buildHlsSameOriginConfig(mediaOrigin));
       hlsRef.current = hls;
       hls.on(HlsCtor.Events.ERROR, (_e, data) => {
         if (data.fatal) onFatalErrorRef.current?.();

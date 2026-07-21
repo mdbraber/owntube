@@ -1,3 +1,4 @@
+import { mediaCorsPreflight, withMediaCors } from "@/lib/media-cors";
 import {
   generateMasterPlaylist,
   generateMediaPlaylist,
@@ -10,9 +11,21 @@ const VIDEO_ID_RE = /^[\w-]{6,20}$/;
  * Serves a synthesized VOD HLS manifest (see `generate.ts`):
  *   /hls/<videoId>/master.m3u8       -> variants + audio group
  *   /hls/<videoId>/media.m3u8?itag=… -> one stream's byte-range fragments
- * Segments resolve to the same-origin `/invidious/videoplayback` proxy.
+ * Segments resolve to the `/invidious/videoplayback` proxy, same-origin with
+ * this route's media origin (see media-origin.ts).
  */
 export async function GET(
+  request: Request,
+  context: { params: Promise<{ parts?: string[] }> },
+): Promise<Response> {
+  return withMediaCors(await handleGET(request, context));
+}
+
+export function OPTIONS(): Response {
+  return mediaCorsPreflight();
+}
+
+async function handleGET(
   request: Request,
   context: { params: Promise<{ parts?: string[] }> },
 ): Promise<Response> {

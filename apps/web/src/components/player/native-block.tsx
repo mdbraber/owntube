@@ -194,8 +194,13 @@ export function NativeMuxedBlock({
         poster={poster}
         playsInline
         preload="auto"
-        autoPlay={(shortsMode && shortsActive) || miniShouldAutoplay || autoplay}
+        autoPlay={
+          (shortsMode && shortsActive) || miniShouldAutoplay || autoplay
+        }
         muted={shortsMode}
+        // src + caption <track>s are on the media origin (media-origin.ts);
+        // cross-origin <track> loading requires this. No credentials needed.
+        crossOrigin="anonymous"
         onError={emitPlaybackError}
         onEnded={onEnded}
         className={cn(

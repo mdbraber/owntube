@@ -4,17 +4,27 @@ import {
   isYoutubeFamilyHostname,
   rewriteM3u8AllProxies,
 } from "@/lib/invidious-proxy";
+import { mediaCorsPreflight, withMediaCors } from "@/lib/media-cors";
 import { headersForYoutubeUpstream } from "@/lib/youtube-upstream-headers";
 
 /** Signed YouTube URLs can be very long; keep a sane upper bound. */
 const MAX_TARGET_URL_LEN = 200_000;
 
 /**
- * Same-origin hop for YouTube / googlevideo HLS manifests and media segments.
+ * Hop for YouTube / googlevideo HLS manifests and media segments, same-origin
+ * with the media origin (see media-origin.ts) this route is served under.
  * Invidious playlists often embed absolute youtube.com URLs; browsers block
  * those (no CORS). Server-side fetch + optional m3u8 rewrite fixes playback.
  */
-export async function GET(request: Request) {
+export async function GET(request: Request): Promise<Response> {
+  return withMediaCors(await handleGET(request));
+}
+
+export function OPTIONS(): Response {
+  return mediaCorsPreflight();
+}
+
+async function handleGET(request: Request) {
   const raw = new URL(request.url).searchParams.get("url");
   if (!raw) {
     return new Response("missing url", { status: 400 });

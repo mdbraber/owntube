@@ -4,9 +4,11 @@ import type Hls from "hls.js";
 import { useEffect, useRef } from "react";
 import {
   buildHlsSameOriginConfig,
+  getClientAppOrigin,
   installSameOriginMediaFetchGuard,
   proxyUrlForHlsFetch,
 } from "@/lib/hls-same-origin";
+import { getMediaOrigin } from "@/lib/media-origin";
 
 /**
  * Attach hls.js with same-origin segment proxying. Used for live streams where
@@ -32,7 +34,8 @@ export function useLiveHlsPlayback(
 
     let cancelled = false;
     let hls: Hls | null = null;
-    const releaseFetchGuard = installSameOriginMediaFetchGuard();
+    const mediaOrigin = getMediaOrigin(getClientAppOrigin());
+    const releaseFetchGuard = installSameOriginMediaFetchGuard(mediaOrigin);
 
     void (async () => {
       const { default: HlsCtor } = await import("hls.js");
@@ -44,11 +47,11 @@ export function useLiveHlsPlayback(
         // segments rewritten to same-origin hops, so native HLS never fetches
         // the IP-locked/CORS-blocked youtube.com URLs directly (which left live
         // streams stuck loading on iOS).
-        video.src = proxyUrlForHlsFetch(src);
+        video.src = proxyUrlForHlsFetch(src, mediaOrigin);
         return;
       }
 
-      const sameOrigin = buildHlsSameOriginConfig();
+      const sameOrigin = buildHlsSameOriginConfig(mediaOrigin);
       hls = new HlsCtor({
         lowLatencyMode: true,
         backBufferLength: 8,

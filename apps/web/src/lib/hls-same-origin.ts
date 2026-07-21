@@ -79,7 +79,13 @@ function isMisresolvedYoutubeOnAppOrigin(url: URL, appOrigin: string): boolean {
 
 /**
  * Rewrites an HLS manifest or segment URL to a same-origin hop when the browser
- * cannot fetch it cross-origin (YouTube/googlevideo, Invidious).
+ * cannot fetch it cross-origin (YouTube/googlevideo, Invidious). Installed as a
+ * GLOBAL fetch/XHR patch (see installSameOriginMediaFetchGuard below), so it
+ * sees every request on the page, not just hls.js's own — anything that isn't
+ * recognized as needing a proxy hop must pass through completely unchanged
+ * (the original `rawUrl`, not an "appOrigin"-resolved version of it), or it
+ * silently rewrites unrelated same-page requests (tRPC calls, etc.) onto
+ * whatever origin the media loader guard happens to be trusting.
  */
 export function proxyUrlForHlsFetch(
   rawUrl: string,
@@ -101,7 +107,7 @@ export function proxyUrlForHlsFetch(
     if (invidiousMediaPath(resolved.pathname)) {
       return toInvidiousProxyUrl(resolved.toString(), appOrigin);
     }
-    return resolved.toString();
+    return rawUrl;
   } catch {
     return rawUrl;
   }

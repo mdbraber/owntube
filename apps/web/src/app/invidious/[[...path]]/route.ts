@@ -1,13 +1,11 @@
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import {
-  type AssetKind,
-  getCachedAsset,
-} from "@/server/assets/cache";
-import {
   getAppOriginFromRequestHeaders,
   rewriteM3u8AllProxies,
 } from "@/lib/invidious-proxy";
+import { mediaCorsPreflight, withMediaCors } from "@/lib/media-cors";
 import { normalizeUpstreamBaseUrl } from "@/lib/upstream-base-url";
+import { type AssetKind, getCachedAsset } from "@/server/assets/cache";
 
 function invidiousUpstreamBase(): string {
   return normalizeUpstreamBaseUrl(process.env.INVIDIOUS_BASE_URL);
@@ -228,7 +226,10 @@ function chunkedMediaBody(
             next = null;
           }
           if (!next) {
-            next = fetchChunk(pos, Math.min(pos + MEDIA_CHUNK_BYTES - 1, endTarget));
+            next = fetchChunk(
+              pos,
+              Math.min(pos + MEDIA_CHUNK_BYTES - 1, endTarget),
+            );
           }
           try {
             const r = await next.promise;
@@ -427,11 +428,23 @@ export function subpathFromInvidiousProxyRequest(
 }
 
 /**
- * Stream Invidious media (HLS, segments, poster) with the same origin as
- * OwnTube so the browser and hls.js are not blocked by CORS. Playlists
- * (m3u8) are text-rewritten so absolute segment URLs are also same-origin.
+ * Stream Invidious media (HLS, segments, poster) same-origin with the media
+ * origin (see media-origin.ts) so the browser and hls.js are not blocked by
+ * CORS. Playlists (m3u8) are text-rewritten so absolute segment URLs are also
+ * on that origin.
  */
 export async function GET(
+  request: Request,
+  context: { params: Promise<{ path?: string[] }> },
+) {
+  return withMediaCors(await handleGET(request, context));
+}
+
+export function OPTIONS(): Response {
+  return mediaCorsPreflight();
+}
+
+async function handleGET(
   request: Request,
   context: { params: Promise<{ path?: string[] }> },
 ) {
@@ -479,7 +492,8 @@ export async function GET(
         status: 200,
         headers: {
           "content-type": asset.contentType,
-          "cache-control": "public, max-age=86400, stale-while-revalidate=604800",
+          "cache-control":
+            "public, max-age=86400, stale-while-revalidate=604800",
           "content-length": String(asset.body.byteLength),
         },
       });

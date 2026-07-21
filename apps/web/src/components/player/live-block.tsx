@@ -113,6 +113,9 @@ export function LiveHlsDirectBlock({
         poster={poster}
         playsInline
         preload="auto"
+        // src + caption <track>s are on the media origin (media-origin.ts);
+        // cross-origin <track> loading requires this. No credentials needed.
+        crossOrigin="anonymous"
         onError={emitPlaybackError}
         onEnded={onEnded}
         className="absolute inset-0 h-full w-full object-contain"

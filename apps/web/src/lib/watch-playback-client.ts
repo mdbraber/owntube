@@ -6,6 +6,7 @@ import {
   toProxiedOrDirectPoster,
   toProxiedOrDirectVariants,
 } from "@/lib/invidious-proxy";
+import { getMediaOrigin } from "@/lib/media-origin";
 import { buildWatchPlayback } from "@/lib/pick-playback";
 import type { VideoDetail } from "@/server/services/proxy.types";
 
@@ -23,6 +24,7 @@ export function buildClientWatchPlayback(
     return { payload: null, onlyDashOrUnsupported: true };
   }
   const appOrigin = window.location.origin;
+  const mediaOrigin = getMediaOrigin(appOrigin);
   const requestHost = window.location.host;
   const rawPlayback = buildWatchPlayback(detail);
   const onlyDashOrUnsupported =
@@ -33,7 +35,7 @@ export function buildClientWatchPlayback(
           mode: "hls" as const,
           src: toProxiedOrDirectPlayback(
             rawPlayback.url,
-            appOrigin,
+            mediaOrigin,
             requestHost,
             detail,
           ),
@@ -43,7 +45,7 @@ export function buildClientWatchPlayback(
             mode: "progressive" as const,
             variants: toProxiedOrDirectVariants(
               rawPlayback.variants,
-              appOrigin,
+              mediaOrigin,
               requestHost,
               detail,
             ),
@@ -51,7 +53,7 @@ export function buildClientWatchPlayback(
         : null;
   const poster = toProxiedOrDirectPoster(
     detail.thumbnailUrl,
-    appOrigin,
+    mediaOrigin,
     requestHost,
     detail,
   );
