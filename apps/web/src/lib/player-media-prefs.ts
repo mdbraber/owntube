@@ -70,3 +70,28 @@ export function writeCaptionLangPref(lang: string | null): void {
     /* quota / private mode */
   }
 }
+
+// Whether captions are on, stored explicitly so "off" is a remembered choice
+// rather than merely the absence of a language. Without it, turning captions on
+// once left a sticky language that re-enabled them on every video with a
+// matching track — there was no way to remember "off". Default: off.
+const CAPTIONS_ENABLED_KEY = "owntube:captionsEnabled";
+
+export function readCaptionsEnabledPref(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(CAPTIONS_ENABLED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function writeCaptionsEnabledPref(enabled: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (enabled) window.localStorage.setItem(CAPTIONS_ENABLED_KEY, "1");
+    else window.localStorage.setItem(CAPTIONS_ENABLED_KEY, "0");
+  } catch {
+    /* quota / private mode */
+  }
+}

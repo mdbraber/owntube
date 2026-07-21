@@ -4,7 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import type { CaptionTrack } from "@/components/player/player-payload";
 import {
   readCaptionLangPref,
+  readCaptionsEnabledPref,
   writeCaptionLangPref,
+  writeCaptionsEnabledPref,
 } from "@/lib/player-media-prefs";
 
 export type CaptionModel =
@@ -122,13 +124,15 @@ export function usePlayerCaptions(
   // On a new source, restore the remembered language when it's available.
   // biome-ignore lint/correctness/useExhaustiveDependencies: reactKey re-resolves the remembered track for a new video.
   useEffect(() => {
-    const lang = readCaptionLangPref();
-    if (!lang) {
+    if (!readCaptionsEnabledPref()) {
       setActiveIndex(null);
       return;
     }
-    const idx = tracks.findIndex((t) => t.languageCode === lang);
-    setActiveIndex(idx >= 0 ? idx : null);
+    // Enabled: prefer the remembered language, else the first available track,
+    // so "captions on" still shows something on a video lacking that language.
+    const lang = readCaptionLangPref();
+    const idx = lang ? tracks.findIndex((t) => t.languageCode === lang) : -1;
+    setActiveIndex(idx >= 0 ? idx : tracks.length > 0 ? 0 : null);
   }, [reactKey, tracks]);
 
   // Reflect the selected index onto the native TextTrack modes. Re-applied on
@@ -279,9 +283,10 @@ export function usePlayerCaptions(
   const setActive = useCallback(
     (index: number | null) => {
       setActiveIndex(index);
-      const lang =
-        index !== null ? (tracks[index]?.languageCode ?? null) : null;
-      writeCaptionLangPref(lang);
+      writeCaptionsEnabledPref(index !== null);
+      if (index !== null) {
+        writeCaptionLangPref(tracks[index]?.languageCode ?? null);
+      }
     },
     [tracks],
   );
