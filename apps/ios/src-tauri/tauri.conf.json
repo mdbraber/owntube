@@ -15,7 +15,8 @@
         "title": "OwnTube",
         "width": 430,
         "height": 932,
-        "backgroundThrottling": "disabled"
+        "backgroundThrottling": "disabled",
+        "backgroundColor": "#111216"
       }
     ],
     "security": {
@@ -26,12 +27,16 @@
     "deep-link": {
       "mobile": [
         {
-          "scheme": ["owntube"],
+          "scheme": [
+            "owntube"
+          ],
           "appLink": false
         }
       ],
       "desktop": {
-        "schemes": ["owntube"]
+        "schemes": [
+          "owntube"
+        ]
       }
     }
   },
