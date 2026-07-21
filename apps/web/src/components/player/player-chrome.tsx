@@ -276,11 +276,12 @@ export function PlayerChrome({
       ) : null}
 
       {/* Center transport cluster — a big play/pause flanked by 15s skip
-          buttons (Apple-style), in every mode except mini. On shorts it's just
-          the play/pause (15s skips don't suit a short). The play button stays
-          tappable even while invisible (a native click is reliable on iOS where
-          the surface's synthetic click is not — so a center tap always toggles);
-          the skip buttons only capture while the chrome is up, so a side tap
+          buttons (Apple-style), in every mode except mini. On shorts nothing is
+          ever VISIBLE here (taps drive play/pause, button chrome just gets in
+          the way of a feed) but the play button element stays mounted as an
+          invisible tap target: a native click is reliable on iOS where the
+          surface's synthetic click is not — so a center tap always toggles.
+          The skip buttons only capture while the chrome is up, so a side tap
           otherwise reveals the controls. Buffering is covered by the spinner. */}
       {!miniMode && !hold2xUi && !(adapter.waiting && !adapter.paused) ? (
         // [container-type:size] makes cqmin below resolve against THIS box (the
@@ -316,7 +317,7 @@ export function PlayerChrome({
             aria-label={adapter.paused ? "Play" : "Pause"}
             className={cn(
               "pointer-events-auto flex h-[clamp(4rem,20cqmin,10rem)] w-[clamp(4rem,20cqmin,10rem)] items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm transition active:scale-95",
-              (shortsMode ? adapter.paused : adapter.paused || chromeShown)
+              !shortsMode && (adapter.paused || chromeShown)
                 ? "opacity-100"
                 : "opacity-0",
             )}
@@ -349,8 +350,9 @@ export function PlayerChrome({
       ) : null}
 
       {/* Toggle hint icon (play/pause) — desktop only; phones use the big
-          center button above. */}
-      {(centerHint ?? autoCenterHint) && !hold2xUi ? (
+          center button above. Not on shorts: no play/pause chrome at all
+          there, taps speak for themselves. */}
+      {(centerHint ?? autoCenterHint) && !hold2xUi && !shortsMode ? (
         <div
           key={(centerHint ?? autoCenterHint)?.tick}
           className="pointer-events-none absolute inset-0 z-20 hidden items-center justify-center sm:flex"
