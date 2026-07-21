@@ -16,6 +16,7 @@ import {
 import { toBrowserUpstreamImageUrl } from "@/lib/channel-avatar-proxy";
 import { buildHlsSameOriginConfig } from "@/lib/hls-same-origin";
 import { cn } from "@/lib/utils";
+import { COMPLETION_RATIO } from "@/lib/watch-event";
 import {
   applyVideoThumbnailImgError,
   preferHighResVideoThumbnailUrl,
@@ -136,7 +137,7 @@ export function VideoCardThumbnailInteractive({
     watchProgress &&
     !watchProgress.completed &&
     watchProgress.fraction > 0.01 &&
-    watchProgress.fraction < 0.95
+    watchProgress.fraction < COMPLETION_RATIO
       ? watchProgress.fraction
       : null;
 

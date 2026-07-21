@@ -41,7 +41,7 @@ export function WatchTracker({
         void utils.queue.list.invalidate();
         void utils.queue.listDetailed.invalidate();
       }
-      // When an event marks the video completed (auto-watched at ≥95% or on
+      // When an event marks the video completed (auto-watched at ≥97% or on
       // ended), refresh the shared progress map so the "Mark watched" button
       // and hide-finished sections flip to watched at once, and notify the host.
       if (variables.completed) {

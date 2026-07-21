@@ -5,7 +5,7 @@
  */
 
 /** Fraction of the video length that counts as a completed watch (tolerates a skipped outro). */
-export const COMPLETION_RATIO = 0.95;
+export const COMPLETION_RATIO = 0.97;
 
 export type WatchEventPayload = {
   durationWatched: number;

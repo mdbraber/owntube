@@ -5,7 +5,7 @@ import { watchHistory } from "@/server/db/schema";
 /** Ignore trivial progress — reopening after a few seconds should start over. */
 const MIN_RESUME_SECONDS = 15;
 /** Treat a video watched past this fraction as finished; don't resume near the end. */
-const RESUME_MAX_RATIO = 0.95;
+const RESUME_MAX_RATIO = 0.97;
 
 /**
  * Position (seconds) to resume a previously-watched, unfinished video, or null

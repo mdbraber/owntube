@@ -10,11 +10,11 @@ describe("computeWatchEvent", () => {
   });
 
   it("marks completion once dwell crosses the ratio threshold", () => {
-    expect(computeWatchEvent(580, 600, false)).toEqual({
-      durationWatched: 580,
+    expect(computeWatchEvent(590, 600, false)).toEqual({
+      durationWatched: 590,
       completed: true,
     });
-    expect(computeWatchEvent(569, 600, false).completed).toBe(false);
+    expect(computeWatchEvent(581, 600, false).completed).toBe(false);
     expect(
       computeWatchEvent(600 * COMPLETION_RATIO, 600, false).completed,
     ).toBe(true);
@@ -62,7 +62,7 @@ describe("computeWatchEvent", () => {
   });
 
   it("still completes on dwell alone when no position is known", () => {
-    expect(computeWatchEvent(580, 600, false).completed).toBe(true);
+    expect(computeWatchEvent(590, 600, false).completed).toBe(true);
     expect(computeWatchEvent(100, 600, false).completed).toBe(false);
   });
 
