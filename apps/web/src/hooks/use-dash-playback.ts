@@ -168,6 +168,13 @@ export function useDashPlayback(
             // (black video, audio keeps playing). isTypeSupported accepts it.
             useMediaCapabilitiesApi: false,
           },
+          text: {
+            // The manifest carries caption AdaptationSets for ExoPlayer on the
+            // TV, but the web renders captions from its own <track> elements.
+            // Left on, dash.js auto-enables a text track and draws a second,
+            // always-on caption. Never let it own text rendering here.
+            defaultEnabled: false,
+          },
         },
       });
       player.on("error", () => onFatalErrorRef.current?.());
