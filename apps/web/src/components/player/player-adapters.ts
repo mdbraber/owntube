@@ -153,6 +153,49 @@ export function useNativeAdapter(opts: {
     };
   }, [videoRef.current]);
 
+  // A timing race around MSE handoffs (card-preview → watch navigation, the
+  // HLS→dash.js engine swap) can leave Safari playing the audio track while
+  // the video decoder sits on its last frame: the clock advances but
+  // getVideoPlaybackQuality() stops counting frames, and only a seek recovers
+  // it (users discover the 15s-skip button does). Watch for that signature —
+  // two consecutive seconds of advancing time with a frozen frame counter —
+  // and issue a imperceptible programmatic seek, which re-runs the player's
+  // seek path (segment re-fetch + decoder resync) the same way the manual
+  // skip does. Cooldown keeps a genuinely video-less stream (none today) from
+  // hiccuping the audio more than once per 10s.
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v || typeof v.getVideoPlaybackQuality !== "function") return;
+    let lastTime = 0;
+    let lastFrames = -1;
+    let strikes = 0;
+    let lastNudge = 0;
+    const iv = window.setInterval(() => {
+      if (v.paused || v.seeking || v.readyState < 2) {
+        strikes = 0;
+        lastTime = v.currentTime;
+        return;
+      }
+      const frames = v.getVideoPlaybackQuality().totalVideoFrames;
+      const advanced = v.currentTime - lastTime;
+      const stalled = frames === lastFrames && advanced > 0.8;
+      lastTime = v.currentTime;
+      lastFrames = frames;
+      if (!stalled) {
+        strikes = 0;
+        return;
+      }
+      strikes += 1;
+      const now = Date.now();
+      if (strikes >= 2 && now - lastNudge > 10_000) {
+        lastNudge = now;
+        strikes = 0;
+        v.currentTime = v.currentTime + 0.01;
+      }
+    }, 1_000);
+    return () => window.clearInterval(iv);
+  }, [videoRef.current]);
+
   // Mirror the video's play/pause into `mediaSession.playbackState` for EVERY
   // block (all of them use this adapter). Without it iOS doesn't know a paused
   // video is paused, so when the native shell — which declares
