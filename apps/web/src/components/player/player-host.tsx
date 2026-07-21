@@ -10,10 +10,22 @@ import {
   useRef,
   useState,
 } from "react";
+import dynamic from "next/dynamic";
 import { usePlayerContext } from "@/components/player/player-context";
-import { VideoPlayer } from "@/components/player/video-player";
 import { isIosLikeBrowser } from "@/lib/ios-playback";
 import { cn } from "@/lib/utils";
+
+/**
+ * The persistent host is mounted app-wide (in the shell), so importing the
+ * player statically dragged the whole player — including hls.js — into the
+ * shared first-load JS on EVERY page. Load it lazily instead: it only ever
+ * renders when a video is actually active, so the chunk (and hls.js/dash.js)
+ * downloads on first playback rather than on every page.
+ */
+const VideoPlayer = dynamic(
+  () => import("@/components/player/video-player").then((m) => m.VideoPlayer),
+  { ssr: false },
+);
 import {
   MINI_MAX_WIDTH,
   MINI_MIN_WIDTH,
@@ -46,6 +58,23 @@ export function PlayerHost() {
   const { active, slotEl, clearActive } = usePlayerContext();
   const router = useRouter();
   const pathname = usePathname();
+
+  // Warm the lazily-split player chunk during idle so the first video opens
+  // instantly, without paying for it in the initial page JS. import() is cached,
+  // so this is a one-time background fetch (also picked up by the service worker).
+  useEffect(() => {
+    const w = window as typeof window & {
+      requestIdleCallback?: (cb: () => void) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    const schedule =
+      w.requestIdleCallback ?? ((cb: () => void) => window.setTimeout(cb, 1500));
+    const cancel = w.cancelIdleCallback ?? window.clearTimeout;
+    const id = schedule(() => {
+      void import("@/components/player/video-player");
+    });
+    return () => cancel(id as number);
+  }, []);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [rect, setRect] = useState<{
     left: number;
