@@ -1,4 +1,4 @@
-import { Agent } from "undici";
+import { Agent, fetch as undiciFetch } from "undici";
 
 /**
  * Abort window for proxied media segment/manifest fetches. Covers time to
@@ -44,13 +44,16 @@ export async function fetchWithTimeout(
     ? AbortSignal.any([init.signal, controller.signal])
     : controller.signal;
   try {
-    // `dispatcher` is undici-specific and absent from the DOM RequestInit
-    // type; Node's fetch honors it.
-    return await fetch(input, {
-      ...init,
+    // The Agent and the fetch MUST come from the same undici build: handing
+    // this Agent to the global (Next-patched, Node-bundled) fetch makes every
+    // request throw instantly (proxy 504s). undici's fetch does no HTTP
+    // caching, so `cache` is not forwarded.
+    const { cache: _cache, ...rest } = init;
+    return (await undiciFetch(input as string, {
+      ...(rest as Parameters<typeof undiciFetch>[1]),
       signal,
       dispatcher: mediaUpstreamAgent,
-    } as RequestInit);
+    })) as unknown as Response;
   } finally {
     clearTimeout(timer);
   }
