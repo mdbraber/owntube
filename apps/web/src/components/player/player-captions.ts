@@ -163,7 +163,15 @@ export function usePlayerCaptions(
       const list = video.textTracks;
       for (let i = 0; i < list.length; i++) {
         const tt = list[i];
-        if (!tt || !ourLabels.has(tt.label)) continue;
+        if (!tt) continue;
+        // Tracks we didn't inject — e.g. dash.js surfacing the DASH manifest's
+        // text AdaptationSets (those exist for ExoPlayer on the TV; the web
+        // renders captions from its own <track> elements). Force them off, or
+        // the browser draws a second, always-on caption bottom-left.
+        if (!ourLabels.has(tt.label)) {
+          if (tt.mode !== "disabled") tt.mode = "disabled";
+          continue;
+        }
         const mode: TextTrackMode =
           wantLabel !== null && tt.label === wantLabel ? activeMode : "disabled";
         if (tt.mode !== mode) tt.mode = mode;
