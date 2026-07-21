@@ -57,28 +57,58 @@ export function WatchTracker({
 
   useEffect(() => {
     const m = mutateRef.current;
+
+    /**
+     * Events from *this* video's player only — the page can also hold hover
+     * previews and a mini player, whose `pause`/`play`/`ended` must not be
+     * recorded against this row.
+     */
+    const isThisPlayer = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLVideoElement)) return false;
+      const root = target.closest("[data-ot-player-root]");
+      return root?.getAttribute("data-ot-player-video-id") === videoId;
+    };
+    const thisPlayerVideo = (): HTMLVideoElement | null => {
+      const el = document.querySelector<HTMLVideoElement>(
+        "[data-ot-player-root] video",
+      );
+      return el && isThisPlayer(el) ? el : null;
+    };
+
     /**
      * Dwell accounting: accumulate wall-clock time only while the tab is
-     * visible, so background tabs don't inflate watch time. This is an upper
-     * bound on real playback (a paused-but-visible tab still counts).
+     * visible AND this video is actually playing — a paused-but-visible tab
+     * must not count, or leaving a video paused partway through eventually
+     * crosses the completion ratio on wall-clock time alone and wrongly
+     * marks it watched.
      */
+    let isPlaying = !(thisPlayerVideo()?.paused ?? false);
     let visibleAccumMs = 0;
     let visibleSince: number | null =
-      document.visibilityState === "visible" ? Date.now() : null;
+      isPlaying && document.visibilityState === "visible" ? Date.now() : null;
 
     const elapsedVisibleSeconds = () => {
       const running = visibleSince === null ? 0 : Date.now() - visibleSince;
       return (visibleAccumMs + running) / 1000;
     };
 
+    const pauseAccounting = () => {
+      if (visibleSince !== null) {
+        visibleAccumMs += Date.now() - visibleSince;
+        visibleSince = null;
+      }
+    };
+    const resumeAccounting = () => {
+      if (isPlaying && document.visibilityState === "visible") {
+        visibleSince ??= Date.now();
+      }
+    };
+
     const onVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        visibleSince ??= Date.now();
+        resumeAccounting();
       } else {
-        if (visibleSince !== null) {
-          visibleAccumMs += Date.now() - visibleSince;
-          visibleSince = null;
-        }
+        pauseAccounting();
         // Losing focus is the moment most likely to precede the tab being
         // throttled or killed — persist immediately. Background playback
         // afterwards is covered by the (browser-throttled) interval.
@@ -126,17 +156,6 @@ export function WatchTracker({
       };
     };
 
-    /**
-     * Events from *this* video's player only — the page can also hold hover
-     * previews and a mini player, whose `pause`/`ended` must not be recorded
-     * against this row.
-     */
-    const isThisPlayer = (target: EventTarget | null): boolean => {
-      if (!(target instanceof HTMLVideoElement)) return false;
-      const root = target.closest("[data-ot-player-root]");
-      return root?.getAttribute("data-ot-player-video-id") === videoId;
-    };
-
     m({
       videoId,
       channelId,
@@ -155,7 +174,15 @@ export function WatchTracker({
     // it: pausing, and the tab being hidden or closed (pagehide). `pause` does
     // not bubble, so listen in the capture phase and ignore companion <audio>.
     const onMediaPause = (e: Event) => {
-      if (isThisPlayer(e.target)) m(buildEvent());
+      if (!isThisPlayer(e.target)) return;
+      isPlaying = false;
+      pauseAccounting();
+      m(buildEvent());
+    };
+    const onMediaPlay = (e: Event) => {
+      if (!isThisPlayer(e.target)) return;
+      isPlaying = true;
+      resumeAccounting();
     };
     /**
      * Playing to the end is the definitive "watched" signal, and it was never
@@ -168,6 +195,7 @@ export function WatchTracker({
     };
     const onPageHide = () => m(buildEvent());
     document.addEventListener("pause", onMediaPause, true);
+    document.addEventListener("play", onMediaPlay, true);
     document.addEventListener("ended", onMediaEnded, true);
     window.addEventListener("pagehide", onPageHide);
 
@@ -175,6 +203,7 @@ export function WatchTracker({
       window.clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisibilityChange);
       document.removeEventListener("pause", onMediaPause, true);
+      document.removeEventListener("play", onMediaPlay, true);
       document.removeEventListener("ended", onMediaEnded, true);
       window.removeEventListener("pagehide", onPageHide);
       // Final flush on unmount/nav; completion side-effects (onWatched +
