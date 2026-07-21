@@ -104,6 +104,19 @@ export function resumePeakLimiter(): void {
   void sharedCtx?.resume();
 }
 
+/**
+ * Suspend the shared context — call when playback pauses. Once an element is
+ * routed through `createMediaElementSource`, its audio flows through this
+ * context; a *running* context holds the iOS audio session, and Safari
+ * auto-resumes a suspended-on-background context when the page returns to the
+ * foreground — which reclaims the session and cuts off audio the user started
+ * in another app. Explicitly suspending on pause keeps it released until the
+ * next real play (which resumes it).
+ */
+export function suspendPeakLimiter(): void {
+  void sharedCtx?.suspend();
+}
+
 /** Test seam: drop the shared context and wiring records. */
 export function __resetPeakLimiterForTests(): void {
   try {

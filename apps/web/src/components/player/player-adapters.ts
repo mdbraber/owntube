@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PlayerAdapter } from "@/components/player/player-types";
-import { attachPeakLimiter, resumePeakLimiter } from "@/lib/audio-peak-limiter";
+import {
+  attachPeakLimiter,
+  resumePeakLimiter,
+  suspendPeakLimiter,
+} from "@/lib/audio-peak-limiter";
 import { volumeGainFor } from "@/lib/player-volume-gain";
 
 export function useNativeAdapter(opts: {
@@ -146,6 +150,53 @@ export function useNativeAdapter(opts: {
     return () => {
       v.removeEventListener("playing", clearPoster);
       v.removeEventListener("timeupdate", clearPoster);
+    };
+  }, [videoRef.current]);
+
+  // Mirror the video's play/pause into `mediaSession.playbackState` for EVERY
+  // block (all of them use this adapter). Without it iOS doesn't know a paused
+  // video is paused, so when the native shell — which declares
+  // UIBackgroundModes:audio — is backgrounded it activates the audio session
+  // and resumes the video the user paused. `useBackgroundPlayback` set this too,
+  // but only for the HLS-VOD block; native-muxed (shorts + muxed rungs), split,
+  // and live were left unguarded. Setting the same value from both hooks is
+  // idempotent for the HLS-VOD case.
+  useEffect(() => {
+    const v = videoRef.current;
+    const ms =
+      typeof navigator !== "undefined" ? navigator.mediaSession : null;
+    if (!v || !ms) return;
+    const syncPlaybackState = () => {
+      ms.playbackState = v.paused ? "paused" : "playing";
+    };
+    syncPlaybackState();
+    v.addEventListener("play", syncPlaybackState);
+    v.addEventListener("pause", syncPlaybackState);
+    return () => {
+      v.removeEventListener("play", syncPlaybackState);
+      v.removeEventListener("pause", syncPlaybackState);
+    };
+  }, [videoRef.current]);
+
+  // Release the Web Audio session while paused. The video's audio is routed
+  // through the shared peak-limiter AudioContext once attached; a running
+  // context holds iOS's audio session and Safari re-activates it on foreground,
+  // cutting off audio the user started in another app. Suspend on pause, resume
+  // on play so a paused video never reclaims the session.
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    const onPause = () => {
+      if (limiterActiveRef.current) suspendPeakLimiter();
+    };
+    const onPlay = () => {
+      if (limiterActiveRef.current) resumePeakLimiter();
+    };
+    v.addEventListener("pause", onPause);
+    v.addEventListener("play", onPlay);
+    return () => {
+      v.removeEventListener("pause", onPause);
+      v.removeEventListener("play", onPlay);
     };
   }, [videoRef.current]);
 
