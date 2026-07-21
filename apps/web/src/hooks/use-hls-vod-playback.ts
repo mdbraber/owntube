@@ -43,13 +43,25 @@ export function useHlsVodPlayback(
     if (!autoPlay) return;
     const v = videoRef.current;
     if (!v) return;
+    // Auto-play until playback has started ONCE, then stop forcing it. Without
+    // this the canplay/loadeddata listeners re-fire whenever the media re-reaches
+    // ready — e.g. Safari re-buffering a backgrounded tab — and resume a video
+    // the user deliberately paused. Retries stay armed until the first real
+    // start (covers autoplay initially blocked, or a pre-warmed shorts slide).
+    let started = false;
+    const markStarted = () => {
+      started = true;
+    };
     const play = () => {
+      if (started) return;
       if (v.paused) void v.play().catch(() => {});
     };
     play();
+    v.addEventListener("playing", markStarted);
     v.addEventListener("canplay", play);
     v.addEventListener("loadeddata", play);
     return () => {
+      v.removeEventListener("playing", markStarted);
       v.removeEventListener("canplay", play);
       v.removeEventListener("loadeddata", play);
     };
