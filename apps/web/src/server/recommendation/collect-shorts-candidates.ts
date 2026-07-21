@@ -13,9 +13,13 @@ import {
 import type { UnifiedVideo } from "@/server/services/proxy.types";
 
 const MIN_UNIQUE_SHORTS_FOR_HISTORY_POOL = 8;
-const MAX_CHANNEL_SHORTS_FETCHES = 28;
+// Scan essentially all of a user's channels for shorts, not just the top few —
+// most channels don't post shorts, so a small cap left the feed drawing from a
+// handful. Fetches are channel-cache backed (and warmed), so cold cost is
+// bounded by the concurrency; the 10-min pool cache amortizes the rest.
+const MAX_CHANNEL_SHORTS_FETCHES = 120;
 const SHORTS_PER_CHANNEL = 14;
-const CHANNEL_FETCH_CONCURRENCY = 4;
+const CHANNEL_FETCH_CONCURRENCY = 6;
 
 export type ShortsVideoCandidate = { video: UnifiedVideo; source: string };
 
@@ -60,7 +64,7 @@ function orderedChannelsForShorts(
     .from(subscriptions)
     .where(eq(subscriptions.userId, userId))
     .orderBy(desc(subscriptions.subscribedAt))
-    .limit(64)
+    .limit(300)
     .all();
   const sortedSubs = [...subs].sort((a, b) => {
     const wa = signals.channelWeights.get(a.channelId) ?? 0;

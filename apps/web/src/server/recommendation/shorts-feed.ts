@@ -573,10 +573,29 @@ export async function fetchShortsFeedForViewer(
 
   if (personalized.videos.length > 0) {
     if (personalized.hasMore) {
+      // Blend discovery into later pages too — not just page 1 — so scrolling
+      // doesn't narrow to subscriptions-only from the handful of channels that
+      // actually post shorts. Mirrors the page-1 interleave above.
+      const upstream = await fetchTasteDiscoveryShorts(
+        db,
+        region,
+        tasteDiscoveryQueries,
+        overrides,
+        watchedEver,
+        limit,
+      );
+      const videos = interleaveShortsLists(
+        limit,
+        personalized.videos,
+        upstream.videos,
+      );
       return {
-        videos: personalized.videos.slice(0, limit),
-        continuation: nextRecCursor,
-        sourceUsed: "piped",
+        videos,
+        continuation: nextRecCursor ?? upstream.continuation ?? "rec:refresh",
+        sourceUsed:
+          personalized.videos.length > 0 ? "piped" : upstream.sourceUsed,
+        warning: upstream.warning,
+        stale: upstream.stale,
       };
     }
 
