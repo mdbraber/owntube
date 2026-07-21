@@ -138,6 +138,15 @@ export function useDashPlayback(
       player.registerCustomCapabilitiesFilter(videoRepresentationPlayable);
       player.updateSettings({
         streaming: {
+          // dash.js's default (20s) is shorter than our own proxy's resilience
+          // budget for a stalled Invidious/googlevideo fetch (up to ~45s across
+          // fetchUpstreamWithRetry's 3 attempts, more for a multi-chunk segment
+          // via chunkedMediaBody's resume logic — see /invidious route). When
+          // the client times out first it aborts and restarts the segment from
+          // scratch, which is the visible stutter — even though the proxy was
+          // likely about to deliver it. Give the client enough patience for the
+          // proxy's own retries to land instead of racing them.
+          fragmentRequestTimeout: 35_000,
           // ABR is portal-capped via maxBitrate (see portalCapKbps below), not
           // limitBitrateByPortal: the built-in limit allows only rungs that FIT
           // the portal (360p in a 633px player — visibly soft); the cap below
