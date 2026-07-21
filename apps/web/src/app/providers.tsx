@@ -1,6 +1,11 @@
 "use client";
 
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  type DehydratedState,
+  HydrationBoundary,
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query";
 import { httpBatchLink } from "@trpc/client";
 import { useEffect, useState } from "react";
 import superjson from "superjson";
@@ -34,10 +39,13 @@ function getBaseUrl() {
 export function Providers({
   children,
   invidiousOrigins = [],
+  dehydratedState,
 }: {
   children: React.ReactNode;
   /** Server-computed Invidious origins (from INVIDIOUS_BASE_URL) for browser image URLs. */
   invidiousOrigins?: readonly string[];
+  /** App-wide SSR-prefetched queries (settings, sidebar subs) to hydrate once. */
+  dehydratedState?: DehydratedState;
 }) {
   const [queryClient] = useState(
     () =>
@@ -94,20 +102,22 @@ export function Providers({
   return (
     <trpc.Provider client={trpcClient} queryClient={queryClient}>
       <QueryClientProvider client={queryClient}>
-        <ThemeSync />
-        <FaviconSync />
-        <MiniPlayerSync />
-        <SponsorBlockSync />
-        <QueueSync />
-        <InvidiousOriginProvider origins={invidiousOrigins}>
-          <ActionToastProvider>
-            <IgnoredVideosProvider>
-              <VideoMembershipProvider>
-                <PlayerProvider>{children}</PlayerProvider>
-              </VideoMembershipProvider>
-            </IgnoredVideosProvider>
-          </ActionToastProvider>
-        </InvidiousOriginProvider>
+        <HydrationBoundary state={dehydratedState}>
+          <ThemeSync />
+          <FaviconSync />
+          <MiniPlayerSync />
+          <SponsorBlockSync />
+          <QueueSync />
+          <InvidiousOriginProvider origins={invidiousOrigins}>
+            <ActionToastProvider>
+              <IgnoredVideosProvider>
+                <VideoMembershipProvider>
+                  <PlayerProvider>{children}</PlayerProvider>
+                </VideoMembershipProvider>
+              </IgnoredVideosProvider>
+            </ActionToastProvider>
+          </InvidiousOriginProvider>
+        </HydrationBoundary>
       </QueryClientProvider>
     </trpc.Provider>
   );

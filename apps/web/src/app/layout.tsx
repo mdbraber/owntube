@@ -1,6 +1,8 @@
+import { createServerSideHelpers } from "@trpc/react-query/server";
 import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import type { ReactNode } from "react";
+import superjson from "superjson";
 import { Providers } from "@/app/providers";
 import { UserNav } from "@/components/auth/user-nav";
 import { SwRegister } from "@/components/pwa/sw-register";
@@ -11,6 +13,8 @@ import { UiScale } from "@/components/shell/ui-scale";
 import { collectInvidiousOrigins } from "@/lib/channel-avatar-proxy";
 import { FAVICON_VERSION } from "@/lib/favicon";
 import { auth } from "@/server/auth";
+import { createTRPCContext } from "@/server/trpc/context";
+import { appRouter } from "@/server/trpc/root";
 import "./globals.css";
 
 const inter = Inter({
@@ -65,6 +69,23 @@ export default async function RootLayout({
   // context so client image URLs match SSR without any client-side env var.
   const invidiousOrigins = collectInvidiousOrigins();
 
+  // Hydrate the app-shell queries once, app-wide, so the sidebar subscriptions
+  // and settings don't re-fetch on every page load (they fired on every route
+  // otherwise). Both are cheap local DB reads. `refreshRecency` stays a
+  // client-side background mutation.
+  const helpers = createServerSideHelpers({
+    router: appRouter,
+    ctx: await createTRPCContext(),
+    transformer: superjson,
+  });
+  if (isLoggedIn) {
+    await Promise.allSettled([
+      helpers.settings.get.prefetch(),
+      helpers.subscriptions.listSidebar.prefetch({ limit: 24 }),
+    ]);
+  }
+  const dehydratedState = helpers.dehydrate();
+
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -73,7 +94,10 @@ export default async function RootLayout({
       <body
         className={`${inter.variable} ${jetbrainsMono.variable} font-sans antialiased`}
       >
-        <Providers invidiousOrigins={invidiousOrigins}>
+        <Providers
+          invidiousOrigins={invidiousOrigins}
+          dehydratedState={dehydratedState}
+        >
           <UiScale />
           <SwRegister />
           <AppShell

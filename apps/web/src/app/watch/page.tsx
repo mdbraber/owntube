@@ -1,3 +1,5 @@
+import { HydrationBoundary } from "@tanstack/react-query";
+import { createServerSideHelpers } from "@trpc/react-query/server";
 import type { Metadata } from "next";
 import { unstable_noStore as noStore } from "next/cache";
 import { headers } from "next/headers";
@@ -35,8 +37,11 @@ import {
   formatSubscribersLabel,
   formatViews,
 } from "@/lib/video-display";
+import superjson from "superjson";
 import { auth } from "@/server/auth";
 import { getDb } from "@/server/db/client";
+import { createTRPCContext } from "@/server/trpc/context";
+import { appRouter } from "@/server/trpc/root";
 import { UpstreamAgeRestrictedError } from "@/server/errors/upstream-age-restricted";
 import { UpstreamLiveUpcomingError } from "@/server/errors/upstream-live-upcoming";
 import {
@@ -319,7 +324,25 @@ export default async function WatchPage({ searchParams }: WatchPageProps) {
     upcomingLive?.message ??
     "This live stream has not started yet. Check back when it goes live.";
 
+  // Hydrate the first page of comments when it's already cached (the warmer
+  // caches comments for likely-next videos), so the watch page doesn't fire a
+  // client round-trip for them. cache-only never blocks SSR on upstream; a cold
+  // miss simply isn't seeded and the client fetches on mount as before.
+  const commentsHelpers = createServerSideHelpers({
+    router: appRouter,
+    ctx: { ...(await createTRPCContext()), prefetchCacheOnly: true },
+    transformer: superjson,
+  });
+  if (detail && !isLive) {
+    await commentsHelpers.video.comments
+      .prefetchInfinite({ videoId: detail.videoId, sortBy: "top" })
+      .catch(() => {
+        // cold cache — client fetches on mount
+      });
+  }
+
   return (
+    <HydrationBoundary state={commentsHelpers.dehydrate()}>
     <WatchCinemaProvider
       initialCinemaMode={Boolean(userSettings?.defaultCinemaMode)}
     >
@@ -562,5 +585,6 @@ export default async function WatchPage({ searchParams }: WatchPageProps) {
         }
       />
     </WatchCinemaProvider>
+    </HydrationBoundary>
   );
 }

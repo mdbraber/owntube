@@ -31,6 +31,18 @@ import {
 } from "@/server/services/proxy.types";
 import { acquireUpstreamSlot } from "@/server/services/rate-limiter";
 
+/**
+ * Thrown by a cache-only comments read (SSR prefetch) when nothing is cached,
+ * so the prefetch fails instead of seeding the query with empty data — the
+ * client then fetches on mount as usual.
+ */
+export class CommentsCacheMissError extends Error {
+  constructor() {
+    super("comments cache-only miss");
+    this.name = "CommentsCacheMissError";
+  }
+}
+
 function buildPipedCommentsUrl(base: string, videoId: string): string {
   return new URL(
     `/comments/${encodeURIComponent(videoId)}`,
@@ -249,15 +261,27 @@ export async function fetchVideoComments(
   db: AppDb,
   input: VideoCommentsInput,
   overrides?: ProxySourceOverrides,
+  opts?: { cacheOnly?: boolean },
 ): Promise<VideoCommentsResult> {
   const continuationRequested = Boolean(input.continuation?.trim());
   if (continuationRequested) {
+    if (opts?.cacheOnly) throw new CommentsCacheMissError();
     return fetchVideoCommentsLive(input, overrides);
   }
 
   const key = commentsCacheKey(input.videoId, input.sortBy);
   const fresh = readCommentsCacheRow(readFreshCacheRow(db, key));
   if (fresh) return fresh;
+
+  // Cache-only (SSR prefetch): never block the watch page on an upstream
+  // comments fetch. Serve stale if we have any; otherwise signal a miss so the
+  // prefetch doesn't seed the query with empty data — the client fetches on
+  // mount exactly as before.
+  if (opts?.cacheOnly) {
+    const stale = readCommentsCacheRow(readLatestCacheRow(db, key));
+    if (stale) return stale;
+    throw new CommentsCacheMissError();
+  }
 
   const inFlight = inFlightComments.get(key);
   if (inFlight) return inFlight;

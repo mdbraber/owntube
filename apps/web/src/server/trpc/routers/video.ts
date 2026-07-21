@@ -68,6 +68,7 @@ export const videoRouter = router({
             continuation: continuation ?? cursor ?? undefined,
           },
           overrides,
+          { cacheOnly: ctx.prefetchCacheOnly },
         );
       } catch (e) {
         if (e instanceof UpstreamUnavailableError) {
