@@ -6,7 +6,7 @@ import {
   QueryClient,
   QueryClientProvider,
 } from "@tanstack/react-query";
-import { httpBatchLink } from "@trpc/client";
+import { httpBatchLink, splitLink } from "@trpc/client";
 import { useEffect, useState } from "react";
 import superjson from "superjson";
 import {
@@ -91,9 +91,26 @@ export function Providers({
   const [trpcClient] = useState(() =>
     trpc.createClient({
       links: [
-        httpBatchLink({
-          url: `${getBaseUrl()}/api/trpc`,
-          transformer: superjson,
+        // Mutations get their own link with `keepalive: true`: it tells the
+        // browser to let the request outlive the page context that started
+        // it, which is exactly the race that produces Safari's "network
+        // connection was lost" — most of our mutation pings (history's ~20s
+        // tick, visibilitychange/pagehide flushes) fire right as the tab
+        // backgrounds and iOS/macOS Safari tears down its connections. Body
+        // sizes here are tiny JSON payloads, well under the keepalive 64KB
+        // cap, so this is safe to apply to every mutation.
+        splitLink({
+          condition: (op) => op.type === "mutation",
+          true: httpBatchLink({
+            url: `${getBaseUrl()}/api/trpc`,
+            transformer: superjson,
+            fetch: (url, options) =>
+              fetch(url, { ...options, keepalive: true }),
+          }),
+          false: httpBatchLink({
+            url: `${getBaseUrl()}/api/trpc`,
+            transformer: superjson,
+          }),
         }),
       ],
     }),
