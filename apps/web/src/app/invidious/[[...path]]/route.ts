@@ -106,14 +106,15 @@ export function assetKindForSubpath(subpath: string): AssetKind | null {
 }
 
 /**
- * Upper bound on a single upstream media fetch. Safari (and h2/h3 in general)
- * keeps draining a response the client already aborted — a seek that cancels
- * an 11MB in-flight segment stalls the *next* fetches on that connection for
- * seconds while the orphaned bytes flush. Splitting large/open-ended ranges
- * into sequential ≤2MB upstream chunks bounds that worst case to one chunk
- * (~0.25s at typical LAN throughput) regardless of how well any hop honors
- * cancellation, and stops an aborted request from pinning companion→googlevideo
- * bandwidth for the rest of a multi-MB transfer.
+ * Upper bound on a single upstream media fetch. History: this chunking was
+ * built against an h2 head-of-line theory ("Safari drains a response the
+ * client already aborted") that the 2026-07 stall hunt later disproved — the
+ * real culprit was Safari's h2 connection pool wedging, and the server no
+ * longer speaks h2 at all. The chunking stays for the reasons that were true
+ * all along: a client abort cancels at most ~two in-flight chunks of
+ * companion→googlevideo bandwidth instead of the rest of a multi-MB
+ * transfer, and the one-chunk-ahead prefetch pipelines throughput without
+ * unbounded buffering.
  */
 export const MEDIA_CHUNK_BYTES = 2 * 1024 * 1024;
 

@@ -53,10 +53,13 @@ export function Providers({
         defaultOptions: {
           queries: {
             staleTime: 60_000,
-            // Retry transient connection drops (Safari recycling an idle HTTP/2
-            // connection → "network connection was lost"). Only network-level
-            // failures — a tRPC error from the server carries an httpStatus and
-            // shouldn't be retried blindly.
+            // Retry transient connection drops: Safari 18+ fires a request
+            // into a keep-alive connection the server already closed and
+            // reports the failure without retrying it itself ("network
+            // connection was lost") — the request never reached the wire, so
+            // an immediate retry succeeds. Only network-level failures — a
+            // tRPC error from the server carries an httpStatus and shouldn't
+            // be retried blindly.
             retry: (failureCount, error) =>
               isTransientNetworkError(error) && failureCount < 3,
           },

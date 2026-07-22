@@ -25,8 +25,6 @@ COPY apps/web apps/web
 # NEXT_PUBLIC_* vars are inlined into the client bundle at build time, so they
 # must be declared ARG + re-exposed as ENV before `next build` runs — compose
 # passing them via `args:` alone has no effect without this.
-ARG NEXT_PUBLIC_INVIDIOUS_BASE_URL=""
-ENV NEXT_PUBLIC_INVIDIOUS_BASE_URL=$NEXT_PUBLIC_INVIDIOUS_BASE_URL
 ARG NEXT_PUBLIC_MEDIA_BASE_URL=""
 ENV NEXT_PUBLIC_MEDIA_BASE_URL=$NEXT_PUBLIC_MEDIA_BASE_URL
 

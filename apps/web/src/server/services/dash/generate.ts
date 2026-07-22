@@ -98,8 +98,7 @@ function pickDashAudioFormat(af: AdaptiveFormat[]): AdaptiveFormat | undefined {
 /**
  * Streams at or below this ride the companion origin in split mode: the audio
  * track and the cheap rung dash.js seeks at (SEEK_FAST_MAX_KBPS in
- * use-dash-playback.ts, 2000) — small segments whose aborted fetches drain in
- * well under a second.
+ * use-dash-playback.ts, 2000) — exactly the fetches a seek needs first.
  */
 const SPLIT_DIRECT_MAX_KBPS = 2500;
 
@@ -111,11 +110,12 @@ const SPLIT_DIRECT_MAX_KBPS = 2500;
  *   SPLIT_DIRECT_MAX_KBPS) go browser→companion directly (CORS `*`, one hop,
  *   ~zero per-request overhead — the route Invidious's own player takes); the
  *   heavy top rungs go through the same-origin `/invidious/videoplayback`
- *   proxy, which serves them in bounded, abort-propagating ≤2MB chunks. A
- *   seek that cancels a multi-MB fetch therefore never head-of-line blocks
- *   the connection the seek's own small fetches ride (Safari drains an
- *   aborted response before running later requests on that connection —
- *   measured 3s+ stalls per aborted 11MB segment).
+ *   proxy, which serves them in bounded, abort-propagating ≤2MB chunks.
+ *   History: this split was originally justified by an h2 head-of-line
+ *   theory the 2026-07 stall hunt disproved (the real culprit was Safari's
+ *   h2 pool, since disabled server-wide). It stays because one-hop
+ *   seek-critical fetches measurably keep large seeks in the ~300ms range
+ *   and bulk media stays off the app origin's connection.
  * - "true": everything direct to companion.
  * - "false": everything through the same-origin proxy (e.g. when the
  *   companion host is not reachable from the browser).
