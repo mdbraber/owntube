@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { dispatchPlayerSeek } from "@/lib/player-seek-event";
 import { watchHref } from "@/lib/yt-routes";
 import { useMemo } from "react";
 import { compactRichTextParts, parseRichText } from "@/lib/watch-rich-text";
@@ -61,6 +64,28 @@ export function WatchRichText({
           <Link
             key={partKey}
             href={watchHref(videoId, { t: part.seconds })}
+            onClick={(e) => {
+              // Plain left-click on a timestamp for the video already playing:
+              // seek the live player in place instead of renavigating (which
+              // remounts it). Modified clicks (new tab etc.) and videos the
+              // host isn't playing keep the normal link navigation.
+              if (
+                e.defaultPrevented ||
+                e.metaKey ||
+                e.ctrlKey ||
+                e.shiftKey ||
+                e.altKey ||
+                e.button !== 0
+              ) {
+                return;
+              }
+              if (dispatchPlayerSeek({ videoId, seconds: part.seconds })) {
+                e.preventDefault();
+                const url = new URL(window.location.href);
+                url.searchParams.set("t", String(part.seconds));
+                window.history.replaceState(window.history.state, "", url);
+              }
+            }}
             className="font-medium text-[hsl(var(--foreground))] underline decoration-[hsl(var(--primary)_/_0.45)] underline-offset-2 hover:text-[hsl(var(--primary))]"
           >
             {part.value}

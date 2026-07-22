@@ -13,6 +13,10 @@ import {
 import dynamic from "next/dynamic";
 import { usePlayerContext } from "@/components/player/player-context";
 import { isIosLikeBrowser } from "@/lib/ios-playback";
+import {
+  PLAYER_SEEK_EVENT,
+  type PlayerSeekDetail,
+} from "@/lib/player-seek-event";
 import { cn } from "@/lib/utils";
 
 /**
@@ -281,6 +285,33 @@ export function PlayerHost() {
     const id = window.requestAnimationFrame(() => setEntered(true));
     return () => window.cancelAnimationFrame(id);
   }, [showMini]);
+
+  // Timestamp links in the description/comments seek the live instance in
+  // place instead of renavigating (which would remount the player). The
+  // preventDefault() is the handshake back to the link: handled here, so
+  // don't navigate. Scroll the inline slot back into view — the click came
+  // from deep in the page.
+  useEffect(() => {
+    const onSeek = (e: Event) => {
+      const ce = e as CustomEvent<PlayerSeekDetail>;
+      const detail = ce.detail;
+      if (!active || !detail || detail.videoId !== active.props.videoId) {
+        return;
+      }
+      const v = containerRef.current?.querySelector<HTMLVideoElement>(
+        "[data-ot-player-root] video",
+      );
+      if (!v) return;
+      ce.preventDefault();
+      v.currentTime = detail.seconds;
+      if (v.paused) void v.play().catch(() => {});
+      if (onWatch) {
+        slotEl?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+    };
+    window.addEventListener(PLAYER_SEEK_EVENT, onSeek);
+    return () => window.removeEventListener(PLAYER_SEEK_EVENT, onSeek);
+  }, [active, onWatch, slotEl]);
 
   const expand = useCallback(() => {
     if (!active) return;
