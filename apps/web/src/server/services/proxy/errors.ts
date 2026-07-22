@@ -83,12 +83,22 @@ export function throwIfUpstreamFailed(
   }
   // Definitive YouTube refusals (region block, private, removed): relay
   // YouTube's own reason instead of blaming the instances — no other
-  // instance in the same country will do better.
+  // instance in the same country will do better. The reason arrives either
+  // bare (200 + {"error": …} body, thrown as-is) or wrapped in a fetch
+  // failure ('HTTP 500: {"error":"…"}') — unwrap to YouTube's words alone.
   const unavailable = errors.find(isVideoUnavailableUpstreamMessage);
   if (unavailable) {
-    throw new UpstreamVideoUnavailableError(
-      cleanUpstreamErrorDetail(unavailable.replace(/^[^:]+:/, "")),
-    );
+    const detail = unavailable.replace(/^[^:]+:/, "").trim();
+    const embedded = detail.match(/\{"error":"((?:[^"\\]|\\.)*)"/)?.[1];
+    let reason = detail.replace(/^HTTP \d+:\s*/i, "");
+    if (embedded) {
+      try {
+        reason = JSON.parse(`"${embedded}"`) as string;
+      } catch {
+        reason = embedded;
+      }
+    }
+    throw new UpstreamVideoUnavailableError(cleanUpstreamErrorDetail(reason));
   }
   throw new UpstreamUnavailableError(
     upstreamFailureMessage(errors, fallbackMessage),
