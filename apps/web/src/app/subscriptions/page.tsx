@@ -1,11 +1,9 @@
 import { HydrationBoundary } from "@tanstack/react-query";
 import { createServerSideHelpers } from "@trpc/react-query/server";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import superjson from "superjson";
 import { PageHeader } from "@/components/layout/page-header";
-import { SubscriptionVideosInfinite } from "@/components/subscriptions/subscription-videos-infinite";
-import { Button } from "@/components/ui/button";
+import { SubscriptionsTabs } from "@/components/subscriptions/subscriptions-tabs";
 import { auth } from "@/server/auth";
 import { createCaller } from "@/server/trpc/caller";
 import { createTRPCContext } from "@/server/trpc/context";
@@ -18,6 +16,7 @@ export default async function SubscriptionsPage() {
   }
   const caller = await createCaller();
   const list = await caller.subscriptions.list();
+  const channels = await caller.subscriptions.listDetailed();
 
   // Prefetch the unfiltered first page so the feed paints from cache instead of
   // a skeleton. cache-only keeps SSR from ever blocking on the upstream feed;
@@ -48,15 +47,8 @@ export default async function SubscriptionsPage() {
     <main className="ot-page space-y-8">
       <PageHeader
         title="Subscriptions"
-        subtitle="Uploads from every channel you follow. Manage the list from All channels."
-      >
-        <Button variant="ghost" size="sm" asChild>
-          <Link href="/subscriptions/channels">All channels</Link>
-        </Button>
-        <Button variant="outline" size="sm" asChild>
-          <Link href="/search">Search channels</Link>
-        </Button>
-      </PageHeader>
+        subtitle="Uploads and channels you follow."
+      />
 
       {list.length === 0 ? (
         <p className="rounded-[var(--radius-card)] border border-dashed border-[hsl(var(--border))] bg-[hsl(var(--muted)_/_0.35)] py-10 text-center text-sm text-[hsl(var(--muted-foreground))]">
@@ -65,7 +57,7 @@ export default async function SubscriptionsPage() {
         </p>
       ) : (
         <HydrationBoundary state={helpers.dehydrate()}>
-          <SubscriptionVideosInfinite />
+          <SubscriptionsTabs channels={channels} />
         </HydrationBoundary>
       )}
     </main>

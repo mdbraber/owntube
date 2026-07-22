@@ -42,8 +42,13 @@ const STORAGE_KEY = "ot-channels-sort";
  */
 export function SubscriptionChannelsList({
   channels,
+  includeTags = [],
+  excludeTags = [],
 }: {
   channels: Channel[];
+  /** Shared tag filter from SubscriptionsTabs — filters rows by assignment. */
+  includeTags?: string[];
+  excludeTags?: string[];
 }) {
   const [sortKey, setSortKey] = useState<SortKey>("subscribed");
   const [desc, setDesc] = useState(true);
@@ -94,14 +99,35 @@ export function SubscriptionChannelsList({
     });
   };
 
+  const tagFilterActive = includeTags.length > 0 || excludeTags.length > 0;
+
   // Live (channelId, tag) pairs — tag edits made inline in any row invalidate
-  // this query, so every group updates immediately.
+  // this query, so every group updates immediately. Also needed whenever the
+  // shared tag filter is active (rows are filtered by their assignments).
   const assignments = trpc.channelTags.assignments.useQuery(undefined, {
-    enabled: groupByTag,
+    enabled: groupByTag || tagFilterActive,
   });
 
   const sorted = useMemo(() => {
-    const copy = [...channels];
+    let copy = [...channels];
+    if (tagFilterActive && assignments.data) {
+      const tagsByChannel = new Map<string, Set<string>>();
+      for (const row of assignments.data) {
+        const set = tagsByChannel.get(row.channelId) ?? new Set<string>();
+        set.add(row.tag);
+        tagsByChannel.set(row.channelId, set);
+      }
+      // Same semantics as the feed: include = only channels carrying one of
+      // those tags; exclude = drop channels carrying one (untagged survive).
+      copy = copy.filter((c) => {
+        const tags = tagsByChannel.get(c.channelId);
+        if (includeTags.length > 0) {
+          if (!tags || !includeTags.some((t) => tags.has(t))) return false;
+        }
+        if (tags && excludeTags.some((t) => tags.has(t))) return false;
+        return true;
+      });
+    }
     copy.sort((a, b) => {
       let cmp: number;
       switch (sortKey) {
@@ -123,7 +149,15 @@ export function SubscriptionChannelsList({
       return desc ? -cmp : cmp;
     });
     return copy;
-  }, [channels, sortKey, desc]);
+  }, [
+    channels,
+    sortKey,
+    desc,
+    tagFilterActive,
+    assignments.data,
+    includeTags,
+    excludeTags,
+  ]);
 
   /** Tag → sorted channels (a channel appears under each of its tags). */
   const groups = useMemo(() => {
@@ -228,6 +262,10 @@ export function SubscriptionChannelsList({
             </section>
           ) : null}
         </div>
+      ) : sorted.length === 0 && tagFilterActive ? (
+        <p className="rounded-[var(--radius-card)] border border-dashed border-[hsl(var(--border))] bg-[hsl(var(--muted)_/_0.35)] py-10 text-center text-sm text-[hsl(var(--muted-foreground))]">
+          No channels match the current tag filter.
+        </p>
       ) : (
         <ul className="space-y-1">
           {sorted.map((c) => (
