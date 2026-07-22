@@ -13,6 +13,7 @@ import { WatchTracker } from "@/components/player/watch-tracker";
 import { ChannelAvatarCircle } from "@/components/videos/channel-avatar-circle";
 import { VideoCardCompact } from "@/components/videos/video-card";
 import { WatchAgeRestricted } from "@/components/watch/watch-age-restricted";
+import { WatchVideoUnavailable } from "@/components/watch/watch-video-unavailable";
 import { WatchChaptersSection } from "@/components/watch/watch-chapters-section";
 import { WatchCinemaProvider } from "@/components/watch/watch-cinema-context";
 import { WatchCommentsSection } from "@/components/watch/watch-comments-section";
@@ -42,6 +43,7 @@ import { watchHref } from "@/lib/yt-routes";
 import { auth } from "@/server/auth";
 import { getDb } from "@/server/db/client";
 import { UpstreamAgeRestrictedError } from "@/server/errors/upstream-age-restricted";
+import { UpstreamVideoUnavailableError } from "@/server/errors/upstream-video-unavailable";
 import { UpstreamLiveUpcomingError } from "@/server/errors/upstream-live-upcoming";
 import {
   getWatchResumeSeconds,
@@ -99,6 +101,9 @@ export async function generateMetadata({
     if (error instanceof UpstreamAgeRestrictedError) {
       return { title: "Age-restricted video" };
     }
+    if (error instanceof UpstreamVideoUnavailableError) {
+      return { title: "Video unavailable" };
+    }
     return { title: "Video" };
   }
 }
@@ -155,6 +160,7 @@ export default async function WatchPage({ searchParams }: WatchPageProps) {
   let detail: VideoDetail | null = null;
   let upcomingLive: UpstreamLiveUpcomingError | null = null;
   let ageRestricted: UpstreamAgeRestrictedError | null = null;
+  let unavailable: UpstreamVideoUnavailableError | null = null;
   try {
     detail = await fetchVideoDetail(db, input, overrides, {
       bypassDetailCache: true,
@@ -165,6 +171,8 @@ export default async function WatchPage({ searchParams }: WatchPageProps) {
       upcomingLive = error;
     } else if (error instanceof UpstreamAgeRestrictedError) {
       ageRestricted = error;
+    } else if (error instanceof UpstreamVideoUnavailableError) {
+      unavailable = error;
     } else {
       throw error;
     }
@@ -323,7 +331,12 @@ export default async function WatchPage({ searchParams }: WatchPageProps) {
         undefined)
       : undefined;
   const pageTitle =
-    detail?.title ?? (ageRestricted ? "Age-restricted video" : "Live stream");
+    detail?.title ??
+    (ageRestricted
+      ? "Age-restricted video"
+      : unavailable
+        ? "Video unavailable"
+        : "Live stream");
   const upcomingMessage =
     upcomingLive?.message ??
     "This live stream has not started yet. Check back when it goes live.";
@@ -377,6 +390,11 @@ export default async function WatchPage({ searchParams }: WatchPageProps) {
                 <WatchAgeRestricted
                   title={pageTitle}
                   message={ageRestricted.message}
+                />
+              ) : unavailable ? (
+                <WatchVideoUnavailable
+                  title={pageTitle}
+                  message={unavailable.reason}
                 />
               ) : videoPayload && detail ? (
                 <WatchPlayerMount

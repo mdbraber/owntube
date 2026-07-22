@@ -245,6 +245,17 @@ export async function fetchVideoDetail(
           buildInvidiousVideosUrl(invidiousBase, input.videoId),
           { source: "invidious", baseUrl: invidiousBase },
         );
+        // Invidious answers 200 with `{"error": "…"}` for videos YouTube
+        // refuses (region block, private, removed). mapInvidiousVideo would
+        // silently return null and drop the reason — throw it instead so the
+        // error classification below can relay YouTube's own words.
+        const upstreamReason =
+          json && typeof json === "object" && !Array.isArray(json)
+            ? (json as Record<string, unknown>).error
+            : undefined;
+        if (typeof upstreamReason === "string" && upstreamReason.trim()) {
+          throw new Error(upstreamReason.trim());
+        }
         return mapInvidiousVideo(json, invidiousBase);
       } catch (error) {
         rethrowIfInvidiousUpcoming(error, input.videoId);

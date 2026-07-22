@@ -5,6 +5,10 @@ import {
 } from "@/server/errors/upstream-age-restricted";
 import { parseInvidiousUpcomingFromFetchMessage } from "@/server/errors/upstream-live-upcoming";
 import { UpstreamUnavailableError } from "@/server/errors/upstream-unavailable";
+import {
+  isVideoUnavailableUpstreamMessage,
+  UpstreamVideoUnavailableError,
+} from "@/server/errors/upstream-video-unavailable";
 import { recordUpstreamFailure as recordInstanceFailure } from "@/server/services/upstream-health";
 
 const UPSTREAM_RATE_LIMIT_NOTE = "rate limit";
@@ -76,6 +80,15 @@ export function throwIfUpstreamFailed(
   // clean typed error instead of the raw NewPipe/Invidious stack trace.
   if (errors.some(isAgeRestrictedUpstreamMessage)) {
     throw new UpstreamAgeRestrictedError();
+  }
+  // Definitive YouTube refusals (region block, private, removed): relay
+  // YouTube's own reason instead of blaming the instances — no other
+  // instance in the same country will do better.
+  const unavailable = errors.find(isVideoUnavailableUpstreamMessage);
+  if (unavailable) {
+    throw new UpstreamVideoUnavailableError(
+      cleanUpstreamErrorDetail(unavailable.replace(/^[^:]+:/, "")),
+    );
   }
   throw new UpstreamUnavailableError(
     upstreamFailureMessage(errors, fallbackMessage),
