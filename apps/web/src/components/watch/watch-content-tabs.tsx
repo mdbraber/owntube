@@ -1,36 +1,57 @@
 "use client";
 
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
+import { useWatchCinema } from "@/components/watch/watch-cinema-context";
 import { cn } from "@/lib/utils";
 
-type WatchTabId = "description" | "comments" | "related";
+type WatchTabId = "description" | "comments" | "chapters" | "related";
 
 type WatchContentTabsProps = {
   description: ReactNode;
   comments: ReactNode;
-  related: ReactNode;
+  /** Rendered as extra tabs in cinema mode only (the sidebar is gone there). */
+  chapters?: ReactNode;
+  related?: ReactNode;
   /** "Related" normally; "From your feed" when the sidebar fell back. */
   relatedLabel: string;
 };
 
 /**
- * Watch-page content tabs (Description | Comments | Related), styled like the
- * channel page's section tabs. All panels stay mounted — the inactive ones are
- * just hidden — so the server-rendered related list survives tab switches and
- * comments keep their loaded state.
+ * Watch-page content tabs, styled like the channel page's section tabs.
+ * Normal mode: Description | Comments (chapters + related live in the
+ * sidebar next to the video). Cinema mode: the sidebar is not rendered, so
+ * Chapters and Related join as tabs. Description/comments panels stay
+ * mounted across switches; the cinema-only panels mount only in cinema so
+ * the same nodes are never in the DOM twice.
  */
 export function WatchContentTabs({
   description,
   comments,
+  chapters,
   related,
   relatedLabel,
 }: WatchContentTabsProps) {
+  const cinema = useWatchCinema();
+  const cinemaMode = Boolean(cinema?.cinemaMode);
   const [tab, setTab] = useState<WatchTabId>("description");
+
+  // Leaving cinema removes the Chapters/Related tabs — fall back to a tab
+  // that still exists instead of an empty panel.
+  useEffect(() => {
+    if (!cinemaMode && (tab === "chapters" || tab === "related")) {
+      setTab("description");
+    }
+  }, [cinemaMode, tab]);
 
   const tabs: { id: WatchTabId; label: string }[] = [
     { id: "description", label: "Description" },
     { id: "comments", label: "Comments" },
-    { id: "related", label: relatedLabel },
+    ...(cinemaMode && chapters
+      ? [{ id: "chapters" as const, label: "Chapters" }]
+      : []),
+    ...(cinemaMode && related
+      ? [{ id: "related" as const, label: relatedLabel }]
+      : []),
   ];
 
   return (
@@ -60,7 +81,12 @@ export function WatchContentTabs({
       </div>
       <div className={cn(tab !== "description" && "hidden")}>{description}</div>
       <div className={cn(tab !== "comments" && "hidden")}>{comments}</div>
-      <div className={cn(tab !== "related" && "hidden")}>{related}</div>
+      {cinemaMode && chapters ? (
+        <div className={cn(tab !== "chapters" && "hidden")}>{chapters}</div>
+      ) : null}
+      {cinemaMode && related ? (
+        <div className={cn(tab !== "related" && "hidden")}>{related}</div>
+      ) : null}
     </section>
   );
 }

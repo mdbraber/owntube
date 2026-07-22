@@ -359,6 +359,55 @@ export default async function WatchPage({ searchParams }: WatchPageProps) {
       });
   }
 
+  // Chapters + related are shared between the sidebar (normal mode) and the
+  // cinema-mode tabs; each is mounted in exactly one place at a time.
+  const chaptersNode =
+    detail && !isLive ? (
+      <WatchChaptersSection
+        videoId={detail.videoId}
+        chapters={chapters}
+        durationSeconds={detail.durationSeconds}
+        storyboard={detail.storyboard}
+        scrubPreviewStreamSrc={scrubPreviewStreamSrc}
+      />
+    ) : null;
+  const relatedNode = detail ? (
+    <>
+      {sidebarVideos.length === 0 ? (
+        <p className="text-sm text-[hsl(var(--muted-foreground))]">
+          No related videos are available right now. Check your Piped instance
+          or try again later.
+        </p>
+      ) : null}
+      <ul className="space-y-3">
+        {sidebarVideos.map((video) => (
+          <li key={video.videoId}>
+            <VideoCardCompact
+              href={watchHref(video.videoId)}
+              videoId={video.videoId}
+              title={video.title}
+              channelId={video.channelId}
+              channelName={video.channelName}
+              channelHref={
+                video.channelId
+                  ? `/channel/${encodeURIComponent(video.channelId)}`
+                  : undefined
+              }
+              channelAvatarUrl={video.channelAvatarUrl}
+              thumbnailUrl={video.thumbnailUrl}
+              durationSeconds={video.durationSeconds}
+              isLive={video.isLive}
+              isUpcoming={video.isUpcoming}
+              publishedText={video.publishedText}
+              showChannelAvatar={false}
+              size="large"
+            />
+          </li>
+        ))}
+      </ul>
+    </>
+  ) : null;
+
   return (
     <HydrationBoundary state={commentsHelpers.dehydrate()}>
       <WatchCinemaProvider
@@ -556,63 +605,31 @@ export default async function WatchPage({ searchParams }: WatchPageProps) {
                         : "More to watch"
                   }
                   description={
-                    <div className="space-y-4">
-                      {!isLive ? (
-                        <WatchChaptersSection
-                          videoId={detail.videoId}
-                          chapters={chapters}
-                          durationSeconds={detail.durationSeconds}
-                          storyboard={detail.storyboard}
-                          scrubPreviewStreamSrc={scrubPreviewStreamSrc}
-                        />
-                      ) : null}
-                      <WatchDescription
-                        videoId={detail.videoId}
-                        description={detail.description}
-                        viewsLabel={viewsLabel}
-                        publishedLabel={publishedLabel}
-                      />
-                    </div>
+                    <WatchDescription
+                      videoId={detail.videoId}
+                      description={detail.description}
+                      viewsLabel={viewsLabel}
+                      publishedLabel={publishedLabel}
+                    />
                   }
                   comments={<WatchCommentsSection videoId={detail.videoId} />}
-                  related={
-                    <>
-                      {sidebarVideos.length === 0 ? (
-                        <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                          No related videos are available right now. Check your
-                          Piped instance or try again later.
-                        </p>
-                      ) : null}
-                      <ul className="space-y-3 lg:grid lg:grid-cols-2 lg:gap-4 lg:space-y-0 xl:grid-cols-3">
-                {sidebarVideos.map((video) => (
-                  <li key={video.videoId}>
-                    <VideoCardCompact
-                      href={watchHref(video.videoId)}
-                      videoId={video.videoId}
-                      title={video.title}
-                      channelId={video.channelId}
-                      channelName={video.channelName}
-                      channelHref={
-                        video.channelId
-                          ? `/channel/${encodeURIComponent(video.channelId)}`
-                          : undefined
-                      }
-                      channelAvatarUrl={video.channelAvatarUrl}
-                      thumbnailUrl={video.thumbnailUrl}
-                      durationSeconds={video.durationSeconds}
-                      isLive={video.isLive}
-                      isUpcoming={video.isUpcoming}
-                      publishedText={video.publishedText}
-                      showChannelAvatar={false}
-                      size="large"
-                    />
-                  </li>
-                ))}
-                      </ul>
-                    </>
-                  }
+                  chapters={chaptersNode ?? undefined}
+                  related={relatedNode}
                 />
               ) : null}
+            </>
+          }
+          sidebar={
+            <>
+              {chaptersNode}
+              <h2 className="text-lg font-bold tracking-tight">
+                {sidebarFromFeedFallback
+                  ? "From your feed"
+                  : sidebarVideos.length > 0
+                    ? "Related"
+                    : "More to watch"}
+              </h2>
+              {relatedNode}
             </>
           }
         />
