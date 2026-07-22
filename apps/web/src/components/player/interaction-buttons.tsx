@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ShareDialog } from "@/components/player/share-dialog";
 import { useActionToast } from "@/components/videos/action-toast";
 import { useVideoActions } from "@/components/videos/use-video-actions";
-import { ShareIcon } from "@/components/videos/video-action-icons";
+import { ShareIcon, XIcon } from "@/components/videos/video-action-icons";
 import {
   isVideoActionActive,
   VideoActionGlyph,
@@ -16,6 +16,7 @@ import {
   VideoActionsMenu,
 } from "@/components/videos/video-actions-menu";
 import { saveMembershipLabel } from "@/lib/save-membership";
+import { trpc } from "@/trpc/react";
 import { cn } from "@/lib/utils";
 
 type InteractionButtonsProps = {
@@ -68,6 +69,20 @@ export function InteractionButtons({
   thumbnailUrl,
   isAuthenticated,
 }: InteractionButtonsProps) {
+  // "Unsubscribe" lives in the kebab menu (not a visible button next to the
+  // channel) so it can't be hit by accident; Subscribe for new channels stays
+  // a visible button (ChannelSubscribeButton with subscribeOnly).
+  const trpcUtils = trpc.useUtils();
+  const subscription = trpc.subscriptions.status.useQuery(
+    { channelId: channelId ?? "" },
+    { enabled: isAuthenticated && Boolean(channelId) },
+  );
+  const unsubscribe = trpc.subscriptions.remove.useMutation({
+    onSuccess: async () => {
+      await trpcUtils.subscriptions.invalidate();
+    },
+  });
+
   const [saveMenuOpen, setSaveMenuOpen] = useState(false);
   const actions = useVideoActions({
     videoId,
@@ -209,6 +224,18 @@ export function InteractionButtons({
             icon: <ShareIcon />,
             onSelect: () => setShareOpen(true),
           },
+          ...(channelId && subscription.data?.subscribed
+            ? [
+                {
+                  key: "unsubscribe",
+                  label: channelName
+                    ? `Unsubscribe from ${channelName}`
+                    : "Unsubscribe",
+                  icon: <XIcon />,
+                  onSelect: () => unsubscribe.mutate({ channelId }),
+                },
+              ]
+            : []),
         ]}
       />
     </div>
