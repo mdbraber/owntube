@@ -17,6 +17,7 @@ import { WatchVideoUnavailable } from "@/components/watch/watch-video-unavailabl
 import { WatchChaptersSection } from "@/components/watch/watch-chapters-section";
 import { WatchCinemaProvider } from "@/components/watch/watch-cinema-context";
 import { WatchCommentsSection } from "@/components/watch/watch-comments-section";
+import { WatchContentTabs } from "@/components/watch/watch-content-tabs";
 import { WatchDescription } from "@/components/watch/watch-description";
 import { WatchPageGrid } from "@/components/watch/watch-page-grid";
 import { WatchPlayerMount } from "@/components/watch/watch-player-mount";
@@ -546,47 +547,43 @@ export default async function WatchPage({ searchParams }: WatchPageProps) {
               ) : null}
 
               {detail ? (
-                <div className="space-y-3">
-                  <h2 className="text-lg font-medium">Description</h2>
-                  <WatchDescription
-                    videoId={detail.videoId}
-                    description={detail.description}
-                    viewsLabel={viewsLabel}
-                    publishedLabel={publishedLabel}
-                  />
-                </div>
-              ) : null}
-
-              {detail ? (
-                <WatchCommentsSection videoId={detail.videoId} />
-              ) : null}
-            </>
-          }
-          sidebar={
-            <>
-              {detail && !isLive ? (
-                <WatchChaptersSection
-                  videoId={detail.videoId}
-                  chapters={chapters}
-                  durationSeconds={detail.durationSeconds}
-                  storyboard={detail.storyboard}
-                  scrubPreviewStreamSrc={scrubPreviewStreamSrc}
-                />
-              ) : null}
-              <h2 className="text-lg font-bold tracking-tight">
-                {sidebarFromFeedFallback
-                  ? "From your feed"
-                  : sidebarVideos.length > 0
-                    ? "Related"
-                    : "More to watch"}
-              </h2>
-              {sidebarVideos.length === 0 ? (
-                <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                  No related videos are available right now. Check your Piped
-                  instance or try again later.
-                </p>
-              ) : null}
-              <ul className="space-y-3">
+                <WatchContentTabs
+                  relatedLabel={
+                    sidebarFromFeedFallback
+                      ? "From your feed"
+                      : sidebarVideos.length > 0
+                        ? "Related"
+                        : "More to watch"
+                  }
+                  description={
+                    <div className="space-y-4">
+                      {!isLive ? (
+                        <WatchChaptersSection
+                          videoId={detail.videoId}
+                          chapters={chapters}
+                          durationSeconds={detail.durationSeconds}
+                          storyboard={detail.storyboard}
+                          scrubPreviewStreamSrc={scrubPreviewStreamSrc}
+                        />
+                      ) : null}
+                      <WatchDescription
+                        videoId={detail.videoId}
+                        description={detail.description}
+                        viewsLabel={viewsLabel}
+                        publishedLabel={publishedLabel}
+                      />
+                    </div>
+                  }
+                  comments={<WatchCommentsSection videoId={detail.videoId} />}
+                  related={
+                    <>
+                      {sidebarVideos.length === 0 ? (
+                        <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                          No related videos are available right now. Check your
+                          Piped instance or try again later.
+                        </p>
+                      ) : null}
+                      <ul className="space-y-3 lg:grid lg:grid-cols-2 lg:gap-4 lg:space-y-0 xl:grid-cols-3">
                 {sidebarVideos.map((video) => (
                   <li key={video.videoId}>
                     <VideoCardCompact
@@ -611,7 +608,11 @@ export default async function WatchPage({ searchParams }: WatchPageProps) {
                     />
                   </li>
                 ))}
-              </ul>
+                      </ul>
+                    </>
+                  }
+                />
+              ) : null}
             </>
           }
         />
