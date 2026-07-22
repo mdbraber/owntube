@@ -16,11 +16,14 @@ export type WatchEventPayload = {
 const MAX_DURATION_WATCHED_SEC = 86_400;
 
 /**
- * `positionSeconds` (playback head) completes a video independently of dwell:
- * dwell alone under-reports every way a video can legitimately *finish* early —
- * faster playback rates, SponsorBlock skips, scrubbing, or a backgrounded tab
- * (which stops accumulating dwell entirely). Reaching the end is the signal
- * users mean by "watched".
+ * Completion is decided by the playback head (`positionSeconds`) alone: the
+ * video counts as watched only when the position actually reached the
+ * completion ratio (or the player fired `ended`, which the tracker records
+ * explicitly). Dwell deliberately does NOT complete: it is wall-clock time
+ * and over-reports every way a video can sit playing without being watched
+ * through — rewatching one section, a mini player left running, a replayed
+ * ending — which used to flip videos to watched by lingering alone. Dwell
+ * remains the durationWatched stat.
  */
 export function computeWatchEvent(
   elapsedVisibleSeconds: number,
@@ -42,7 +45,6 @@ export function computeWatchEvent(
     typeof positionSeconds === "number" &&
     Number.isFinite(positionSeconds) &&
     positionSeconds >= COMPLETION_RATIO * duration;
-  const completed =
-    duration > 0 && (elapsed >= COMPLETION_RATIO * duration || reachedEnd);
+  const completed = duration > 0 && reachedEnd;
   return { durationWatched, completed };
 }

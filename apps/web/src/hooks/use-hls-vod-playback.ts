@@ -50,12 +50,19 @@ export function useHlsVodPlayback(
     // ready — e.g. Safari re-buffering a backgrounded tab — and resume a video
     // the user deliberately paused. Retries stay armed until the first real
     // start (covers autoplay initially blocked, or a pre-warmed shorts slide).
-    let started = false;
+    // A re-attach over an already-playing video (mini-player transitions,
+    // host re-activation) counts as started — otherwise no 'playing' event
+    // ever fires after mount and the retry stays armed forever.
+    let started = !v.paused;
     const markStarted = () => {
       started = true;
     };
     const play = () => {
       if (started) return;
+      // Never auto-start an ended video: play() on an ended element restarts
+      // it from 0 (the "finished video replays itself" bug — canplay refires
+      // around the ended transition and re-triggered this retry).
+      if (v.ended) return;
       if (v.paused) void v.play().catch(() => {});
     };
     play();

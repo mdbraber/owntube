@@ -9,21 +9,23 @@ describe("computeWatchEvent", () => {
     });
   });
 
-  it("marks completion once dwell crosses the ratio threshold", () => {
+  it("never completes on dwell alone - lingering is not watching", () => {
     expect(computeWatchEvent(590, 600, false)).toEqual({
       durationWatched: 590,
-      completed: true,
+      completed: false,
     });
-    expect(computeWatchEvent(581, 600, false).completed).toBe(false);
     expect(
       computeWatchEvent(600 * COMPLETION_RATIO, 600, false).completed,
-    ).toBe(true);
+    ).toBe(false);
+    // Dwell past the whole length with the playhead stuck early: still not
+    // watched (a mini player left running, a rewatched section).
+    expect(computeWatchEvent(900, 600, false, 45).completed).toBe(false);
   });
 
   it("caps durationWatched at the video length", () => {
     expect(computeWatchEvent(900, 600, false)).toEqual({
       durationWatched: 600,
-      completed: true,
+      completed: false,
     });
   });
 
@@ -61,9 +63,11 @@ describe("computeWatchEvent", () => {
     expect(computeWatchEvent(20, 600, false, 300).completed).toBe(false);
   });
 
-  it("still completes on dwell alone when no position is known", () => {
-    expect(computeWatchEvent(590, 600, false).completed).toBe(true);
-    expect(computeWatchEvent(100, 600, false).completed).toBe(false);
+  it("does not complete on dwell even when no position is known", () => {
+    // No readable playhead (player torn down, preview element): dwell alone
+    // must still not mark it watched - that was the linger-completion bug.
+    expect(computeWatchEvent(600, 600, false).completed).toBe(false);
+    expect(computeWatchEvent(600, 600, false, undefined).completed).toBe(false);
   });
 
   it("never completes live streams", () => {
