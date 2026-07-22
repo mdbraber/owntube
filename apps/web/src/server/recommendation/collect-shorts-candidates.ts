@@ -17,9 +17,12 @@ const MIN_UNIQUE_SHORTS_FOR_HISTORY_POOL = 8;
 // most channels don't post shorts, so a small cap left the feed drawing from a
 // handful. Fetches are channel-cache backed (and warmed), so cold cost is
 // bounded by the concurrency; the 10-min pool cache amortizes the rest.
-const MAX_CHANNEL_SHORTS_FETCHES = 120;
+// 36 highest-ranked channels (not 120): per-channel pages are individually
+// cached, the pool caps at 360 candidates anyway, and a cold 120-channel
+// sweep at low concurrency was a ~20s block on the shorts feed.
+const MAX_CHANNEL_SHORTS_FETCHES = 36;
 const SHORTS_PER_CHANNEL = 14;
-const CHANNEL_FETCH_CONCURRENCY = 6;
+const CHANNEL_FETCH_CONCURRENCY = 12;
 
 export type ShortsVideoCandidate = { video: UnifiedVideo; source: string };
 

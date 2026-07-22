@@ -160,6 +160,9 @@ export async function getShortsRecommendations(
 
   const inFlight = shortsPoolInFlight.get(cacheKey);
   if (inFlight) {
+    // A rebuild is already running; with a stale pool on hand, answer from
+    // it instead of blocking on the rebuild.
+    if (cached) return sliceShortsPool(cached, opts.page, opts.pageSize);
     const pool = await inFlight;
     if (pool.expiresAt > Date.now()) {
       return sliceShortsPool(pool, opts.page, opts.pageSize);
@@ -339,13 +342,26 @@ export async function getShortsRecommendations(
   })();
 
   shortsPoolInFlight.set(cacheKey, task);
-  try {
-    const pool = await task;
-    shortsPoolCache.set(cacheKey, pool);
-    return sliceShortsPool(pool, opts.page, opts.pageSize);
-  } finally {
-    shortsPoolInFlight.delete(cacheKey);
+  const settled = task
+    .then((pool) => {
+      shortsPoolCache.set(cacheKey, pool);
+      return pool;
+    })
+    .finally(() => {
+      shortsPoolInFlight.delete(cacheKey);
+    });
+
+  // Serve-stale-while-revalidate: an expired pool answers instantly while the
+  // rebuild above replaces it in the background. Blocking here was the
+  // 10-20s "loading shorts" hang - with a 90s TTL, almost every visit paid
+  // the full channel-fetch rebuild on its critical path.
+  if (cached) {
+    settled.catch(() => {});
+    return sliceShortsPool(cached, opts.page, opts.pageSize);
   }
+
+  const pool = await settled;
+  return sliceShortsPool(pool, opts.page, opts.pageSize);
 }
 
 export function clearShortsRecommendationCacheForUser(userId?: number): void {
