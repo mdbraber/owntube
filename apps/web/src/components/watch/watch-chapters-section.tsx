@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { handleTimestampLinkClick } from "@/lib/player-seek-event";
 import { watchHref } from "@/lib/yt-routes";
 import { useEffect } from "react";
 import {
@@ -119,6 +120,12 @@ export function WatchChaptersSection({
             <li key={`${chapter.startSeconds}-${chapter.title}`}>
               <Link
                 href={watchHref(videoId, { t: chapter.startSeconds })}
+                onClick={(e) =>
+                  handleTimestampLinkClick(e, {
+                    videoId,
+                    seconds: chapter.startSeconds,
+                  })
+                }
                 className="flex items-center gap-3 rounded-lg px-2 py-1.5 transition hover:bg-[hsl(var(--muted)_/_0.4)]"
               >
                 <div className="relative aspect-video w-28 shrink-0 overflow-hidden rounded-md bg-[hsl(var(--muted))]">
