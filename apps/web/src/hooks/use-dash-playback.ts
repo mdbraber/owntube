@@ -1,6 +1,10 @@
 "use client";
 
-import type { MediaPlayerClass, Representation } from "dashjs";
+import type {
+  ErrorEvent as DashErrorEvent,
+  MediaPlayerClass,
+  Representation,
+} from "dashjs";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   getClientAppOrigin,
@@ -248,7 +252,16 @@ export function useDashPlayback(
           },
         },
       });
-      player.on("error", () => onFatalErrorRef.current?.());
+      player.on("error", (e: DashErrorEvent) => {
+        // Caption tracks routinely 404 (self-hosted Invidious behind a
+        // residential IP gets blocked fetching YouTube's timedtext — see
+        // captions/[videoId]/route.ts) and the web player doesn't even render
+        // dash.js's own text tracks (defaultEnabled: false above; captions
+        // come from <track> instead). A failed "cc" track must not tear down
+        // an otherwise-healthy video/audio pipeline.
+        if (e.error === "cc") return;
+        onFatalErrorRef.current?.();
+      });
 
       // Fast-seek plumbing (see SEEK_FAST_MAX_KBPS). Scrub bursts fire many
       // `playbackSeeking` events — the low rung is forced once, and the jump
