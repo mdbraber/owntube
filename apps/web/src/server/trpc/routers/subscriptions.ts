@@ -380,55 +380,82 @@ function enrichSubscriptionVideosWithChannelMeta(
 
 /**
  * RSS-seeded newest videos have no duration (the RSS feed doesn't carry one),
- * so their thumbnails show no length badge. The same video usually also sits in
- * the channel's cached video list (from the warmer/prior loads) WITH a duration
- * — backfill from there. Brand-new uploads not yet in any cached channel page
- * simply stay length-less until the next channel fetch, which is expected.
+ * and their RSS-sourced view count (from `media:statistics views="…"`) can lag
+ * behind the real number. The same video usually also sits in the channel's
+ * cached video list (from the warmer/prior loads) with a real duration and a
+ * fresher, API-sourced view count — backfill/overwrite from there. Brand-new
+ * uploads not yet in any cached channel page simply keep the RSS-derived (or
+ * missing) values until the next channel fetch, which is expected.
  */
 function backfillMissingDurationsFromChannelCache(
   db: AppDb,
   videos: UnifiedVideo[],
 ): UnifiedVideo[] {
-  const channelIdsNeedingDurations = new Set<string>();
+  const channelIdsNeeded = new Set<string>();
   for (const v of videos) {
+    if (typeof v.channelId !== "string" || v.channelId.length === 0) {
+      continue;
+    }
     if (
-      typeof v.durationSeconds !== "number" &&
-      typeof v.channelId === "string" &&
-      v.channelId.length > 0
+      typeof v.durationSeconds !== "number" ||
+      typeof v.viewCount !== "number"
     ) {
-      channelIdsNeedingDurations.add(v.channelId);
+      channelIdsNeeded.add(v.channelId);
     }
   }
-  if (channelIdsNeedingDurations.size === 0) return videos;
+  if (channelIdsNeeded.size === 0) return videos;
 
   const durationByVideoId = new Map<string, number>();
-  for (const channelId of channelIdsNeedingDurations) {
+  const viewCountByVideoId = new Map<string, number>();
+  for (const channelId of channelIdsNeeded) {
     const row = readLatestCacheRow(db, channelCacheKey({ channelId }));
     if (!row) continue;
     try {
       const payload = JSON.parse(row.payloadJson) as {
-        videos?: { videoId?: string; durationSeconds?: number }[];
+        videos?: {
+          videoId?: string;
+          durationSeconds?: number;
+          viewCount?: number;
+        }[];
       };
       for (const cv of payload.videos ?? []) {
+        if (typeof cv.videoId !== "string") continue;
         if (
-          typeof cv.videoId === "string" &&
           typeof cv.durationSeconds === "number" &&
           cv.durationSeconds > 0 &&
           !durationByVideoId.has(cv.videoId)
         ) {
           durationByVideoId.set(cv.videoId, cv.durationSeconds);
         }
+        if (
+          typeof cv.viewCount === "number" &&
+          cv.viewCount >= 0 &&
+          !viewCountByVideoId.has(cv.videoId)
+        ) {
+          viewCountByVideoId.set(cv.videoId, cv.viewCount);
+        }
       }
     } catch {
       // Corrupt/legacy payload — skip this channel.
     }
   }
-  if (durationByVideoId.size === 0) return videos;
+  if (durationByVideoId.size === 0 && viewCountByVideoId.size === 0) {
+    return videos;
+  }
 
   return videos.map((v) => {
-    if (typeof v.durationSeconds === "number") return v;
-    const duration = durationByVideoId.get(v.videoId);
-    return duration === undefined ? v : { ...v, durationSeconds: duration };
+    const duration =
+      typeof v.durationSeconds === "number"
+        ? v.durationSeconds
+        : durationByVideoId.get(v.videoId);
+    // Channel-cache view counts come straight from the API and are fresher
+    // than RSS's, so prefer them over an RSS-derived value when both exist.
+    const viewCount =
+      viewCountByVideoId.get(v.videoId) ?? v.viewCount ?? undefined;
+    if (duration === v.durationSeconds && viewCount === v.viewCount) {
+      return v;
+    }
+    return { ...v, durationSeconds: duration, viewCount };
   });
 }
 

@@ -35,6 +35,7 @@ const rssEntrySchema = z.object({
   thumbnailUrl: z.string(),
   publishedAt: z.number().optional(),
   publishedText: z.string().optional(),
+  viewCount: z.number().optional(),
 });
 
 const rssPayloadSchema = z.object({ entries: z.array(rssEntrySchema) });
@@ -88,6 +89,9 @@ async function fetchChannelRssLive(
       const titleRaw = entry.match(/<title>([\s\S]*?)<\/title>/i)?.[1];
       const publishedRaw = entry.match(/<published>([^<]+)<\/published>/i)?.[1];
       const channelNameRaw = entry.match(/<name>([\s\S]*?)<\/name>/i)?.[1];
+      const viewsRaw = entry.match(
+        /<media:statistics[^>]*\bviews="(\d+)"/i,
+      )?.[1];
       if (!videoIdRaw || !titleRaw) continue;
       const videoId = decodeXmlEntities(videoIdRaw.trim());
       const title = decodeXmlEntities(titleRaw.trim());
@@ -100,6 +104,7 @@ async function fetchChannelRssLive(
       const publishedAt = Number.isNaN(publishedAtMs)
         ? undefined
         : Math.floor(publishedAtMs / 1000);
+      const viewCount = viewsRaw ? Number.parseInt(viewsRaw, 10) : undefined;
       out.push({
         videoId,
         title,
@@ -108,6 +113,7 @@ async function fetchChannelRssLive(
         thumbnailUrl: `https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/hqdefault.jpg`,
         publishedAt,
         publishedText: publishedRaw?.trim(),
+        viewCount: Number.isFinite(viewCount) ? viewCount : undefined,
       });
     }
     return out;
