@@ -1,12 +1,7 @@
 import { invidiousPortCollidesWithNextApp } from "@/lib/invidious-port-collision";
 import { logger } from "@/lib/logger";
 import { pipedRelatedListItems } from "@/lib/piped-related-items";
-import {
-  pickLivePlaybackDetail,
-  pickRicherPlaybackDetail,
-  playbackCatalogMaxHeightPx,
-  shouldPreferInvidiousOverPiped,
-} from "@/lib/upstream-playback-catalog";
+import { pickLivePlaybackDetail } from "@/lib/upstream-playback-catalog";
 import type { AppDb } from "@/server/db/client";
 import {
   detailCacheKey,
@@ -265,53 +260,44 @@ export async function fetchVideoDetail(
     return null;
   };
 
-  for (const pipedBase of pipedBases) {
-    try {
-      acquireUpstreamSlot();
-      const json = await fetchJson(
-        buildPipedStreamsUrl(pipedBase, input.videoId),
-        { source: "piped", baseUrl: pipedBase },
-      );
-      pipedResolved = mapPipedStream(json, pipedBase, input.videoId);
-      resolved = pipedResolved;
-      break;
-    } catch (error) {
-      recordUpstreamFailure(error, "piped", errors, pipedBase);
-    }
-  }
-
-  const liveFromPiped = pipedResolved?.isLive === true;
-  const shouldConsultInvidiousForLive =
-    liveFromPiped || preferUpstream === "invidious";
-
-  if (!resolved && invidiousBases.length > 0) {
+  // Invidious is the primary upstream (it also exclusively powers playback
+  // manifests, captions and storyboards). Piped is consulted only when
+  // Invidious yields nothing, for live-source arbitration, or when a
+  // `?upstream=piped` preference asks for it.
+  if (invidiousBases.length > 0) {
     invidiousResolved = await fetchInvidiousDetail();
     resolved = invidiousResolved;
-  } else if (shouldConsultInvidiousForLive && invidiousBases.length > 0) {
-    invidiousResolved = await fetchInvidiousDetail();
-    if (pipedResolved?.isLive || invidiousResolved?.isLive) {
+  }
+
+  const liveFromInvidious = invidiousResolved?.isLive === true;
+  const shouldConsultPiped =
+    !resolved || liveFromInvidious || preferUpstream === "piped";
+
+  if (shouldConsultPiped && pipedBases.length > 0) {
+    for (const pipedBase of pipedBases) {
+      try {
+        acquireUpstreamSlot();
+        const json = await fetchJson(
+          buildPipedStreamsUrl(pipedBase, input.videoId),
+          { source: "piped", baseUrl: pipedBase },
+        );
+        pipedResolved = mapPipedStream(json, pipedBase, input.videoId);
+        break;
+      } catch (error) {
+        recordUpstreamFailure(error, "piped", errors, pipedBase);
+      }
+    }
+    if (!resolved) {
+      resolved = pipedResolved;
+    } else if (
+      pipedResolved &&
+      (invidiousResolved?.isLive || pipedResolved.isLive)
+    ) {
       resolved = pickLivePlaybackDetail(
         pipedResolved,
         invidiousResolved,
         preferUpstream,
       );
-    }
-  } else if (
-    pipedResolved &&
-    invidiousBases.length > 0 &&
-    shouldPreferInvidiousOverPiped(pipedResolved)
-  ) {
-    invidiousResolved = await fetchInvidiousDetail();
-    if (invidiousResolved) {
-      const picked = pickRicherPlaybackDetail(pipedResolved, invidiousResolved);
-      if (picked.sourceUsed === "invidious") {
-        logger.info("upstream.prefer_invidious_over_piped", {
-          videoId: input.videoId,
-          pipedMaxHeight: playbackCatalogMaxHeightPx(pipedResolved),
-          invidiousMaxHeight: playbackCatalogMaxHeightPx(invidiousResolved),
-        });
-      }
-      resolved = picked;
     }
   }
 
@@ -484,69 +470,67 @@ async function fetchRelatedVideosLive(
   const errors: string[] = [];
 
   let resolved: RelatedVideosResult | null = null;
-  for (const pipedBase of pipedBases) {
+  for (const invidiousBase of invidiousBases) {
+    if (invidiousPortCollidesWithNextApp(invidiousBase)) {
+      errors.push(
+        "invidious:INVIDIOUS_BASE_URL port conflicts with Next.js PORT (server would call itself).",
+      );
+      continue;
+    }
     try {
       acquireUpstreamSlot();
       const json = await fetchJson(
-        buildPipedStreamsUrl(pipedBase, input.videoId),
-        { source: "piped", baseUrl: pipedBase },
+        buildInvidiousRelatedUrl(invidiousBase, input.videoId),
+        { emptyBodyAs: [], source: "invidious", baseUrl: invidiousBase },
       );
-      const fromStreams = parseRelatedFromPiped(json, limit, pipedBase);
-      if (fromStreams.length > 0) {
-        resolved = relatedVideosResultSchema.parse({
-          videos: fromStreams,
-          sourceUsed: "piped",
-        });
-      }
+      resolved = relatedVideosResultSchema.parse({
+        videos: parseRelatedFromInvidious(json, limit, invidiousBase),
+        sourceUsed: "invidious",
+      });
+      if (resolved.videos.length > 0) break;
     } catch (error) {
-      recordUpstreamFailure(error, "piped", errors, pipedBase);
+      recordUpstreamFailure(error, "invidious", errors, invidiousBase);
     }
-    if (!resolved || resolved.videos.length === 0) {
+  }
+
+
+  if (!resolved || resolved.videos.length === 0) {
+    for (const pipedBase of pipedBases) {
       try {
         acquireUpstreamSlot();
         const json = await fetchJson(
-          buildPipedRelatedUrl(pipedBase, input.videoId),
-          { emptyBodyAs: [], source: "piped", baseUrl: pipedBase },
+          buildPipedStreamsUrl(pipedBase, input.videoId),
+          { source: "piped", baseUrl: pipedBase },
         );
-        const fromRelatedRoute = parseRelatedFromPiped(json, limit, pipedBase);
-        if (fromRelatedRoute.length > 0) {
+        const fromStreams = parseRelatedFromPiped(json, limit, pipedBase);
+        if (fromStreams.length > 0) {
           resolved = relatedVideosResultSchema.parse({
-            videos: fromRelatedRoute,
+            videos: fromStreams,
             sourceUsed: "piped",
           });
         }
       } catch (error) {
         recordUpstreamFailure(error, "piped", errors, pipedBase);
       }
-    }
-    if (resolved && resolved.videos.length > 0) break;
-  }
-
-  if (
-    (!resolved || resolved.videos.length === 0) &&
-    invidiousBases.length > 0
-  ) {
-    for (const invidiousBase of invidiousBases) {
-      if (invidiousPortCollidesWithNextApp(invidiousBase)) {
-        errors.push(
-          "invidious:INVIDIOUS_BASE_URL port conflicts with Next.js PORT (server would call itself).",
-        );
-        continue;
+      if (!resolved || resolved.videos.length === 0) {
+        try {
+          acquireUpstreamSlot();
+          const json = await fetchJson(
+            buildPipedRelatedUrl(pipedBase, input.videoId),
+            { emptyBodyAs: [], source: "piped", baseUrl: pipedBase },
+          );
+          const fromRelatedRoute = parseRelatedFromPiped(json, limit, pipedBase);
+          if (fromRelatedRoute.length > 0) {
+            resolved = relatedVideosResultSchema.parse({
+              videos: fromRelatedRoute,
+              sourceUsed: "piped",
+            });
+          }
+        } catch (error) {
+          recordUpstreamFailure(error, "piped", errors, pipedBase);
+        }
       }
-      try {
-        acquireUpstreamSlot();
-        const json = await fetchJson(
-          buildInvidiousRelatedUrl(invidiousBase, input.videoId),
-          { emptyBodyAs: [], source: "invidious", baseUrl: invidiousBase },
-        );
-        resolved = relatedVideosResultSchema.parse({
-          videos: parseRelatedFromInvidious(json, limit, invidiousBase),
-          sourceUsed: "invidious",
-        });
-        if (resolved.videos.length > 0) break;
-      } catch (error) {
-        recordUpstreamFailure(error, "invidious", errors, invidiousBase);
-      }
+      if (resolved && resolved.videos.length > 0) break;
     }
   }
 

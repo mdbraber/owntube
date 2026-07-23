@@ -149,51 +149,49 @@ export async function fetchTrendingVideos(
 
     let resolved: TrendingVideosResult | null = null;
 
-    for (const pipedBase of pipedBases) {
-      try {
-        acquireUpstreamSlot();
-        const json = await fetchJson(
-          buildPipedTrendingUrl(pipedBase, region, input.category),
-          { emptyBodyAs: [], source: "piped", baseUrl: pipedBase },
-        );
-        const videos = parsePipedTrending(json, limit, pipedBase);
-        if (videos.length > 0) {
-          resolved = trendingVideosResultSchema.parse({
-            videos,
-            sourceUsed: "piped",
-          });
+    for (const invidiousBase of invidiousBases) {
+      if (invidiousPortCollidesWithNextApp(invidiousBase)) {
+        errors.push("invidious:port collision with Next.js");
+        continue;
+      } else {
+        try {
+          acquireUpstreamSlot();
+          const json = await fetchJson(
+            buildInvidiousTrendingUrl(invidiousBase, region, input.category),
+            { emptyBodyAs: [], source: "invidious", baseUrl: invidiousBase },
+          );
+          const videos = parseInvidiousTrending(json, limit, invidiousBase);
+          if (videos.length > 0) {
+            resolved = trendingVideosResultSchema.parse({
+              videos,
+              sourceUsed: "invidious",
+            });
+          }
+        } catch (e) {
+          recordUpstreamFailure(e, "invidious", errors, invidiousBase);
         }
-      } catch (e) {
-        recordUpstreamFailure(e, "piped", errors, pipedBase);
       }
       if (resolved && resolved.videos.length > 0) break;
     }
+  
 
-    if (
-      (!resolved || resolved.videos.length === 0) &&
-      invidiousBases.length > 0
-    ) {
-      for (const invidiousBase of invidiousBases) {
-        if (invidiousPortCollidesWithNextApp(invidiousBase)) {
-          errors.push("invidious:port collision with Next.js");
-          continue;
-        } else {
-          try {
-            acquireUpstreamSlot();
-            const json = await fetchJson(
-              buildInvidiousTrendingUrl(invidiousBase, region, input.category),
-              { emptyBodyAs: [], source: "invidious", baseUrl: invidiousBase },
-            );
-            const videos = parseInvidiousTrending(json, limit, invidiousBase);
-            if (videos.length > 0) {
-              resolved = trendingVideosResultSchema.parse({
-                videos,
-                sourceUsed: "invidious",
-              });
-            }
-          } catch (e) {
-            recordUpstreamFailure(e, "invidious", errors, invidiousBase);
+    if (!resolved || resolved.videos.length === 0) {
+      for (const pipedBase of pipedBases) {
+        try {
+          acquireUpstreamSlot();
+          const json = await fetchJson(
+            buildPipedTrendingUrl(pipedBase, region, input.category),
+            { emptyBodyAs: [], source: "piped", baseUrl: pipedBase },
+          );
+          const videos = parsePipedTrending(json, limit, pipedBase);
+          if (videos.length > 0) {
+            resolved = trendingVideosResultSchema.parse({
+              videos,
+              sourceUsed: "piped",
+            });
           }
+        } catch (e) {
+          recordUpstreamFailure(e, "piped", errors, pipedBase);
         }
         if (resolved && resolved.videos.length > 0) break;
       }

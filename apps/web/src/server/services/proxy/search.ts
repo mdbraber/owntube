@@ -345,14 +345,16 @@ async function searchVideosLive(
     return null;
   };
 
-  let resolved = await tryPiped();
+  // Invidious is the primary upstream everywhere (it also exclusively powers
+  // playback manifests/captions); Piped is fallback only.
+  let resolved = await tryInvidious();
   if (
     !resolved ||
     (resolved.videos.length === 0 && (resolved.channels?.length ?? 0) === 0)
   ) {
-    const fromInv = await tryInvidious();
-    if (fromInv) {
-      resolved = fromInv;
+    const fromPiped = await tryPiped();
+    if (fromPiped) {
+      resolved = fromPiped;
     }
   }
 

@@ -1,4 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// fetchWithTimeout routes media fetches through undici's own fetch (its
+// dispatcher only works with the same undici build), so the global-fetch
+// stub below would be bypassed — alias undici's fetch to the global one and
+// neuter the Agent for tests.
+vi.mock("undici", () => ({
+  Agent: class {},
+  fetch: (...args: unknown[]) =>
+    (globalThis.fetch as (...a: unknown[]) => unknown)(...args),
+}));
+
 import {
   GET,
   MEDIA_CHUNK_BYTES,

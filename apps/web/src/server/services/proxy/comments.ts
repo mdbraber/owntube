@@ -306,7 +306,32 @@ async function fetchVideoCommentsLive(
   const continuation = input.continuation?.trim() || undefined;
 
   let resolved: VideoCommentsResult | null = null;
-  if (input.sortBy === "top") {
+  for (const invidiousBase of invidiousBases) {
+    if (invidiousPortCollidesWithNextApp(invidiousBase)) {
+      errors.push(
+        "invidious:INVIDIOUS_BASE_URL port conflicts with Next.js PORT (server would call itself).",
+      );
+      continue;
+    }
+    try {
+      acquireUpstreamSlot();
+      const json = await fetchJson(
+        buildInvidiousCommentsUrl(
+          invidiousBase,
+          input.videoId,
+          input.sortBy,
+          continuation,
+        ),
+        { source: "invidious", baseUrl: invidiousBase },
+      );
+      resolved = mapInvidiousComments(json, invidiousBase, input.videoId);
+      break;
+    } catch (error) {
+      recordUpstreamFailure(error, "invidious", errors, invidiousBase);
+    }
+  }
+
+  if (!resolved && input.sortBy === "top") {
     for (const pipedBase of pipedBases) {
       try {
         acquireUpstreamSlot();
@@ -321,32 +346,6 @@ async function fetchVideoCommentsLive(
         break;
       } catch (error) {
         recordUpstreamFailure(error, "piped", errors, pipedBase);
-      }
-    }
-  }
-  if (!resolved) {
-    for (const invidiousBase of invidiousBases) {
-      if (invidiousPortCollidesWithNextApp(invidiousBase)) {
-        errors.push(
-          "invidious:INVIDIOUS_BASE_URL port conflicts with Next.js PORT (server would call itself).",
-        );
-        continue;
-      }
-      try {
-        acquireUpstreamSlot();
-        const json = await fetchJson(
-          buildInvidiousCommentsUrl(
-            invidiousBase,
-            input.videoId,
-            input.sortBy,
-            continuation,
-          ),
-          { source: "invidious", baseUrl: invidiousBase },
-        );
-        resolved = mapInvidiousComments(json, invidiousBase, input.videoId);
-        break;
-      } catch (error) {
-        recordUpstreamFailure(error, "invidious", errors, invidiousBase);
       }
     }
   }

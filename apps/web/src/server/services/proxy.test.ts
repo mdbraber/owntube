@@ -241,23 +241,21 @@ describe("searchVideos", () => {
     process.env.PIPED_BASE_URL = "https://piped.test";
     process.env.INVIDIOUS_BASE_URL = "https://inv.test";
 
-    vi.mocked(fetch)
-      .mockRejectedValueOnce(new Error("network"))
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify([
-            {
-              type: "channel",
-              authorId: "UCinvchan",
-              author: "Inv Channel",
-              authorThumbnails: [
-                { url: "https://example.com/ch.jpg", width: 88, quality: "" },
-              ],
-              subCount: 99_000,
-            },
-          ]),
-        ),
-      );
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify([
+          {
+            type: "channel",
+            authorId: "UCinvchan",
+            author: "Inv Channel",
+            authorThumbnails: [
+              { url: "https://example.com/ch.jpg", width: 88, quality: "" },
+            ],
+            subCount: 99_000,
+          },
+        ]),
+      ),
+    );
 
     const r = await searchVideos(db, { q: "chan", limit: 10 });
     expect(r.sourceUsed).toBe("invidious");
@@ -267,7 +265,7 @@ describe("searchVideos", () => {
     sqlite.close();
   });
 
-  it("falls back to Invidious when Piped fails", async () => {
+  it("falls back to Piped when Invidious fails", async () => {
     const { db, sqlite } = createTestDb();
     process.env.PIPED_BASE_URL = "https://piped.test";
     process.env.INVIDIOUS_BASE_URL = "https://inv.test";
@@ -276,29 +274,29 @@ describe("searchVideos", () => {
       .mockRejectedValueOnce(new Error("network"))
       .mockResolvedValueOnce(
         new Response(
-          JSON.stringify([
-            {
-              type: "video",
-              videoId: "abc12345678",
-              title: "From Invidious",
-              author: "Creator",
-              authorId: "UCxyz",
-              authorThumbnails: [
-                { url: "https://example.com/ch.jpg", width: 88, quality: "" },
-              ],
-              videoThumbnails: [{ url: "https://example.com/thumb.jpg" }],
-              lengthSeconds: 60,
-              viewCount: 500,
-              publishedText: "1 day ago",
-            },
-          ]),
+          JSON.stringify({
+            items: [
+              {
+                type: "stream",
+                url: "/watch?v=abc12345678",
+                title: "From Piped",
+                uploaderName: "Creator",
+                uploaderUrl: "/channel/UCxyz",
+                uploaderAvatar: "https://example.com/ch.jpg",
+                thumbnail: "https://example.com/thumb.jpg",
+                duration: 60,
+                views: 500,
+                uploadedDate: "1 day ago",
+              },
+            ],
+            nextpage: "",
+          }),
         ),
       );
 
     const r = await searchVideos(db, { q: "test", limit: 10 });
-    expect(r.sourceUsed).toBe("invidious");
+    expect(r.sourceUsed).toBe("piped");
     expect(r.videos[0]?.videoId).toBe("abc12345678");
-    expect(r.videos[0]?.channelAvatarUrl).toBe("https://example.com/ch.jpg");
     sqlite.close();
   });
 
@@ -307,33 +305,31 @@ describe("searchVideos", () => {
     process.env.PIPED_BASE_URL = "https://piped.test";
     process.env.INVIDIOUS_BASE_URL = "https://inv.test";
 
-    vi.mocked(fetch)
-      .mockRejectedValueOnce(new Error("network"))
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify([
-            {
-              type: "video",
-              videoId: "paidONLY00001",
-              title: "Paid",
-              paid: true,
-              author: "A",
-              authorId: "UCa",
-              videoThumbnails: [{ url: "https://example.com/t.jpg" }],
-              lengthSeconds: 5,
-            },
-            {
-              type: "video",
-              videoId: "abc12345678",
-              title: "Ok",
-              author: "B",
-              authorId: "UCb",
-              videoThumbnails: [{ url: "https://example.com/t2.jpg" }],
-              lengthSeconds: 10,
-            },
-          ]),
-        ),
-      );
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify([
+          {
+            type: "video",
+            videoId: "paidONLY00001",
+            title: "Paid",
+            paid: true,
+            author: "A",
+            authorId: "UCa",
+            videoThumbnails: [{ url: "https://example.com/t.jpg" }],
+            lengthSeconds: 5,
+          },
+          {
+            type: "video",
+            videoId: "abc12345678",
+            title: "Ok",
+            author: "B",
+            authorId: "UCb",
+            videoThumbnails: [{ url: "https://example.com/t2.jpg" }],
+            lengthSeconds: 10,
+          },
+        ]),
+      ),
+    );
 
     const r = await searchVideos(db, { q: "test", limit: 10 });
     expect(r.videos).toHaveLength(1);
@@ -348,15 +344,17 @@ describe("searchVideos", () => {
 
     vi.mocked(fetch).mockResolvedValueOnce(
       new Response(
-        JSON.stringify({
-          items: [
-            {
-              type: "stream",
-              url: "/watch?v=dQw4w9WgXcQ",
-              title: "Cached",
-            },
-          ],
-        }),
+        JSON.stringify([
+          {
+            type: "video",
+            videoId: "dQw4w9WgXcQ",
+            title: "Cached",
+            author: "A",
+            authorId: "UCa",
+            videoThumbnails: [{ url: "https://example.com/t.jpg" }],
+            lengthSeconds: 5,
+          },
+        ]),
       ),
     );
     await searchVideos(db, { q: "cache-me", limit: 10 });

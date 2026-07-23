@@ -99,29 +99,6 @@ export async function fetchSearchQuerySuggestions(
 
   const { pipedBases, invidiousBases } = resolveProxyBaseCandidates(overrides);
 
-  for (const pipedBase of pipedBases) {
-    try {
-      const url = new URL("/suggestions", `${normalizeBaseUrl(pipedBase)}/`);
-      url.searchParams.set("query", q);
-      const json = await fetchSuggestionsJson(
-        url.toString(),
-        "piped",
-        pipedBase,
-      );
-      const suggestions = sanitizeSuggestionStrings(json);
-      if (suggestions.length > 0) {
-        return searchSuggestionsResultSchema.parse({
-          suggestions,
-          sourceUsed: "piped",
-        });
-      }
-    } catch (e) {
-      logger.warn("search_suggestions.piped.failed", {
-        message: e instanceof Error ? e.message : String(e),
-      });
-    }
-  }
-
   for (const invidiousBase of invidiousBases) {
     if (invidiousPortCollidesWithNextApp(invidiousBase)) continue;
     try {
@@ -151,6 +128,30 @@ export async function fetchSearchQuerySuggestions(
       });
     }
   }
+
+  for (const pipedBase of pipedBases) {
+    try {
+      const url = new URL("/suggestions", `${normalizeBaseUrl(pipedBase)}/`);
+      url.searchParams.set("query", q);
+      const json = await fetchSuggestionsJson(
+        url.toString(),
+        "piped",
+        pipedBase,
+      );
+      const suggestions = sanitizeSuggestionStrings(json);
+      if (suggestions.length > 0) {
+        return searchSuggestionsResultSchema.parse({
+          suggestions,
+          sourceUsed: "piped",
+        });
+      }
+    } catch (e) {
+      logger.warn("search_suggestions.piped.failed", {
+        message: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
 
   return searchSuggestionsResultSchema.parse({
     suggestions: [],
