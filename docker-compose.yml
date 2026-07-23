@@ -8,7 +8,7 @@ services:
       - "3000:3000"
     environment:
       DATABASE_PATH: /app/apps/web/data/owntube.db
-      PIPED_BASE_URL: ${PIPED_BASE_URL:-https://pipedapi.kavin.rocks}
+      PIPED_BASE_URL: ${PIPED_BASE_URL:-disabled}
       INVIDIOUS_BASE_URL: ${INVIDIOUS_BASE_URL:-}
       AUTH_SECRET: ${AUTH_SECRET:-change-me-in-production}
       LOG_LEVEL: ${LOG_LEVEL:-info}
@@ -32,7 +32,7 @@ services:
         condition: service_healthy
     environment:
       DATABASE_PATH: /app/apps/web/data/owntube.db
-      PIPED_BASE_URL: ${PIPED_BASE_URL:-https://pipedapi.kavin.rocks}
+      PIPED_BASE_URL: ${PIPED_BASE_URL:-disabled}
       INVIDIOUS_BASE_URL: ${INVIDIOUS_BASE_URL:-}
       OWNTUBE_WARM_INTERVAL_SEC: ${OWNTUBE_WARM_INTERVAL_SEC:-1200}
       OWNTUBE_WARM_REGION: ${OWNTUBE_WARM_REGION:-US}
