@@ -30,6 +30,7 @@ import type {
   UnifiedVideo,
 } from "@/server/services/proxy.types";
 import { getUserSettings } from "@/server/settings/profile";
+import { dropMembersOnlyVideos } from "@/server/subscriptions/members-only";
 import {
   memoMergedPage,
   mergedPageKey,
@@ -1124,9 +1125,12 @@ export const subscriptionsRouter = router({
         mergedPageKey(channelIds, offset, limit),
         () => collectSortedFeedPage(ctx.db, channelIds, offset, limit),
       );
-      const patchedVideos = await patchVisibleVideosWithRssDates(
+      // Members-only uploads can't be played here (see members-only.ts), so
+      // they'd only be dead "0 views" cards. After the date patch, which has
+      // just made sure each visible channel's RSS is cached.
+      const patchedVideos = dropMembersOnlyVideos(
         ctx.db,
-        videos,
+        await patchVisibleVideosWithRssDates(ctx.db, videos),
       );
       const nowSec = Math.floor(Date.now() / 1000);
       const sortedPatchedVideos = [...patchedVideos].sort((a, b) =>
