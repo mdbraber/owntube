@@ -186,6 +186,24 @@ export async function getChannelRssEntries(
   return task;
 }
 
+/**
+ * The channel's cached uploads RSS together with when it was fetched (unix
+ * seconds), read from SQLite only — never the network. For callers that reason
+ * about a video's *absence* from the feed, which only means something if the
+ * feed was fetched after the video existed; `getChannelRssEntries` returns
+ * stale rows without saying how old they are.
+ */
+export function readChannelRssSnapshot(
+  db: AppDb,
+  channelId: string,
+): { entries: RssEntry[]; fetchedAt: number } | null {
+  const row = readLatestCacheRow(db, rssCacheKey(channelId));
+  if (!row) return null;
+  const entries = parseRssRow(row.payloadJson);
+  if (!entries) return null;
+  return { entries, fetchedAt: row.fetchedAt };
+}
+
 /** Newest published-at (unix seconds) in the channel's cached RSS, 0 when unknown. */
 export async function getChannelRssNewestPublishedAt(
   db: AppDb,
