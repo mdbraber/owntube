@@ -164,8 +164,8 @@ function parseTimedSegments(cue: VTTCue): TimedSegment[] {
  *
  * We keep the active `TextTrack` in `hidden` mode (cues fire events but the
  * browser draws nothing) and surface the current cue text as `activeText`, which
- * the chrome renders in its own overlay — that lets us center the block with
- * left-aligned lines and lift it above the scrubber. We match `TextTrack`s to
+ * the chrome renders in its own overlay — that lets us center the lines and lift
+ * them above the scrubber. We match `TextTrack`s to
  * our tracks by `label` so we never touch any in-manifest tracks hls.js might
  * add. Pass `enabled: false` on the iOS native-controls path so Safari's own
  * caption UI stays in charge.

@@ -1031,9 +1031,7 @@ function PlayerMobileMenu({
 
 /**
  * Renders the active caption cue ourselves (the native track is kept `hidden`).
- * The text is left-anchored to the same edge as the scrubber (the bottom-chrome
- * `px-3 sm:px-4` inset), so a growing/word-by-word cue extends rightward without
- * its left edge jittering. Lines stay left-aligned (shared left margin). It
+ * Lines are centered, matching the native rendering in Picture-in-Picture. It
  * rides low at rest and lifts above the scrubber while the chrome is shown.
  *
  * YouTube-style roll-up: earlier lines stay as full-brightness context above

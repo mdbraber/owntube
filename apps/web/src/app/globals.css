@@ -782,9 +782,9 @@ video[data-native-pip] {
      that lets the cue text scale with the *player* width (mini player,
      inline, cinema) instead of the viewport. */
   container-type: inline-size;
-  /* Cues start ~12.5% into the player, nudged toward center while the text
-     stays left-aligned inside the box. */
-  padding-inline: max(0.75rem, 12.5cqw) 0.75rem;
+  /* Cues are centered, matching the native (PiP) rendering; the inset keeps
+     long lines off the player edges. */
+  padding-inline: 0.75rem;
   bottom: 0.25rem; /* resting: sits low, near the bottom edge */
   transition: bottom 200ms ease-out;
 }
@@ -797,16 +797,13 @@ video[data-native-pip] {
 .ot-caption__box {
   /* A column of independent line boxes: each line hugs its own text (a short
      line gets a short background, not one block sized to the widest line —
-     YouTube-style). align-items:flex-start keeps every line sized to content
-     and left-aligned. The background/padding live on each line below. */
+     YouTube-style). align-items:center keeps every line sized to content
+     and centered. The background/padding live on each line below. */
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
   gap: 0.14em;
-  /* Cancel a line box's left padding so the text (not the padded box) sits at
-     the inset edge. */
-  margin-left: -0.4em;
-  text-align: left;
+  text-align: center;
   font-weight: 500;
   line-height: 1.375;
   color: #fff;
@@ -830,11 +827,11 @@ video[data-native-pip] {
    it hugs its text (per-line, not one block for the whole cue). */
 .ot-caption__line {
   display: block;
-  /* Hug the text so the background ends where the words do (ragged right edge),
-     never stretching to a full block. */
+  /* Hug the text so the background ends where the words do, never stretching
+     to a full block. */
   width: fit-content;
   max-width: 100%;
-  align-self: flex-start;
+  align-self: center;
   white-space: nowrap;
   border-radius: 0.25rem;
   padding: 0.06em 0.4em;
