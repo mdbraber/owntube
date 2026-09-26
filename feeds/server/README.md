@@ -84,7 +84,8 @@ home pusher ──POST /websub/sync {channels, ack}──▶ feeds server ──
   (at-least-once), and are pruned after 14 days unacked.
 
 Home re-fetches the channel's RSS on each push and overlays the pushed entry
-until youtube.com's (lagging) feed lists it. The cache warmer keeps polling
+until youtube.com's (lagging) feed lists it, and warms each new upload's
+detail, streams and comments so it opens instantly. The cache warmer keeps polling
 every channel as the safety net: the hub is known to drop notifications.
 
 Set `OWNTUBE_WEBSUB=false` on the pusher to stop syncing.

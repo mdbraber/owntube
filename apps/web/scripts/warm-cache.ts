@@ -26,17 +26,11 @@ import {
   fetchChannelPage,
   fetchShortsFeed,
   fetchTrendingVideos,
-  fetchVideoComments,
-  fetchVideoDetail,
 } from "../src/server/services/proxy";
 import {
   getUserSettings,
   normalizeTrendingRegionStored,
 } from "../src/server/settings/profile";
-import {
-  DEFAULT_SPONSORBLOCK_CATEGORIES,
-  getSponsorBlockSegments,
-} from "../src/server/sponsorblock/service";
 import { materializeHomeFeed } from "../src/server/trpc/routers/feed";
 import {
   collectRssWarmChannelIds,
@@ -44,6 +38,7 @@ import {
   DEFAULT_WARM_HISTORY_CHANNELS,
   DEFAULT_WARM_SUBSCRIPTION_CHANNELS,
 } from "../src/server/warm-cache/collect-channel-ids";
+import { warmVideo } from "../src/server/warm-cache/warm-video";
 
 const WARM_BATCH = 5;
 const WARM_BATCH_PAUSE_MS = 80;
@@ -324,21 +319,7 @@ async function warmVideoDetails(
   const stats = await runInBatches(
     "video details",
     videoIds,
-    async (videoId) => {
-      let ok = false;
-      try {
-        await fetchVideoDetail(db, { videoId });
-        ok = true;
-      } catch {
-        /* age-restricted/unavailable: skip */
-      }
-      await fetchVideoComments(db, { videoId, sortBy: "top" }).catch(() => {});
-      await getSponsorBlockSegments(db, {
-        videoId,
-        categories: [...DEFAULT_SPONSORBLOCK_CATEGORIES],
-      }).catch(() => {});
-      return { skipped: !ok };
-    },
+    async (videoId) => ({ skipped: !(await warmVideo(db, videoId)) }),
   );
   return stats.failed === 0;
 }

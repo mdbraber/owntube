@@ -2,8 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { subscriptions, users, websubPushed } from "@/server/db/schema";
 import { clearRssInFlight, getChannelRssEntries } from "@/server/rss/cache";
 import { nowUnix } from "@/server/services/proxy/cache";
+import { warmVideo } from "@/server/warm-cache/warm-video";
 import { createTestDb } from "@/test/db";
 import { syncWebSub, type WebSubEvent } from "./sync";
+
+vi.mock("@/server/warm-cache/warm-video", () => ({
+  warmVideo: vi.fn(async () => true),
+}));
 
 const CHANNEL = "UCabcdefghijklmnopqrstuv";
 const TARGET = "https://feeds.example";
@@ -68,7 +73,10 @@ function stubFetch(opts: {
 }
 
 describe("syncWebSub", () => {
-  beforeEach(() => clearRssInFlight());
+  beforeEach(() => {
+    clearRssInFlight();
+    vi.mocked(warmVideo).mockClear();
+  });
   afterEach(() => vi.unstubAllGlobals());
 
   it("overlays a push the lagging RSS lacks, and resolves it once the feed catches up", async () => {
@@ -93,7 +101,16 @@ describe("syncWebSub", () => {
     });
 
     const result = await syncWebSub(db, { target: TARGET, secret: "s" });
-    expect(result).toMatchObject({ enabled: true, events: 1, channels: 1 });
+    expect(result).toMatchObject({
+      enabled: true,
+      events: 1,
+      channels: 1,
+      warmed: 1,
+    });
+    // New upload warmed, without SponsorBlock (no segments exist yet).
+    expect(warmVideo).toHaveBeenCalledWith(db, "new00000001", {
+      sponsorBlock: false,
+    });
     // Subscribed set sent; the batch acked on the follow-up call.
     expect(syncBodies[0]).toEqual({ channels: [CHANNEL], ack: null });
     expect(syncBodies.at(-1)?.ack).toBe(7);
@@ -139,6 +156,7 @@ describe("syncWebSub", () => {
     await syncWebSub(db, { target: TARGET, secret: "s" });
     const entries = await getChannelRssEntries(db, CHANNEL);
     expect(entries.map((e) => e.videoId)).toEqual(["keep0000001"]);
+    expect(warmVideo).not.toHaveBeenCalled();
     sqlite.close();
   });
 
@@ -160,7 +178,8 @@ describe("syncWebSub", () => {
       rss: () => rssXml(["recent00001"], "2026-09-01T00:00:00Z"),
     });
     const result = await syncWebSub(db, { target: TARGET, secret: "s" });
-    expect(result).toMatchObject({ events: 1, channels: 1 });
+    expect(result).toMatchObject({ events: 1, channels: 1, warmed: 0 });
+    expect(warmVideo).not.toHaveBeenCalled();
     expect(db.select().from(websubPushed).all()).toHaveLength(0);
     const entries = await getChannelRssEntries(db, CHANNEL);
     expect(entries.map((e) => e.videoId)).toEqual(["recent00001"]);

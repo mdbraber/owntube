@@ -8,6 +8,7 @@ import {
   WEBSUB_PUSH_HOLD_SEC,
 } from "@/server/rss/cache";
 import { nowUnix } from "@/server/services/proxy/cache";
+import { warmVideo } from "@/server/warm-cache/warm-video";
 
 /**
  * Home half of WebSub push. The public feeds server (`feeds/server`, the only
@@ -19,8 +20,9 @@ import { nowUnix } from "@/server/services/proxy/cache";
  * window are refreshed at once. youtube.com's RSS usually lags the push, so the
  * refresh overlays the pushed entry (`mergeWebSubPushes`) and channels with
  * pushes still missing from their feed are re-fetched every few minutes until
- * it catches up. Periodic polling (the cache warmer) stays as the safety net:
- * the hub is known to drop notifications now and then.
+ * it catches up. New uploads are also warmed (detail, streams, comments) so
+ * they open instantly. Periodic polling (the cache warmer) stays as the safety
+ * net: the hub is known to drop notifications now and then.
  */
 
 /** Pushes older than this are edits of old videos, not uploads: the channel is
@@ -29,6 +31,10 @@ const NEW_UPLOAD_WINDOW_SEC = 7 * 86_400;
 /** Re-fetch channels whose push isn't in their RSS yet, at most this often. */
 const RECHECK_EVERY_SEC = 240;
 const REFRESH_CONCURRENCY = 5;
+/** Cap per run so a burst (a channel re-publishing its back catalogue) can't
+ * stall the publisher; the rest get warmed by the cache warmer or on open. */
+const MAX_WARM_PER_RUN = 12;
+const WARM_CONCURRENCY = 3;
 const MAX_ROUNDS = 10;
 
 const CHANNEL_ID_RE = /^UC[0-9A-Za-z_-]{22}$/;
@@ -69,6 +75,7 @@ export type SyncWebSubResult =
       events: number;
       channels: number;
       rechecked: number;
+      warmed: number;
       stats: SyncResponse["stats"];
     };
 
@@ -80,19 +87,24 @@ function subscribedChannelIds(db: AppDb): string[] {
   return rows.map((r) => r.channelId).filter((c) => CHANNEL_ID_RE.test(c));
 }
 
-/** Record events in `websub_pushed`; returns the channels to re-fetch. */
+/**
+ * Record events in `websub_pushed`. Returns the channels to re-fetch and the
+ * new uploads among the events (edits of old videos and deletions excluded).
+ */
 export function recordWebSubEvents(
   db: AppDb,
   events: WebSubEvent[],
   now = nowUnix(),
-): Set<string> {
-  const touched = new Set<string>();
+): { channels: Set<string>; uploads: Set<string> } {
+  const channels = new Set<string>();
+  const uploads = new Set<string>();
   for (const e of events) {
-    touched.add(e.channelId);
+    channels.add(e.channelId);
     const isNewUpload =
       !e.deleted &&
       typeof e.publishedAt === "number" &&
       e.publishedAt >= now - NEW_UPLOAD_WINDOW_SEC;
+    if (isNewUpload) uploads.add(e.videoId);
     if (!e.deleted && !isNewUpload) continue;
     db.insert(websubPushed)
       .values({
@@ -115,7 +127,7 @@ export function recordWebSubEvents(
       })
       .run();
   }
-  return touched;
+  return { channels, uploads };
 }
 
 /** Channels with an upload push their RSS still lacks, due a re-fetch. */
@@ -145,6 +157,20 @@ async function refreshChannels(db: AppDb, channelIds: string[]): Promise<void> {
   if (channelIds.length > 0) {
     await refreshChannelsLatestVideoAt(db, channelIds);
   }
+}
+
+/** Warm videos a few at a time; returns how many had a usable detail. */
+async function warmUploads(db: AppDb, videoIds: string[]): Promise<number> {
+  let ok = 0;
+  for (let i = 0; i < videoIds.length; i += WARM_CONCURRENCY) {
+    const results = await Promise.all(
+      videoIds
+        .slice(i, i + WARM_CONCURRENCY)
+        .map((id) => warmVideo(db, id, { sponsorBlock: false })),
+    );
+    ok += results.filter(Boolean).length;
+  }
+  return ok;
 }
 
 async function postSync(
@@ -184,18 +210,20 @@ export async function syncWebSub(
   let events = 0;
   let stats: SyncResponse["stats"] | null = null;
   const refreshed = new Set<string>();
+  const uploads = new Set<string>();
 
   for (let round = 0; round < MAX_ROUNDS; round++) {
     const res = await postSync(options, { channels, ack });
     if (!res) return { enabled: false };
     stats = res.stats;
     if (res.events.length === 0) break;
-    const touched = recordWebSubEvents(db, res.events);
+    const recorded = recordWebSubEvents(db, res.events);
     await refreshChannels(
       db,
-      [...touched].filter((c) => !refreshed.has(c)),
+      [...recorded.channels].filter((c) => !refreshed.has(c)),
     );
-    for (const c of touched) refreshed.add(c);
+    for (const c of recorded.channels) refreshed.add(c);
+    for (const v of recorded.uploads) uploads.add(v);
     events += res.events.length;
     // Acked by the next call — which also fetches whatever is left.
     ack = Math.max(...res.events.map((e) => e.id));
@@ -216,9 +244,12 @@ export async function syncWebSub(
     await refreshChannels(db, recheck);
   }
 
+  // After the RSS refresh: the uploads are already listed while this runs.
+  const warmed = await warmUploads(db, [...uploads].slice(0, MAX_WARM_PER_RUN));
+
   if (events > 0 || recheck.length > 0) {
     options.onLog?.(
-      `websub: ${events} event(s) on ${refreshed.size} channel(s), rechecked ${recheck.length}`,
+      `websub: ${events} event(s) on ${refreshed.size} channel(s), warmed ${warmed}/${uploads.size} upload(s), rechecked ${recheck.length}`,
     );
   }
   return {
@@ -226,6 +257,7 @@ export async function syncWebSub(
     events,
     channels: refreshed.size,
     rechecked: recheck.length,
+    warmed,
     stats: stats ?? {
       wanted: 0,
       active: 0,
