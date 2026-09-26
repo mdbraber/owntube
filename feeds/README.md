@@ -27,6 +27,12 @@ podcast apps and directories cannot reach the LAN — and it serves chapters and
 cover art unauthenticated for the same reason, since clients fetch those bare,
 without the feed's credentials.
 
+**WebSub** rides the same pair. The server is also the WebSub subscriber for
+YouTube uploads — Google's hub can only push to a public URL — and queues the
+notifications; each pusher run drains the queue with one outbound
+`POST /websub/sync` and folds the uploads into the home RSS cache within about
+a minute. See `server/README.md` and `apps/web/src/server/websub/sync.ts`.
+
 Not to be confused with **invidious-companion**, an unrelated third-party
 service this repo also talks to (media and captions). The word "companion" in
 `docs/` and `apps/` refers to that one.

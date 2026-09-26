@@ -26,23 +26,19 @@ import {
   fetchChannelPage,
   fetchShortsFeed,
   fetchTrendingVideos,
-  fetchVideoComments,
-  fetchVideoDetail,
 } from "../src/server/services/proxy";
 import {
   getUserSettings,
   normalizeTrendingRegionStored,
 } from "../src/server/settings/profile";
-import {
-  DEFAULT_SPONSORBLOCK_CATEGORIES,
-  getSponsorBlockSegments,
-} from "../src/server/sponsorblock/service";
 import { materializeHomeFeed } from "../src/server/trpc/routers/feed";
 import {
+  collectRssWarmChannelIds,
   collectWarmChannelIds,
   DEFAULT_WARM_HISTORY_CHANNELS,
   DEFAULT_WARM_SUBSCRIPTION_CHANNELS,
 } from "../src/server/warm-cache/collect-channel-ids";
+import { warmVideo } from "../src/server/warm-cache/warm-video";
 
 const WARM_BATCH = 5;
 const WARM_BATCH_PAUSE_MS = 80;
@@ -323,21 +319,7 @@ async function warmVideoDetails(
   const stats = await runInBatches(
     "video details",
     videoIds,
-    async (videoId) => {
-      let ok = false;
-      try {
-        await fetchVideoDetail(db, { videoId });
-        ok = true;
-      } catch {
-        /* age-restricted/unavailable: skip */
-      }
-      await fetchVideoComments(db, { videoId, sortBy: "top" }).catch(() => {});
-      await getSponsorBlockSegments(db, {
-        videoId,
-        categories: [...DEFAULT_SPONSORBLOCK_CATEGORIES],
-      }).catch(() => {});
-      return { skipped: !ok };
-    },
+    async (videoId) => ({ skipped: !(await warmVideo(db, videoId)) }),
   );
   return stats.failed === 0;
 }
@@ -372,18 +354,25 @@ async function main(): Promise<void> {
       historyLimit: safeHistoryLimit,
     });
 
-    if (channelIds.length === 0) {
+    const rssChannelIds = collectRssWarmChannelIds(db, channelIds);
+
+    if (rssChannelIds.length === 0) {
       logLine("warm-cache: no subscription or history channels to warm");
     } else {
-      logLine(`warm-cache: warming ${channelIds.length} channel(s)`);
+      logLine(
+        `warm-cache: warming ${channelIds.length} channel(s), rss ${rssChannelIds.length}`,
+      );
       if (warmChannelsEnabled && !(await warmChannelMeta(db, channelIds))) {
         hadFailure = true;
       }
       // RSS before recency: recency reads the rows this step just refreshed.
-      if (warmRssEnabled && !(await warmRssFeeds(db, channelIds))) {
+      if (warmRssEnabled && !(await warmRssFeeds(db, rssChannelIds))) {
         hadFailure = true;
       }
-      if (warmRecencyEnabled && !(await warmChannelRecency(db, channelIds))) {
+      if (
+        warmRecencyEnabled &&
+        !(await warmChannelRecency(db, rssChannelIds))
+      ) {
         hadFailure = true;
       }
       if (

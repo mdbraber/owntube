@@ -6,7 +6,7 @@
   "description": "Public podcast feeds server — receives feed snapshots from the OwnTube web app and renders RSS, chapters and cover art",
   "scripts": {
     "start": "tsx server.ts",
-    "test": "tsx render.test.ts && tsx ip-allow.test.ts && tsx store.test.ts && tsx notify-hub.test.ts"
+    "test": "tsx render.test.ts && tsx ip-allow.test.ts && tsx store.test.ts && tsx notify-hub.test.ts && tsx websub.test.ts"
   },
   "dependencies": {
     "better-sqlite3": "^11.8.1",

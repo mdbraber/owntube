@@ -24,6 +24,9 @@ podcast app ──(LAN/VPN)──▶ owntube /media/<id>   ◀── enclosure U
 | GET | `/chapters/<videoId>.json` | none | Podcasting 2.0 JSON chapters (public YT-derived data) |
 | GET | `/icon.png` | none | OwnTube icon — stable podcast cover art |
 | GET | `/health` | none | Liveness |
+| GET | `/websub/callback` | none | WebSub hub verification (only when `WEBSUB_CALLBACK_URL` is set) |
+| POST | `/websub/callback` | hub HMAC signature | WebSub upload notification |
+| POST | `/websub/sync` | Bearer `PUBLISH_SECRET` + IP allow-list | Home hands over its subscribed channels and drains queued notifications |
 
 Feed `kind` ∈ `playlist`, `queue`, `saved`, `subscriptions`, `tag`, `channel`.
 
@@ -54,6 +57,9 @@ URL the user already pasted in to subscribe.
 | `PUBLISH_SECRET` | yes | — | Must match the home side's `OWNTUBE_PUBLISH_SECRET` |
 | `PUBLISH_ALLOW_HOSTS` | no | — | Comma-separated hostnames allowed to POST `/publish`; re-resolved ~60s (DDNS-safe) |
 | `PUBLISH_ALLOW_IPS` | no | — | Comma-separated extra IPs/CIDRs allowed to POST `/publish` |
+| `WEBSUB_CALLBACK_URL` | no | — | Public URL of `/websub/callback`; setting it turns WebSub on |
+| `WEBSUB_HUB_URL` | no | `https://pubsubhubbub.appspot.com/subscribe` | |
+| `WEBSUB_SECRET` | no | derived from `PUBLISH_SECRET` | `hub.secret` for notification signatures |
 | `PORT` | no | `8080` | |
 | `DATA_DIR` | no | `/data` | SQLite location |
 
@@ -61,6 +67,34 @@ URL the user already pasted in to subscribe.
 (if either `PUBLISH_ALLOW_*` is set) the IP allow-list. Client IP is taken from
 the rightmost `X-Forwarded-For` value (Caddy-set). With neither var configured
 the IP check is off.
+
+## WebSub (push for new uploads)
+
+YouTube announces every channel's uploads through Google's WebSub hub. The hub
+can only push to a public URL, so this server is the subscriber on home's
+behalf:
+
+```
+home pusher ──POST /websub/sync {channels, ack}──▶ feeds server ──subscribe──▶ hub
+            ◀──────────── {events} ──────────────   ◀──POST /websub/callback──  (signed Atom)
+```
+
+- Every pusher run (~60 s) sends the full set of subscribed channel ids. The
+  server subscribes new ones at the hub (25 requests a minute), renews each
+  lease a day before it lapses (the hub grants ~5 days), and unsubscribes
+  channels that dropped out.
+- A hub verification GET only renews a lease when it answers one of our own
+  requests from the last hour; notifications are checked against the
+  `hub.secret` HMAC and dropped unless their channel is wanted.
+- Notifications queue in SQLite until home acks them on its next call
+  (at-least-once), and are pruned after 14 days unacked.
+
+Home re-fetches the channel's RSS on each push and overlays the pushed entry
+until youtube.com's (lagging) feed lists it, and warms each new upload's
+detail, streams and comments so it opens instantly. The cache warmer keeps polling
+every channel as the safety net: the hub is known to drop notifications.
+
+Set `OWNTUBE_WEBSUB=false` on the pusher to stop syncing.
 
 ## Run
 

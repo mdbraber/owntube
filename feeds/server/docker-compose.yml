@@ -20,11 +20,13 @@ services:
       # Optional /publish IP allow-list (defense-in-depth atop PUBLISH_SECRET).
       PUBLISH_ALLOW_HOSTS: ${PUBLISH_ALLOW_HOSTS:-}
       PUBLISH_ALLOW_IPS: ${PUBLISH_ALLOW_IPS:-}
-      # WebSub (optional; on when all three are set). See ../hub/README.md.
+      # WebSub hub (optional; on when all three are set). See ../hub/README.md.
       HUB_URL: ${HUB_URL:-}
       HUB_PUBLISH_URL: ${HUB_PUBLISH_URL:-}
       HUB_PUBLISH_TOKEN: ${HUB_PUBLISH_TOKEN:-}
       PUBLIC_URL: ${PUBLIC_URL:-}
+      # WebSub push for YouTube uploads (see README). Empty turns it off.
+      WEBSUB_CALLBACK_URL: ${WEBSUB_CALLBACK_URL-https://owntube.nedworks.org/websub/callback}
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s

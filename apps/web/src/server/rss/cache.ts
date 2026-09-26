@@ -1,3 +1,4 @@
+import { eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { logger } from "@/lib/logger";
 import {
@@ -5,7 +6,9 @@ import {
   type LongFormWindow,
 } from "@/lib/long-form-uploads";
 import type { AppDb } from "@/server/db/client";
+import { websubPushed } from "@/server/db/schema";
 import {
+  nowUnix,
   readFreshCacheRow,
   readLatestCacheRow,
   registerInFlight,
@@ -110,7 +113,7 @@ async function fetchChannelRssLive(
         title,
         channelId,
         channelName,
-        thumbnailUrl: `https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/hqdefault.jpg`,
+        thumbnailUrl: thumbnailFor(videoId),
         publishedAt,
         publishedText: publishedRaw?.trim(),
         viewCount: Number.isFinite(viewCount) ? viewCount : undefined,
@@ -130,6 +133,69 @@ export function clearRssInFlight(): void {
   inFlightLongForm.clear();
 }
 
+/**
+ * How long a WebSub push is held for the live RSS to catch up. Past this it
+ * is dropped either way — a video still absent by then was made private,
+ * scheduled, or otherwise isn't going to appear.
+ */
+export const WEBSUB_PUSH_HOLD_SEC = 6 * 3600;
+
+function thumbnailFor(videoId: string): string {
+  return `https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/hqdefault.jpg`;
+}
+
+/**
+ * Overlay a channel's pending WebSub pushes (`websub_pushed`) on its RSS
+ * entries: pushed uploads the feed doesn't list yet are added, tombstoned
+ * videos removed. When `live` is true the entries are a fresh youtube.com read,
+ * so pushes it now contains are resolved (deleted); pushes past the hold
+ * window go either way.
+ */
+export function mergeWebSubPushes(
+  db: AppDb,
+  channelId: string,
+  entries: RssEntry[],
+  live: boolean,
+): RssEntry[] {
+  const rows = db
+    .select()
+    .from(websubPushed)
+    .where(eq(websubPushed.channelId, channelId))
+    .all();
+  if (rows.length === 0) return entries;
+
+  const listed = new Set(entries.map((e) => e.videoId));
+  const expiredBefore = nowUnix() - WEBSUB_PUSH_HOLD_SEC;
+  const done: string[] = [];
+  const added: RssEntry[] = [];
+  const tombstoned = new Set<string>();
+  for (const row of rows) {
+    if (row.receivedAt < expiredBefore) {
+      done.push(row.videoId);
+    } else if (row.deleted) {
+      tombstoned.add(row.videoId);
+    } else if (listed.has(row.videoId)) {
+      if (live) done.push(row.videoId);
+    } else {
+      added.push({
+        videoId: row.videoId,
+        title: row.title ?? "",
+        channelId,
+        channelName: row.channelName ?? undefined,
+        thumbnailUrl: thumbnailFor(row.videoId),
+        publishedAt: row.publishedAt ?? undefined,
+      });
+    }
+  }
+  if (done.length > 0) {
+    db.delete(websubPushed).where(inArray(websubPushed.videoId, done)).run();
+  }
+  if (added.length === 0 && tombstoned.size === 0) return entries;
+  return [...added, ...entries]
+    .filter((e) => !tombstoned.has(e.videoId))
+    .sort((a, b) => (b.publishedAt ?? 0) - (a.publishedAt ?? 0));
+}
+
 function parseRssRow(payloadJson: string): RssEntry[] | null {
   const parsed = rssPayloadSchema.safeParse(JSON.parse(payloadJson));
   return parsed.success ? parsed.data.entries : null;
@@ -139,7 +205,8 @@ function parseRssRow(payloadJson: string): RssEntry[] | null {
  * Force a live refresh of a channel's uploads RSS into the cache. Returns the
  * fresh entries; keeps (and returns) the previous row on fetch failure so
  * upstream flakiness never erases data. Used by the warmer and as the
- * revalidation task behind cached reads.
+ * revalidation task behind cached reads. Pending WebSub pushes are overlaid
+ * either way (see `mergeWebSubPushes`).
  */
 export async function refreshChannelRss(
   db: AppDb,
@@ -151,12 +218,17 @@ export async function refreshChannelRss(
   const task = (async () => {
     const live = await fetchChannelRssLive(channelId);
     if (live !== null) {
-      writeCache(db, key, "youtube", { entries: live }, "rss");
-      return live;
+      const entries = mergeWebSubPushes(db, channelId, live, true);
+      writeCache(db, key, "youtube", { entries }, "rss");
+      return entries;
     }
     logger.warn("rss_cache.refresh_failed", { channelId });
     const row = readLatestCacheRow(db, key);
-    return (row && parseRssRow(row.payloadJson)) ?? [];
+    const stale = (row && parseRssRow(row.payloadJson)) ?? [];
+    const entries = mergeWebSubPushes(db, channelId, stale, false);
+    // Keep the stale row's age (so it still revalidates) unless a push changed it.
+    if (entries !== stale) writeCache(db, key, "youtube", { entries }, "rss");
+    return entries;
   })();
   registerInFlight(inFlightRss, key, task);
   return task;

@@ -245,6 +245,28 @@ export const anonShortsSeen = sqliteTable(
   ],
 );
 
+/**
+ * Uploads pushed by WebSub (via the public feeds server) and not yet visible
+ * in the channel's RSS — youtube.com's feed lags the push, often by many
+ * minutes. `refreshChannelRss` merges these into every refresh until the live
+ * feed catches up; `deleted` rows are tombstones that filter a video out.
+ */
+export const websubPushed = sqliteTable(
+  "websub_pushed",
+  {
+    videoId: text("video_id").primaryKey(),
+    channelId: text("channel_id").notNull(),
+    deleted: integer("deleted").notNull(),
+    title: text("title"),
+    channelName: text("channel_name"),
+    publishedAt: integer("published_at"),
+    receivedAt: integer("received_at").notNull(),
+    /** Last time this channel's RSS was re-fetched on this push's behalf. */
+    checkedAt: integer("checked_at").notNull(),
+  },
+  (t) => [index("websub_pushed_channel_idx").on(t.channelId)],
+);
+
 export const videoCache = sqliteTable(
   "video_cache",
   {
