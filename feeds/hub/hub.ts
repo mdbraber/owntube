@@ -200,6 +200,7 @@ export class Hub {
     try {
       const res = await this.topicFetch(target.url, {
         headers: target.authorization ? { authorization: target.authorization } : {},
+        redirect: "error",
         signal: AbortSignal.timeout(30_000),
       });
       if (!res.ok) {
