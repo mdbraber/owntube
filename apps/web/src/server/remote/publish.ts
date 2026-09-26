@@ -548,6 +548,7 @@ export async function publishFeeds(
       authorization: `Bearer ${options.secret}`,
     },
     body: JSON.stringify({ feeds, users: feedUsers }),
+    signal: AbortSignal.timeout(60_000),
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
