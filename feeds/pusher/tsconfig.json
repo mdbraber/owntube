@@ -1,9 +1,0 @@
-{
-  "//": "Extends the web app's config so the `@/*` alias resolves: this entrypoint imports the app's server modules (see push-feeds.ts).",
-  "extends": "../../apps/web/tsconfig.json",
-  "compilerOptions": {
-    "baseUrl": "../../apps/web",
-    "paths": { "@/*": ["./src/*"] }
-  },
-  "include": ["push-feeds.ts"]
-}

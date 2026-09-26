@@ -4,8 +4,7 @@ import { replayRecentHistory } from "@/server/hooks/replay-history";
 import { publishFeeds } from "@/server/remote/publish";
 
 /**
- * Feed publisher, running inside the web app (it replaced the separate
- * feeds-pusher container). SQLite triggers stamp feed_publish_state.dirty_at
+ * Feed publisher, running inside the web app. SQLite triggers stamp feed_publish_state.dirty_at
  * on every write to a table a feed is built from — including writes made by
  * other processes on the same database — so polling that one row is all the
  * change detection needed. The public feeds server works out which feeds

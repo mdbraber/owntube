@@ -10,8 +10,8 @@ services live in the scripts' environment, never in OwnTube.
 Every write to watch history (the player's tracker, external reporters —
 anything going through `history.upsertEvent`) fires one event through every
 executable in `OWNTUBE_HOOKS_DIR`, in lexical order. Shorts are excluded.
-The feeds pusher additionally re-fires the last 48h of history after every
-push cycle with `OT_SOURCE=replay` — the outage-recovery sweep — so **hooks
+The in-app feed publisher additionally re-fires the last 48h of history once
+per publish interval with `OT_SOURCE=replay` — the outage-recovery sweep — so **hooks
 must be idempotent**: over-delivery has to be harmless.
 
 ## The hook contract
@@ -44,8 +44,7 @@ Exit status is logged; a failing or slow hook (default timeout 30s,
 | `OWNTUBE_WEBHOOK_URLS` | *(unset)* | Comma-separated webhook sinks: every event is POSTed as JSON — receivers such as n8n flows subscribe by URL; replays re-deliver, so receivers must be idempotent |
 | `OWNTUBE_WEBHOOK_TOKEN` | *(unset)* | Sent as `X-Webhook-Token` so receivers can verify the sender |
 
-Set on **both** the app container (live events) and the feeds-pusher
-container (replay sweep). Deploy never touches the hooks directory — copy
+Set on the app container; it fires both live events and the replay sweep. Deploy never touches the hooks directory — copy
 scripts there and `chmod +x` yourself.
 
 ## pcs.sh
