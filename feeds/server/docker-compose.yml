@@ -27,6 +27,9 @@ services:
       PUBLIC_URL: ${PUBLIC_URL:-}
       # WebSub push for YouTube uploads (see README). Empty turns it off.
       WEBSUB_CALLBACK_URL: ${WEBSUB_CALLBACK_URL-https://owntube.nedworks.org/websub/callback}
+      # Optional overrides; empty means Google's hub / a secret derived from PUBLISH_SECRET.
+      WEBSUB_HUB_URL: ${WEBSUB_HUB_URL:-}
+      WEBSUB_SECRET: ${WEBSUB_SECRET:-}
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s
