@@ -14,6 +14,13 @@
  * public-behind-basic-auth; the `<enclosure>` media only streams on the LAN
  * (that origin is unreachable off-LAN), so putting the creds in a podcast app
  * URL (https://user:pass@host/rss/...) is enough.
+ *
+ * With a WebSub hub configured (HUB_URL/HUB_PUBLISH_TOKEN/PUBLIC_URL), each
+ * feed's own `<atom:link rel="self">` is that exact credentialed URL — it is
+ * the WebSub topic the hub fetches, so it must be exact. A podcast app that
+ * displays or shares "the feed URL" will show the password. This is accepted:
+ * it is the same URL the user already pasted into the app to subscribe, so
+ * nothing new is exposed by putting it in the self link too.
  */
 import { createHash, timingSafeEqual } from "node:crypto";
 import { promises as dns } from "node:dns";
@@ -67,6 +74,20 @@ const hub: HubConfig | null =
 if (HUB_URL && !hub) {
   process.stderr.write("feeds-server: HUB_URL needs HUB_PUBLISH_TOKEN and PUBLIC_URL\n");
   process.exit(1);
+}
+if (hub) {
+  let publicUrlOk = false;
+  try {
+    publicUrlOk = new URL(hub.publicUrl).pathname === "/";
+  } catch {
+    publicUrlOk = false;
+  }
+  if (!publicUrlOk) {
+    process.stderr.write(
+      `feeds-server: PUBLIC_URL must be a valid origin with no path, e.g. https://owntube.example (got ${JSON.stringify(hub.publicUrl)})\n`,
+    );
+    process.exit(1);
+  }
 }
 
 if (!PUBLISH_SECRET) {
@@ -254,7 +275,10 @@ function selfUrl(req: http.IncomingMessage): string {
 function sendXml(res: http.ServerResponse, body: string, status = 200): void {
   res.writeHead(status, {
     "content-type": "application/rss+xml; charset=utf-8",
-    "cache-control": "public, max-age=300",
+    // Per-user content on a shared path (and, with a hub, a body that embeds
+    // the requester's own password in the self link): never cacheable by a
+    // shared/intermediate cache, only by the requesting client itself.
+    "cache-control": "private, max-age=300",
   });
   res.end(body);
 }

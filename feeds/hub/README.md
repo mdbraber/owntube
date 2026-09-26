@@ -19,6 +19,14 @@ get new feed content pushed within seconds of a change instead of polling.
   at connect time, so a callback host can't pass the public-address check and
   then resolve to a private address for the real connection.
 
+With the hub on, a feed's own `<atom:link rel="self">` carries the requesting
+user's full credentials (`https://user:pass@.../rss/...`) — it *is* the WebSub
+topic the hub fetches, so it has to be exact. Podcast apps that display or
+share "the feed URL" will therefore show the password. That's accepted: it's
+the same URL the user already pasted into the app to subscribe (see
+`feeds/server/README.md`), so nothing new is exposed — it's just visible in
+one more place.
+
 | Variable | Purpose |
 |---|---|
 | `HUB_URL` | This hub's public URL |
