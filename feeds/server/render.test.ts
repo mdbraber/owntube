@@ -136,3 +136,18 @@ test("no self URL means no invented artwork", () => {
   const xml = renderRss(noImage, "video", {});
   assert.ok(!xml.includes("/icon.png"));
 });
+
+test("hub link is advertised when configured; credentials stay out of derived URLs", () => {
+  const xml = renderRss(sample, "audio", {
+    selfUrl: "https://alice:pw@pub.example/rss/playlist/cooking.audio.xml",
+    hubUrl: "https://websub.example/",
+  });
+  assert.match(xml, /<atom:link href="https:\/\/websub\.example\/" rel="hub"\/>/);
+  assert.match(
+    xml,
+    /<atom:link href="https:\/\/alice:pw@pub\.example\/rss\/playlist\/cooking\.audio\.xml" rel="self"/,
+  );
+  // sample sets its own image, so only the self link's href carries credentials.
+  assert.equal((xml.match(/alice:pw@/g) ?? []).length, 1);
+  assert.doesNotMatch(renderRss(sample, "audio"), /rel="hub"/);
+});

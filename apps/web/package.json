@@ -43,8 +43,7 @@
     "db:studio": "drizzle-kit studio",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test",
-    "push:feeds": "tsx --tsconfig ../../feeds/pusher/tsconfig.json ../../feeds/pusher/push-feeds.ts"
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

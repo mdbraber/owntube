@@ -150,6 +150,8 @@ function renderItem(
 export type RenderOptions = {
   /** Absolute URL this feed is served at (for `<atom:link rel="self">`). */
   selfUrl?: string;
+  /** WebSub hub to advertise (`<atom:link rel="hub">`). */
+  hubUrl?: string;
   author?: string;
 };
 
@@ -179,6 +181,9 @@ export function renderRss(
     head.push(
       `    <atom:link href="${xmlEscape(options.selfUrl)}" rel="self" type="application/rss+xml"/>`,
     );
+  }
+  if (options.hubUrl) {
+    head.push(`    <atom:link href="${xmlEscape(options.hubUrl)}" rel="hub"/>`);
   }
   // Both the chapters JSON and the cover art are served from this same host, so
   // derive the origin from the self URL and no extra configuration is needed.

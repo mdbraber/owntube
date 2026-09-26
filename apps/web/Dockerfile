@@ -23,9 +23,6 @@ RUN pnpm install --frozen-lockfile --filter web...
 
 COPY packages/brand-icon packages/brand-icon
 COPY apps/web apps/web
-# The feeds pusher entrypoint lives outside apps/web but runs from this image
-# (pnpm push:feeds resolves ../../feeds/pusher).
-COPY feeds feeds
 
 # NEXT_PUBLIC_* vars are inlined into the client bundle at build time, so they
 # must be declared ARG + re-exposed as ENV before `next build` runs — compose

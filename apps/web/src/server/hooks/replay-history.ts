@@ -8,7 +8,7 @@ import { runHooks } from "@/server/hooks/run-hooks";
  * OT_SOURCE=replay. Hooks are idempotent by contract, so re-delivery is
  * harmless in steady state and heals a receiver that was down when the live
  * events fired (e.g. pocket-sessions — its ahead-only guard drops everything
- * it already knows). Runs from the feeds pusher after every push cycle.
+ * it already knows). Runs from the in-app feed publisher (publish-loop.ts) once per publish interval.
  */
 export async function replayRecentHistory(
   db: AppDb,

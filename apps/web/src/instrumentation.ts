@@ -25,12 +25,18 @@ function warnQuotedEnvValues() {
   );
 }
 
-export function register() {
+export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") {
     return;
   }
 
   warnQuotedEnvValues();
+
+  // Imported lazily: it pulls in the database and must stay out of the edge bundle.
+  if (process.env.OWNTUBE_PUBLISH_TARGET?.trim()) {
+    const { startFeedPublisher } = await import("@/server/remote/publish-loop");
+    startFeedPublisher();
+  }
 
   const raw = process.env.INVIDIOUS_BASE_URL?.trim();
   if (!raw) {

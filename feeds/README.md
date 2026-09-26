@@ -3,19 +3,23 @@
 Podcast feeds for OwnTube, in two halves that talk over one HTTP call.
 
 ```
-pusher ──POST /publish (Bearer)──▶ server (public: owntube.nedworks.org)
-                                       │
-                                       ├── /<feed>.rss        Basic Auth, per user
-                                       ├── /chapters/<id>.json public
-                                       └── /icon.png          public (cover art)
+web app (home) ──POST /publish (Bearer)──▶ server (public: owntube.nedworks.org)
+                                               │  ├── /<feed>.rss        Basic Auth, per user
+                                               │  ├── /chapters/<id>.json public
+                                               │  └── /icon.png          public (cover art)
+                                               │
+                                               └─hub.mode=publish──▶ hub (public: websub.nedworks.org)
+                                                                        └──▶ subscribers (Pocket Casts)
 ```
 
-**`pusher/`** builds every user's feed snapshots from the OwnTube database and
-POSTs them to the server. Its entrypoint lives here, but it deliberately imports
-the web app's server modules — building a snapshot means reading the app's
-SQLite database through its own schema and reusing its feed/RSS logic, and
-reimplementing that would be a second source of truth for what a feed contains.
-Run it with `pnpm --filter web push:feeds`.
+**Publishing** happens inside the web app (`apps/web/src/server/remote/publish-loop.ts`,
+started from `instrumentation.ts` when `OWNTUBE_PUBLISH_TARGET` is set): it
+builds every user's feed snapshots from the app's database and POSTs them to
+the server shortly after anything a feed is built from changes, and at least
+every `OWNTUBE_PUBLISH_INTERVAL_SEC`.
+
+**`hub/`** is a WebSub hub. The server announces the feeds whose content
+changed; the hub pushes them to subscribed podcast platforms. See `hub/README.md`.
 
 **`server/`** is the public mirror. It holds no OwnTube logic: it stores what it
 is given and renders RSS from it. It runs on a public host precisely because

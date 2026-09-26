@@ -29,6 +29,14 @@ export type UserCredential = {
   passSha256: string;
 };
 
+export type FeedKey = { owner: string; kind: string; slug: string };
+
+/** A snapshot's content for change detection. Most feeds are rebuilt with
+ * updatedAt = now on every publish, so it can't count as a change. */
+function contentOf(feed: FeedSnapshot): string {
+  return JSON.stringify({ ...feed, updatedAt: 0 });
+}
+
 export class FeedStore {
   private db: Database.Database;
 
@@ -101,11 +109,12 @@ export class FeedStore {
     );
   }
 
-  /** Replace the entire published set (feeds and users), atomically. */
+  /** Replace the entire published set (feeds and users), atomically. Returns
+   * the feeds that are new or whose content changed. */
   replaceAll(
     feeds: FeedSnapshot[],
     users: UserCredential[],
-  ): { upserted: number } {
+  ): { upserted: number; changed: FeedKey[] } {
     const keep = new Set(feeds.map((f) => `${f.owner}:${f.kind}:${f.slug}`));
     const upsert = this.db.prepare(
       `INSERT INTO feeds (owner, kind, slug, title, json, updated_at)
@@ -119,9 +128,25 @@ export class FeedStore {
        ON CONFLICT(username) DO UPDATE SET
          pass_sha256 = excluded.pass_sha256, updated_at = excluded.updated_at`,
     );
+    const readJson = this.db.prepare(
+      "SELECT json FROM feeds WHERE owner = ? AND kind = ? AND slug = ?",
+    );
+    const changed: FeedKey[] = [];
     const tx = this.db.transaction(
       (rows: FeedSnapshot[], creds: UserCredential[]) => {
         for (const f of rows) {
+          const prev = readJson.get(f.owner, f.kind, f.slug) as
+            | { json: string }
+            | undefined;
+          let same = false;
+          if (prev) {
+            try {
+              same = contentOf(JSON.parse(prev.json) as FeedSnapshot) === contentOf(f);
+            } catch {
+              /* unreadable stored row — treat as changed */
+            }
+          }
+          if (!same) changed.push({ owner: f.owner, kind: f.kind, slug: f.slug });
           upsert.run({
             owner: f.owner,
             kind: f.kind,
@@ -155,7 +180,7 @@ export class FeedStore {
       },
     );
     tx(feeds, users);
-    return { upserted: feeds.length };
+    return { upserted: feeds.length, changed };
   }
 
   /** Rebuild the per-video chapters index from the pushed items (full-set
