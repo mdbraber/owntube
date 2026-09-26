@@ -39,24 +39,30 @@ export function hubTopicUrls(publicUrl: string, feed: FeedKey): string[] {
   );
 }
 
+/** The hub caps request bodies (64 KiB); keep each POST well under that
+ * regardless of how many feeds changed in one publish. */
+const MAX_URLS_PER_POST = 100;
+
 export async function notifyHub(
   config: HubConfig,
   feeds: FeedKey[],
   fetchImpl: typeof fetch = fetch,
 ): Promise<void> {
   if (feeds.length === 0) return;
-  const body = new URLSearchParams({ "hub.mode": "publish" });
-  for (const feed of feeds) {
-    for (const url of hubTopicUrls(config.publicUrl, feed)) body.append("hub.url", url);
+  const urls = feeds.flatMap((feed) => hubTopicUrls(config.publicUrl, feed));
+  for (let i = 0; i < urls.length; i += MAX_URLS_PER_POST) {
+    const chunk = urls.slice(i, i + MAX_URLS_PER_POST);
+    const body = new URLSearchParams({ "hub.mode": "publish" });
+    for (const url of chunk) body.append("hub.url", url);
+    const res = await fetchImpl(config.publishUrl, {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        authorization: `Bearer ${config.token}`,
+      },
+      body: body.toString(),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) throw new Error(`hub ${res.status}`);
   }
-  const res = await fetchImpl(config.publishUrl, {
-    method: "POST",
-    headers: {
-      "content-type": "application/x-www-form-urlencoded",
-      authorization: `Bearer ${config.token}`,
-    },
-    body: body.toString(),
-    signal: AbortSignal.timeout(10_000),
-  });
-  if (!res.ok) throw new Error(`hub ${res.status}`);
 }

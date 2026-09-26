@@ -34,6 +34,26 @@ test("notifyHub posts one hub.url per variant of each changed feed", async () =>
   assert.deepEqual(body.getAll("hub.url"), hubTopicUrls(PUBLIC, { owner: "alice", kind: "queue", slug: "queue" }));
 });
 
+test("notifyHub chunks announcements into POSTs of at most 100 hub.url values", async () => {
+  const calls: { url: string; init: RequestInit }[] = [];
+  const fakeFetch = (async (url: string, init: RequestInit) => {
+    calls.push({ url, init });
+    return new Response("accepted", { status: 202 });
+  }) as unknown as typeof fetch;
+  const feeds = Array.from({ length: 60 }, (_, i) => ({
+    owner: "alice",
+    kind: "playlist",
+    slug: `list-${i}`,
+  }));
+  await notifyHub({ publicUrl: PUBLIC, publishUrl: "http://hub/", token: "tok" }, feeds, fakeFetch);
+  assert.equal(calls.length, 2);
+  const urlsPerCall = calls.map((c) => new URLSearchParams(String(c.init.body)).getAll("hub.url"));
+  assert.equal(urlsPerCall[0].length, 100);
+  assert.equal(urlsPerCall[1].length, 20);
+  const allUrls = feeds.flatMap((feed) => hubTopicUrls(PUBLIC, feed));
+  assert.deepEqual([...urlsPerCall[0], ...urlsPerCall[1]], allUrls);
+});
+
 test("notifyHub sends nothing for no changes and throws on hub errors", async () => {
   let called = false;
   const ok = (async () => {

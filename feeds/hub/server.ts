@@ -48,20 +48,29 @@ setInterval(() => {
   if (pruned > 0) logLine(`pruned ${pruned} expired subscription(s)`);
 }, 3_600_000).unref();
 
-function readBody(req: http.IncomingMessage): Promise<string> {
+type ReadBodyResult = { tooLarge: true } | { tooLarge: false; body: string };
+
+/** Reads the request body, capped at MAX_BODY_BYTES. On overflow it stops
+ * buffering (rather than destroying the socket) so the caller can still send
+ * a 413 response on the same connection. */
+function readBody(req: http.IncomingMessage): Promise<ReadBodyResult> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;
+    let tooLarge = false;
     req.on("data", (c: Buffer) => {
+      if (tooLarge) return;
       size += c.length;
       if (size > MAX_BODY_BYTES) {
-        reject(new Error("body too large"));
-        req.destroy();
+        tooLarge = true;
+        chunks.length = 0;
         return;
       }
       chunks.push(c);
     });
-    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    req.on("end", () => {
+      resolve(tooLarge ? { tooLarge: true } : { tooLarge: false, body: Buffer.concat(chunks).toString("utf8") });
+    });
     req.on("error", reject);
   });
 }
@@ -81,7 +90,13 @@ const server = http.createServer((req, res) => {
       return;
     }
     if (method === "POST" && pathname === "/") {
-      const form = new URLSearchParams(await readBody(req));
+      const read = await readBody(req);
+      if (read.tooLarge) {
+        res.writeHead(413, { "content-type": "text/plain" });
+        res.end("request body too large\n");
+        return;
+      }
+      const form = new URLSearchParams(read.body);
       const result = await hub.handle(form, req.headers.authorization);
       res.writeHead(result.status, { "content-type": "text/plain" });
       res.end(result.body);
