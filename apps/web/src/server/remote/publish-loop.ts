@@ -140,9 +140,11 @@ export function createFeedPublisher(deps: FeedPublisherDeps): {
 
 let started = false;
 
-/** Start publishing from this process. Only the prod container sets
- * OWNTUBE_PUBLISH_TARGET: dev shares its database, and two publishers would
- * race. */
+/** Start publishing from this process. Only the prod container may set
+ * OWNTUBE_PUBLISH_SECRET: dev shares its database, and two publishers would
+ * race. OWNTUBE_PUBLISH_TARGET can be set wherever the settings UI needs it
+ * (it also builds the copyable feed URLs there) — this loop only starts when
+ * both TARGET and SECRET are present. */
 export function startFeedPublisher(): boolean {
   const target = process.env.OWNTUBE_PUBLISH_TARGET?.trim() ?? "";
   const secret = process.env.OWNTUBE_PUBLISH_SECRET?.trim() ?? "";
