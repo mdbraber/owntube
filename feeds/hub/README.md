@@ -14,10 +14,12 @@ get new feed content pushed within seconds of a change instead of polling.
   (`https://user:pass@owntube.nedworks.org/rss/...`). The hub fetches each
   subscription's topic with its own credentials, and matches announcements
   (`https://user@...`, no password) on username + URL.
-- **DNS rebinding** — the hub's outbound requests (verification, delivery and
-  topic fetches) are made with a fetch that re-checks every resolved address
+- **DNS rebinding** — the hub's outbound requests to callbacks (verification
+  and delivery) are made with a fetch that re-checks every resolved address
   at connect time, so a callback host can't pass the public-address check and
-  then resolve to a private address for the real connection.
+  then resolve to a private address for the real connection. Topic fetches
+  use a plain fetch instead: topic hosts are operator-configured
+  (`HUB_TOPIC_HOSTS`), not supplied by a subscriber, so they need no guard.
 
 With the hub on, a feed's own `<atom:link rel="self">` carries the requesting
 user's full credentials (`https://user:pass@.../rss/...`) — it *is* the WebSub
