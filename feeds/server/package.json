@@ -6,7 +6,7 @@
   "description": "Public podcast feeds server \u2014 receives feed snapshots from the pusher and renders RSS, chapters and cover art",
   "scripts": {
     "start": "tsx server.ts",
-    "test": "tsx render.test.ts && tsx ip-allow.test.ts && tsx store.test.ts"
+    "test": "tsx render.test.ts && tsx ip-allow.test.ts && tsx store.test.ts && tsx websub.test.ts"
   },
   "dependencies": {
     "better-sqlite3": "^11.8.1",

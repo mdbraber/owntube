@@ -7,6 +7,9 @@
  *   GET  /                                 HTML index of your feeds      (Basic Auth)
  *   GET  /opml.xml                         OPML of your feeds            (Basic Auth)
  *   GET  /health                           liveness (no auth)
+ *   GET  /websub/callback                  WebSub hub verification (no auth; see websub.ts)
+ *   POST /websub/callback                  WebSub notification (hub HMAC signature)
+ *   POST /websub/sync                      home: set wanted channels, drain events (Bearer PUBLISH_SECRET)
  *
  * Basic Auth is per user: the publisher pushes each account's username and the
  * SHA-256 of its generated RSS password alongside the snapshots, and every
@@ -15,7 +18,7 @@
  * (that origin is unreachable off-LAN), so putting the creds in a podcast app
  * URL (https://user:pass@host/rss/...) is enough.
  */
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { promises as dns } from "node:dns";
 import fs from "node:fs";
 import http from "node:http";
@@ -29,6 +32,14 @@ import {
   xmlEscape,
 } from "./render.ts";
 import { FeedStore, type UserCredential } from "./store.ts";
+import {
+  channelIdFromTopic,
+  DEFAULT_HUB_URL,
+  hubRequestBody,
+  isChannelId,
+  parseNotification,
+  verifySignature,
+} from "./websub.ts";
 
 const PORT = Number.parseInt(process.env.PORT ?? "8080", 10);
 const DATA_DIR = process.env.DATA_DIR ?? "/data";
@@ -48,6 +59,22 @@ const PUBLISH_ALLOW_IPS = (process.env.PUBLISH_ALLOW_IPS ?? "")
   .filter(Boolean);
 const IP_ALLOWLIST_ON =
   PUBLISH_ALLOW_HOSTS.length > 0 || PUBLISH_ALLOW_IPS.length > 0;
+
+// WebSub push for YouTube uploads (see websub.ts). Off unless the public
+// callback URL is configured — the hub must be able to reach it.
+const WEBSUB_CALLBACK_URL = process.env.WEBSUB_CALLBACK_URL?.trim() ?? "";
+const WEBSUB_HUB_URL = process.env.WEBSUB_HUB_URL?.trim() || DEFAULT_HUB_URL;
+// `hub.secret` for notification signatures. Derived from PUBLISH_SECRET unless
+// set, so enabling WebSub needs no new secret.
+const WEBSUB_SECRET =
+  process.env.WEBSUB_SECRET?.trim() ||
+  createHmac("sha256", PUBLISH_SECRET).update("websub").digest("hex");
+const WEBSUB_TICK_MS = 60_000;
+/** Hub requests per tick: a fresh 200-channel set subscribes in ~8 minutes. */
+const WEBSUB_REQUESTS_PER_TICK = 25;
+const WEBSUB_SYNC_BATCH = 500;
+const MAX_WEBSUB_BODY_BYTES = 1024 * 1024;
+const MAX_WEBSUB_CHANNELS = 10_000;
 
 if (!PUBLISH_SECRET) {
   process.stderr.write("feeds-server: PUBLISH_SECRET must be set\n");
@@ -173,13 +200,16 @@ function requireBasicAuth(res: http.ServerResponse): void {
   res.end("authentication required\n");
 }
 
-function readBody(req: http.IncomingMessage): Promise<Buffer> {
+function readBody(
+  req: http.IncomingMessage,
+  maxBytes = MAX_BODY_BYTES,
+): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;
     req.on("data", (c: Buffer) => {
       size += c.length;
-      if (size > MAX_BODY_BYTES) {
+      if (size > maxBytes) {
         reject(new Error("body too large"));
         req.destroy();
         return;
@@ -236,25 +266,35 @@ function sendXml(res: http.ServerResponse, body: string, status = 200): void {
   res.end(body);
 }
 
-async function handlePublish(
+/** The home publisher's routes: IP allow-list (when on) plus Bearer secret.
+ * Writes the rejection and returns false when either fails. */
+async function authorizePublisher(
   req: http.IncomingMessage,
   res: http.ServerResponse,
-): Promise<void> {
+): Promise<boolean> {
   if (IP_ALLOWLIST_ON) {
     const ip = clientIp(req);
     const rules = await currentAllowRules();
     if (!isIpAllowed(ip, rules)) {
-      logLine(`publish DENIED: ${ip} not in allow-list`);
+      logLine(`${req.url} DENIED: ${ip} not in allow-list`);
       res.writeHead(403, { "content-type": "text/plain" });
       res.end("forbidden\n");
-      return;
+      return false;
     }
   }
   if (!checkBearer(req)) {
     res.writeHead(401, { "content-type": "text/plain" });
     res.end("unauthorized\n");
-    return;
+    return false;
   }
+  return true;
+}
+
+async function handlePublish(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+): Promise<void> {
+  if (!(await authorizePublisher(req, res))) return;
   let payload: unknown;
   try {
     payload = JSON.parse((await readBody(req)).toString("utf8"));
@@ -285,6 +325,181 @@ async function handlePublish(
   );
   res.writeHead(200, { "content-type": "application/json" });
   res.end(JSON.stringify({ ok: true, feeds: upserted, items }));
+}
+
+function nowSec(): number {
+  return Math.floor(Date.now() / 1000);
+}
+
+function sendText(
+  res: http.ServerResponse,
+  status: number,
+  body: string,
+): void {
+  res.writeHead(status, { "content-type": "text/plain; charset=utf-8" });
+  res.end(body);
+}
+
+/** Hub verification of a (un)subscribe request: echo `hub.challenge` to accept. */
+function handleWebSubVerify(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+): void {
+  const q = new URL(req.url ?? "/", "http://x").searchParams;
+  const mode = q.get("hub.mode");
+  const channelId = channelIdFromTopic(q.get("hub.topic") ?? "");
+  if (!channelId) {
+    sendText(res, 404, "unknown topic\n");
+    return;
+  }
+  if (mode === "denied") {
+    store.markWebSubDenied(channelId, q.get("hub.reason") ?? "");
+    logLine(`websub: hub denied ${channelId}: ${q.get("hub.reason") ?? ""}`);
+    sendText(res, 200, "ok\n");
+    return;
+  }
+  const challenge = q.get("hub.challenge") ?? "";
+  if (
+    (mode !== "subscribe" && mode !== "unsubscribe") ||
+    !challenge ||
+    challenge.length > 1024
+  ) {
+    sendText(res, 400, "bad request\n");
+    return;
+  }
+  const lease = Number.parseInt(q.get("hub.lease_seconds") ?? "", 10);
+  const ok = store.verifyWebSub(
+    channelId,
+    mode,
+    Number.isFinite(lease) ? lease : 432_000,
+    nowSec(),
+  );
+  if (!ok) {
+    sendText(res, 404, "not wanted\n");
+    return;
+  }
+  sendText(res, 200, challenge);
+}
+
+/**
+ * Hub notification. Always 2xx once read (the WebSub spec: a non-2xx only
+ * makes the hub retry); bad signatures and unwanted channels are dropped.
+ */
+async function handleWebSubNotify(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+): Promise<void> {
+  let body: Buffer;
+  try {
+    body = await readBody(req, MAX_WEBSUB_BODY_BYTES);
+  } catch {
+    sendText(res, 413, "too large\n");
+    return;
+  }
+  const signature = req.headers["x-hub-signature"];
+  if (
+    !verifySignature(
+      body,
+      Array.isArray(signature) ? signature[0] : signature,
+      WEBSUB_SECRET,
+    )
+  ) {
+    logLine("websub: notification with bad signature dropped");
+    sendText(res, 202, "ignored\n");
+    return;
+  }
+  const events = parseNotification(body.toString("utf8")).filter((e) =>
+    store.isWebSubWanted(e.channelId),
+  );
+  const added = store.addWebSubEvents(events, nowSec());
+  if (added > 0) {
+    logLine(
+      `websub: queued ${events.map((e) => `${e.deleted ? "-" : "+"}${e.videoId}@${e.channelId}`).join(" ")}`,
+    );
+  }
+  sendText(res, 202, "ok\n");
+}
+
+/**
+ * Home's single round trip: `{ channels, ack }` in → wanted set replaced,
+ * events up to `ack` deleted → next batch of events out. Home acks a batch on
+ * its next call, so a crash mid-apply redelivers rather than loses.
+ */
+async function handleWebSubSync(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+): Promise<void> {
+  if (!(await authorizePublisher(req, res))) return;
+  let payload: { channels?: unknown; ack?: unknown };
+  try {
+    payload = JSON.parse(
+      (await readBody(req, MAX_WEBSUB_BODY_BYTES)).toString("utf8"),
+    );
+  } catch {
+    sendText(res, 400, "invalid json\n");
+    return;
+  }
+  const { channels, ack } = payload ?? {};
+  if (
+    !Array.isArray(channels) ||
+    channels.length > MAX_WEBSUB_CHANNELS ||
+    !channels.every(isChannelId) ||
+    (ack !== undefined && ack !== null && !Number.isSafeInteger(ack))
+  ) {
+    sendText(res, 400, "expected { channels: string[], ack?: number }\n");
+    return;
+  }
+  store.setWebSubWanted(channels as string[]);
+  const now = nowSec();
+  const events = store.drainWebSubEvents(
+    (ack as number | null | undefined) ?? null,
+    WEBSUB_SYNC_BATCH,
+    now,
+  );
+  res.writeHead(200, { "content-type": "application/json" });
+  res.end(
+    JSON.stringify({
+      events,
+      stats: store.webSubStats(now),
+    }),
+  );
+}
+
+/** One pass of hub (un)subscribe requests; see `FeedStore.webSubDue`. */
+async function webSubTick(): Promise<void> {
+  const now = nowSec();
+  const due = store.webSubDue(now, WEBSUB_REQUESTS_PER_TICK);
+  const requests = [
+    ...due.subscribe.map((id) => ["subscribe", id] as const),
+    ...due.unsubscribe.map((id) => ["unsubscribe", id] as const),
+  ];
+  for (const [mode, channelId] of requests) {
+    let error: string | null = null;
+    try {
+      const resp = await fetch(WEBSUB_HUB_URL, {
+        method: "POST",
+        body: hubRequestBody(
+          mode,
+          channelId,
+          WEBSUB_CALLBACK_URL,
+          WEBSUB_SECRET,
+        ),
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!resp.ok) {
+        error = `hub ${resp.status}: ${(await resp.text().catch(() => "")).slice(0, 200)}`;
+      }
+    } catch (e) {
+      error = e instanceof Error ? e.message : String(e);
+    }
+    store.markWebSubRequested(channelId, mode, nowSec(), error);
+    if (error) logLine(`websub: ${mode} ${channelId} failed — ${error}`);
+  }
+  if (requests.length > 0) {
+    logLine(
+      `websub: requested ${due.subscribe.length} subscribe, ${due.unsubscribe.length} unsubscribe`,
+    );
+  }
 }
 
 /** Parse `/rss/<kind>/<slug>.<variant>.xml`. */
@@ -414,6 +629,26 @@ const server = http.createServer((req, res) => {
       return;
     }
 
+    if (WEBSUB_CALLBACK_URL && pathname === "/websub/callback") {
+      if (method === "GET") {
+        handleWebSubVerify(req, res);
+        return;
+      }
+      if (method === "POST") {
+        await handleWebSubNotify(req, res);
+        return;
+      }
+    }
+
+    if (
+      WEBSUB_CALLBACK_URL &&
+      method === "POST" &&
+      pathname === "/websub/sync"
+    ) {
+      await handleWebSubSync(req, res);
+      return;
+    }
+
     // Everything below is Basic-Auth guarded and scoped to the
     // authenticated user's own feeds.
     if (method === "GET" || method === "HEAD") {
@@ -466,5 +701,28 @@ server.listen(PORT, () => {
     );
   } else {
     logLine("feeds-server: /publish IP allow-list off (Bearer only)");
+  }
+  if (WEBSUB_CALLBACK_URL) {
+    logLine(
+      `feeds-server: WebSub on — callback ${WEBSUB_CALLBACK_URL}, hub ${WEBSUB_HUB_URL}`,
+    );
+    let running = false;
+    const tick = () => {
+      if (running) return;
+      running = true;
+      webSubTick()
+        .catch((e: unknown) =>
+          logLine(
+            `websub: tick failed — ${e instanceof Error ? e.message : String(e)}`,
+          ),
+        )
+        .finally(() => {
+          running = false;
+        });
+    };
+    setInterval(tick, WEBSUB_TICK_MS).unref();
+    tick();
+  } else {
+    logLine("feeds-server: WebSub off (WEBSUB_CALLBACK_URL unset)");
   }
 });

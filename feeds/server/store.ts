@@ -13,6 +13,7 @@ import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
 import type { FeedSnapshot } from "./render.ts";
+import type { WebSubEvent } from "./websub.ts";
 
 export type FeedRow = {
   owner: string;
@@ -28,6 +29,35 @@ export type UserCredential = {
   /** SHA-256 hex of the user's RSS password. */
   passSha256: string;
 };
+
+export type QueuedWebSubEvent = WebSubEvent & {
+  id: number;
+  receivedAt: number;
+};
+
+export type WebSubStats = {
+  wanted: number;
+  active: number;
+  pending: number;
+  failing: number;
+  queued: number;
+};
+
+/** A hub verification only renews the lease when it answers one of our own
+ * requests from this recently; see `verifyWebSub`. */
+const WEBSUB_PENDING_WINDOW_SEC = 3600;
+/** Renew this long before the lease runs out. */
+const WEBSUB_RENEW_BEFORE_SEC = 86_400;
+/** Unacked events older than this are dropped (home was offline too long —
+ * its periodic RSS refresh has caught up by then). */
+const WEBSUB_EVENT_RETENTION_SEC = 14 * 86_400;
+
+/** Wait before re-requesting: covers an unanswered verification (15 min)
+ * and backs off repeated failures up to 12 h. */
+function webSubRetryDelaySec(attempts: number): number {
+  const exp = Math.min(Math.max(attempts - 1, 0), 6);
+  return Math.min(900 * 2 ** exp, 43_200);
+}
 
 export class FeedStore {
   private db: Database.Database;
@@ -69,7 +99,30 @@ export class FeedStore {
         video_id TEXT PRIMARY KEY,
         json TEXT NOT NULL,
         updated_at INTEGER NOT NULL
-      )`,
+      );
+      CREATE TABLE IF NOT EXISTS websub_topics (
+        channel_id TEXT PRIMARY KEY,
+        wanted INTEGER NOT NULL,
+        requested_mode TEXT,
+        requested_at INTEGER,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        lease_expires_at INTEGER,
+        verified_at INTEGER,
+        last_error TEXT
+      );
+      CREATE TABLE IF NOT EXISTS websub_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        channel_id TEXT NOT NULL,
+        video_id TEXT NOT NULL,
+        deleted INTEGER NOT NULL,
+        title TEXT,
+        author TEXT,
+        published_at INTEGER,
+        updated_at INTEGER,
+        received_at INTEGER NOT NULL
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS websub_events_dedupe
+        ON websub_events (video_id, deleted, IFNULL(updated_at, 0))`,
     );
     this.migrateOwnerColumn();
   }
@@ -188,6 +241,244 @@ export class FeedStore {
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Replace the set of channels home wants push for. Rows for channels no
+   * longer wanted stay (wanted = 0) until they are unsubscribed or their
+   * lease lapses — see `webSubDue`.
+   */
+  setWebSubWanted(channelIds: string[]): void {
+    const upsert = this.db.prepare(
+      `INSERT INTO websub_topics (channel_id, wanted) VALUES (?, 1)
+       ON CONFLICT(channel_id) DO UPDATE SET wanted = 1`,
+    );
+    this.db.transaction((ids: string[]) => {
+      this.db.exec("UPDATE websub_topics SET wanted = 0");
+      for (const id of ids) upsert.run(id);
+    })(channelIds);
+  }
+
+  isWebSubWanted(channelId: string): boolean {
+    const row = this.db
+      .prepare("SELECT wanted FROM websub_topics WHERE channel_id = ?")
+      .get(channelId) as { wanted: number } | undefined;
+    return row?.wanted === 1;
+  }
+
+  /**
+   * Channels to (re)subscribe — wanted, lease missing or within a day of
+   * expiry — and to unsubscribe — unwanted with a live lease. Channels backing
+   * off after a recent request are skipped. Unwanted rows whose lease is gone
+   * are deleted here.
+   */
+  webSubDue(
+    now: number,
+    limit: number,
+  ): { subscribe: string[]; unsubscribe: string[] } {
+    this.db
+      .prepare(
+        `DELETE FROM websub_topics
+         WHERE wanted = 0 AND (lease_expires_at IS NULL OR lease_expires_at <= ?)`,
+      )
+      .run(now);
+    const rows = this.db
+      .prepare(
+        `SELECT channel_id, wanted, requested_at, attempts FROM websub_topics
+         WHERE (wanted = 1 AND (lease_expires_at IS NULL OR lease_expires_at < ?))
+            OR (wanted = 0 AND lease_expires_at > ?)
+         ORDER BY lease_expires_at IS NOT NULL, lease_expires_at`,
+      )
+      .all(now + WEBSUB_RENEW_BEFORE_SEC, now) as {
+      channel_id: string;
+      wanted: number;
+      requested_at: number | null;
+      attempts: number;
+    }[];
+    const subscribe: string[] = [];
+    const unsubscribe: string[] = [];
+    for (const r of rows) {
+      if (subscribe.length + unsubscribe.length >= limit) break;
+      if (
+        r.requested_at !== null &&
+        now - r.requested_at < webSubRetryDelaySec(r.attempts)
+      ) {
+        continue;
+      }
+      (r.wanted === 1 ? subscribe : unsubscribe).push(r.channel_id);
+    }
+    return { subscribe, unsubscribe };
+  }
+
+  /** Record a hub request; `error` set when the hub rejected it outright. */
+  markWebSubRequested(
+    channelId: string,
+    mode: "subscribe" | "unsubscribe",
+    now: number,
+    error: string | null,
+  ): void {
+    this.db
+      .prepare(
+        `UPDATE websub_topics
+         SET requested_mode = ?, requested_at = ?, attempts = attempts + 1, last_error = ?
+         WHERE channel_id = ?`,
+      )
+      .run(mode, now, error, channelId);
+  }
+
+  /**
+   * Answer a hub verification GET. Accepted (→ echo the challenge) when it
+   * matches what we want. Only a verification of our own recent request
+   * moves the lease: the hub also re-verifies live subscriptions on its own,
+   * and anyone can send this GET, so an unsolicited one must not be able to
+   * postpone a renewal.
+   */
+  verifyWebSub(
+    channelId: string,
+    mode: "subscribe" | "unsubscribe",
+    leaseSec: number,
+    now: number,
+  ): boolean {
+    const row = this.db
+      .prepare(
+        "SELECT wanted, requested_mode, requested_at FROM websub_topics WHERE channel_id = ?",
+      )
+      .get(channelId) as
+      | {
+          wanted: number;
+          requested_mode: string | null;
+          requested_at: number | null;
+        }
+      | undefined;
+    if (mode === "unsubscribe") {
+      if (row?.wanted === 1) return false;
+      if (row) {
+        this.db
+          .prepare("DELETE FROM websub_topics WHERE channel_id = ?")
+          .run(channelId);
+      }
+      return true;
+    }
+    if (row?.wanted !== 1) return false;
+    const answersOurRequest =
+      row.requested_mode === "subscribe" &&
+      row.requested_at !== null &&
+      now - row.requested_at <= WEBSUB_PENDING_WINDOW_SEC;
+    if (answersOurRequest) {
+      const lease = Math.min(Math.max(leaseSec, 60), 30 * 86_400);
+      this.db
+        .prepare(
+          `UPDATE websub_topics
+           SET lease_expires_at = ?, verified_at = ?, requested_mode = NULL,
+               requested_at = NULL, attempts = 0, last_error = NULL
+           WHERE channel_id = ?`,
+        )
+        .run(now + lease, now, channelId);
+    }
+    return true;
+  }
+
+  /** The hub refused the subscription (`hub.mode=denied`). */
+  markWebSubDenied(channelId: string, reason: string): void {
+    this.db
+      .prepare(
+        "UPDATE websub_topics SET lease_expires_at = NULL, last_error = ? WHERE channel_id = ?",
+      )
+      .run(`denied: ${reason}`.slice(0, 500), channelId);
+  }
+
+  /** Queue notifications; exact duplicates (the hub often redelivers) collapse. */
+  addWebSubEvents(events: WebSubEvent[], now: number): number {
+    const insert = this.db.prepare(
+      `INSERT OR IGNORE INTO websub_events
+         (channel_id, video_id, deleted, title, author, published_at, updated_at, received_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    return this.db.transaction((list: WebSubEvent[]) => {
+      let added = 0;
+      for (const e of list) {
+        added += insert.run(
+          e.channelId,
+          e.videoId,
+          e.deleted ? 1 : 0,
+          e.title ?? null,
+          e.author ?? null,
+          e.publishedAt ?? null,
+          e.updatedAt ?? null,
+          now,
+        ).changes;
+      }
+      return added;
+    })(events);
+  }
+
+  /**
+   * Delete events up to `ack` (home processed them), prune expired ones, and
+   * return the next batch. At-least-once: an event is redelivered until acked.
+   */
+  drainWebSubEvents(
+    ack: number | null,
+    limit: number,
+    now: number,
+  ): QueuedWebSubEvent[] {
+    if (ack !== null) {
+      this.db.prepare("DELETE FROM websub_events WHERE id <= ?").run(ack);
+    }
+    this.db
+      .prepare("DELETE FROM websub_events WHERE received_at < ?")
+      .run(now - WEBSUB_EVENT_RETENTION_SEC);
+    const rows = this.db
+      .prepare(
+        `SELECT id, channel_id, video_id, deleted, title, author, published_at, updated_at, received_at
+         FROM websub_events ORDER BY id LIMIT ?`,
+      )
+      .all(limit) as {
+      id: number;
+      channel_id: string;
+      video_id: string;
+      deleted: number;
+      title: string | null;
+      author: string | null;
+      published_at: number | null;
+      updated_at: number | null;
+      received_at: number;
+    }[];
+    return rows.map((r) => ({
+      id: r.id,
+      channelId: r.channel_id,
+      videoId: r.video_id,
+      deleted: r.deleted === 1,
+      title: r.title ?? undefined,
+      author: r.author ?? undefined,
+      publishedAt: r.published_at ?? undefined,
+      updatedAt: r.updated_at ?? undefined,
+      receivedAt: r.received_at,
+    }));
+  }
+
+  webSubStats(now: number): WebSubStats {
+    const row = this.db
+      .prepare(
+        `SELECT
+           SUM(wanted = 1) AS wanted,
+           SUM(wanted = 1 AND lease_expires_at > ?) AS active,
+           SUM(wanted = 1 AND (lease_expires_at IS NULL OR lease_expires_at <= ?) AND last_error IS NULL) AS pending,
+           SUM(wanted = 1 AND last_error IS NOT NULL) AS failing
+         FROM websub_topics`,
+      )
+      .get(now, now) as Record<string, number | null>;
+    const queued = (
+      this.db.prepare("SELECT COUNT(*) AS n FROM websub_events").get() as {
+        n: number;
+      }
+    ).n;
+    return {
+      wanted: row.wanted ?? 0,
+      active: row.active ?? 0,
+      pending: row.pending ?? 0,
+      failing: row.failing ?? 0,
+      queued,
+    };
   }
 
   getUser(username: string): UserCredential | null {

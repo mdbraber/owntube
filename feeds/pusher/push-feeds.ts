@@ -4,6 +4,11 @@
  * server. Run one-shot via `pnpm push:feeds`; the deploy container loops it on
  * an interval (see docker-compose `owntube-feeds-pusher`).
  *
+ * Each run first syncs WebSub with the same server (`syncWebSub`): hands it the
+ * subscribed channels and applies the upload pushes it queued. That runs every
+ * loop regardless of the publish skip below; a push that changed a channel
+ * feed marks the library dirty, so the publish follows in the same run.
+ *
  * It lives here as the pusher's entrypoint, but deliberately still imports the
  * web app's server modules: building a snapshot means reading the app's SQLite
  * database through its own schema and reusing its feed/RSS logic. Reimplementing
@@ -19,6 +24,7 @@ import { runSqlMigrations } from "@/server/db/run-migrations";
 import * as schema from "@/server/db/schema";
 import { replayRecentHistory } from "@/server/hooks/replay-history";
 import { publishFeeds } from "@/server/remote/publish";
+import { syncWebSub } from "@/server/websub/sync";
 
 const defaultPath = path.join(process.cwd(), "data", "owntube.db");
 const dbPath = process.env.DATABASE_PATH ?? defaultPath;
@@ -44,6 +50,9 @@ const intervalSec = Number.parseInt(
 );
 // --force publishes regardless (manual runs, first deploy).
 const force = process.argv.includes("--force");
+const webSubEnabled = !["0", "false", "no", "off"].includes(
+  (process.env.OWNTUBE_WEBSUB ?? "true").trim().toLowerCase(),
+);
 
 function logLine(message: string): void {
   process.stdout.write(`${message}\n`);
@@ -68,6 +77,20 @@ async function main(): Promise<void> {
   );
 
   try {
+    if (webSubEnabled) {
+      try {
+        const result = await syncWebSub(db, { target, secret, onLog: logLine });
+        if (!result.enabled) {
+          logLine(
+            "websub: off on the feeds server (WEBSUB_CALLBACK_URL unset)",
+          );
+        }
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        process.stderr.write(`websub sync failed: ${message}\n`);
+      }
+    }
+
     const now = Math.floor(Date.now() / 1000);
     const state = sqlite
       .prepare(
