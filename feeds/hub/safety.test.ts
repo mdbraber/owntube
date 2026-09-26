@@ -107,7 +107,15 @@ test("publicOnlyFetch refuses to connect to localhost (loopback address)", async
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address() as { port: number };
   try {
-    await assert.rejects(() => publicOnlyFetch(`http://localhost:${port}/`));
+    // Assert why it failed, not just that it did — otherwise a connection
+    // refused (e.g. from a typo'd port) would pass this just as well as the
+    // rebinding guard actually firing.
+    await assert.rejects(() => publicOnlyFetch(`http://localhost:${port}/`), (error: unknown) => {
+      assert.ok(error instanceof Error);
+      const cause = (error as Error & { cause?: unknown }).cause;
+      assert.match(String((cause as Error)?.message ?? cause), /non-public/);
+      return true;
+    });
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }

@@ -216,6 +216,37 @@ test("publish delivers the feed fetched with the subscriber's credentials, signe
   await Promise.all([feeds.close(), sub.close()]);
 });
 
+test("the topic is fetched with topicFetch, not fetch", async () => {
+  const feeds = await topicServer();
+  const sub = await subscriber();
+  const { hub } = freshHub({
+    fetch: async (input, init) => {
+      const href = typeof input === "string" ? input : input.toString();
+      if (href.includes(`:${feeds.port}`)) {
+        throw new Error("fetch must not be used for the topic request");
+      }
+      return fetch(input, init);
+    },
+    topicFetch: fetch,
+  });
+  const topic = `http://alice:pw-a@127.0.0.1:${feeds.port}${FEED}`;
+  await settle(
+    await hub.handle(
+      form({ "hub.mode": "subscribe", "hub.callback": `${sub.base}/cb`, "hub.topic": topic }),
+    ),
+  );
+  const result = await settle(
+    await hub.handle(
+      form({ "hub.mode": "publish", "hub.url": `http://alice@127.0.0.1:${feeds.port}${FEED}` }),
+      "Bearer tok",
+    ),
+  );
+  assert.equal(result.status, 202);
+  const [delivery] = sub.posts();
+  assert.equal(delivery.body, "<rss>alice</rss>");
+  await Promise.all([feeds.close(), sub.close()]);
+});
+
 test("announcing one user's feed never reaches another user's subscriber", async () => {
   const feeds = await topicServer();
   const alice = await subscriber();

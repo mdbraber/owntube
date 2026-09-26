@@ -32,7 +32,22 @@ export type HubOptions = {
   /** Hostnames whose topics this hub serves. */
   topicHosts: string[];
   isCallbackAllowed: (callback: string) => Promise<boolean>;
+  /**
+   * Used for the callback verification GET and the delivery POST — requests
+   * to whatever host a subscriber names. Defaults to the global `fetch`;
+   * callers should pass something that guards against a callback host
+   * resolving to a private address (see `feeds/hub/safety.ts`).
+   */
   fetch?: typeof fetch;
+  /**
+   * Used only to fetch a subscription's topic. The topic host is one of
+   * `topicHosts`, set by the operator, not by a subscriber — it needs no
+   * rebinding guard, and this network uses split-horizon DNS, so forcing the
+   * public-only lookup here would make every delivery fail silently if the
+   * resolver ever answers a topic host with a private address. Defaults to
+   * the global `fetch`.
+   */
+  topicFetch?: typeof fetch;
   /** Unix seconds. */
   now?: () => number;
   log?: (msg: string) => void;
@@ -56,12 +71,14 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export class Hub {
   private readonly fetch: typeof fetch;
+  private readonly topicFetch: typeof fetch;
   private readonly now: () => number;
   private readonly log: (msg: string) => void;
   private readonly retryDelaysMs: number[];
 
   constructor(private readonly opts: HubOptions) {
     this.fetch = opts.fetch ?? fetch;
+    this.topicFetch = opts.topicFetch ?? fetch;
     this.now = opts.now ?? (() => Math.floor(Date.now() / 1000));
     this.log = opts.log ?? (() => {});
     this.retryDelaysMs = opts.retryDelaysMs ?? [5_000, 30_000, 120_000];
@@ -181,7 +198,7 @@ export class Hub {
     let body: Buffer;
     let contentType: string;
     try {
-      const res = await this.fetch(target.url, {
+      const res = await this.topicFetch(target.url, {
         headers: target.authorization ? { authorization: target.authorization } : {},
         signal: AbortSignal.timeout(30_000),
       });
