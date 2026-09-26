@@ -39,6 +39,7 @@ import {
 } from "../src/server/sponsorblock/service";
 import { materializeHomeFeed } from "../src/server/trpc/routers/feed";
 import {
+  collectRssWarmChannelIds,
   collectWarmChannelIds,
   DEFAULT_WARM_HISTORY_CHANNELS,
   DEFAULT_WARM_SUBSCRIPTION_CHANNELS,
@@ -372,18 +373,25 @@ async function main(): Promise<void> {
       historyLimit: safeHistoryLimit,
     });
 
-    if (channelIds.length === 0) {
+    const rssChannelIds = collectRssWarmChannelIds(db, channelIds);
+
+    if (rssChannelIds.length === 0) {
       logLine("warm-cache: no subscription or history channels to warm");
     } else {
-      logLine(`warm-cache: warming ${channelIds.length} channel(s)`);
+      logLine(
+        `warm-cache: warming ${channelIds.length} channel(s), rss ${rssChannelIds.length}`,
+      );
       if (warmChannelsEnabled && !(await warmChannelMeta(db, channelIds))) {
         hadFailure = true;
       }
       // RSS before recency: recency reads the rows this step just refreshed.
-      if (warmRssEnabled && !(await warmRssFeeds(db, channelIds))) {
+      if (warmRssEnabled && !(await warmRssFeeds(db, rssChannelIds))) {
         hadFailure = true;
       }
-      if (warmRecencyEnabled && !(await warmChannelRecency(db, channelIds))) {
+      if (
+        warmRecencyEnabled &&
+        !(await warmChannelRecency(db, rssChannelIds))
+      ) {
         hadFailure = true;
       }
       if (

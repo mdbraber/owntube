@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   collectRecentHistoryChannelIds,
+  collectRssWarmChannelIds,
   collectSubscriptionChannelIds,
   collectWarmChannelIds,
 } from "./collect-channel-ids";
@@ -102,5 +103,28 @@ describe("collectWarmChannelIds", () => {
         historyLimit: 8,
       }),
     ).toEqual(["UC_sub_a", "UC_sub_b", "UC_hist"]);
+  });
+});
+
+describe("collectRssWarmChannelIds", () => {
+  it("covers every subscription past the warm cap, then extra warm channels", () => {
+    const rows = Array.from({ length: 100 }, (_, i) => ({
+      channelId: `UC_sub_${i}`,
+      subscribedAt: 1000 - i,
+    }));
+    const db = {
+      select: () => ({
+        from: () => ({
+          orderBy: () => ({
+            all: () => rows,
+          }),
+        }),
+      }),
+    };
+
+    const ids = collectRssWarmChannelIds(db as never, ["UC_sub_3", "UC_hist"]);
+    expect(ids).toHaveLength(101);
+    expect(ids[0]).toBe("UC_sub_0");
+    expect(ids.at(-1)).toBe("UC_hist");
   });
 });

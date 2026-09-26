@@ -3,7 +3,11 @@ import type { AppDb } from "@/server/db/client";
 import { subscriptions, watchHistory } from "@/server/db/schema";
 
 export const DEFAULT_WARM_HISTORY_CHANNELS = 32;
-/** Cap subscription warms — large libraries would otherwise hammer upstream for hours. */
+/**
+ * Cap on subscriptions for the Invidious-backed warms (meta, channel pages) —
+ * large libraries would otherwise hammer upstream for hours. Uploads RSS is not
+ * capped: see `collectRssWarmChannelIds`.
+ */
 export const DEFAULT_WARM_SUBSCRIPTION_CHANNELS = 64;
 
 export type CollectWarmChannelIdsOptions = {
@@ -98,4 +102,21 @@ export function collectWarmChannelIds(
   }
 
   return out;
+}
+
+/**
+ * Every subscribed channel, then the rest of the warm set. Uploads RSS is two
+ * cheap youtube.com requests per channel and is what the merged feed reads, so
+ * it covers all subscriptions — capping it left most of a large library stale.
+ */
+export function collectRssWarmChannelIds(
+  db: AppDb,
+  warmChannelIds: string[],
+): string[] {
+  return [
+    ...new Set([
+      ...collectSubscriptionChannelIds(db, Number.POSITIVE_INFINITY),
+      ...warmChannelIds,
+    ]),
+  ];
 }
