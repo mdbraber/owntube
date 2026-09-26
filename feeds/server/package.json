@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Public podcast feeds server \u2014 receives feed snapshots from the pusher and renders RSS, chapters and cover art",
+  "description": "Public podcast feeds server — receives feed snapshots from the OwnTube web app and renders RSS, chapters and cover art",
   "scripts": {
     "start": "tsx server.ts",
     "test": "tsx render.test.ts && tsx ip-allow.test.ts && tsx store.test.ts && tsx notify-hub.test.ts"
@@ -15,5 +15,9 @@
   },
   "engines": {
     "node": ">=22 <23"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.20.4"
   }
 }
