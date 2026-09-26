@@ -21,7 +21,8 @@ export type PublishState = { dirtyAt: number; publishedAt: number };
 export type PublishTiming = {
   /** Publish once writes have been quiet this long… */
   quietSec: number;
-  /** …or once this long has passed since the last publish, even mid-burst. */
+  /** …or once this long has passed since the loop first saw the current
+   * change go unpublished, even if writes keep landing (mid-burst). */
   maxWaitSec: number;
   /** Republish at least this often (new uploads in channel feeds arrive
    * without a database write); also the history-replay cadence. */
@@ -41,12 +42,15 @@ export function publishReason(
   state: PublishState,
   now: number,
   timing: PublishTiming,
+  /** When the loop first saw this change go unpublished — not when it
+   * actually landed. Undefined means the loop hasn't seen it as dirty yet. */
+  dirtySince?: number,
 ): "changed" | "interval" | null {
   const sincePublish = now - state.publishedAt;
   if (
     state.dirtyAt > state.publishedAt &&
     (now - state.dirtyAt >= timing.quietSec ||
-      sincePublish >= timing.maxWaitSec)
+      (dirtySince !== undefined && now - dirtySince >= timing.maxWaitSec))
   ) {
     return "changed";
   }
@@ -77,16 +81,30 @@ export function createFeedPublisher(deps: FeedPublisherDeps): {
   let running = false;
   let failedUntil = 0;
   let lastReplayAt = 0;
+  /** When this loop first saw the current change go unpublished; cleared
+   * once a publish succeeds, so a new burst starts its own maxWait clock. */
+  let dirtySince: number | undefined;
 
   async function tick(): Promise<void> {
     if (running) return;
     running = true;
     try {
       const startedAt = now();
-      const reason =
-        startedAt >= failedUntil
-          ? publishReason(deps.readState(), startedAt, timing)
-          : null;
+      let reason: "changed" | "interval" | null = null;
+      if (startedAt >= failedUntil) {
+        try {
+          const state = deps.readState();
+          if (state.dirtyAt > state.publishedAt && dirtySince === undefined) {
+            dirtySince = startedAt;
+          }
+          reason = publishReason(state, startedAt, timing, dirtySince);
+        } catch (error) {
+          failedUntil = startedAt + RETRY_AFTER_FAILURE_SEC;
+          log(
+            `feed publisher: reading publish state failed, retrying in ${RETRY_AFTER_FAILURE_SEC}s: ${message(error)}`,
+          );
+        }
+      }
       if (reason) {
         try {
           const { feedCount, itemCount } = await deps.publish();
@@ -94,6 +112,7 @@ export function createFeedPublisher(deps: FeedPublisherDeps): {
           // started stays newer than the stamp and triggers the next publish.
           // Publishing itself writes no table a feed trigger watches.
           deps.markPublished(startedAt - 1);
+          dirtySince = undefined;
           log(
             `feed publisher: pushed ${feedCount} feed(s), ${itemCount} item(s) (${reason})`,
           );
