@@ -149,3 +149,36 @@ test("a fresh data dir just starts a new database", () => {
   assert.equal(fs.existsSync(path.join(dir, "feeds.db")), true);
   assert.equal(store.list("alice").length, 0);
 });
+
+test("replaceAll reports feeds whose content changed, ignoring updatedAt", () => {
+  const { store } = freshStore();
+  const users = [{ username: "alice", passSha256: "a".repeat(64) }];
+  const queue = snap("alice", "queue", "queue");
+  const tech = snap("alice", "playlist", "tech");
+
+  assert.deepEqual(store.replaceAll([queue, tech], users).changed, [
+    { owner: "alice", kind: "queue", slug: "queue" },
+    { owner: "alice", kind: "playlist", slug: "tech" },
+  ]);
+
+  const rebuilt = [
+    { ...queue, updatedAt: queue.updatedAt + 60 },
+    { ...tech, updatedAt: tech.updatedAt + 60 },
+  ];
+  assert.deepEqual(store.replaceAll(rebuilt, users).changed, []);
+
+  const newEpisode = {
+    ...tech,
+    items: [
+      {
+        videoId: "abc123XYZ_-",
+        title: "New",
+        enclosureAudio: "https://m/a.m4a",
+        enclosureVideo: "https://m/a.mp4",
+      },
+    ],
+  };
+  assert.deepEqual(store.replaceAll([queue, newEpisode], users).changed, [
+    { owner: "alice", kind: "playlist", slug: "tech" },
+  ]);
+});

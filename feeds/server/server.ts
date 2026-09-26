@@ -22,6 +22,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { isIpAllowed } from "./ip-allow.ts";
+import { type HubConfig, feedTopicUrl, notifyHub } from "./notify-hub.ts";
 import {
   type FeedSnapshot,
   renderRss,
@@ -48,6 +49,25 @@ const PUBLISH_ALLOW_IPS = (process.env.PUBLISH_ALLOW_IPS ?? "")
   .filter(Boolean);
 const IP_ALLOWLIST_ON =
   PUBLISH_ALLOW_HOSTS.length > 0 || PUBLISH_ALLOW_IPS.length > 0;
+
+// WebSub: on only when all three are set. HUB_URL is advertised in every feed;
+// HUB_PUBLISH_URL is where announcements go (the hub's internal address on the
+// shared Docker network, defaulting to HUB_URL).
+const HUB_URL = process.env.HUB_URL?.trim() ?? "";
+const HUB_PUBLISH_TOKEN = process.env.HUB_PUBLISH_TOKEN?.trim() ?? "";
+const PUBLIC_URL = process.env.PUBLIC_URL?.trim() ?? "";
+const hub: HubConfig | null =
+  HUB_URL && HUB_PUBLISH_TOKEN && PUBLIC_URL
+    ? {
+        publicUrl: PUBLIC_URL,
+        publishUrl: process.env.HUB_PUBLISH_URL?.trim() || HUB_URL,
+        token: HUB_PUBLISH_TOKEN,
+      }
+    : null;
+if (HUB_URL && !hub) {
+  process.stderr.write("feeds-server: HUB_URL needs HUB_PUBLISH_TOKEN and PUBLIC_URL\n");
+  process.exit(1);
+}
 
 if (!PUBLISH_SECRET) {
   process.stderr.write("feeds-server: PUBLISH_SECRET must be set\n");
@@ -132,10 +152,13 @@ const DUMMY_SHA256 = createHash("sha256")
   .update("feeds-server-dummy")
   .digest("hex");
 
-/** The authenticated username, or null. Credentials come from the store
- * (pushed by the feeds pusher); unknown usernames are compared against a dummy
- * digest so timing doesn't reveal which accounts exist. */
-function checkBasicAuth(req: http.IncomingMessage): string | null {
+/** The authenticated owner and the password they used, or null. Credentials
+ * come from the store (pushed by the feeds pusher); unknown usernames are
+ * compared against a dummy digest so timing doesn't reveal which accounts
+ * exist. */
+function checkBasicAuth(
+  req: http.IncomingMessage,
+): { owner: string; password: string } | null {
   const header = req.headers.authorization ?? "";
   const m = header.match(/^Basic\s+(.+)$/i);
   if (!m) return null;
@@ -162,7 +185,7 @@ function checkBasicAuth(req: http.IncomingMessage): string | null {
   }
   const digest = createHash("sha256").update(pass, "utf8").digest("hex");
   const ok = safeEqual(digest, user?.passSha256 ?? DUMMY_SHA256);
-  return ok && user ? user.username : null;
+  return ok && user ? { owner: user.username, password: pass } : null;
 }
 
 function requireBasicAuth(res: http.ServerResponse): void {
@@ -275,7 +298,7 @@ async function handlePublish(
     res.end("expected { feeds: FeedSnapshot[], users: UserCredential[] }\n");
     return;
   }
-  const { upserted } = store.replaceAll(
+  const { upserted, changed } = store.replaceAll(
     feeds as FeedSnapshot[],
     pubUsers as UserCredential[],
   );
@@ -285,6 +308,14 @@ async function handlePublish(
   );
   res.writeHead(200, { "content-type": "application/json" });
   res.end(JSON.stringify({ ok: true, feeds: upserted, items }));
+  // Announce after responding: a hub outage must never fail a publish.
+  if (hub && changed.length > 0) {
+    notifyHub(hub, changed).then(
+      () => logLine(`hub notified: ${changed.length} changed feed(s)`),
+      (error: unknown) =>
+        logLine(`hub notify failed: ${error instanceof Error ? error.message : String(error)}`),
+    );
+  }
 }
 
 /** Parse `/rss/<kind>/<slug>.<variant>.xml`. */
@@ -417,11 +448,12 @@ const server = http.createServer((req, res) => {
     // Everything below is Basic-Auth guarded and scoped to the
     // authenticated user's own feeds.
     if (method === "GET" || method === "HEAD") {
-      const owner = checkBasicAuth(req);
-      if (!owner) {
+      const auth = checkBasicAuth(req);
+      if (!auth) {
         requireBasicAuth(res);
         return;
       }
+      const { owner } = auth;
 
       const rss = parseRssPath(pathname);
       if (rss) {
@@ -431,7 +463,18 @@ const server = http.createServer((req, res) => {
           res.end("feed not found\n");
           return;
         }
-        sendXml(res, renderRss(feed, rss.variant, { selfUrl: selfUrl(req) }));
+        // With a hub, the self link is the exact credentialed URL: it is the
+        // WebSub topic, unique per user, and the hub fetches it as-is.
+        const self = hub
+          ? feedTopicUrl(hub.publicUrl, owner, pathname, auth.password)
+          : selfUrl(req);
+        sendXml(
+          res,
+          renderRss(feed, rss.variant, {
+            selfUrl: self,
+            hubUrl: hub ? HUB_URL : undefined,
+          }),
+        );
         return;
       }
 
@@ -467,4 +510,5 @@ server.listen(PORT, () => {
   } else {
     logLine("feeds-server: /publish IP allow-list off (Bearer only)");
   }
+  logLine(hub ? `feeds-server: WebSub hub ${HUB_URL}` : "feeds-server: WebSub off");
 });

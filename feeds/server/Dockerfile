@@ -8,7 +8,7 @@ WORKDIR /app
 COPY package.json ./
 RUN npm install --omit=dev --no-audit --no-fund
 
-COPY tsconfig.json server.ts store.ts render.ts ip-allow.ts icon.png ./
+COPY tsconfig.json server.ts store.ts render.ts ip-allow.ts notify-hub.ts icon.png ./
 
 ENV NODE_ENV=production \
     PORT=8080 \
