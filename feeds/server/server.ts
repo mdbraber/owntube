@@ -201,7 +201,7 @@ const DUMMY_SHA256 = createHash("sha256")
   .digest("hex");
 
 /** The authenticated owner and the password they used, or null. Credentials
- * come from the store (pushed by the feeds pusher); unknown usernames are
+ * come from the store (pushed by the web app's feed publisher); unknown usernames are
  * compared against a dummy digest so timing doesn't reveal which accounts
  * exist. */
 function checkBasicAuth(

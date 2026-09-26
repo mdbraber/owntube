@@ -7,7 +7,7 @@ RSS. Every `<enclosure>` URL points back at the LAN media origin
 Auth) while the media only streams on the LAN.
 
 ```
-feeds pusher ──POST /publish (Bearer)──▶ feeds server (spiff, owntube.nedworks.org)
+web app      ──POST /publish (Bearer)──▶ feeds server (spiff, owntube.nedworks.org)
                                           └ GET /rss/<kind>/<slug>.{audio,video}.xml  (Basic Auth)
 podcast app ──(LAN/VPN)──▶ owntube /media/<id>   ◀── enclosure URLs
 ```
@@ -57,7 +57,11 @@ URL the user already pasted in to subscribe.
 | `PUBLISH_SECRET` | yes | — | Must match the home side's `OWNTUBE_PUBLISH_SECRET` |
 | `PUBLISH_ALLOW_HOSTS` | no | — | Comma-separated hostnames allowed to POST `/publish`; re-resolved ~60s (DDNS-safe) |
 | `PUBLISH_ALLOW_IPS` | no | — | Comma-separated extra IPs/CIDRs allowed to POST `/publish` |
-| `WEBSUB_CALLBACK_URL` | no | — | Public URL of `/websub/callback`; setting it turns WebSub on |
+| `HUB_URL` | no | — | Public URL of our WebSub hub (`feeds/hub`), advertised in every feed; needs the next two |
+| `HUB_PUBLISH_TOKEN` | with `HUB_URL` | — | Bearer token for announcing changed feeds to the hub |
+| `PUBLIC_URL` | with `HUB_URL` | — | This server's public origin (no path), used for the feeds' self links / hub topics |
+| `HUB_PUBLISH_URL` | no | `HUB_URL` | Where announcements go (e.g. the hub's internal Docker address) |
+| `WEBSUB_CALLBACK_URL` | no | — | Public URL of `/websub/callback`; setting it turns the YouTube WebSub subscriber on |
 | `WEBSUB_HUB_URL` | no | `https://pubsubhubbub.appspot.com/subscribe` | |
 | `WEBSUB_SECRET` | no | derived from `PUBLISH_SECRET` | `hub.secret` for notification signatures |
 | `PORT` | no | `8080` | |
@@ -68,18 +72,21 @@ URL the user already pasted in to subscribe.
 the rightmost `X-Forwarded-For` value (Caddy-set). With neither var configured
 the IP check is off.
 
-## WebSub (push for new uploads)
+## YouTube WebSub subscriber (push for new uploads)
+
+Not to be confused with our own hub (`HUB_URL`, `feeds/hub`), which pushes
+*our* feeds to podcast apps. This is the other direction.
 
 YouTube announces every channel's uploads through Google's WebSub hub. The hub
 can only push to a public URL, so this server is the subscriber on home's
 behalf:
 
 ```
-home pusher ──POST /websub/sync {channels, ack}──▶ feeds server ──subscribe──▶ hub
+web app     ──POST /websub/sync {channels, ack}──▶ feeds server ──subscribe──▶ hub
             ◀──────────── {events} ──────────────   ◀──POST /websub/callback──  (signed Atom)
 ```
 
-- Every pusher run (~60 s) sends the full set of subscribed channel ids. The
+- The in-app publisher (`publish-loop.ts`, about once a minute) sends the full set of subscribed channel ids. The
   server subscribes new ones at the hub (25 requests a minute), renews each
   lease a day before it lapses (the hub grants ~5 days), and unsubscribes
   channels that dropped out.
@@ -94,7 +101,7 @@ until youtube.com's (lagging) feed lists it, and warms each new upload's
 detail, streams and comments so it opens instantly. The cache warmer keeps polling
 every channel as the safety net: the hub is known to drop notifications.
 
-Set `OWNTUBE_WEBSUB=false` on the pusher to stop syncing.
+Set `OWNTUBE_WEBSUB=false` on the web app to stop syncing.
 
 ## Run
 

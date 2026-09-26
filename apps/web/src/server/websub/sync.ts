@@ -14,7 +14,8 @@ import { warmVideo } from "@/server/warm-cache/warm-video";
  * Home half of WebSub push. The public feeds server (`feeds/server`, the only
  * host the hub can reach) subscribes every channel we hand it at Google's hub
  * and queues the signed upload notifications; this drains that queue over one
- * outbound call — home stays unreachable.
+ * outbound call — home stays unreachable. The in-app feed publisher
+ * (`remote/publish-loop.ts`) calls this about once a minute.
  *
  * A push is recorded in `websub_pushed` and the channel's RSS + long-form
  * window are refreshed at once. youtube.com's RSS usually lags the push, so the

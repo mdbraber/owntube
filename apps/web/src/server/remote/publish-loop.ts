@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { getDb } from "@/server/db/client";
 import { replayRecentHistory } from "@/server/hooks/replay-history";
 import { publishFeeds } from "@/server/remote/publish";
+import { syncWebSub } from "@/server/websub/sync";
 
 /**
  * Feed publisher, running inside the web app. SQLite triggers stamp feed_publish_state.dirty_at
@@ -13,6 +14,11 @@ import { publishFeeds } from "@/server/remote/publish";
  * It also runs the watch-history replay on the slow interval: re-firing the
  * last 48h through the hooks is what heals OwnTube → Pocket Casts after an
  * outage (pocket-sessions' own replay only covers the other direction).
+ *
+ * And it drains YouTube WebSub upload pushes from the feeds server
+ * (`syncWebSub`) about once a minute, at the start of a tick. A push that
+ * changes a channel feed writes the RSS cache, which stamps dirty_at, so the
+ * publish follows through the normal quiet/maxWait rules.
  */
 
 export type PublishState = { dirtyAt: number; publishedAt: number };
@@ -26,12 +32,15 @@ export type PublishTiming = {
   /** Republish at least this often (new uploads in channel feeds arrive
    * without a database write); also the history-replay cadence. */
   intervalSec: number;
+  /** Drain WebSub upload pushes (`syncUploads`) at most this often. */
+  webSubSyncSec: number;
 };
 
 export const DEFAULT_TIMING: PublishTiming = {
   quietSec: 30,
   maxWaitSec: 120,
   intervalSec: 1800,
+  webSubSyncSec: 60,
 };
 
 const TICK_MS = 10_000;
@@ -62,6 +71,9 @@ export type FeedPublisherDeps = {
   markPublished: (at: number) => void;
   publish: () => Promise<{ feedCount: number; itemCount: number }>;
   replay: () => Promise<unknown>;
+  /** Pull queued upload pushes from the feeds server. Runs regardless of
+   * publish state and back-off; failures are logged, never fatal. */
+  syncUploads?: () => Promise<unknown>;
   now?: () => number;
   log?: (msg: string) => void;
   timing?: PublishTiming;
@@ -80,6 +92,7 @@ export function createFeedPublisher(deps: FeedPublisherDeps): {
   let running = false;
   let failedUntil = 0;
   let lastReplayAt = 0;
+  let lastSyncAt: number | undefined;
   /** When this loop first saw the current change go unpublished; cleared
    * once a publish succeeds, so a new burst starts its own maxWait clock. */
   let dirtySince: number | undefined;
@@ -89,6 +102,18 @@ export function createFeedPublisher(deps: FeedPublisherDeps): {
     running = true;
     try {
       const startedAt = now();
+      if (
+        deps.syncUploads &&
+        (lastSyncAt === undefined ||
+          startedAt - lastSyncAt >= timing.webSubSyncSec)
+      ) {
+        lastSyncAt = startedAt;
+        try {
+          await deps.syncUploads();
+        } catch (error) {
+          log(`feed publisher: websub sync failed: ${message(error)}`);
+        }
+      }
       let reason: "changed" | "interval" | null = null;
       if (startedAt >= failedUntil) {
         try {
@@ -168,6 +193,11 @@ export function startFeedPublisher(): boolean {
   };
   const log = (msg: string) => console.log(`[OwnTube] ${msg}`);
   const db = getDb();
+  const webSubOn = !["0", "false", "no", "off"].includes(
+    (process.env.OWNTUBE_WEBSUB ?? "true").trim().toLowerCase(),
+  );
+  // Log "off on the feeds server" once per state change, not every minute.
+  let webSubReportedOff = false;
 
   const publisher = createFeedPublisher({
     readState: () => {
@@ -188,12 +218,29 @@ export function startFeedPublisher(): boolean {
     },
     publish: () => publishFeeds(db, { target, secret, appOrigin, onLog: log }),
     replay: () => replayRecentHistory(db, { onLog: log }),
+    syncUploads: webSubOn
+      ? async () => {
+          const result = await syncWebSub(db, { target, secret, onLog: log });
+          if (!result.enabled) {
+            if (!webSubReportedOff) {
+              log(
+                "websub: off on the feeds server (WEBSUB_CALLBACK_URL unset)",
+              );
+            }
+            webSubReportedOff = true;
+          } else {
+            webSubReportedOff = false;
+          }
+        }
+      : undefined,
     timing,
     log,
   });
 
   setInterval(() => void publisher.tick(), TICK_MS).unref();
   void publisher.tick();
-  log(`feed publisher on → ${target} (interval ${timing.intervalSec}s)`);
+  log(
+    `feed publisher on → ${target} (interval ${timing.intervalSec}s, websub ${webSubOn ? "on" : "off"})`,
+  );
   return true;
 }
