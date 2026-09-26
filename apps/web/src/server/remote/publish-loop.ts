@@ -114,16 +114,19 @@ export function createFeedPublisher(deps: FeedPublisherDeps): {
           log(`feed publisher: websub sync failed: ${message(error)}`);
         }
       }
+      // Re-read the clock: a slow sync must not leave the publish decision
+      // (and the published-at stamp) looking at a stale "now".
+      const decidedAt = now();
       let reason: "changed" | "interval" | null = null;
-      if (startedAt >= failedUntil) {
+      if (decidedAt >= failedUntil) {
         try {
           const state = deps.readState();
           if (state.dirtyAt > state.publishedAt && dirtySince === undefined) {
-            dirtySince = startedAt;
+            dirtySince = decidedAt;
           }
-          reason = publishReason(state, startedAt, timing, dirtySince);
+          reason = publishReason(state, decidedAt, timing, dirtySince);
         } catch (error) {
-          failedUntil = startedAt + RETRY_AFTER_FAILURE_SEC;
+          failedUntil = decidedAt + RETRY_AFTER_FAILURE_SEC;
           log(
             `feed publisher: reading publish state failed, retrying in ${RETRY_AFTER_FAILURE_SEC}s: ${message(error)}`,
           );
@@ -132,16 +135,16 @@ export function createFeedPublisher(deps: FeedPublisherDeps): {
       if (reason) {
         try {
           const { feedCount, itemCount } = await deps.publish();
-          // One second back: a write landing in the same second this run
-          // started stays newer than the stamp and triggers the next publish.
+          // One second back: a write landing in the same second this publish
+          // was decided stays newer than the stamp and triggers the next publish.
           // Publishing itself writes no table a feed trigger watches.
-          deps.markPublished(startedAt - 1);
+          deps.markPublished(decidedAt - 1);
           dirtySince = undefined;
           log(
             `feed publisher: pushed ${feedCount} feed(s), ${itemCount} item(s) (${reason})`,
           );
         } catch (error) {
-          failedUntil = startedAt + RETRY_AFTER_FAILURE_SEC;
+          failedUntil = decidedAt + RETRY_AFTER_FAILURE_SEC;
           log(
             `feed publisher: publish failed, retrying in ${RETRY_AFTER_FAILURE_SEC}s: ${message(error)}`,
           );

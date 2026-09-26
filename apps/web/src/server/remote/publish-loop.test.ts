@@ -186,7 +186,11 @@ describe("createFeedPublisher", () => {
   });
 
   describe("syncUploads", () => {
-    function syncHarness(initial: PublishState, timing = DEFAULT_TIMING) {
+    function syncHarness(
+      initial: PublishState,
+      timing = DEFAULT_TIMING,
+      syncTakesSec = 0,
+    ) {
       const state = { ...initial };
       let clock = 10_000;
       const calls = { publish: 0, sync: 0, order: [] as string[] };
@@ -210,6 +214,7 @@ describe("createFeedPublisher", () => {
         syncUploads: async () => {
           calls.sync++;
           calls.order.push("sync");
+          clock += syncTakesSec;
           if (failSync) throw new Error("hub queue unreachable");
         },
         now: () => clock,
@@ -277,6 +282,31 @@ describe("createFeedPublisher", () => {
       await h.publisher.tick();
       expect(h.calls.publish).toBe(1); // still backed off…
       expect(h.calls.sync).toBe(3); // …but uploads kept syncing
+    });
+
+    it("decides and stamps the publish with the time after a slow sync", async () => {
+      // Written 10s before the tick: not quiet yet at tick start, but the
+      // sync takes 40s, so by the publish decision it has been quiet 50s.
+      const h = syncHarness(
+        { dirtyAt: 9_990, publishedAt: 9_000 },
+        DEFAULT_TIMING,
+        40,
+      );
+      await h.publisher.tick();
+      expect(h.calls.publish).toBe(1);
+      expect(h.state.publishedAt).toBe(10_039);
+    });
+
+    it("keys the sync cadence to the tick start, not the end of the sync", async () => {
+      const h = syncHarness(
+        { dirtyAt: 0, publishedAt: 10_000 },
+        DEFAULT_TIMING,
+        40,
+      );
+      await h.publisher.tick(); // tick at 10_000, sync ends 10_040
+      h.advance(20); // 10_060: 60s after the first tick began
+      await h.publisher.tick();
+      expect(h.calls.sync).toBe(2);
     });
 
     it("is optional", async () => {
