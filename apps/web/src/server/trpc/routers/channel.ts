@@ -1,7 +1,9 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import { newerPublished } from "@/lib/published-sort-key";
 import { RateLimitExceededError } from "@/server/errors/rate-limit-exceeded";
 import { UpstreamUnavailableError } from "@/server/errors/upstream-unavailable";
+import { patchVideosWithChannelRss } from "@/server/rss/patch";
 import {
   fetchChannelPage,
   fetchRelatedChannels,
@@ -32,7 +34,7 @@ export const channelRouter = router({
     .query(async ({ ctx, input }) => {
       const { cursor, continuation, channelId, tab, cacheOnly } = input;
       try {
-        return await fetchChannelPage(
+        const page = await fetchChannelPage(
           ctx.db,
           {
             channelId,
@@ -41,6 +43,20 @@ export const channelRouter = router({
           },
           cacheOnly ? { cacheOnly: true } : undefined,
         );
+        // Upstream dates here are derived from YouTube's coarse relative text
+        // at request time and its view counts are sometimes 0 — see
+        // patchVideosWithChannelRss. The subscriptions feed already corrected
+        // for this; a channel's own page showed the raw values.
+        const videos = await patchVideosWithChannelRss(ctx.db, page.videos);
+        // Re-sort within the page, as the merged feed does after the same
+        // patch. Upstream ordered this list by the dates we just replaced, so a
+        // row whose date was wrong sits in the wrong place — most visibly the
+        // one dated "now" that upstream therefore put first.
+        const nowSec = Math.floor(Date.now() / 1000);
+        return {
+          ...page,
+          videos: [...videos].sort((a, b) => newerPublished(a, b, nowSec)),
+        };
       } catch (e) {
         if (e instanceof UpstreamUnavailableError) {
           throw new TRPCError({ code: "BAD_GATEWAY", message: e.message });

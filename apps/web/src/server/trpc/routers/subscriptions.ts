@@ -20,6 +20,7 @@ import { RateLimitExceededError } from "@/server/errors/rate-limit-exceeded";
 import { UpstreamUnavailableError } from "@/server/errors/upstream-unavailable";
 import { removeWatchedFromQueue } from "@/server/queue/remove-watched";
 import { getChannelRssEntries, getLongFormWindows } from "@/server/rss/cache";
+import { patchVideosWithChannelRss } from "@/server/rss/patch";
 import { fetchChannelPage } from "@/server/services/proxy";
 import {
   channelCacheKey,
@@ -231,59 +232,6 @@ type ChannelBuffer = {
 const MAX_MERGE_CURSOR_OFFSET = 10_000;
 const MAX_SORT_PICKS = 50_000;
 const RSS_SEED_MAX_CHANNELS = 250;
-
-async function patchVisibleVideosWithRssDates(
-  db: AppDb,
-  videos: UnifiedVideo[],
-): Promise<UnifiedVideo[]> {
-  const channelIds = Array.from(
-    new Set(
-      videos
-        .map((v) => v.channelId)
-        .filter((c): c is string => typeof c === "string" && c.length > 0),
-    ),
-  );
-  if (channelIds.length === 0 || videos.length === 0) return videos;
-
-  const rssByVideoId = new Map<
-    string,
-    { publishedAt: number; channelName?: string }
-  >();
-  const all = await Promise.all(
-    channelIds.map((c) => getChannelRssEntries(db, c)),
-  );
-  for (const list of all) {
-    for (const item of list) {
-      if (
-        typeof item.publishedAt === "number" &&
-        Number.isFinite(item.publishedAt)
-      ) {
-        rssByVideoId.set(item.videoId, {
-          publishedAt: item.publishedAt,
-          channelName: item.channelName,
-        });
-      }
-    }
-  }
-  if (rssByVideoId.size === 0) return videos;
-
-  return videos.map((v) => {
-    const rss = rssByVideoId.get(v.videoId);
-    if (rss === undefined) return v;
-    return {
-      ...v,
-      publishedAt: rss.publishedAt,
-      publishedText: new Date(rss.publishedAt * 1000).toISOString(),
-      // A freshly-subscribed channel has no channel_meta row yet, so its
-      // upstream video list may omit the name and the UI falls back to the raw
-      // UC id. The RSS feed carries the author name — use it as a fallback.
-      channelName:
-        v.channelName && v.channelName.trim().length > 0
-          ? v.channelName
-          : (rss.channelName ?? v.channelName),
-    };
-  });
-}
 
 /** Fills `channelAvatarUrl` / name from `channel_meta` when upstream lists omit them. */
 function enrichSubscriptionVideosWithChannelMeta(
@@ -1124,10 +1072,7 @@ export const subscriptionsRouter = router({
         mergedPageKey(channelIds, offset, limit),
         () => collectSortedFeedPage(ctx.db, channelIds, offset, limit),
       );
-      const patchedVideos = await patchVisibleVideosWithRssDates(
-        ctx.db,
-        videos,
-      );
+      const patchedVideos = await patchVideosWithChannelRss(ctx.db, videos);
       const nowSec = Math.floor(Date.now() / 1000);
       const sortedPatchedVideos = [...patchedVideos].sort((a, b) =>
         newerPublished(a, b, nowSec),
