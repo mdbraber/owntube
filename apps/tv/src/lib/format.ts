@@ -1,4 +1,5 @@
 import { PixelRatio } from "react-native";
+import { baseUrl } from "@/lib/config";
 
 /** mm:ss / h:mm:ss for durations and playback time. */
 export function formatTime(totalSeconds: number): string {
@@ -127,6 +128,26 @@ export function channelInitial(name: string | undefined): string {
 const LARGE_STILL_RE =
   /^(\/vi\/[^/]+\/)(?:maxres|maxresdefault|hq720)\.jpe?g$/i;
 
+/** A video still on YouTube's CDN (any `*.ytimg.com` host), query ignored. */
+const YTIMG_STILL_RE =
+  /^https?:\/\/(?:[\w-]+\.)*ytimg\.com\/vi\/([\w-]{11})\/([\w-]+\.jpe?g)(?:[?#].*)?$/i;
+
+/**
+ * The same still, fetched through this instance's `/image` proxy instead of
+ * from YouTube; any other URL passes through unchanged.
+ *
+ * The TV never asks YouTube for an image itself: that would tell Google what
+ * is on screen, straight from the living room, which is the one thing a
+ * self-hosted front end exists to avoid. It costs nothing in reliability —
+ * `/image` resolves a missing rung server-side (asked for `maxresdefault` on a
+ * video without one, it answers with `hq720`'s bytes) and caches every still
+ * on disk. YouTube's own query (`sqp=…`) is dropped: the proxy signs nothing.
+ */
+export function viaInstance(url: string): string {
+  const m = YTIMG_STILL_RE.exec(url);
+  return m ? `${baseUrl()}/image/vi/${m[1]}/${m[2]}` : url;
+}
+
 /**
  * A video's thumbnail for a card, falling back to YouTube's own still by id
  * when the row carries none (history rows, for one, leave it to the client —
@@ -140,7 +161,7 @@ const LARGE_STILL_RE =
  * letterbox bars fall outside the card's 16:9 "cover" crop. Signed instance
  * URLs (`?host=…&rs=…`) pair the tier with the signature and stay as they are.
  */
-export function videoThumbnailUrl(video: {
+function cardStillUrl(video: {
   videoId: string;
   thumbnailUrl?: string;
 }): string {
@@ -160,6 +181,14 @@ export function videoThumbnailUrl(video: {
   }
 }
 
+/** A video's card thumbnail (see `cardStillUrl`), never straight from YouTube. */
+export function videoThumbnailUrl(video: {
+  videoId: string;
+  thumbnailUrl?: string;
+}): string {
+  return viaInstance(cardStillUrl(video));
+}
+
 /**
  * Stills for the full-width hero, sharpest first. The row's own thumbnail is
  * card-sized (blurry at 1080p), so try YouTube's larger stills by id, then
@@ -175,7 +204,7 @@ export function heroThumbnailUrls(video: {
     `https://i.ytimg.com/vi/${id}/maxresdefault.jpg`,
     `https://i.ytimg.com/vi/${id}/hq720.jpg`,
     videoThumbnailUrl(video),
-  ];
+  ].map(viaInstance);
   return urls.filter((url, index) => urls.indexOf(url) === index);
 }
 
