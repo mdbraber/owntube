@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- iPhone/iPad: videos with captions failed to start on native HLS (`MEDIA_ERR_SRC_NOT_SUPPORTED`) and fell back to the progressive split path, which stalls on iOS and has no audio-language picker. Caption `<track>`s are now attached once the source has loaded metadata.
+
 ## [0.1.0] - 2026-04-27
 
 First public release. The full backlog (P0 → P3) is implemented and reasonably stable on a single-user setup.
