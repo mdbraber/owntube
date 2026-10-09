@@ -8,6 +8,7 @@ import {
   getClientAppOrigin,
   installSameOriginMediaFetchGuard,
 } from "@/lib/hls-same-origin";
+import { isIosLikeBrowser } from "@/lib/ios-playback";
 import { getMediaOrigin } from "@/lib/media-origin";
 
 /**
@@ -148,12 +149,17 @@ export function useHlsVodPlayback(
     // ManagedMediaSource (where hls.js would fall back to MMS and stall the
     // video track, and where native HLS works). See use-dash-playback for the
     // sibling MMS/MSE notes.
+    //
+    // iOS/iPadOS always take the native path, though, even when they expose a
+    // real MediaSource (iPadOS Safari in its default desktop mode): AirPlay can
+    // only hand a native-HLS source to the Apple TV — MSE playback stays local,
+    // so casting from hls.js gives a black or silent receiver.
     const hasRealMediaSource =
       typeof window !== "undefined" && "MediaSource" in window;
     const canNative =
       video.canPlayType("application/vnd.apple.mpegurl") !== "" ||
       video.canPlayType("application/x-mpegURL") !== "";
-    if (canNative && !hasRealMediaSource) {
+    if (canNative && (isIosLikeBrowser() || !hasRealMediaSource)) {
       // Language renditions surface on WebKit's AudioTrackList. The manifest
       // marks the original DEFAULT=YES (see hls/generate.ts), but iOS's player
       // still starts on a dub matching the system language (an English iPhone

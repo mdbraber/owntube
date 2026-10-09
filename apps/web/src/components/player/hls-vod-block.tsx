@@ -269,9 +269,36 @@ export function HlsVodBlock({
   useShortsAudioPersist(adapter.muted, shortsMode);
   useShortsUnmuteAfterPlay(videoRef, shortsMode, reactKey);
 
+  // Sidecar caption <track>s join the element only once its source has loaded
+  // metadata. iOS's native HLS player rejects the manifest outright
+  // (MEDIA_ERR_SRC_NOT_SUPPORTED, no segment ever fetched) when the <video>
+  // already holds <track> children as it starts loading — reproduced on an
+  // iPhone with the production manifest: with the tracks 3/3 failures, without
+  // or added after loadedmetadata every run played. The manifest carries the
+  // same captions in-band meanwhile. Keyed on the active source so a swap hides
+  // them again in the same commit, before the new source is attached.
+  const activeSource = `${reactKey}|${dashSrc ?? (decided ? src : "")}`;
+  const [captionsReadyFor, setCaptionsReadyFor] = useState<string | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the <video> is keyed by reactKey, so a new stream is a new element to listen on.
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    const ready = () => setCaptionsReadyFor(activeSource);
+    if (el.readyState >= HTMLMediaElement.HAVE_METADATA && el.currentSrc) {
+      ready();
+      return;
+    }
+    el.addEventListener("loadedmetadata", ready);
+    return () => el.removeEventListener("loadedmetadata", ready);
+  }, [videoRef, activeSource]);
+  const sidecarCaptions = useMemo(
+    () => (captionsReadyFor === activeSource ? (captions ?? []) : []),
+    [captionsReadyFor, activeSource, captions],
+  );
+
   const captionModel = usePlayerCaptions(
     videoRef,
-    captions ?? [],
+    sidecarCaptions,
     reactKey,
     true,
   );
@@ -348,6 +375,7 @@ export function HlsVodBlock({
         muted={shortsMode}
         playsInline
         preload="auto"
+        x-webkit-airplay="allow"
         // Video/segments (dash.js/hls.js fetch these themselves, unaffected
         // by this attribute) and caption <track>s now live on the media
         // origin (see media-origin.ts) — cross-origin <track> loading
@@ -358,7 +386,7 @@ export function HlsVodBlock({
         onEnded={onEnded}
         className="absolute inset-0 h-full w-full object-contain"
       >
-        {(captions ?? []).map((track) => (
+        {sidecarCaptions.map((track) => (
           <track
             key={`${track.languageCode}-${track.label}`}
             kind="subtitles"

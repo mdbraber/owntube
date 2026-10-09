@@ -7,7 +7,9 @@ import {
   resumePeakLimiter,
   suspendPeakLimiter,
 } from "@/lib/audio-peak-limiter";
+import { isAirPlayCapableWebKit } from "@/lib/ios-playback";
 import { volumeGainFor } from "@/lib/player-volume-gain";
+import { isPlayingRemotely } from "@/lib/remote-playback";
 
 export function useNativeAdapter(opts: {
   videoRef: React.RefObject<HTMLVideoElement | null>;
@@ -22,6 +24,8 @@ export function useNativeAdapter(opts: {
   const bump = useCallback(() => force((x) => x + 1), []);
   const [muted, setMuted] = useState(opts.initialMuted ?? false);
   const [pictureInPicture, setPictureInPicture] = useState(false);
+  const [canAirPlay, setCanAirPlay] = useState(false);
+  const [airPlayActive, setAirPlayActive] = useState(false);
   const limiterActiveRef = useRef(false);
   const activatedRef = useRef(false);
 
@@ -163,6 +167,11 @@ export function useNativeAdapter(opts: {
   // seek path (segment re-fetch + decoder resync) the same way the manual
   // skip does. Cooldown keeps a genuinely video-less stream (none today) from
   // hiccuping the audio more than once per 10s.
+  //
+  // Not while AirPlaying: the Apple TV decodes, so the local frame counter is
+  // flat by design. Treating that as a freeze nudged the receiver every ~12 s
+  // (cooldown + two strikes), each nudge a seek that made the Apple TV
+  // rebuffer — the periodic AirPlay stutter.
   useEffect(() => {
     const v = videoRef.current;
     if (!v || typeof v.getVideoPlaybackQuality !== "function") return;
@@ -171,7 +180,7 @@ export function useNativeAdapter(opts: {
     let strikes = 0;
     let lastNudge = 0;
     const iv = window.setInterval(() => {
-      if (v.paused || v.seeking || v.readyState < 2) {
+      if (v.paused || v.seeking || v.readyState < 2 || isPlayingRemotely(v)) {
         strikes = 0;
         lastTime = v.currentTime;
         return;
@@ -280,6 +289,43 @@ export function useNativeAdapter(opts: {
     };
   }, []);
 
+  // WebKit AirPlay playback target availability and active target state
+  useEffect(() => {
+    const v = videoRef.current as
+      | (HTMLVideoElement & {
+          webkitCurrentPlaybackTargetIsWireless?: boolean;
+          webkitShowPlaybackTargetPicker?: () => void;
+        })
+      | null;
+    if (!v) return;
+
+    const onTargetAvailability = (e: Event & { availability?: string }) => {
+      setCanAirPlay(e.availability === "available");
+    };
+    const onWirelessChange = () => {
+      setAirPlayActive(Boolean(v.webkitCurrentPlaybackTargetIsWireless));
+    };
+
+    v.addEventListener(
+      "webkitplaybacktargetavailabilitychanged" as never,
+      onTargetAvailability,
+    );
+    v.addEventListener(
+      "webkitcurrentplaybacktargetiswirelesschanged" as never,
+      onWirelessChange,
+    );
+    return () => {
+      v.removeEventListener(
+        "webkitplaybacktargetavailabilitychanged" as never,
+        onTargetAvailability,
+      );
+      v.removeEventListener(
+        "webkitcurrentplaybacktargetiswirelesschanged" as never,
+        onWirelessChange,
+      );
+    };
+  }, [videoRef.current]);
+
   const v = videoRef.current;
   const duration =
     v && Number.isFinite(v.duration) && v.duration > 0 ? v.duration : 0;
@@ -291,6 +337,14 @@ export function useNativeAdapter(opts: {
     }
     return max;
   })();
+  // useDashPlayback sets `disableRemotePlayback` (ManagedMediaSource can't
+  // stream to AirPlay) — surface *why* the button is gone instead of silently
+  // never showing it. Only in browsers that can AirPlay at all: dash.js sets
+  // the flag everywhere, and Chrome/Firefox shouldn't grow a dead AirPlay icon.
+  const airPlayUnavailableReason =
+    v?.disableRemotePlayback && isAirPlayCapableWebKit()
+      ? "AirPlay isn't available for this stream on this device."
+      : undefined;
 
   return {
     paused: v?.paused ?? true,
@@ -422,6 +476,19 @@ export function useNativeAdapter(opts: {
         void document.exitPictureInPicture().catch(() => {});
       } else {
         void el.requestPictureInPicture().catch(() => {});
+      }
+    },
+    canAirPlay,
+    airPlayActive,
+    airPlayUnavailableReason,
+    showAirPlayPicker: () => {
+      const el = videoRef.current as
+        | (HTMLVideoElement & {
+            webkitShowPlaybackTargetPicker?: () => void;
+          })
+        | null;
+      if (typeof el?.webkitShowPlaybackTargetPicker === "function") {
+        el.webkitShowPlaybackTargetPicker();
       }
     },
   };

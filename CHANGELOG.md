@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- AirPlay from iPhone/iPad and macOS Safari: an AirPlay button in the player controls (and the mobile ⋯ menu) opens the system picker and lights up while casting. Where AirPlay can't work (dash.js/ManagedMediaSource streams) the button is shown disabled with the reason. On the split video+audio path a short notice says the audio stays on the device.
+
+### Fixed
+
+- AirPlay: no picture-only casts — the Web Audio peak limiter is skipped on AirPlay-capable Safari (Web Audio output never leaves the device), and iPad now uses native HLS instead of hls.js so the stream can be handed to the receiver.
+- AirPlay: the frozen-frame watchdog no longer "unfreezes" a video that is playing on an Apple TV, which made the receiver rebuffer every ~12 s.
+
+- iPhone/iPad: videos with captions failed to start on native HLS (`MEDIA_ERR_SRC_NOT_SUPPORTED`) and fell back to the progressive split path, which stalls on iOS and has no audio-language picker. Caption `<track>`s are now attached once the source has loaded metadata.
+
 ## [0.1.0] - 2026-04-27
 
 First public release. The full backlog (P0 → P3) is implemented and reasonably stable on a single-user setup.

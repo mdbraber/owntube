@@ -24,6 +24,7 @@ import {
   useIdleVisible,
 } from "@/components/player/player-fullscreen";
 import {
+  AirPlayIcon,
   BigPlayOverlayIcon,
   CaptionsIcon,
   CinemaIcon,
@@ -78,6 +79,7 @@ export function PlayerChrome({
   shortsMode = false,
   miniStartPaused = false,
   isLive = false,
+  splitAudioRisksAirPlaySilence = false,
 }: ChromeProps) {
   const [hydrated, setHydrated] = useState(false);
   const { active: fsActive, toggle: toggleFs } = useFullscreenShell(shellRef);
@@ -86,6 +88,33 @@ export function PlayerChrome({
   const [showVolPanel, setShowVolPanel] = useState(false);
   const [queueOpen, setQueueOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [airPlaySplitNotice, setAirPlaySplitNotice] = useState(false);
+  const airPlaySplitNoticeTimerRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
+  // Split playback's companion <audio> element never joins the AirPlay route
+  // the <video> picker sets up, so casting sends silent picture. Call the
+  // picker first (must stay synchronous with the click — WebKit invalidates
+  // the gesture token otherwise), then surface an honest, transient notice.
+  const showAirPlayPickerWithSplitNotice = () => {
+    adapter.showAirPlayPicker?.();
+    if (!splitAudioRisksAirPlaySilence) return;
+    if (airPlaySplitNoticeTimerRef.current) {
+      clearTimeout(airPlaySplitNoticeTimerRef.current);
+    }
+    setAirPlaySplitNotice(true);
+    airPlaySplitNoticeTimerRef.current = setTimeout(() => {
+      setAirPlaySplitNotice(false);
+      airPlaySplitNoticeTimerRef.current = null;
+    }, 6000);
+  };
+  useEffect(() => {
+    return () => {
+      if (airPlaySplitNoticeTimerRef.current) {
+        clearTimeout(airPlaySplitNoticeTimerRef.current);
+      }
+    };
+  }, []);
   const [autoCenterHint, setAutoCenterHint] = useState<{
     kind: "play" | "pause";
     tick: number;
@@ -267,6 +296,19 @@ export function PlayerChrome({
         <PipIcon className="h-10 w-10" />
         <span>Playing in Picture in Picture</span>
       </div>
+
+      {airPlaySplitNotice ? (
+        <div className="pointer-events-none absolute inset-x-0 top-4 z-40 flex justify-center px-4">
+          {/* biome-ignore lint/a11y/useSemanticElements: transient status text, not a form/alert widget */}
+          <div
+            role="status"
+            className="max-w-[90%] rounded-full bg-black/80 px-4 py-2 text-center text-xs text-white shadow-lg sm:text-sm"
+          >
+            Picture is casting to AirPlay — audio for this track stays on this
+            device.
+          </div>
+        </div>
+      ) : null}
 
       {/* On-video scrub preview: while actively dragging the scrubber, the frame
           fills the whole video area (YouTube-style) with the target time floated
@@ -839,6 +881,36 @@ export function PlayerChrome({
                   <PipIcon className="h-5 w-5" />
                 </button>
               ) : null}
+
+              {hydrated && adapter.canAirPlay ? (
+                <button
+                  type="button"
+                  onClick={showAirPlayPickerWithSplitNotice}
+                  className={cn(
+                    "flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-white/15",
+                    adapter.airPlayActive
+                      ? "bg-white/15 text-[hsl(var(--primary))]"
+                      : "",
+                  )}
+                  aria-label={
+                    adapter.airPlayActive
+                      ? "AirPlay active (connected)"
+                      : "AirPlay"
+                  }
+                >
+                  <AirPlayIcon className="h-5 w-5" />
+                </button>
+              ) : hydrated && adapter.airPlayUnavailableReason ? (
+                <button
+                  type="button"
+                  disabled
+                  title={adapter.airPlayUnavailableReason}
+                  aria-label={adapter.airPlayUnavailableReason}
+                  className="flex h-9 w-9 cursor-not-allowed items-center justify-center rounded-full opacity-40"
+                >
+                  <AirPlayIcon className="h-5 w-5" />
+                </button>
+              ) : null}
             </div>
           </div>
         </div>
@@ -862,6 +934,10 @@ export function PlayerChrome({
           canPip={false}
           pipActive={adapter.pictureInPicture}
           onTogglePip={() => adapter.togglePictureInPicture()}
+          canAirPlay={Boolean(adapter.canAirPlay)}
+          airPlayActive={Boolean(adapter.airPlayActive)}
+          airPlayUnavailableReason={adapter.airPlayUnavailableReason}
+          onShowAirPlayPicker={showAirPlayPickerWithSplitNotice}
         />
       ) : null}
 
@@ -904,6 +980,10 @@ function PlayerMobileMenu({
   canPip,
   pipActive,
   onTogglePip,
+  canAirPlay = false,
+  airPlayActive = false,
+  airPlayUnavailableReason,
+  onShowAirPlayPicker,
   open,
   onOpenChange,
   shellRef,
@@ -919,6 +999,10 @@ function PlayerMobileMenu({
   canPip: boolean;
   pipActive: boolean;
   onTogglePip: () => void;
+  canAirPlay?: boolean;
+  airPlayActive?: boolean;
+  airPlayUnavailableReason?: string;
+  onShowAirPlayPicker?: () => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** The element that goes fullscreen — the sheet portals into it so it also paints there. */
@@ -934,7 +1018,7 @@ function PlayerMobileMenu({
       panelClassName="border-white/10 bg-zinc-950/95 text-zinc-100 backdrop-blur-md"
       contentClassName="text-sm"
     >
-      {nextUp || canPip ? (
+      {nextUp || canPip || canAirPlay || airPlayUnavailableReason ? (
         <div className="px-1 py-1">
           {nextUp ? (
             <>
@@ -992,9 +1076,46 @@ function PlayerMobileMenu({
               </span>
             </button>
           ) : null}
+          {canAirPlay ? (
+            <button
+              type="button"
+              onClick={() => {
+                onShowAirPlayPicker?.();
+                onClose();
+              }}
+              className="flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2.5 hover:bg-white/10"
+              aria-pressed={airPlayActive}
+            >
+              <span>AirPlay</span>
+              <span
+                className={cn(
+                  "text-xs",
+                  airPlayActive
+                    ? "text-[hsl(var(--primary))]"
+                    : "text-zinc-400",
+                )}
+              >
+                {airPlayActive ? "Connected" : "Connect"}
+              </span>
+            </button>
+          ) : airPlayUnavailableReason ? (
+            <div
+              className="flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-zinc-500"
+              title={airPlayUnavailableReason}
+            >
+              <span>AirPlay</span>
+              <span className="text-xs">Unavailable</span>
+            </div>
+          ) : null}
         </div>
       ) : null}
-      <div className={nextUp || canPip ? "border-t border-white/10" : ""}>
+      <div
+        className={
+          nextUp || canPip || canAirPlay || airPlayUnavailableReason
+            ? "border-t border-white/10"
+            : ""
+        }
+      >
         <SettingsMenu
           variant="embedded"
           quality={quality}

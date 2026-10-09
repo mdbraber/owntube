@@ -253,3 +253,18 @@ export function SkipForward15Icon({ className }: { className?: string }) {
     </svg>
   );
 }
+
+export function AirPlayIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      role="img"
+      aria-label="AirPlay"
+    >
+      <title>AirPlay</title>
+      <path d="M5 17H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-1v-2h1V5H4v10h1v2zm7-2l6 6H6l6-6z" />
+    </svg>
+  );
+}
