@@ -30,6 +30,7 @@ import { parseDeepLink } from "@/lib/deep-links";
 import { useLongSelectDispatcher } from "@/lib/long-press";
 import type { Nav, OpenVideoOptions, PlayContext } from "@/lib/navigation";
 import { ScreenActiveProvider } from "@/lib/screen-active";
+import { SidebarFocusContext } from "@/lib/sidebar-focus";
 import { loadSidebarPrefs } from "@/lib/sidebar-prefs";
 import { trpcClient } from "@/lib/trpc";
 import { trpc } from "@/lib/trpc-react";
@@ -137,6 +138,7 @@ export function Shell({
   // back to a section doesn't refetch it.
   const me = trpc.auth.me.useQuery(undefined, { retry: 1 });
   const [section, setSection] = useState<Section>("home");
+  const [sidebarHandle, setSidebarHandle] = useState<number | null>(null);
   /** Kept sections still mounted: Home, then the most recently used. */
   const [visited, setVisited] = useState<Section[]>(["home"]);
   useEffect(() => {
@@ -454,46 +456,49 @@ export function Shell({
           player covers it opaquely. */}
       <TVFocusGuideView autoFocus focusable={!watchActive} style={styles.base}>
         <CardMenuProvider nav={nav}>
-          <View style={styles.base}>
-            <Animated.View
-              style={[styles.content, { marginLeft: contentInset }]}
-            >
-              {sectionLayers.map((key) => {
-                const visible = key === section && !channelShown;
-                return (
-                  <ScreenLayer
-                    key={`${key}-${resets[key] ?? 0}`}
-                    visible={visible}
-                    focused={visible && !watchActive}
-                  >
-                    {renderSection(key)}
-                  </ScreenLayer>
-                );
-              })}
-              {stack.map((route) => {
-                if (route.name !== "channel") return null;
-                const visible = route.key === channelRoute?.key;
-                return (
-                  <ScreenLayer
-                    key={route.key}
-                    visible={visible}
-                    focused={visible && !watchActive}
-                  >
-                    <ChannelScreen channelId={route.channelId} nav={nav} />
-                  </ScreenLayer>
-                );
-              })}
-            </Animated.View>
-            <Sidebar
-              active={section}
-              onSelect={selectSection}
-              profileLabel={me.data?.email}
-              onSwitchProfile={onSwitchProfile}
-              sections={sections}
-              onExpandedChange={onSidebarExpanded}
-              width={contentInset}
-            />
-          </View>
+          <SidebarFocusContext.Provider value={sidebarHandle}>
+            <View style={styles.base}>
+              <Animated.View
+                style={[styles.content, { marginLeft: contentInset }]}
+              >
+                {sectionLayers.map((key) => {
+                  const visible = key === section && !channelShown;
+                  return (
+                    <ScreenLayer
+                      key={`${key}-${resets[key] ?? 0}`}
+                      visible={visible}
+                      focused={visible && !watchActive}
+                    >
+                      {renderSection(key)}
+                    </ScreenLayer>
+                  );
+                })}
+                {stack.map((route) => {
+                  if (route.name !== "channel") return null;
+                  const visible = route.key === channelRoute?.key;
+                  return (
+                    <ScreenLayer
+                      key={route.key}
+                      visible={visible}
+                      focused={visible && !watchActive}
+                    >
+                      <ChannelScreen channelId={route.channelId} nav={nav} />
+                    </ScreenLayer>
+                  );
+                })}
+              </Animated.View>
+              <Sidebar
+                active={section}
+                onSelect={selectSection}
+                profileLabel={me.data?.email}
+                onSwitchProfile={onSwitchProfile}
+                sections={sections}
+                onExpandedChange={onSidebarExpanded}
+                width={contentInset}
+                onActiveRowHandle={setSidebarHandle}
+              />
+            </View>
+          </SidebarFocusContext.Provider>
         </CardMenuProvider>
       </TVFocusGuideView>
 

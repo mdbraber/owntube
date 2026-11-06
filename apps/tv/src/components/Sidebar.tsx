@@ -1,11 +1,13 @@
 import { Feather } from "@expo/vector-icons";
-import { useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useRef, useState } from "react";
 import {
   Animated,
+  findNodeHandle,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TVFocusGuideView,
   View,
 } from "react-native";
 import { channelInitial } from "@/lib/format";
@@ -66,6 +68,8 @@ type Props = {
   width?: Animated.Value;
   /** Ordered visible sections; omitted ones are hidden (see sidebar-prefs). */
   sections?: Section[];
+  /** Reports the active row's native handle (see lib/sidebar-focus). */
+  onActiveRowHandle?: (handle: number | null) => void;
 };
 
 export function Sidebar({
@@ -76,6 +80,7 @@ export function Sidebar({
   sections,
   onExpandedChange,
   width,
+  onActiveRowHandle,
 }: Props) {
   const visible = sections
     ? sections
@@ -88,6 +93,11 @@ export function Sidebar({
   const scrollRef = useRef<ScrollView>(null);
   const [navHeight, setNavHeight] = useState(0);
   const activeIndex = visible.findIndex((s) => s.key === active);
+  // State, not a ref: the guide's destinations must follow the active row.
+  const [activeRow, setActiveRow] = useState<View | null>(null);
+  useEffect(() => {
+    onActiveRowHandle?.(activeRow ? findNodeHandle(activeRow) : null);
+  }, [activeRow, onActiveRowHandle]);
 
   // Collapsing hands the rail back to the page, so put the active section back
   // in view: left where the user scrolled it, a rail parked on Settings shows
@@ -125,38 +135,48 @@ export function Sidebar({
         { width: width ?? (expanded ? EXPANDED_WIDTH : RAIL_WIDTH) },
       ]}
     >
-      <ProfileRow
-        label={profileLabel}
-        expanded={expanded}
-        onFocus={handleFocus}
-        onBlur={handleBlur}
-        onPress={() => onSwitchProfile?.()}
-      />
+      {/* Entering the rail from the page lands on the section you're in, not
+          on whichever row happens to sit level with the card you left — from a
+          shelf halfway down Home that was Subscriptions. While focus is inside,
+          Up and Down move between rows as usual. */}
+      <TVFocusGuideView
+        destinations={activeRow ? [activeRow] : []}
+        style={styles.guide}
+      >
+        <ProfileRow
+          label={profileLabel}
+          expanded={expanded}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
+          onPress={() => onSwitchProfile?.()}
+        />
 
-      {/* Scrolls: at 50dp a row, only seven fit a 540dp panel, and every
+        {/* Scrolls: at 50dp a row, only seven fit a 540dp panel, and every
           section past that used to take focus while staying off screen —
           invisible rows you could land on but never see. Android scrolls the
           newly focused child into view for us. */}
-      <ScrollView
-        ref={scrollRef}
-        style={styles.nav}
-        contentContainerStyle={styles.navContent}
-        onLayout={(e) => setNavHeight(e.nativeEvent.layout.height)}
-        showsVerticalScrollIndicator={false}
-      >
-        {visible.map((section) => (
-          <NavRow
-            key={section.key}
-            icon={section.icon}
-            label={section.label}
-            active={active === section.key}
-            expanded={expanded}
-            onFocus={handleFocus}
-            onBlur={handleBlur}
-            onPress={() => onSelect(section.key)}
-          />
-        ))}
-      </ScrollView>
+        <ScrollView
+          ref={scrollRef}
+          style={styles.nav}
+          contentContainerStyle={styles.navContent}
+          onLayout={(e) => setNavHeight(e.nativeEvent.layout.height)}
+          showsVerticalScrollIndicator={false}
+        >
+          {visible.map((section) => (
+            <NavRow
+              key={section.key}
+              ref={active === section.key ? setActiveRow : undefined}
+              icon={section.icon}
+              label={section.label}
+              active={active === section.key}
+              expanded={expanded}
+              onFocus={handleFocus}
+              onBlur={handleBlur}
+              onPress={() => onSelect(section.key)}
+            />
+          ))}
+        </ScrollView>
+      </TVFocusGuideView>
     </Animated.View>
   );
 }
@@ -218,28 +238,27 @@ function ProfileRow({
   );
 }
 
-function NavRow({
-  icon,
-  label,
-  active,
-  expanded,
-  onFocus,
-  onBlur,
-  onPress,
-}: {
-  icon: FeatherName;
-  label: string;
-  active: boolean;
-  expanded: boolean;
-  onFocus: () => void;
-  onBlur: () => void;
-  onPress: () => void;
-}) {
+const NavRow = forwardRef<
+  View,
+  {
+    icon: FeatherName;
+    label: string;
+    active: boolean;
+    expanded: boolean;
+    onFocus: () => void;
+    onBlur: () => void;
+    onPress: () => void;
+  }
+>(function NavRow(
+  { icon, label, active, expanded, onFocus, onBlur, onPress },
+  ref,
+) {
   const [focused, setFocused] = useState(false);
   const tint = active || focused ? colors.brand : colors.foreground;
 
   return (
     <Pressable
+      ref={ref}
       onFocus={() => {
         setFocused(true);
         onFocus();
@@ -267,7 +286,7 @@ function NavRow({
       ) : null}
     </Pressable>
   );
-}
+});
 
 const styles = StyleSheet.create({
   sidebar: {
@@ -297,6 +316,7 @@ const styles = StyleSheet.create({
     fontSize: fontSize.md,
   },
   switchHint: { color: colors.mutedForeground, fontSize: fontSize.sm },
+  guide: { flex: 1, gap: spacing.lg },
   nav: { flex: 1 },
   navContent: { gap: spacing.xs },
   row: {
