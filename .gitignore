@@ -81,3 +81,6 @@ apps/web/data/.dev-restart
 
 # local Claude sandbox tooling
 apps/web/Dockerfile.claude
+
+# Gradle output of the TV app's local Expo modules
+/apps/tv/modules/*/android/build/
