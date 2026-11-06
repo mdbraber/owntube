@@ -128,10 +128,17 @@ export function Shell({
   onSignOut,
   onChangeServer,
   onSwitchProfile,
+  suspended = false,
 }: {
   onSignOut: () => void;
   onChangeServer: () => void;
   onSwitchProfile: () => void;
+  /**
+   * Covered by Who's watching: stays mounted, so backing out of the picker
+   * returns to the same screen and card, but takes no focus or Back and
+   * counts no screen as shown.
+   */
+  suspended?: boolean;
 }) {
   useLongSelectDispatcher();
   // Names the sidebar's profile row. Cached like every other read, so switching
@@ -359,11 +366,12 @@ export function Shell({
   // Registered once, reading state through refs: re-registering on every stack
   // change made this the newest handler — after the watch screen's own, which
   // registers as it mounts — so Back skipped the player's dismiss-controls step.
-  const backStateRef = useRef({ depth: stack.length, section, pop });
-  backStateRef.current = { depth: stack.length, section, pop };
+  const backStateRef = useRef({ depth: stack.length, section, pop, suspended });
+  backStateRef.current = { depth: stack.length, section, pop, suspended };
   useEffect(() => {
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
-      const { depth, section, pop } = backStateRef.current;
+      const { depth, section, pop, suspended } = backStateRef.current;
+      if (suspended) return false;
       if (depth > 0) {
         pop();
         return true;
@@ -386,12 +394,13 @@ export function Shell({
     if (route.name === "watch") playerRoute = route;
     else channelRoute = route;
   }
-  const watchActive = top?.name === "watch";
+  const watchOnTop = top?.name === "watch";
+  const watchActive = watchOnTop && !suspended;
   // A player survives under a channel page only if it was on screen when the
   // page opened; a route uncovered by Back (its player already gone) loads
   // again when it reaches the front, not hidden behind the page.
   const shownPlayerKey = useRef<string | undefined>(undefined);
-  if (watchActive) shownPlayerKey.current = playerRoute?.key;
+  if (watchOnTop) shownPlayerKey.current = playerRoute?.key;
   const keptPlayer =
     playerRoute && playerRoute.key === shownPlayerKey.current
       ? playerRoute
@@ -454,7 +463,11 @@ export function Shell({
       {/* Stays laid out under the player: hiding it would re-lay out every
           shelf and lose their scroll offsets. Blocking focus is enough — the
           player covers it opaquely. */}
-      <TVFocusGuideView autoFocus focusable={!watchActive} style={styles.base}>
+      <TVFocusGuideView
+        autoFocus
+        focusable={!watchOnTop && !suspended}
+        style={styles.base}
+      >
         <CardMenuProvider nav={nav}>
           <SidebarFocusContext.Provider value={sidebarHandle}>
             <View style={styles.base}>
@@ -467,7 +480,7 @@ export function Shell({
                     <ScreenLayer
                       key={`${key}-${resets[key] ?? 0}`}
                       visible={visible}
-                      focused={visible && !watchActive}
+                      focused={visible && !watchOnTop && !suspended}
                     >
                       {renderSection(key)}
                     </ScreenLayer>
@@ -480,7 +493,7 @@ export function Shell({
                     <ScreenLayer
                       key={route.key}
                       visible={visible}
-                      focused={visible && !watchActive}
+                      focused={visible && !watchOnTop && !suspended}
                     >
                       <ChannelScreen channelId={route.channelId} nav={nav} />
                     </ScreenLayer>
@@ -504,7 +517,7 @@ export function Shell({
 
       {keptPlayer ? (
         <ScreenLayer
-          visible={watchActive}
+          visible={watchOnTop}
           focused={watchActive}
           style={styles.watchLayer}
         >
