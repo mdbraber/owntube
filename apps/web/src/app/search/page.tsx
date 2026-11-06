@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { SearchResults } from "@/components/search/search-results";
+import { appPathFromYoutubeUrl } from "@/lib/youtube-url";
 
 type SearchPageProps = {
   searchParams: Promise<{
@@ -21,6 +22,11 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
       : "relevance";
   if (!q) {
     redirect("/");
+  }
+  // A YouTube link searched for from anywhere opens its OwnTube page.
+  const appPath = appPathFromYoutubeUrl(q);
+  if (appPath) {
+    redirect(appPath);
   }
 
   return (

@@ -18,6 +18,7 @@ import { WatchCinemaProvider } from "@/components/watch/watch-cinema-context";
 import { WatchCommentsSection } from "@/components/watch/watch-comments-section";
 import { WatchContentTabs } from "@/components/watch/watch-content-tabs";
 import { WatchDescription } from "@/components/watch/watch-description";
+import { WatchHashStartTime } from "@/components/watch/watch-hash-start-time";
 import { WatchPageGrid } from "@/components/watch/watch-page-grid";
 import { WatchPlayerMount } from "@/components/watch/watch-player-mount";
 import { WatchUpcomingLive } from "@/components/watch/watch-upcoming-live";
@@ -39,6 +40,7 @@ import {
   formatSubscribersLabel,
   formatViews,
 } from "@/lib/video-display";
+import { readWatchParams, type WatchParams } from "@/lib/youtube-url";
 import { watchHref } from "@/lib/yt-routes";
 import { auth } from "@/server/auth";
 import { getDb } from "@/server/db/client";
@@ -67,23 +69,29 @@ import { createTRPCContext } from "@/server/trpc/context";
 import { appRouter } from "@/server/trpc/root";
 
 type WatchPageProps = {
-  searchParams: Promise<{
-    v?: string | string[];
-    t?: string | string[];
-  }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
-/** YouTube-canonical: the video id lives in `?v=`. */
-function readVideoId(v: string | string[] | undefined): string {
-  if (typeof v === "string") return v.trim();
-  if (Array.isArray(v)) return v[0]?.trim() ?? "";
-  return "";
+/**
+ * YouTube-canonical: the video id lives in `?v=`, the start time in `?t=` (or
+ * `?start=`). Read through the same rules as the middleware, so a malformed
+ * `v=<id>?si=…` that reaches the page still plays, and an invalid id is a 404.
+ */
+function readWatchSearch(
+  sp: Record<string, string | string[] | undefined>,
+): WatchParams {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(sp)) {
+    const first = Array.isArray(value) ? value[0] : value;
+    if (first !== undefined) params.set(key, first);
+  }
+  return readWatchParams(params);
 }
 
 export async function generateMetadata({
   searchParams,
 }: WatchPageProps): Promise<Metadata> {
-  const videoId = readVideoId((await searchParams).v);
+  const { videoId } = readWatchSearch(await searchParams);
   if (!videoId) return { title: "Video" };
   const input = videoDetailInputSchema.parse({ videoId });
   const db = getDb();
@@ -107,12 +115,8 @@ export async function generateMetadata({
 export default async function WatchPage({ searchParams }: WatchPageProps) {
   noStore();
   const sp = await searchParams;
-  const videoId = readVideoId(sp.v);
+  const { videoId, startSeconds: startAtSeconds } = readWatchSearch(sp);
   if (!videoId) notFound();
-  const rawT = typeof sp.t === "string" ? sp.t.trim() : "";
-  const startAtSeconds = /^\d+$/.test(rawT)
-    ? Number.parseInt(rawT, 10)
-    : undefined;
   const input = videoDetailInputSchema.parse({ videoId });
   const db = getDb();
   const session = await auth();
@@ -375,6 +379,9 @@ export default async function WatchPage({ searchParams }: WatchPageProps) {
       <WatchCinemaProvider
         initialCinemaMode={Boolean(userSettings?.defaultCinemaMode)}
       >
+        {startAtSeconds === undefined ? (
+          <WatchHashStartTime videoId={videoId} />
+        ) : null}
         <WatchPageGrid
           primary={
             <>

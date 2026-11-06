@@ -16,6 +16,7 @@ import {
 } from "@/lib/search-query-history";
 import { mergeSearchSuggestions } from "@/lib/search-suggestions-list";
 import { cn } from "@/lib/utils";
+import { appPathFromYoutubeUrl } from "@/lib/youtube-url";
 import { trpc } from "@/trpc/react";
 
 const DEBOUNCE_MS = 250;
@@ -122,6 +123,15 @@ export function TopbarSearch() {
     }
     if (activeIndex >= 0 && activeIndex < suggestions.length) {
       navigateToQuery(suggestions[activeIndex] ?? trimmed);
+      return;
+    }
+    // A pasted YouTube link opens its OwnTube page instead of a text search.
+    const appPath = appPathFromYoutubeUrl(trimmed);
+    if (appPath) {
+      setQ("");
+      setPanelOpen(false);
+      inputRef.current?.blur();
+      router.push(appPath);
       return;
     }
     recordSearchQuery(trimmed);
