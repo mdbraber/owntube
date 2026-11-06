@@ -2,7 +2,13 @@ import { useEffect, useState } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 import { LOGO_WORDMARK } from "@/assets";
 import { FocusButton } from "@/components/FocusButton";
-import { listProfiles, type Profile, switchProfile } from "@/lib/auth-token";
+import {
+  getActiveProfile,
+  listProfiles,
+  type Profile,
+  switchProfile,
+} from "@/lib/auth-token";
+import { useActiveBackHandler } from "@/lib/screen-active";
 import { colors, fontSize, radius, spacing } from "@/theme";
 
 /**
@@ -13,9 +19,16 @@ import { colors, fontSize, radius, spacing } from "@/theme";
 export function ProfilesScreen({
   onChosen,
   onAdd,
+  onBack,
 }: {
-  onChosen: () => void;
+  /** `changed`: another account than the one already in use. */
+  onChosen: (changed: boolean) => void;
   onAdd: () => void;
+  /**
+   * Back, when there is a profile to return to. Without it Back goes to the
+   * system (leaving the app), which only makes sense at start.
+   */
+  onBack?: () => void;
 }) {
   const [profiles, setProfiles] = useState<Profile[] | null>(null);
 
@@ -23,8 +36,15 @@ export function ProfilesScreen({
     listProfiles().then(setProfiles);
   }, []);
 
+  useActiveBackHandler(() => {
+    if (!onBack) return false;
+    onBack();
+    return true;
+  });
+
   const choose = async (id: string) => {
-    if (await switchProfile(id)) onChosen();
+    const current = await getActiveProfile();
+    if (await switchProfile(id)) onChosen(current?.id !== id);
   };
 
   return (

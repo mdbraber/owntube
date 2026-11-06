@@ -40,6 +40,10 @@ async function nextAfterLeaving(): Promise<AuthState> {
 
 export default function App() {
   const [auth, setAuth] = useState<AuthState>("checking");
+  // Who's watching opened from a signed-in session can be backed out of, to
+  // the profile already in use; at start, or once a profile has left, there is
+  // none to go back to.
+  const [profilesCancelable, setProfilesCancelable] = useState(false);
 
   useEffect(() => {
     Promise.all([loadServerUrl(), getToken(), listProfiles()]).then(
@@ -87,8 +91,10 @@ export default function App() {
       .finally(() => void afterLeaving());
   };
 
+  // The cache goes once another account is chosen (see ProfilesScreen), not
+  // on the way in: backing out keeps the current profile and what it loaded.
   const switchProfile = () => {
-    void dropCache();
+    setProfilesCancelable(true);
     setAuth("profiles");
   };
 
@@ -119,8 +125,24 @@ export default function App() {
           </WatchProgressProvider>
         ) : auth === "profiles" ? (
           <ProfilesScreen
-            onChosen={() => setAuth("signedIn")}
-            onAdd={() => setAuth("signedOut")}
+            onChosen={(changed) => {
+              setProfilesCancelable(false);
+              if (changed) void dropCache();
+              setAuth("signedIn");
+            }}
+            onAdd={() => {
+              setProfilesCancelable(false);
+              void dropCache();
+              setAuth("signedOut");
+            }}
+            onBack={
+              profilesCancelable
+                ? () => {
+                    setProfilesCancelable(false);
+                    setAuth("signedIn");
+                  }
+                : undefined
+            }
           />
         ) : auth === "server" ? (
           <ServerScreen onDone={() => setAuth("signedOut")} />
