@@ -1,9 +1,11 @@
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { ContinueWatchingRow } from "@/components/ContinueWatchingRow";
+import { FocusButton } from "@/components/FocusButton";
 import { type HomeBlock, HomeBlockRow } from "@/components/HomeBlockRow";
 import { HomeHero } from "@/components/HomeHero";
 import { SearchBar } from "@/components/SearchBar";
 import { SkeletonRows } from "@/components/Skeleton";
+import { errorMessage } from "@/lib/error-message";
 import type { Nav } from "@/lib/navigation";
 import { useRowScroll } from "@/lib/row-scroll";
 import { useScreenActive } from "@/lib/screen-active";
@@ -51,6 +53,30 @@ export function HomeScreen({ nav }: { nav: Nav }) {
       <View style={styles.content}>
         {searchBar}
         <SkeletonRows rows={2} />
+      </View>
+    );
+  }
+
+  // Neither the rows nor the hero came back: say so, instead of a blank page
+  // under the search bar with only the "Rearrange these rows" hint.
+  if (!settings.data && !top.data && settings.isError) {
+    return (
+      <View style={styles.content}>
+        {searchBar}
+        <View style={styles.error}>
+          <Text style={styles.errorTitle}>Home didn't load</Text>
+          <Text style={styles.hint}>{errorMessage(settings.error)}</Text>
+          <FocusButton
+            label="Retry"
+            variant="primary"
+            loading={settings.isFetching || top.isFetching}
+            onPress={() => {
+              void settings.refetch();
+              void top.refetch();
+            }}
+            style={styles.retry}
+          />
+        </View>
       </View>
     );
   }
@@ -104,4 +130,11 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.screen,
   },
   hint: { color: colors.mutedForeground, fontSize: fontSize.sm },
+  error: { gap: spacing.md, alignItems: "flex-start" },
+  errorTitle: {
+    color: colors.foreground,
+    fontSize: fontSize.lg,
+    fontWeight: "700",
+  },
+  retry: { minWidth: 160 },
 });
