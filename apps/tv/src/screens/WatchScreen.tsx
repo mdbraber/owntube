@@ -345,6 +345,12 @@ export function WatchScreen({
    * that never went down there is ignored instead.
    */
   const scrubberPressedInRef = useRef(true);
+  /**
+   * Played to the end and not started again. The controls can't auto-hide
+   * then (nothing plays), and hiding them would only uncover a finished
+   * picture, so Back leaves at once.
+   */
+  const finishedRef = useRef(false);
   /** Marked watched from the menu: kept out of Continue watching on leave. */
   const markedWatchedRef = useRef(false);
   const onBackRef = useRef(onBack);
@@ -893,8 +899,9 @@ export function WatchScreen({
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
       // In the background (under a channel page): Back belongs to the shell.
       if (!activeRef.current) return false;
-      // Back on the card leaves the finished video; Cancel stays on it.
-      if (showUpNextRef.current) {
+      // A finished video, with or without the card over it, is left in one
+      // press; Cancel on the card is the way to stay on it.
+      if (showUpNextRef.current || finishedRef.current) {
         onBackRef.current();
         return true;
       }
@@ -969,6 +976,7 @@ export function WatchScreen({
         playedMsRef.current + (since === null ? 0 : Date.now() - since);
       if (playedMs < END_TOLERANCE_SECONDS * 1000) return;
       recordCompleted(videoId, detailRef.current, currentTimeRef.current);
+      finishedRef.current = true;
       setEnded(true);
     });
     return () => sub.remove();
@@ -1070,6 +1078,7 @@ export function WatchScreen({
         const since = playingSinceRef.current;
         if (since !== null) playedMsRef.current += Date.now() - since;
         playingSinceRef.current = playing ? Date.now() : null;
+        if (playing) finishedRef.current = false;
         // The MediaSession still owns the hardware Play/Pause key while the
         // player sits behind a channel page; don't let it resume there.
         if (playing && !activeRef.current) {
