@@ -5,14 +5,23 @@ import {
   isRecognitionAvailable,
   useSpeechRecognitionEvent,
 } from "expo-speech-recognition";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { type ComponentRef, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type FlatList,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TVFocusGuideView,
+  View,
+} from "react-native";
 import { CarouselFeed } from "@/components/CarouselFeed";
 import { type ChannelTileData, ChannelTiles } from "@/components/ChannelTiles";
 import { FocusButton } from "@/components/FocusButton";
 import { FocusableTextInput } from "@/components/focusable-text-input";
 import type { Nav } from "@/lib/navigation";
 import { loadRecentSearches, rememberSearch } from "@/lib/recent-searches";
+import { useActiveBackHandler } from "@/lib/screen-active";
+import { useSidebarFocusHandle } from "@/lib/sidebar-focus";
 import { trpcClient } from "@/lib/trpc";
 import { trpc } from "@/lib/trpc-react";
 import { useInfiniteFeed } from "@/lib/use-infinite-feed";
@@ -156,6 +165,32 @@ export function SearchScreen({
 
   const submit = () => search(text);
 
+  // Focus paths. Left to Android's nearest-by-position guess, Up from a
+  // suggestion landed on Speak, Down from the field on whichever sort chip sat
+  // under its middle, and Down from the suggestions (nothing below yet) on the
+  // sidebar.
+  const barRef = useRef<ComponentRef<typeof TVFocusGuideView>>(null);
+  const [inputBox, setInputBox] = useState<View | null>(null);
+  const [selectedSort, setSelectedSort] = useState<View | null>(null);
+  const sidebarHandle = useSidebarFocusHandle();
+
+  // Back to the field also brings the page back to its top, so Down from it
+  // reaches the sort chips rather than whichever shelf the list was left on.
+  const resultsRef = useRef<FlatList<UnifiedVideo[]>>(null);
+  useEffect(() => {
+    if (inputFocused) {
+      resultsRef.current?.scrollToOffset({ offset: 0, animated: true });
+    }
+  }, [inputFocused]);
+
+  // Back from the results goes to the field first, the way out a remote has
+  // when the page is long; from the field it leaves as before.
+  useActiveBackHandler(() => {
+    if (!query || inputFocused) return false;
+    barRef.current?.requestTVFocus?.();
+    return true;
+  });
+
   // Under the bar: suggestions while typing, else recent searches when idle.
   const chipWords =
     text.trim() && text.trim() !== query
@@ -167,7 +202,9 @@ export function SearchScreen({
 
   return (
     <View style={styles.container}>
-      <View
+      <TVFocusGuideView
+        ref={barRef}
+        destinations={inputBox ? [inputBox] : []}
         style={[
           styles.searchSurface,
           inputFocused && styles.searchSurfaceFocused,
@@ -191,6 +228,8 @@ export function SearchScreen({
           onFocusChange={setInputFocused}
           onSubmitEditing={submit}
           returnKeyType="search"
+          surfaceRef={setInputBox}
+          nextFocusLeft={sidebarHandle ?? undefined}
           hasTVPreferredFocus
         />
         {micAvailable ? (
@@ -206,25 +245,30 @@ export function SearchScreen({
           onPress={submit}
           style={styles.searchButton}
         />
-      </View>
+      </TVFocusGuideView>
       {chipWords.length > 0 ? (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.chips}
-        >
-          {chipsLabel ? (
-            <Text style={styles.chipsLabel}>{chipsLabel}</Text>
-          ) : null}
-          {chipWords.map((word) => (
-            <FocusButton
-              key={word}
-              label={word}
-              onPress={() => search(word)}
-              style={styles.chip}
-            />
-          ))}
-        </ScrollView>
+        // Coming back to the row returns to the chip you left; Right stops at
+        // the last one, and Down too while there are no results under it.
+        <TVFocusGuideView autoFocus trapFocusRight trapFocusDown={!query}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.chipsScroll}
+            contentContainerStyle={styles.chips}
+          >
+            {chipsLabel ? (
+              <Text style={styles.chipsLabel}>{chipsLabel}</Text>
+            ) : null}
+            {chipWords.map((word) => (
+              <FocusButton
+                key={word}
+                label={word}
+                onPress={() => search(word)}
+                style={styles.chip}
+              />
+            ))}
+          </ScrollView>
+        </TVFocusGuideView>
       ) : null}
       <View style={styles.results}>
         <CarouselFeed
@@ -233,25 +277,38 @@ export function SearchScreen({
           onSelect={(videoId, videos) =>
             nav.openVideo(videoId, { context: { source: "feed", videos } })
           }
+          // A search with channels starts on the first channel, so the page
+          // opens at its top; starting on the first video scrolled the
+          // channels half under the bar.
+          preferFirstRowFocus={channels.length === 0}
+          listRef={resultsRef}
           header={
             query ? (
               <View style={styles.resultsHeader}>
-                <View style={styles.chipsRow}>
+                {/* Entering the row lands on the current sort; Right stops at
+                    the last chip instead of jumping up to Speak. */}
+                <TVFocusGuideView
+                  destinations={selectedSort ? [selectedSort] : []}
+                  trapFocusRight
+                  style={styles.chipsRow}
+                >
                   {SORTS.map(({ key, label }) => (
                     <FocusButton
                       key={key}
+                      ref={sort === key ? setSelectedSort : undefined}
                       label={label}
-                      variant={sort === key ? "primary" : "ghost"}
+                      selected={sort === key}
                       onPress={() => setSort(key)}
                       style={styles.chip}
                     />
                   ))}
-                </View>
+                </TVFocusGuideView>
                 {channels.length > 0 ? (
                   <ChannelTiles
                     title="Channels"
                     channels={channels}
                     onSelect={nav.openChannel}
+                    preferFirstFocus
                   />
                 ) : null}
               </View>
@@ -259,7 +316,13 @@ export function SearchScreen({
           }
           emptyText={
             voiceError ??
-            (query ? "No results." : "Press Speak, or type and press Search.")
+            (query
+              ? "No results."
+              : // While typing the suggestions say what to do; the hint
+                // would only sit half under the keyboard.
+                text.trim()
+                ? ""
+                : "Press Speak, or type and press Search.")
           }
         />
       </View>
@@ -287,6 +350,9 @@ function sortVideos(videos: UnifiedVideo[], sort: SearchSort): UnifiedVideo[] {
 
 const styles = StyleSheet.create({
   container: { flex: 1, gap: spacing.lg },
+  // A horizontal ScrollView grows by default, splitting the column with the
+  // results and floating the chips in the middle of a tall empty band.
+  chipsScroll: { flexGrow: 0 },
   chips: { gap: spacing.sm, alignItems: "center", paddingVertical: 4 },
   chipsRow: { flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" },
   chip: { minHeight: 40, paddingHorizontal: spacing.md },

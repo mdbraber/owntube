@@ -1,5 +1,5 @@
 import type { UnifiedVideo } from "@web/server/services/proxy.types";
-import type { ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 import { useCallback, useMemo, useRef } from "react";
 import {
   ActivityIndicator,
@@ -31,6 +31,8 @@ type Props = {
   menuExtras?: CardMenuExtras;
   /** For cards that aren't videos (a channel's playlists). */
   disableMenu?: boolean;
+  /** The shelves' list, e.g. to scroll back to the header. */
+  listRef?: Ref<FlatList<UnifiedVideo[]>>;
 };
 
 /**
@@ -47,6 +49,7 @@ export function CarouselFeed({
   preferFirstRowFocus = true,
   menuExtras,
   disableMenu,
+  listRef,
 }: Props) {
   const menuExtrasRef = useRef(menuExtras);
   menuExtrasRef.current = menuExtras;
@@ -130,6 +133,7 @@ export function CarouselFeed({
 
   return (
     <FlatList
+      ref={listRef}
       data={rows}
       keyExtractor={shelfKey}
       ListHeaderComponent={

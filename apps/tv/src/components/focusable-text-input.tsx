@@ -1,5 +1,6 @@
 import {
   forwardRef,
+  type Ref,
   useEffect,
   useImperativeHandle,
   useRef,
@@ -12,6 +13,7 @@ import {
   TextInput,
   type TextInputProps,
   type TextStyle,
+  type View,
   type ViewStyle,
 } from "react-native";
 import { colors, focus, fontSize, radius, spacing } from "@/theme";
@@ -29,6 +31,10 @@ type Props = Omit<TextInputProps, "style"> & {
    * surface or the editor — for a parent that draws the focus ring itself.
    */
   onFocusChange?: (focused: boolean) => void;
+  /** The focusable surface, e.g. as a focus guide's destination. */
+  surfaceRef?: Ref<View>;
+  /** Native handle Left goes to from the surface. */
+  nextFocusLeft?: number;
 };
 
 export const FocusableTextInput = forwardRef<FocusableTextInputHandle, Props>(
@@ -40,6 +46,8 @@ export const FocusableTextInput = forwardRef<FocusableTextInputHandle, Props>(
       onBlur,
       onFocus,
       onFocusChange,
+      surfaceRef,
+      nextFocusLeft,
       placeholderTextColor = colors.mutedForeground,
       selectionColor = colors.brand,
       ...inputProps
@@ -66,6 +74,8 @@ export const FocusableTextInput = forwardRef<FocusableTextInputHandle, Props>(
 
     return (
       <Pressable
+        ref={surfaceRef}
+        nextFocusLeft={nextFocusLeft}
         disabled={!editable}
         hasTVPreferredFocus={inputProps.hasTVPreferredFocus}
         onBlur={() => setSurfaceFocused(false)}

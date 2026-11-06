@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { forwardRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -6,6 +6,7 @@ import {
   type StyleProp,
   StyleSheet,
   Text,
+  type View,
   type ViewStyle,
 } from "react-native";
 import { colors, focus, fontSize, radius, spacing } from "@/theme";
@@ -16,6 +17,11 @@ type Props = {
   label: string;
   onPress: () => void;
   variant?: Variant;
+  /**
+   * The current one of a set (a sort order). Outlined, not filled: filled is
+   * what focus looks like, so a filled current chip read as a second focus.
+   */
+  selected?: boolean;
   disabled?: boolean;
   loading?: boolean;
   hasTVPreferredFocus?: boolean;
@@ -24,16 +30,20 @@ type Props = {
   onFocusChange?: (focused: boolean) => void;
 };
 
-export function FocusButton({
-  label,
-  onPress,
-  variant = "ghost",
-  disabled = false,
-  loading = false,
-  hasTVPreferredFocus,
-  style,
-  onFocusChange,
-}: Props) {
+export const FocusButton = forwardRef<View, Props>(function FocusButton(
+  {
+    label,
+    onPress,
+    variant = "ghost",
+    selected = false,
+    disabled = false,
+    loading = false,
+    hasTVPreferredFocus,
+    style,
+    onFocusChange,
+  },
+  ref,
+) {
   const [focused, setFocused] = useState(false);
   const isDisabled = disabled || loading;
 
@@ -48,6 +58,7 @@ export function FocusButton({
 
   return (
     <Pressable
+      ref={ref}
       hasTVPreferredFocus={hasTVPreferredFocus}
       disabled={isDisabled}
       onFocus={onFocus}
@@ -56,6 +67,7 @@ export function FocusButton({
       style={[
         styles.base,
         variant === "primary" && styles.primary,
+        selected && styles.selected,
         focused && styles.focused,
         isDisabled && styles.disabled,
         style,
@@ -64,11 +76,15 @@ export function FocusButton({
       {loading ? (
         <ActivityIndicator color={colors.foreground} />
       ) : (
-        <Text style={styles.label}>{label}</Text>
+        <Text
+          style={[styles.label, selected && !focused && styles.labelSelected]}
+        >
+          {label}
+        </Text>
       )}
     </Pressable>
   );
-}
+});
 
 const styles = StyleSheet.create({
   base: {
@@ -86,6 +102,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderColor: colors.primary,
   },
+  selected: {
+    backgroundColor: colors.brandSoftSolid,
+    borderColor: colors.brand,
+  },
   focused: {
     backgroundColor: colors.brand,
     borderColor: colors.primaryForeground,
@@ -102,4 +122,5 @@ const styles = StyleSheet.create({
     fontSize: fontSize.md,
     fontWeight: "600",
   },
+  labelSelected: { color: colors.brand },
 });
