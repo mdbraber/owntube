@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { type AnonViewer, createAnonViewer } from "@/server/anon-viewer";
 import {
   isApiToken,
@@ -6,6 +7,7 @@ import {
 } from "@/server/api-token";
 import { auth } from "@/server/auth";
 import { type AppDb, getDb } from "@/server/db/client";
+import { users } from "@/server/db/schema";
 import { userIdFromDeviceToken } from "@/server/device-token";
 
 export type TRPCContext = {
@@ -45,7 +47,13 @@ export async function createTRPCContext(opts?: {
       apiToken = resolveApiToken(db, bearer) ?? undefined;
       userId = apiToken?.userId ?? null;
     } else if (bearer) {
-      userId = await userIdFromDeviceToken(bearer);
+      const id = await userIdFromDeviceToken(bearer);
+      // A device token can decode fine and still name no account here: one
+      // issued by another instance that shares AUTH_SECRET, or for a deleted
+      // user. Treat it as no token, so every protected procedure answers
+      // UNAUTHORIZED (the TV's cue to sign in again) rather than running as a
+      // user that doesn't exist.
+      userId = id !== null && userExists(db, id) ? id : null;
     }
   }
 
@@ -55,4 +63,15 @@ export async function createTRPCContext(opts?: {
     anon: createAnonViewer(opts?.req, opts?.resHeaders),
     ...(apiToken ? { apiToken } : {}),
   };
+}
+
+function userExists(db: AppDb, id: number): boolean {
+  return (
+    db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.id, id))
+      .limit(1)
+      .all().length > 0
+  );
 }
