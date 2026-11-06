@@ -338,6 +338,13 @@ export function WatchScreen({
   const swallowPressRef = useRef(false);
   /** Playback reached the end (and wasn't dismissed since). */
   const [ended, setEnded] = useState(false);
+  /**
+   * Whether OK went down on the scrubber itself. Cancel on the up-next card
+   * goes on the key's release, which then lands on the scrubber that takes
+   * focus in the card's place and would replay the finished video; a press
+   * that never went down there is ignored instead.
+   */
+  const scrubberPressedInRef = useRef(true);
   /** Marked watched from the menu: kept out of Continue watching on leave. */
   const markedWatchedRef = useRef(false);
   const onBackRef = useRef(onBack);
@@ -886,7 +893,7 @@ export function WatchScreen({
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
       // In the background (under a channel page): Back belongs to the shell.
       if (!activeRef.current) return false;
-      // Declining what's next leaves the finished video too.
+      // Back on the card leaves the finished video; Cancel stays on it.
       if (showUpNextRef.current) {
         onBackRef.current();
         return true;
@@ -1188,7 +1195,18 @@ export function WatchScreen({
     holdTimerRef.current = null;
   };
 
+  /** Cancel on the up-next card: stay on the finished video, controls up. */
+  const dismissUpNext = () => {
+    scrubberPressedInRef.current = false;
+    setEnded(false);
+    revealControls();
+  };
+
   const commitScrubOrToggle = () => {
+    if (!scrubberPressedInRef.current) {
+      scrubberPressedInRef.current = true;
+      return;
+    }
     if (swallowPressRef.current) {
       swallowPressRef.current = false;
       return;
@@ -1812,7 +1830,7 @@ export function WatchScreen({
           contextLabel={context?.label}
           autoplay={settingsRef.current.autoplayNext}
           onPlay={playNext}
-          onCancel={onBack}
+          onCancel={dismissUpNext}
         />
       ) : menuOpen ? (
         <MenuPanel
@@ -1887,6 +1905,9 @@ export function WatchScreen({
                 hasTVPreferredFocus
                 onFocus={() => setScrubberFocused(true)}
                 onBlur={() => setScrubberFocused(false)}
+                onPressIn={() => {
+                  scrubberPressedInRef.current = true;
+                }}
                 onPress={commitScrubOrToggle}
                 style={styles.scrubber}
               >
