@@ -20,12 +20,12 @@ import { colors, focus, fontSize, radius, spacing } from "@/theme";
 
 type Page = "history" | "queue" | "saved" | "playlists";
 
-/** In the YouTube app's order (History, Watch later, Playlists), each a colour. */
+/** Queue first: what's lined up to watch, then what's kept, then what's been. */
 const TILES: { key: Page; label: string; color: string }[] = [
-  { key: "history", label: "History", color: "hsl(262, 62%, 46%)" },
+  { key: "queue", label: "Queue", color: "hsl(22, 80%, 42%)" },
   { key: "saved", label: "Saved", color: "hsl(196, 72%, 34%)" },
   { key: "playlists", label: "Playlists", color: "hsl(162, 70%, 28%)" },
-  { key: "queue", label: "Queue", color: "hsl(22, 80%, 42%)" },
+  { key: "history", label: "History", color: "hsl(262, 62%, 46%)" },
 ];
 
 /**
@@ -51,7 +51,7 @@ const ROWS = TILES.map(
 export function LibraryScreen({ nav }: { nav: Nav }) {
   const [page, setPage] = useState<Page | null>(null);
   /** Focus lands back on the tile that was opened, not the first one. */
-  const [lastTile, setLastTile] = useState<Page>("history");
+  const [lastTile, setLastTile] = useState<Page>("queue");
   // The overview stays mounted under an open page (hidden), so Back returns
   // to it as it was: rows loaded, scrolled where they were. Its tile guide
   // then hands focus back to the tile that opened the page.
