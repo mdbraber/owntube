@@ -185,7 +185,7 @@ function PlaylistRow({
   onPress: () => void;
 }) {
   const [focused, setFocused] = useState(false);
-  const tint = active || focused ? colors.brand : colors.foreground;
+  const tint = focused ? colors.focusForeground : colors.foreground;
   return (
     <Pressable
       onFocus={() => {
@@ -247,7 +247,10 @@ const styles = StyleSheet.create({
   // Focused lands after active, so the opaque fill is the one under the focus
   // ring — a translucent one would show the glow through it.
   rowActive: { backgroundColor: colors.brandSoft },
-  rowFocused: { backgroundColor: colors.accent, borderColor: colors.ring },
+  rowFocused: {
+    backgroundColor: colors.focusFill,
+    borderColor: colors.focusFill,
+  },
   rowIcon: {
     width: ROW_ICON_SIZE,
     height: ROW_ICON_SIZE,

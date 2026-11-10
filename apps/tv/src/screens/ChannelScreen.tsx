@@ -131,24 +131,6 @@ export function ChannelScreen({
       .catch(() => {});
   };
 
-  // Tag chips: every tag the user has, lit when this channel carries it; OK
-  // toggles. New tags are made on the web.
-  const allTags = trpc.channelTags.listAll.useQuery();
-  const channelTags = trpc.channelTags.listForChannel.useQuery({ channelId });
-  const toggleTag = (tag: string) => {
-    const has = (channelTags.data ?? []).includes(tag);
-    (has
-      ? trpcClient.channelTags.remove.mutate({ channelId, tag })
-      : trpcClient.channelTags.add.mutate({ channelId, tag })
-    )
-      .then(() => {
-        void channelTags.refetch();
-        void allTags.refetch();
-        void queryClient.invalidateQueries({ queryKey: [["channelTags"]] });
-      })
-      .catch(() => {});
-  };
-
   const subscribersLabel = formatSubscribersLabel(meta.subscriberCount);
   const header = (
     <View style={styles.header}>
@@ -178,7 +160,6 @@ export function ChannelScreen({
     </View>
   );
 
-  const tags = allTags.data ?? [];
   const chrome = (
     <View style={styles.chrome}>
       {header}
@@ -187,7 +168,7 @@ export function ChannelScreen({
           <FocusButton
             key={key}
             label={label}
-            variant={tab === key ? "primary" : "ghost"}
+            selected={tab === key}
             hasTVPreferredFocus={tabChosen && tab === key}
             onPress={() => {
               setTabChosen(true);
@@ -197,22 +178,6 @@ export function ChannelScreen({
           />
         ))}
       </View>
-      {tags.length > 0 ? (
-        <View style={styles.chips}>
-          <Text style={styles.chipsLabel}>Tags</Text>
-          {tags.map(({ tag }) => (
-            <FocusButton
-              key={tag}
-              label={tag}
-              variant={
-                (channelTags.data ?? []).includes(tag) ? "primary" : "ghost"
-              }
-              onPress={() => toggleTag(tag)}
-              style={styles.chip}
-            />
-          ))}
-        </View>
-      ) : null}
     </View>
   );
 

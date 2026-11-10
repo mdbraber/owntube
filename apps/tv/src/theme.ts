@@ -24,7 +24,16 @@ export const colors = {
   destructive: "hsl(0, 91%, 71%)",
   success: "hsl(142, 71%, 45%)",
   border: "hsl(240, 3%, 14%)",
-  ring: "hsl(350, 90%, 58%)",
+  /**
+   * Focus is white, as in the Android TV YouTube app: an outline on cards and
+   * fields, a white fill with dark text on buttons and list rows. Red stays
+   * for the brand and for progress.
+   */
+  ring: "hsl(0, 0%, 100%)",
+  focusFill: "hsl(0, 0%, 100%)",
+  focusForeground: "hsl(240, 5%, 8%)",
+  /** An unfocused card's title: a step down from white, which marks focus. */
+  cardTitle: "hsl(0, 0%, 72%)",
   sidebar: "hsl(240, 5%, 5%)",
   surface: "hsla(0, 0%, 100%, 0.06)",
   surfaceStrong: "hsla(0, 0%, 100%, 0.1)",
@@ -83,11 +92,15 @@ export const fontSize = {
 /** Monospace only for technical data (durations, ids, urls) — never titles/nav. */
 export const monoFont = "monospace";
 
+/**
+ * No zoom and no glow on focus, like the YouTube app: the white outline or
+ * fill says it alone. Kept as tokens so focused styles still read them.
+ */
 export const focus = {
   borderWidth: 3,
-  scale: 1.015,
-  shadowOpacity: 0.34,
-  shadowRadius: 18,
-  shadowOffset: { width: 0, height: 10 },
-  elevation: 12,
+  scale: 1,
+  shadowOpacity: 0,
+  shadowRadius: 0,
+  shadowOffset: { width: 0, height: 0 },
+  elevation: 0,
 } as const;

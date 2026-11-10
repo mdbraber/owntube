@@ -105,8 +105,8 @@ const styles = StyleSheet.create({
   header: { marginBottom: spacing.lg },
   shelf: { marginBottom: spacing.xl },
   title: {
-    color: colors.foreground,
-    fontSize: fontSize.lg,
+    color: colors.cardTitle,
+    fontSize: fontSize.md,
     fontWeight: "700",
     marginBottom: spacing.sm,
   },

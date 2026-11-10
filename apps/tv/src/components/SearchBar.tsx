@@ -1,20 +1,20 @@
 import { Feather } from "@expo/vector-icons";
 import { useState } from "react";
-import { Pressable, StyleSheet, Text } from "react-native";
-import { colors, focus, fontSize, radius, spacing } from "@/theme";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { colors, focus, fontSize, spacing } from "@/theme";
 
 /**
- * The search field pinned above Home's rows, as on the YouTube TV client: it
- * looks like the Search page's bar but only opens that page, so the keyboard
- * and the microphone stay where the results are. One press Up from the hero
- * and OK reaches search without a trip to the rail.
+ * The search entry pinned at the top of Home, laid out as in the Android TV
+ * YouTube app: a round mic, then a short pill. Both only open the Search page,
+ * so the keyboard and the microphone stay where the results are; one focus
+ * stop covers the pair. One press Up from the first row reaches it.
  */
 export function SearchBar({
   onPress,
   onFocusChange,
 }: {
   onPress: () => void;
-  /** Lets the page scroll the bar back into view when it takes focus. */
+  /** Lets the page scroll back to its top when the bar takes focus. */
   onFocusChange?: (focused: boolean) => void;
 }) {
   const [focused, setFocused] = useState(false);
@@ -29,50 +29,55 @@ export function SearchBar({
         onFocusChange?.(false);
       }}
       onPress={onPress}
-      style={[styles.bar, focused && styles.barFocused]}
+      style={styles.bar}
     >
-      <Feather
-        name="search"
-        size={22}
-        color={focused ? colors.foreground : colors.mutedForeground}
-      />
-      <Text
-        style={[styles.placeholder, focused && styles.placeholderFocused]}
-        numberOfLines={1}
-      >
-        Search videos and channels
-      </Text>
-      <Feather name="mic" size={20} color={colors.mutedForeground} />
+      <View style={[styles.mic, focused && styles.micFocused]}>
+        <Feather
+          name="mic"
+          size={20}
+          color={focused ? colors.focusForeground : colors.foreground}
+        />
+      </View>
+      <View style={[styles.pill, focused && styles.pillFocused]}>
+        <Text
+          style={[styles.placeholder, focused && styles.placeholderFocused]}
+          numberOfLines={1}
+        >
+          Search
+        </Text>
+      </View>
     </Pressable>
   );
 }
 
+const HEIGHT = 44;
+
 const styles = StyleSheet.create({
-  bar: {
-    flexDirection: "row",
+  bar: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  mic: {
+    width: HEIGHT,
+    height: HEIGHT,
+    borderRadius: HEIGHT / 2,
     alignItems: "center",
-    gap: spacing.md,
-    minHeight: 52,
+    justifyContent: "center",
+    backgroundColor: colors.surfaceStrong,
+  },
+  micFocused: { backgroundColor: colors.focusFill },
+  pill: {
+    width: 320,
+    height: HEIGHT,
+    justifyContent: "center",
     paddingHorizontal: spacing.lg,
-    borderRadius: radius.shell,
-    backgroundColor: colors.surface,
+    borderRadius: HEIGHT / 2,
+    backgroundColor: colors.surfaceStrong,
     borderWidth: focus.borderWidth,
-    borderColor: colors.surfaceBorder,
+    borderColor: "transparent",
   },
-  // The same ring the Search page's own bar draws (see FocusableTextInput).
-  barFocused: {
-    borderColor: colors.ring,
-    backgroundColor: colors.surfaceStrongSolid,
-    shadowColor: colors.brand,
-    shadowOpacity: 0.22,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 10,
-  },
+  pillFocused: { borderColor: colors.ring },
   placeholder: {
-    flex: 1,
     color: colors.mutedForeground,
-    fontSize: fontSize.md,
+    fontSize: fontSize.lg,
+    fontWeight: "600",
   },
   placeholderFocused: { color: colors.foreground },
 });

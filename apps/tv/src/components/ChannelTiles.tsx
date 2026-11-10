@@ -33,11 +33,13 @@ export function ChannelTiles({
   channels,
   onSelect,
   preferFirstFocus,
+  onTileFocusChange,
 }: {
   title?: string;
   channels: ChannelTileData[];
   onSelect: (channelId: string) => void;
   preferFirstFocus?: boolean;
+  onTileFocusChange?: (focused: boolean) => void;
 }) {
   return (
     <View style={styles.row}>
@@ -54,6 +56,7 @@ export function ChannelTiles({
             channel={item}
             onPress={() => onSelect(item.channelId)}
             hasTVPreferredFocus={preferFirstFocus && index === 0}
+            onFocusChange={onTileFocusChange}
           />
         )}
       />
@@ -65,10 +68,12 @@ function ChannelTile({
   channel,
   onPress,
   hasTVPreferredFocus,
+  onFocusChange,
 }: {
   channel: ChannelTileData;
   onPress: () => void;
   hasTVPreferredFocus?: boolean;
+  onFocusChange?: (focused: boolean) => void;
 }) {
   const [focused, setFocused] = useState(false);
   const subscribers = formatSubscribersLabel(
@@ -77,8 +82,14 @@ function ChannelTile({
   return (
     <Pressable
       hasTVPreferredFocus={hasTVPreferredFocus}
-      onFocus={() => setFocused(true)}
-      onBlur={() => setFocused(false)}
+      onFocus={() => {
+        setFocused(true);
+        onFocusChange?.(true);
+      }}
+      onBlur={() => {
+        setFocused(false);
+        onFocusChange?.(false);
+      }}
       onPress={onPress}
       style={[styles.tile, focused && styles.tileFocused]}
     >
@@ -108,8 +119,8 @@ function ChannelTile({
 const styles = StyleSheet.create({
   row: { gap: spacing.sm },
   heading: {
-    color: colors.foreground,
-    fontSize: fontSize.lg,
+    color: colors.cardTitle,
+    fontSize: fontSize.md,
     fontWeight: "700",
   },
   list: { gap: spacing.md, paddingVertical: 6, paddingHorizontal: 3 },

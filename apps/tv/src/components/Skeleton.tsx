@@ -77,7 +77,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.muted,
   },
   cards: { flexDirection: "row", gap: spacing.md, paddingHorizontal: 3 },
-  card: { width: VIDEO_CARD_WIDTH, padding: 8 },
+  card: { width: VIDEO_CARD_WIDTH },
   thumb: {
     width: "100%",
     aspectRatio: 16 / 9,

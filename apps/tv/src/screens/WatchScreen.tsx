@@ -2009,6 +2009,13 @@ export function WatchScreen({
                     )}
                   </Pressable>
                 ) : null}
+                {/* The YouTube app's left group: channel, description,
+                    Subscribe. Description and comments share the panel. */}
+                <IconButton
+                  icon="info"
+                  onPress={() => setDetailsOpen(true)}
+                  onFocusChange={onButtonFocusChange}
+                />
                 {subscribed !== null ? (
                   <FocusButton
                     label={subscribed ? "Subscribed" : "Subscribe"}
@@ -2020,11 +2027,12 @@ export function WatchScreen({
                 ) : null}
               </View>
 
+              {/* Previous, play, next, as in the YouTube app; ±10 s stays on
+                  the D-pad and the remote's rewind and fast-forward keys. */}
               <View style={styles.transport}>
                 <IconButton
-                  icon="rotate-ccw"
-                  action="skip"
-                  onPress={() => seekBy(-10)}
+                  icon="skip-back"
+                  onPress={playPrevious}
                   onFocusChange={onButtonFocusChange}
                 />
                 <IconButton
@@ -2034,12 +2042,13 @@ export function WatchScreen({
                   onPress={togglePlayback}
                   onFocusChange={onButtonFocusChange}
                 />
-                <IconButton
-                  icon="rotate-cw"
-                  action="skipForward"
-                  onPress={() => seekBy(10)}
-                  onFocusChange={onButtonFocusChange}
-                />
+                {nextVideo ? (
+                  <IconButton
+                    icon="skip-forward"
+                    onPress={() => playNextRef.current()}
+                    onFocusChange={onButtonFocusChange}
+                  />
+                ) : null}
                 {/* Same threshold as the web (LIVE_EDGE_SECONDS). */}
                 {detail.isLive && behindLive >= LIVE_EDGE_SECONDS ? (
                   <FocusButton
@@ -2095,11 +2104,6 @@ export function WatchScreen({
                     onFocusChange={onButtonFocusChange}
                   />
                 ) : null}
-                <IconButton
-                  icon="info"
-                  onPress={() => setDetailsOpen(true)}
-                  onFocusChange={onButtonFocusChange}
-                />
                 {/* Quality, captions, audio language, speed, chapters… */}
                 <IconButton
                   icon="more-vertical"

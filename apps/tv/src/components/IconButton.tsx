@@ -34,7 +34,12 @@ export function IconButton({
   const [focused, setFocused] = useState(false);
   const size = large ? 40 : 30;
   const iconSize = large ? 20 : 16;
-  const activeFill = focused || large || Boolean(active);
+  const activeFill = large || Boolean(active);
+  const iconColor = focused
+    ? colors.focusForeground
+    : activeFill
+      ? colors.primaryForeground
+      : colors.foreground;
 
   return (
     <Pressable
@@ -57,29 +62,21 @@ export function IconButton({
       ]}
     >
       {action ? (
-        <ActionIcon
-          name={action}
-          size={iconSize}
-          color={activeFill ? colors.primaryForeground : colors.foreground}
-        />
+        <ActionIcon name={action} size={iconSize} color={iconColor} />
       ) : text ? (
         <Text
           style={[
             styles.text,
             {
               fontSize: iconSize - 2,
-              color: activeFill ? colors.primaryForeground : colors.foreground,
+              color: iconColor,
             },
           ]}
         >
           {text}
         </Text>
       ) : (
-        <Feather
-          name={icon}
-          size={iconSize}
-          color={activeFill ? colors.primaryForeground : colors.foreground}
-        />
+        <Feather name={icon} size={iconSize} color={iconColor} />
       )}
     </Pressable>
   );
@@ -99,8 +96,8 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
   },
   focused: {
-    backgroundColor: colors.brand,
-    borderColor: colors.primaryForeground,
+    backgroundColor: colors.focusFill,
+    borderColor: colors.focusFill,
     shadowColor: colors.brand,
     shadowOpacity: focus.shadowOpacity,
     shadowRadius: focus.shadowRadius,

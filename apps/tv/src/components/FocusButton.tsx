@@ -77,7 +77,11 @@ export const FocusButton = forwardRef<View, Props>(function FocusButton(
         <ActivityIndicator color={colors.foreground} />
       ) : (
         <Text
-          style={[styles.label, selected && !focused && styles.labelSelected]}
+          style={[
+            styles.label,
+            selected && !focused && styles.labelSelected,
+            focused && styles.labelFocused,
+          ]}
         >
           {label}
         </Text>
@@ -107,8 +111,8 @@ const styles = StyleSheet.create({
     borderColor: colors.brand,
   },
   focused: {
-    backgroundColor: colors.brand,
-    borderColor: colors.primaryForeground,
+    backgroundColor: colors.focusFill,
+    borderColor: colors.focusFill,
     shadowColor: colors.brand,
     shadowOpacity: focus.shadowOpacity,
     shadowRadius: focus.shadowRadius,
@@ -123,4 +127,5 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   labelSelected: { color: colors.brand },
+  labelFocused: { color: colors.focusForeground },
 });

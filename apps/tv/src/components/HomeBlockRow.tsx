@@ -61,8 +61,11 @@ export function HomeBlockRow({
   nav,
   onCardFocusChange,
   onCardFocus,
+  preferFirstFocus,
 }: {
   block: HomeBlock;
+  /** The row Home opens on: its first card takes focus. */
+  preferFirstFocus?: boolean;
   region: string;
   nav: Nav;
   /** Bubbles card focus so Home can bring the row into view. */
@@ -76,14 +79,20 @@ export function HomeBlockRow({
   // and refetches the row's query on return if it went stale.
   const kept = useKeptQueryOptions();
 
-  const subscriptions = trpc.subscriptions.mergedFeedInfinite.useQuery(
+  // Pages on as the row is scrolled, so every subscription upload is
+  // reachable rather than the first 24.
+  const subscriptions = trpc.subscriptions.mergedFeedInfinite.useInfiniteQuery(
     {
       limit: ROW_VIDEOS,
       hideShorts: option(block, "hideShorts", true),
       hideIgnored: option(block, "hideIgnored", true),
       ...tagFilters(block),
     },
-    { enabled: type === "subscriptions", ...kept },
+    {
+      enabled: type === "subscriptions",
+      getNextPageParam: (page) => page.nextCursor ?? undefined,
+      ...kept,
+    },
   );
   const recommended = trpc.feed.home.useQuery(
     { page: 1, pageSize: ROW_VIDEOS, region },
@@ -158,7 +167,7 @@ export function HomeBlockRow({
       }));
     switch (type) {
       case "subscriptions":
-        return subscriptions.data?.videos ?? [];
+        return subscriptions.data?.pages.flatMap((p) => p.videos) ?? [];
       case "recommended":
         return recommended.data?.videos ?? [];
       case "explore":
@@ -209,8 +218,8 @@ export function HomeBlockRow({
       (hideFinished
         ? videos.filter((v) => !progress(v.videoId)?.completed)
         : videos
-      ).slice(0, ROW_VIDEOS),
-    [videos, hideFinished, progress],
+      ).slice(0, type === "subscriptions" ? undefined : ROW_VIDEOS),
+    [videos, hideFinished, progress, type],
   );
 
   const title =
@@ -263,6 +272,19 @@ export function HomeBlockRow({
     <VideoRow
       title={title}
       videos={shown}
+      preferFirstFocus={preferFirstFocus}
+      onEndReached={
+        type === "subscriptions"
+          ? () => {
+              if (
+                subscriptions.hasNextPage &&
+                !subscriptions.isFetchingNextPage
+              ) {
+                void subscriptions.fetchNextPage();
+              }
+            }
+          : undefined
+      }
       onSelect={(videoId) => nav.openVideo(videoId, { context })}
       onCardFocusChange={(focused, video) => {
         onCardFocusChange?.(focused);

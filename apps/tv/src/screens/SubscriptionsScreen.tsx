@@ -38,6 +38,8 @@ const AVATAR_SIZE = 28;
  * the D-pad down through a long channel list fires a request per row.
  */
 const FOCUS_SELECT_DELAY_MS = 350;
+/** Channels listed above the "A–Z" heading, most recent upload first. */
+const RECENT_CHANNELS = 8;
 
 /**
  * What the videos pane is showing. The channel pane is a two-level menu: the
@@ -79,6 +81,39 @@ export function SubscriptionsScreen({ nav }: { nav: Nav }) {
       ),
     [sidebar.data],
   );
+  // The YouTube app's channel column: the most recently active channels
+  // first, then an "A–Z" heading over every channel alphabetically (so the
+  // recent ones appear twice, as they do there).
+  type PaneItem =
+    | { kind: "channel"; key: string; channel: (typeof channels)[number] }
+    | { kind: "heading"; key: string; label: string };
+  const paneItems = useMemo((): PaneItem[] => {
+    if (channels.length <= RECENT_CHANNELS) {
+      return channels.map((c) => ({
+        kind: "channel",
+        key: c.channelId,
+        channel: c,
+      }));
+    }
+    const alphabetical = [...channels].sort((a, b) =>
+      a.channelName.localeCompare(b.channelName, undefined, {
+        sensitivity: "base",
+      }),
+    );
+    return [
+      ...channels.slice(0, RECENT_CHANNELS).map(
+        (c): PaneItem => ({
+          kind: "channel",
+          key: `recent:${c.channelId}`,
+          channel: c,
+        }),
+      ),
+      { kind: "heading", key: "az", label: "A–Z" },
+      ...alphabetical.map(
+        (c): PaneItem => ({ kind: "channel", key: c.channelId, channel: c }),
+      ),
+    ];
+  }, [channels]);
   const nowSeconds = Date.now() / 1000;
   const { notify } = useCardMenu();
   /** Long-press on a channel row: its menu (open, unsubscribe). */
@@ -202,12 +237,12 @@ export function SubscriptionsScreen({ nav }: { nav: Nav }) {
         <View style={styles.pane}>
           {level === "root" ? (
             <FlatList
-              data={channels}
-              keyExtractor={(item) => item.channelId}
+              data={paneItems}
+              keyExtractor={(item) => item.key}
               ListHeaderComponent={
                 <>
                   <ChannelRow
-                    label="Everything"
+                    label="All"
                     icon="list"
                     active={selected.kind === "all"}
                     onFocus={() => selectAfterDelay({ kind: "all" })}
@@ -238,35 +273,43 @@ export function SubscriptionsScreen({ nav }: { nav: Nav }) {
                   <View style={styles.groupGap} />
                 </>
               }
-              renderItem={({ item }) => (
-                <ChannelRow
-                  label={item.channelName}
-                  avatarUrl={item.avatarUrl}
-                  fresh={
-                    item.latestVideoAt !== null &&
-                    nowSeconds - item.latestVideoAt < NEW_WINDOW_SECONDS
-                  }
-                  onLongPress={() =>
-                    setChannelMenu({
-                      channelId: item.channelId,
-                      name: item.channelName,
-                    })
-                  }
-                  active={
-                    selected.kind === "channel" &&
-                    selected.channelId === item.channelId
-                  }
-                  onFocus={() =>
-                    selectAfterDelay({
-                      kind: "channel",
-                      channelId: item.channelId,
-                    })
-                  }
-                  onPress={() =>
-                    selectNow({ kind: "channel", channelId: item.channelId })
-                  }
-                />
-              )}
+              renderItem={({ item: paneItem }) => {
+                if (paneItem.kind === "heading") {
+                  return (
+                    <Text style={styles.sectionLabel}>{paneItem.label}</Text>
+                  );
+                }
+                const item = paneItem.channel;
+                return (
+                  <ChannelRow
+                    label={item.channelName}
+                    avatarUrl={item.avatarUrl}
+                    fresh={
+                      item.latestVideoAt !== null &&
+                      nowSeconds - item.latestVideoAt < NEW_WINDOW_SECONDS
+                    }
+                    onLongPress={() =>
+                      setChannelMenu({
+                        channelId: item.channelId,
+                        name: item.channelName,
+                      })
+                    }
+                    active={
+                      selected.kind === "channel" &&
+                      selected.channelId === item.channelId
+                    }
+                    onFocus={() =>
+                      selectAfterDelay({
+                        kind: "channel",
+                        channelId: item.channelId,
+                      })
+                    }
+                    onPress={() =>
+                      selectNow({ kind: "channel", channelId: item.channelId })
+                    }
+                  />
+                );
+              }}
               showsVerticalScrollIndicator={false}
               removeClippedSubviews={false}
               ListEmptyComponent={
@@ -387,7 +430,7 @@ function ChannelRow({
   onLongPress?: () => void;
 }) {
   const [focused, setFocused] = useState(false);
-  const tint = active || focused ? colors.brand : colors.foreground;
+  const tint = focused ? colors.focusForeground : colors.foreground;
   const longPressRef = useRef(onLongPress);
   longPressRef.current = onLongPress;
   const [longPressAction] = useState(() => () => longPressRef.current?.());
@@ -470,6 +513,14 @@ const styles = StyleSheet.create({
     borderColor: "transparent",
   },
   groupGap: { height: spacing.lg },
+  sectionLabel: {
+    color: colors.mutedForeground,
+    fontSize: fontSize.sm,
+    fontWeight: "600",
+    marginTop: spacing.md,
+    marginBottom: spacing.xs,
+    marginLeft: spacing.sm,
+  },
   freshDot: {
     width: 8,
     height: 8,
@@ -482,7 +533,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
   },
   rowActive: { backgroundColor: colors.brandSoft },
-  rowFocused: { backgroundColor: colors.accent, borderColor: colors.ring },
+  rowFocused: {
+    backgroundColor: colors.focusFill,
+    borderColor: colors.focusFill,
+  },
   avatar: {
     width: AVATAR_SIZE,
     height: AVATAR_SIZE,

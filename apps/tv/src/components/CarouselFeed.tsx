@@ -31,6 +31,10 @@ type Props = {
   menuExtras?: CardMenuExtras;
   /** For cards that aren't videos (a channel's playlists). */
   disableMenu?: boolean;
+  /** Card focus in any shelf, e.g. to fold a keyboard above them away. */
+  onCardFocusChange?: (focused: boolean) => void;
+  /** Heading over the first shelf ("Results for …"). */
+  firstRowTitle?: string;
   /** The shelves' list, e.g. to scroll back to the header. */
   listRef?: Ref<FlatList<UnifiedVideo[]>>;
 };
@@ -50,6 +54,8 @@ export function CarouselFeed({
   menuExtras,
   disableMenu,
   listRef,
+  onCardFocusChange,
+  firstRowTitle,
 }: Props) {
   const menuExtrasRef = useRef(menuExtras);
   menuExtrasRef.current = menuExtras;
@@ -82,14 +88,23 @@ export function CarouselFeed({
   const renderItem = useCallback<ListRenderItem<UnifiedVideo[]>>(
     ({ item, index }) => (
       <VideoRow
+        title={index === 0 ? firstRowTitle : undefined}
         videos={item}
         onSelect={handleSelect}
         preferFirstFocus={preferFirstRowFocus && index === 0}
         menuExtras={extras}
         disableMenu={disableMenu}
+        onCardFocusChange={onCardFocusChange}
       />
     ),
-    [handleSelect, preferFirstRowFocus, extras, disableMenu],
+    [
+      handleSelect,
+      preferFirstRowFocus,
+      extras,
+      disableMenu,
+      onCardFocusChange,
+      firstRowTitle,
+    ],
   );
 
   if (feed.status === "loading") {

@@ -28,6 +28,8 @@ type Props = {
   menuExtras?: CardMenuExtras;
   /** Cards that aren't videos (playlists) have no video context menu. */
   disableMenu?: boolean;
+  /** Nearing the row's last card: a paged row loads its next page here. */
+  onEndReached?: () => void;
 };
 
 /**
@@ -47,6 +49,7 @@ export const VideoRow = memo(function VideoRow({
   onCardFocusChange,
   menuExtras,
   disableMenu,
+  onEndReached,
 }: Props) {
   const cardMenu = useCardMenu();
   const menuRef = useRef({ cardMenu, menuExtras, videos, disableMenu });
@@ -73,7 +76,8 @@ export const VideoRow = memo(function VideoRow({
   /**
    * TV focus can move to a card outside the viewport without the list
    * scrolling, so the card lands off screen. Drive the scroll from focus and
-   * centre the focused card.
+   * keep the focused card at the row's left edge, as the YouTube app does:
+   * the eye stays in one column while the row slides under it.
    */
   const handleFocusChange = useCallback(
     (focused: boolean, index: number) => {
@@ -88,7 +92,7 @@ export const VideoRow = memo(function VideoRow({
         setLongPressTarget(null, longPressRef.current);
         longPressRef.current = null;
       }
-      // Centring needs the row's measured width: before the first layout
+      // Scrolling needs the row's measured width: before the first layout
       // FlatList works it out against a zero-width viewport and lands half an
       // item in, which pushed the first card half off the left edge the moment
       // a section opened. Android scrolls a focused child into view by itself,
@@ -97,7 +101,7 @@ export const VideoRow = memo(function VideoRow({
         listRef.current?.scrollToIndex({
           index,
           animated: true,
-          viewPosition: 0.5,
+          viewPosition: 0,
         });
       }
       onCardFocusChangeRef.current?.(focused, video);
@@ -159,6 +163,10 @@ export const VideoRow = memo(function VideoRow({
           ItemSeparatorComponent={Separator}
           renderItem={renderItem}
           onScrollToIndexFailed={ignore}
+          onEndReached={onEndReached}
+          // Two viewports ahead, so the next page is in before the D-pad
+          // gets there.
+          onEndReachedThreshold={2}
           getItemLayout={getItemLayout}
         />
       </TVFocusGuideView>
@@ -189,9 +197,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 3,
   },
   separator: { width: spacing.md },
+  // Small and grey, like the YouTube app's row titles: the cards lead.
   heading: {
-    color: colors.foreground,
-    fontSize: fontSize.lg,
-    fontWeight: "700",
+    color: colors.cardTitle,
+    fontSize: fontSize.md,
+    fontWeight: "600",
   },
 });

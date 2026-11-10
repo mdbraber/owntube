@@ -1,23 +1,22 @@
-import { Feather } from "@expo/vector-icons";
 import type { UnifiedVideo } from "@web/server/services/proxy.types";
 import { memo, useState } from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import {
-  channelInitial,
   formatPublishedLabel,
   formatThumbnailBadge,
   formatViews,
-  sizedAvatarUrl,
 } from "@/lib/format";
 import { useThumbnail } from "@/lib/use-thumbnail";
 import { useWatchProgress } from "@/lib/watch-progress";
-import { colors, focus, fontSize, monoFont, radius, spacing } from "@/theme";
+import { colors, fontSize, monoFont, radius, spacing } from "@/theme";
 
-// dp, matching the Android TV YouTube app: its 528x297 physical-pixel
-// thumbnails are 264x148 dp on a density-2 panel.
-const CARD_WIDTH = 280;
+// dp, matching the Android TV YouTube app (5.30, Nov 2026): its regular
+// shelves and search results measure ~266x150 dp on a 960x540 dp screen,
+// a bit over three to a row (only a featured first shelf runs larger).
 const THUMBNAIL_WIDTH = 264;
 const THUMBNAIL_HEIGHT = 148;
+/** The focus outline sits outside the thumbnail, so the card is that much wider. */
+const CARD_WIDTH = THUMBNAIL_WIDTH + 2 * 3;
 
 type Props = {
   video: UnifiedVideo;
@@ -51,7 +50,7 @@ export const VideoCard = memo(function VideoCard({
     video.publishedText,
     video.publishedAt,
   );
-  const metadata = [views, published].filter(Boolean).join(" - ");
+  const metadata = [views, published].filter(Boolean).join(" • ");
   const watched = useWatchProgress(video.videoId);
   const thumbnail = useThumbnail(video);
 
@@ -68,143 +67,96 @@ export const VideoCard = memo(function VideoCard({
       }}
       onPress={() => onPress(video.videoId)}
       onLongPress={onLongPress ? () => onLongPress(video) : undefined}
-      style={[styles.card, focused && styles.cardFocused]}
+      style={styles.card}
     >
-      <View style={styles.thumbWrap}>
-        <Image
-          source={thumbnail.uri ? { uri: thumbnail.uri } : undefined}
-          onError={thumbnail.onError}
-          // Finished videos recede, like the web's watched cards; focus
-          // brings one back to full strength.
-          style={[
-            styles.thumb,
-            watched?.completed && !focused && styles.thumbWatched,
-          ]}
-          resizeMode="cover"
-          // Decode at view size: Android otherwise keeps the full upstream
-          // bitmap (up to 1280x720) per card, which churns memory and GC.
-          resizeMethod="resize"
-        />
-        {focused ? (
-          <View style={styles.playOverlay} pointerEvents="none">
-            <View style={styles.playBubble}>
-              <Feather name="play" size={26} color={colors.primaryForeground} />
+      {/* YouTube's focus: a white outline around the thumbnail only, no zoom,
+          no overlay; the title below turns white. */}
+      <View style={[styles.thumbFrame, focused && styles.thumbFrameFocused]}>
+        <View style={styles.thumbWrap}>
+          <Image
+            source={thumbnail.uri ? { uri: thumbnail.uri } : undefined}
+            onError={thumbnail.onError}
+            // Finished videos recede, like the web's watched cards; focus
+            // brings one back to full strength.
+            style={[
+              styles.thumb,
+              watched?.completed && !focused && styles.thumbWatched,
+            ]}
+            resizeMode="cover"
+            // Decode at view size: Android otherwise keeps the full upstream
+            // bitmap (up to 1280x720) per card, which churns memory and GC.
+            resizeMethod="resize"
+          />
+          {watched ? (
+            <View style={styles.progressTrack} pointerEvents="none">
+              <View
+                style={[
+                  styles.progressFill,
+                  // Finished videos read green, partial ones brand — the same
+                  // distinction the web card makes.
+                  watched.completed && styles.progressFillComplete,
+                  { width: `${watched.fraction * 100}%` },
+                ]}
+              />
             </View>
-          </View>
-        ) : null}
-        {watched ? (
-          <View style={styles.progressTrack} pointerEvents="none">
+          ) : null}
+          {badge ? (
             <View
               style={[
-                styles.progressFill,
-                // Finished videos read green, partial ones brand — the same
-                // distinction the web card makes.
-                watched.completed && styles.progressFillComplete,
-                { width: `${watched.fraction * 100}%` },
-              ]}
-            />
-          </View>
-        ) : null}
-        {badge ? (
-          <View
-            style={[
-              styles.badge,
-              video.isLive && styles.liveBadge,
-              video.isUpcoming && styles.upcomingBadge,
-            ]}
-          >
-            <Text
-              style={[
-                styles.badgeText,
-                video.isUpcoming && styles.upcomingBadgeText,
+                styles.badge,
+                video.isLive && styles.liveBadge,
+                video.isUpcoming && styles.upcomingBadge,
               ]}
             >
-              {badge}
-            </Text>
-          </View>
-        ) : null}
-      </View>
-      <View style={styles.metaRow}>
-        <ChannelAvatar
-          imageUrl={video.channelAvatarUrl}
-          channelName={video.channelName}
-        />
-        <View style={styles.copy}>
-          <Text
-            style={[styles.title, focused && styles.titleFocused]}
-            numberOfLines={2}
-          >
-            {video.title}
-          </Text>
-          {video.channelName ? (
-            <Text style={styles.channel} numberOfLines={1}>
-              {video.channelName}
-            </Text>
-          ) : null}
-          {metadata ? (
-            <Text style={styles.metadata} numberOfLines={1}>
-              {metadata}
-            </Text>
+              <Text
+                style={[
+                  styles.badgeText,
+                  video.isUpcoming && styles.upcomingBadgeText,
+                ]}
+              >
+                {badge}
+              </Text>
+            </View>
           ) : null}
         </View>
+      </View>
+      <View style={styles.copy}>
+        <Text
+          style={[styles.title, focused && styles.titleFocused]}
+          numberOfLines={2}
+        >
+          {video.title}
+        </Text>
+        {video.channelName ? (
+          <Text style={styles.channel} numberOfLines={1}>
+            {video.channelName}
+          </Text>
+        ) : null}
+        {metadata ? (
+          <Text style={styles.metadata} numberOfLines={1}>
+            {metadata}
+          </Text>
+        ) : null}
       </View>
     </Pressable>
   );
 });
 
-const CHANNEL_AVATAR_SIZE = 32;
-
-function ChannelAvatar({
-  imageUrl,
-  channelName,
-}: {
-  imageUrl?: string;
-  channelName?: string;
-}) {
-  if (imageUrl) {
-    return (
-      <Image
-        source={{ uri: sizedAvatarUrl(imageUrl, CHANNEL_AVATAR_SIZE) }}
-        style={styles.avatar}
-        resizeMethod="resize"
-      />
-    );
-  }
-  return (
-    <View style={[styles.avatar, styles.avatarFallback]}>
-      <Text style={styles.avatarInitial}>{channelInitial(channelName)}</Text>
-    </View>
-  );
-}
-
 export const VIDEO_CARD_WIDTH = CARD_WIDTH;
 
 const styles = StyleSheet.create({
-  card: {
-    width: CARD_WIDTH,
-    padding: 8,
-    borderRadius: radius.card,
-    borderWidth: focus.borderWidth,
+  card: { width: CARD_WIDTH },
+  thumbFrame: {
+    borderRadius: radius.card + 3,
+    borderWidth: 3,
     borderColor: "transparent",
-    backgroundColor: "transparent",
   },
-  cardFocused: {
-    backgroundColor: colors.card,
-    borderColor: colors.ring,
-    shadowColor: colors.brand,
-    shadowOpacity: focus.shadowOpacity,
-    shadowRadius: focus.shadowRadius,
-    shadowOffset: focus.shadowOffset,
-    elevation: focus.elevation,
-    transform: [{ scale: focus.scale }],
-  },
+  thumbFrameFocused: { borderColor: colors.ring },
   thumbWrap: {
     width: THUMBNAIL_WIDTH,
     height: THUMBNAIL_HEIGHT,
     borderRadius: radius.card,
     overflow: "hidden",
-    borderWidth: 1,
-    borderColor: colors.surfaceBorder,
     backgroundColor: colors.muted,
   },
   thumb: { width: "100%", height: "100%" },
@@ -220,20 +172,6 @@ const styles = StyleSheet.create({
   },
   progressFill: { height: "100%", backgroundColor: colors.brand },
   progressFillComplete: { backgroundColor: colors.success },
-  playOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.overlay,
-  },
-  playBubble: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.brand,
-  },
   badge: {
     position: "absolute",
     right: spacing.xs,
@@ -252,37 +190,15 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   upcomingBadgeText: { color: colors.background },
-  metaRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: spacing.sm,
-    marginTop: spacing.sm,
-  },
-  avatar: {
-    width: CHANNEL_AVATAR_SIZE,
-    height: CHANNEL_AVATAR_SIZE,
-    borderRadius: CHANNEL_AVATAR_SIZE / 2,
-    backgroundColor: colors.avatarFallback,
-  },
-  avatarFallback: {
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: colors.surfaceBorder,
-  },
-  avatarInitial: {
-    color: colors.foreground,
-    fontSize: fontSize.sm,
-    fontWeight: "700",
-  },
-  copy: { flex: 1, minWidth: 0 },
+  copy: { marginTop: spacing.sm, paddingHorizontal: 3, minWidth: 0 },
+  // ~18dp titles, white only on the focused card; grey metadata below.
   title: {
-    color: colors.foreground,
-    fontSize: fontSize.sm,
+    color: colors.cardTitle,
+    fontSize: fontSize.base,
     fontWeight: "600",
-    lineHeight: 18,
+    lineHeight: 20,
   },
-  titleFocused: { color: colors.primary },
+  titleFocused: { color: colors.foreground },
   channel: {
     color: colors.mutedForeground,
     fontSize: fontSize.sm,
@@ -290,7 +206,7 @@ const styles = StyleSheet.create({
   },
   metadata: {
     color: colors.mutedForeground,
-    fontSize: 14,
+    fontSize: fontSize.sm,
     marginTop: 2,
   },
 });
