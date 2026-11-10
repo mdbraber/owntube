@@ -42,6 +42,10 @@ import type {
   UnifiedVideo,
 } from "@/server/services/proxy.types";
 import { getUserSettings } from "@/server/settings/profile";
+import {
+  memoMergedPage,
+  mergedPageKey,
+} from "@/server/subscriptions/merged-page-cache";
 import { reconcileSubscriptionChannelIdsForUser } from "@/server/subscriptions/reconcile-channel-ids";
 import {
   protectedProcedure,
@@ -1161,11 +1165,11 @@ export const subscriptionsRouter = router({
         };
       }
 
-      const { videos, exhausted } = await collectSortedFeedPage(
-        ctx.db,
-        channelIds,
-        offset,
-        limit,
+      // Memoized for a minute per channel set and window: a page re-walks
+      // the merge from the start, and the TV asks for the same ones often.
+      const { videos, exhausted } = await memoMergedPage(
+        mergedPageKey(channelIds, offset, limit),
+        () => collectSortedFeedPage(ctx.db, channelIds, offset, limit),
       );
       const patchedVideos = await patchVisibleVideosWithRssDates(
         ctx.db,
