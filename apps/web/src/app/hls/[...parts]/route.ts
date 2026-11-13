@@ -1,9 +1,16 @@
 import { mediaCorsPreflight, withMediaCors } from "@/lib/media-cors";
+import { sabrVodMode } from "@/server/services/dash/sabr-vod";
 import {
+  fetchVideoCaptions,
   generateMasterPlaylist,
   generateMediaPlaylist,
   generateSubtitlePlaylist,
 } from "@/server/services/hls/generate";
+import {
+  generateSabrMasterPlaylist,
+  generateSabrMediaPlaylist,
+  SABR_TRACK_RE,
+} from "@/server/services/hls/sabr";
 
 const M3U8_CONTENT_TYPE = "application/vnd.apple.mpegurl";
 const VIDEO_ID_RE = /^[\w-]{6,20}$/;
@@ -12,6 +19,7 @@ const VIDEO_ID_RE = /^[\w-]{6,20}$/;
  * Serves a synthesized VOD HLS manifest (see `generate.ts`):
  *   /hls/<videoId>/master.m3u8       -> variants + audio group
  *   /hls/<videoId>/media.m3u8?itag=… -> one stream's byte-range fragments
+ *   /hls/<videoId>/sabr.m3u8?track=… -> one SABR connector track (see sabr.ts)
  *   /hls/<videoId>/subtitles.m3u8?lang=… (or ?label=…) -> one caption track
  * Segments resolve to the `/invidious/videoplayback` proxy, same-origin with
  * this route's media origin (see media-origin.ts).
@@ -39,7 +47,21 @@ async function handleGET(
 
   try {
     if (file === "master.m3u8") {
-      const body = await generateMasterPlaylist(videoId);
+      const body = await masterPlaylist(videoId);
+      return new Response(body, {
+        headers: {
+          "content-type": M3U8_CONTENT_TYPE,
+          "cache-control": "no-store",
+        },
+      });
+    }
+    if (file === "sabr.m3u8") {
+      const track = new URL(request.url).searchParams.get("track");
+      if (!track || !SABR_TRACK_RE.test(track)) {
+        return new Response("missing or invalid track", { status: 400 });
+      }
+      const body = await generateSabrMediaPlaylist(videoId, track);
+      if (!body) return new Response("sabr track not found", { status: 404 });
       return new Response(body, {
         headers: {
           "content-type": M3U8_CONTENT_TYPE,
@@ -94,4 +116,31 @@ async function handleGET(
       status: 502,
     });
   }
+}
+
+/**
+ * The master playlist, from the companion's SABR connector or from YouTube's
+ * byte-range formats, in the order `INVIDIOUS_COMPANION_SABR_VOD` asks for
+ * (see `sabr.ts` for why SABR: byte-range stream URLs get revoked about a
+ * minute into playback). Either source falls back to the other.
+ */
+async function masterPlaylist(videoId: string): Promise<string> {
+  const mode = sabrVodMode();
+  const sabr = () =>
+    generateSabrMasterPlaylist(videoId, () => fetchVideoCaptions(videoId));
+  if (mode === "always") {
+    const body = await sabr();
+    if (body) return body;
+    return generateMasterPlaylist(videoId);
+  }
+  if (mode === "fallback") {
+    try {
+      return await generateMasterPlaylist(videoId);
+    } catch (e) {
+      const body = await sabr();
+      if (body) return body;
+      throw e;
+    }
+  }
+  return generateMasterPlaylist(videoId);
 }

@@ -427,7 +427,7 @@ function hlsAttributeText(value: string): string {
  * start off unless the viewer — or the system's closed-captions setting,
  * which honours AUTOSELECT — asks for them.
  */
-function subtitleRenditions(captions: InvidiousCaption[]): string[] {
+export function subtitleRenditions(captions: InvidiousCaption[]): string[] {
   return captions.flatMap((caption) => {
     const query = captionQuery(caption);
     if (!query) return [];

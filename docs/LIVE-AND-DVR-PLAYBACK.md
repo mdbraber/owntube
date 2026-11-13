@@ -115,7 +115,8 @@ player response for live/DVR.
 ## VOD via SABR
 
 Off by default. `INVIDIOUS_COMPANION_SABR_VOD` (OwnTube) picks where
-`/dash/<id>/manifest.mpd` comes from for an ordinary video:
+`/dash/<id>/manifest.mpd` and `/hls/<id>/master.m3u8` come from for an
+ordinary video:
 
 | value | behaviour |
 |---|---|
@@ -142,8 +143,23 @@ sets (which point at its own `/api/v1/captions`) for ours on `/captions`. The
 sessions in memory, so a restart forgets them) re-requests the manifest and
 retries once; its 503 "not ready" passes through for dash.js to retry.
 
-Only the DASH path is affected: iOS Safari and web Shorts stay on the
-synthesized HLS playlist, which needs byte-range formats either way.
+The synthesized HLS playlist follows the same switch (`hls/sabr.ts`): the
+connector's manifest is one `SegmentTemplate` + `SegmentTimeline` per track,
+so each track becomes an HLS media playlist (`/hls/<id>/sabr.m3u8?track=…`)
+with `EXT-X-MAP` on `init.mp4` and one entry per `seg-<n>.m4s`, on the same
+`/dash/<id>/sabr/` proxy. The master lists the ladder sharing one audio group
+plus our caption renditions. Only the default audio track; no dub picker on
+this path.
+
+**Why `always` (2026-11-13).** Since the companion fell back to the
+TVHTML5_SIMPLY client for stream URLs, YouTube revokes a byte-range URL after
+roughly 60–75 s of fetched media: every later range 403s, hours before
+`expire`, whatever address fetches it (tested with egress pinned to the URL's
+`ip=`), paced or not. That is the "video stalls after a minute or so" bug on
+the byte-range HLS and DASH paths, and nothing on them can recover (the
+companion caches the player response, so a reload gets the same dead URL).
+Through the connector, 100 consecutive 720p segments (~8.5 min of video)
+came back 200 in 18 s. naggon runs `always`.
 
 **State on 2026-09-23.** Random access through the connector depends entirely
 on the SABR session's client identity, measured against four videos:
