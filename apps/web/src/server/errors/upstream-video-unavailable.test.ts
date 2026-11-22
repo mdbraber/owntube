@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { isVideoUnavailableUpstreamMessage } from "@/server/errors/upstream-video-unavailable";
+import {
+  isSignInRequiredUpstreamMessage,
+  isVideoUnavailableUpstreamMessage,
+  SIGN_IN_REQUIRED_REASON,
+  UpstreamVideoUnavailableError,
+} from "@/server/errors/upstream-video-unavailable";
+import { throwIfUpstreamFailed } from "@/server/services/proxy/errors";
 
 describe("isVideoUnavailableUpstreamMessage", () => {
   it("recognises YouTube's paywall refusals", () => {
@@ -47,5 +53,41 @@ describe("isVideoUnavailableUpstreamMessage", () => {
     ]) {
       expect(isVideoUnavailableUpstreamMessage(message), message).toBe(false);
     }
+  });
+});
+
+describe("isSignInRequiredUpstreamMessage", () => {
+  it("recognises YouTube's bare login wall as Invidious relays it", () => {
+    for (const message of [
+      'invidious:HTTP 500: {"error":"Please sign in"}',
+      'invidious:{"error":"Please sign in."}',
+      "invidious:Please sign in",
+    ]) {
+      expect(isSignInRequiredUpstreamMessage(message), message).toBe(true);
+    }
+  });
+
+  it("leaves the bot check and the age gate to their own paths", () => {
+    for (const message of [
+      'invidious:{"error":"Sign in to confirm you\u2019re not a bot"}',
+      "invidious:Sign in to confirm your age",
+      "invidious:Please sign in to continue to the admin panel at /login",
+    ]) {
+      expect(isSignInRequiredUpstreamMessage(message), message).toBe(false);
+    }
+  });
+
+  it("turns the login wall into a per-video refusal with a clear reason", () => {
+    let thrown: unknown;
+    try {
+      throwIfUpstreamFailed(
+        ['invidious:HTTP 500: {"error":"Please sign in"}'],
+        "fallback",
+      );
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown).toBeInstanceOf(UpstreamVideoUnavailableError);
+    expect((thrown as Error).message).toBe(SIGN_IN_REQUIRED_REASON);
   });
 });

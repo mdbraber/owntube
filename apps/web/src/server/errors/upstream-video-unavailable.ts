@@ -61,3 +61,23 @@ export function isVideoUnavailableUpstreamMessage(message: string): boolean {
   const lower = message.toLowerCase();
   return VIDEO_UNAVAILABLE_SIGNATURES.some((sig) => lower.includes(sig));
 }
+
+/**
+ * Shown instead of YouTube's bare "Please sign in" (playabilityStatus
+ * LOGIN_REQUIRED without an age or bot reason). YouTube serves that wall for
+ * some videos to every anonymous viewer and says nothing more, so neither we
+ * nor another instance can tell why or do better.
+ */
+export const SIGN_IN_REQUIRED_REASON =
+  "YouTube only plays this video for signed-in viewers, and it doesn't say why. OwnTube watches anonymously, so it can't play it — open it on YouTube instead.";
+
+/**
+ * True for YouTube's bare login wall as Invidious relays it
+ * (`invidious:HTTP 500: {"error":"Please sign in"}`). Matches the whole
+ * reason only: "Sign in to confirm you're not a bot" is an instance-level
+ * block that must keep its instance-health hint, and the age gate ("Sign in
+ * to confirm your age") is handled as age-restricted.
+ */
+export function isSignInRequiredUpstreamMessage(message: string): boolean {
+  return /(?:^|:|"error":")\s*please sign in\.?\s*(?:"|$)/i.test(message);
+}

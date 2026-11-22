@@ -6,7 +6,9 @@ import {
 import { parseInvidiousUpcomingFromFetchMessage } from "@/server/errors/upstream-live-upcoming";
 import { UpstreamUnavailableError } from "@/server/errors/upstream-unavailable";
 import {
+  isSignInRequiredUpstreamMessage,
   isVideoUnavailableUpstreamMessage,
+  SIGN_IN_REQUIRED_REASON,
   UpstreamVideoUnavailableError,
 } from "@/server/errors/upstream-video-unavailable";
 import { recordUpstreamFailure as recordInstanceFailure } from "@/server/services/upstream-health";
@@ -76,6 +78,10 @@ export function throwIfUpstreamFailed(
   // clean typed error instead of the raw NewPipe/Invidious stack trace.
   if (errors.some(isAgeRestrictedUpstreamMessage)) {
     throw new UpstreamAgeRestrictedError();
+  }
+  // YouTube's bare login wall: a per-video refusal no instance can get past.
+  if (errors.some(isSignInRequiredUpstreamMessage)) {
+    throw new UpstreamVideoUnavailableError(SIGN_IN_REQUIRED_REASON);
   }
   // Definitive YouTube refusals (region block, private, removed): relay
   // YouTube's own reason instead of blaming the instances — no other
