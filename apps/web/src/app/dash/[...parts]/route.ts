@@ -340,11 +340,19 @@ async function serveSabrVodSegment(
   } catch {
     return new Response("sabr segment read failed", { status: 502 });
   }
-  return new Response(body, {
+  // The connector's init.mp4 is ftyp+moov followed by the stream's full
+  // `sidx`. MSE players ignore the index, but native HLS (iOS Safari's
+  // EXT-X-MAP) refuses the init section and the video never starts. Serve only
+  // ftyp+moov, as the byte-range path's `initRange` does.
+  let bytes: Uint8Array<ArrayBuffer> = new Uint8Array(body);
+  if (file === "init.mp4") {
+    bytes = initSegmentFromSelfInitializing(bytes) ?? bytes;
+  }
+  return new Response(bytes, {
     headers: {
       "content-type":
         upstream.headers.get("content-type") ?? "application/octet-stream",
-      "content-length": String(body.byteLength),
+      "content-length": String(bytes.byteLength),
       // A segment of a static manifest never changes; the companion says the
       // same.
       "cache-control": upstream.headers.get("cache-control") ?? "no-store",

@@ -176,6 +176,31 @@ describe("/dash/<id>/sabr/<track>/<file>", () => {
     ]);
   });
 
+  it("serves only ftyp+moov of an init segment, dropping the trailing sidx", async () => {
+    const box = (type: string, payload: number) => {
+      const b = new Uint8Array(8 + payload).fill(7);
+      new DataView(b.buffer).setUint32(0, b.byteLength);
+      b.set(
+        [...type].map((c) => c.charCodeAt(0)),
+        4,
+      );
+      return b;
+    };
+    const ftyp = box("ftyp", 4);
+    const moov = box("moov", 16);
+    const sidx = box("sidx", 32);
+    const init = new Uint8Array([...ftyp, ...moov, ...sidx]);
+    fetchMock.mockResolvedValue(new Response(init));
+    const r = await get(`/dash/${VIDEO}/sabr/v720/init.mp4`);
+    const out = new Uint8Array(await r.arrayBuffer());
+    expect(out).toEqual(new Uint8Array([...ftyp, ...moov]));
+    expect(r.headers.get("content-length")).toBe(String(out.byteLength));
+
+    fetchMock.mockResolvedValue(new Response(init));
+    const seg = await get(`/dash/${VIDEO}/sabr/v720/seg-3.m4s`);
+    expect(new Uint8Array(await seg.arrayBuffer())).toEqual(init);
+  });
+
   it("passes a not-ready 503 through for the player to retry", async () => {
     fetchMock.mockResolvedValue(
       new Response("Segment not ready; retry.", { status: 503 }),
