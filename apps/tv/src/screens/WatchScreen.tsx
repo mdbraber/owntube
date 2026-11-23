@@ -319,8 +319,9 @@ export function WatchScreen({
   menuOpenRef.current = menuOpen;
   const closeMenu = useCallback(() => setMenuOpen(false), []);
   /**
-   * Quality ceiling picked in the panel, in pixels; null follows the
-   * defaultPlaybackQuality setting. Applied to the server DASH manifest.
+   * Quality ceiling picked in the panel, in pixels, applied to the server
+   * DASH manifest. Null is Auto: the full ladder, which ExoPlayer limits to
+   * the display's resolution (1080p on a Full HD TV, 2160p on a 4K one).
    */
   const [qualityCap, setQualityCap] = useState<number | null>(null);
   const [playbackRate, setPlaybackRate] = useState(
@@ -736,10 +737,11 @@ export function WatchScreen({
           const picked = langs[audioLangIndex];
           if (picked) uri = `${uri}&lang=${encodeURIComponent(picked.lang)}`;
         }
-        // The panel's choice, else the shared defaultPlaybackQuality. Servers
-        // without the parameter ignore it and serve the full ladder.
-        const cap = qualityCap ?? settingsRef.current.maxHeight;
-        if (Number.isFinite(cap)) uri = `${uri}&maxHeight=${cap}`;
+        // Only an explicit panel choice caps the ladder. Auto leaves it whole:
+        // ExoPlayer's track selector already stops at the display's resolution,
+        // so the shared defaultPlaybackQuality (a web/bandwidth preference,
+        // often 720p) must not cap a TV that can show more.
+        if (qualityCap !== null) uri = `${uri}&maxHeight=${qualityCap}`;
       }
       player.muted = false;
       player.replace({ uri, headers: authHeader, metadata });
@@ -1595,13 +1597,10 @@ export function WatchScreen({
 
   const selectedOption = state.playbackOptions[state.selectedOptionIndex];
   const onDash = selectedOption?.id === "dash-vp9";
-  const effectiveCap = qualityCap ?? settingsRef.current.maxHeight;
   const qualityLabelNow = !onDash
     ? (selectedOption?.label ?? "")
     : qualityCap === null
-      ? Number.isFinite(effectiveCap)
-        ? `Auto (up to ${effectiveCap}p)`
-        : "Auto"
+      ? "Auto"
       : `${qualityCap}p`;
   const heights = qualityHeights(detail);
   // Some streams label tracks with just their code ("nl-nl"): name those.
@@ -1621,9 +1620,7 @@ export function WatchScreen({
           items: [
             {
               key: "auto",
-              label: Number.isFinite(settingsRef.current.maxHeight)
-                ? `Auto (up to ${settingsRef.current.maxHeight}p)`
-                : "Auto",
+              label: "Auto",
               selected: onDash && qualityCap === null,
               onPress: () => chooseQuality(null),
             },
@@ -1827,7 +1824,7 @@ export function WatchScreen({
         <StatsOverlay
           player={player}
           option={selectedOption}
-          cap={onDash ? effectiveCap : undefined}
+          cap={onDash && qualityCap !== null ? qualityCap : undefined}
           subtitles={subtitleTrack ? subtitleLabel(subtitleTrack) : "off"}
         />
       ) : null}
