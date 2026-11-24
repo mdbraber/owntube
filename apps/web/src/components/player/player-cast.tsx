@@ -1,9 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AirPlayIcon, TvIcon } from "@/components/player/player-icons";
+import {
+  AirPlayIcon,
+  CastIcon,
+  TvIcon,
+} from "@/components/player/player-icons";
 import type { PlayerAdapter } from "@/components/player/player-types";
 import { useActionToast } from "@/components/videos/action-toast";
+import {
+  CAST_FLAVOR_LABEL,
+  type CastFlavor,
+  castFlavor,
+} from "@/lib/cast-flavor";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/trpc/react";
 
@@ -12,6 +21,27 @@ export const CAST_UNAVAILABLE_REASON =
   "This stream can't be sent to a TV from this browser.";
 
 type OwnTubeTv = { deviceId: string; name: string };
+
+/**
+ * The icon viewers know for this browser's casting: AirPlay in Safari, Cast
+ * in Chrome. With only OwnTube TVs on offer, the Cast icon — what YouTube and
+ * Android use for "send to a TV".
+ */
+function SystemCastIcon({
+  flavor,
+  connected,
+  className,
+}: {
+  flavor: CastFlavor;
+  connected: boolean;
+  className?: string;
+}) {
+  return flavor === "airplay" ? (
+    <AirPlayIcon className={className} />
+  ) : (
+    <CastIcon className={className} connected={connected} />
+  );
+}
 
 /**
  * The viewer's OwnTube TV apps that are on right now (each polls
@@ -74,6 +104,14 @@ export function TvButton({ adapter, videoId, isAuthed }: TvTargetsProps) {
   const [open, setOpen] = useState(false);
   const cast = adapter.castButton;
   if (tvs.length === 0 && cast === "hidden") return null;
+  const flavor: CastFlavor = cast === "hidden" ? "cast" : castFlavor();
+  const icon = (
+    <SystemCastIcon
+      flavor={flavor}
+      connected={adapter.castActive}
+      className="h-5 w-5"
+    />
+  );
 
   const label = adapter.castActive ? "Playing on a TV" : "Play on a TV";
   const buttonClass = cn(
@@ -91,7 +129,7 @@ export function TvButton({ adapter, videoId, isAuthed }: TvTargetsProps) {
           aria-label={CAST_UNAVAILABLE_REASON}
           className="flex h-9 w-9 cursor-not-allowed items-center justify-center rounded-full opacity-40"
         >
-          <TvIcon className="h-5 w-5" />
+          {icon}
         </button>
       );
     }
@@ -104,7 +142,7 @@ export function TvButton({ adapter, videoId, isAuthed }: TvTargetsProps) {
         title={label}
         aria-label={label}
       >
-        <TvIcon className="h-5 w-5" />
+        {icon}
       </button>
     );
   }
@@ -121,7 +159,7 @@ export function TvButton({ adapter, videoId, isAuthed }: TvTargetsProps) {
         aria-haspopup="menu"
         aria-expanded={open}
       >
-        <TvIcon className="h-5 w-5" />
+        {icon}
       </button>
       {open ? (
         <div
@@ -193,6 +231,8 @@ function TvTargetRows({
 }) {
   const row =
     "flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-left";
+  const flavor = castFlavor();
+  const name = CAST_FLAVOR_LABEL[flavor];
   return (
     <>
       {tvs.map((tv) => (
@@ -215,14 +255,22 @@ function TvTargetRows({
           // Synchronous: the picker needs this click's user gesture.
           onClick={onCast}
         >
-          <span>AirPlay or Cast…</span>
+          <span>{name}…</span>
           <span
             className={cn(
               "text-xs",
               castActive ? "text-[hsl(var(--primary))]" : "text-zinc-400",
             )}
           >
-            {castActive ? "Connected" : <AirPlayIcon className="h-4 w-4" />}
+            {castActive ? (
+              "Connected"
+            ) : (
+              <SystemCastIcon
+                flavor={flavor}
+                connected={false}
+                className="h-4 w-4"
+              />
+            )}
           </span>
         </button>
       ) : cast === "unavailable" ? (
@@ -233,7 +281,7 @@ function TvTargetRows({
           className={cn(row, "cursor-not-allowed text-zinc-500")}
           title={CAST_UNAVAILABLE_REASON}
         >
-          <span>AirPlay or Cast</span>
+          <span>{name}</span>
           <span className="text-xs">Unavailable</span>
         </button>
       ) : null}
