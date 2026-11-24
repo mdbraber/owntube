@@ -16,7 +16,7 @@ import {
 import { isIosLikeBrowser } from "@/lib/ios-playback";
 import { getMediaOrigin } from "@/lib/media-origin";
 import { isLiveDashManifestUrl } from "@/lib/pick-playback";
-import { qualityLabel } from "@/lib/quality-label";
+import { qualityLabel, qualityLabelHeight } from "@/lib/quality-label";
 
 type IsTypeSupported = { isTypeSupported?(type: string): boolean };
 
@@ -334,8 +334,12 @@ export function useDashPlayback(
           let capHeight = Number.POSITIVE_INFINITY;
           for (const r of allVideoReps) {
             if (!r.height || !r.bitrateInKbit) continue;
-            if (r.height >= portalH && r.height < capHeight) {
-              capHeight = r.height;
+            // By the 16:9 box, like the menu's labels and the portal above:
+            // a 2:1 video's 1920×960 is the "1080p" rung, so a 1080p cap
+            // stops there instead of climbing to 2560×1280 (960 < 1080).
+            const h = qualityLabelHeight(r.width, r.height);
+            if (h >= portalH && h < capHeight) {
+              capHeight = h;
               cap = r.bitrateInKbit;
             }
           }
