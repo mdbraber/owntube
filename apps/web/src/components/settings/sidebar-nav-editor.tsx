@@ -4,12 +4,15 @@ import { type ReactNode, useEffect, useState } from "react";
 import { Toggle } from "@/components/settings/settings-ui";
 import { useSettingsPatch } from "@/components/settings/use-settings-patch";
 import { navItemByKey } from "@/components/shell/nav-config";
+import { Button } from "@/components/ui/button";
 import { useRowDrag } from "@/components/videos/use-row-drag";
-import { DragHandleIcon } from "@/components/videos/video-action-icons";
+import { DragHandleIcon, XIcon } from "@/components/videos/video-action-icons";
 import {
   DEFAULT_SIDEBAR_NAV,
+  isDividerKey,
+  MAX_SIDEBAR_DIVIDERS,
+  newDividerKey,
   resolveSidebarEntries,
-  SIDEBAR_DIVIDER,
   SIDEBAR_FOLLOWING,
   type SidebarNavEntry,
 } from "@/lib/sidebar-nav";
@@ -50,14 +53,14 @@ function entryLabel(key: string): { label: string; icon: ReactNode } | null {
   if (key === SIDEBAR_FOLLOWING) {
     return { label: "Following (your channels)", icon: FollowingIcon };
   }
-  if (key === SIDEBAR_DIVIDER) return { label: "Separator", icon: DividerIcon };
+  if (isDividerKey(key)) return { label: "Separator", icon: DividerIcon };
   const item = navItemByKey(key);
   return item ? { label: item.label, icon: item.icon } : null;
 }
 
 /**
- * Arranges the desktop sidebar: drag to reorder, switch entries on or off.
- * Changes apply to the sidebar at once.
+ * Arranges the desktop sidebar: drag to reorder, switch entries on or off,
+ * add and remove separators. Changes apply to the sidebar at once.
  */
 export function SidebarNavEditor() {
   const { settings, save } = useSettingsPatch();
@@ -91,6 +94,7 @@ export function SidebarNavEditor() {
       }),
   });
 
+  const dividerCount = entries.filter((e) => isDividerKey(e.key)).length;
   const isDefault =
     JSON.stringify(entries) === JSON.stringify(DEFAULT_SIDEBAR_NAV.items);
 
@@ -142,33 +146,68 @@ export function SidebarNavEditor() {
               >
                 {meta.label}
               </span>
-              <Toggle
-                checked={!entry.hidden}
-                label={`Show ${meta.label} in the sidebar`}
-                onChange={(on) => {
-                  const next = entries.map((e) =>
-                    e.key === entry.key ? { ...e, hidden: !on } : e,
-                  );
-                  setEntries(next);
-                  persist(next);
-                }}
-              />
+              {isDividerKey(entry.key) ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = entries.filter((e) => e.key !== entry.key);
+                    setEntries(next);
+                    persist(next);
+                  }}
+                  className="flex h-7 w-7 items-center justify-center rounded-full text-[hsl(var(--muted-foreground))] transition hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))]"
+                  title="Remove separator"
+                  aria-label="Remove separator"
+                >
+                  <XIcon className="h-4 w-4" />
+                </button>
+              ) : (
+                <Toggle
+                  checked={!entry.hidden}
+                  label={`Show ${meta.label} in the sidebar`}
+                  onChange={(on) => {
+                    const next = entries.map((e) =>
+                      e.key === entry.key ? { ...e, hidden: !on } : e,
+                    );
+                    setEntries(next);
+                    persist(next);
+                  }}
+                />
+              )}
             </li>
           );
         })}
       </ul>
-      {isDefault ? null : (
-        <button
+      <div className="flex flex-wrap items-center gap-4 pt-1">
+        <Button
           type="button"
-          className="text-xs text-[hsl(var(--muted-foreground))] underline-offset-2 hover:text-[hsl(var(--foreground))] hover:underline"
+          variant="outline"
+          size="sm"
+          disabled={dividerCount >= MAX_SIDEBAR_DIVIDERS}
           onClick={() => {
-            setEntries(DEFAULT_SIDEBAR_NAV.items);
-            persist(DEFAULT_SIDEBAR_NAV.items);
+            // At the top, where it's easy to see and drag into place.
+            const next = [
+              { key: newDividerKey(entries), hidden: false },
+              ...entries,
+            ];
+            setEntries(next);
+            persist(next);
           }}
         >
-          Reset to the default order
-        </button>
-      )}
+          Add separator
+        </Button>
+        {isDefault ? null : (
+          <button
+            type="button"
+            className="text-xs text-[hsl(var(--muted-foreground))] underline-offset-2 hover:text-[hsl(var(--foreground))] hover:underline"
+            onClick={() => {
+              setEntries(DEFAULT_SIDEBAR_NAV.items);
+              persist(DEFAULT_SIDEBAR_NAV.items);
+            }}
+          >
+            Reset to the default
+          </button>
+        )}
+      </div>
     </div>
   );
 }

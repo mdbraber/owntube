@@ -871,3 +871,32 @@ video[data-native-pip] {
     transition-duration: 0ms;
   }
 }
+
+/* Scroll areas without a visible scrollbar (the sidebar). Pair with
+   .ot-scroll-fade so the edges still show there's more to scroll to. */
+.ot-hide-scrollbar {
+  scrollbar-width: none;
+}
+.ot-hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Fades the top/bottom edge while there is more content that way;
+   useScrollFade sets the data attributes. */
+.ot-scroll-fade {
+  --ot-fade-top: 0px;
+  --ot-fade-bottom: 0px;
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    #000 var(--ot-fade-top),
+    #000 calc(100% - var(--ot-fade-bottom)),
+    transparent 100%
+  );
+}
+.ot-scroll-fade[data-fade-top] {
+  --ot-fade-top: 28px;
+}
+.ot-scroll-fade[data-fade-bottom] {
+  --ot-fade-bottom: 40px;
+}

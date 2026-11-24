@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_SIDEBAR_NAV,
+  isDividerKey,
+  newDividerKey,
   resolveSidebarEntries,
   SIDEBAR_NAV_KEYS,
   type SidebarNavEntry,
@@ -25,6 +27,15 @@ describe("resolveSidebarEntries", () => {
     expect(out).toHaveLength(SIDEBAR_NAV_KEYS.length);
     expect(out[0]).toEqual({ key: "saved", hidden: true });
     expect(out.filter((e) => e.key === "saved")).toHaveLength(1);
+  });
+
+  it("keeps added separators and never brings back removed ones", () => {
+    const stored = shown("home", "divider:7", "saved", "divider:9");
+    const keys = resolveSidebarEntries(stored).map((e) => e.key);
+    expect(keys.filter(isDividerKey)).toEqual(["divider:7", "divider:9"]);
+    expect(keys).not.toContain("divider");
+    expect(newDividerKey(stored)).toBe("divider:1");
+    expect(isDividerKey("divider:x y")).toBe(false);
   });
 
   it("adds a missing entry after its built-in predecessor", () => {
@@ -68,18 +79,18 @@ describe("sidebarSlots", () => {
     ]);
   });
 
-  it("never starts, ends or repeats a separator, and fences Following", () => {
+  it("never starts, ends or repeats a separator", () => {
     const entries = shown(
       "divider",
       "home",
       "following",
-      "divider",
+      "divider:1",
+      "divider:2",
       "saved",
-      "divider",
+      "divider:3",
     );
     expect(sidebarSlots(entries, { signedIn: true })).toEqual([
       { kind: "link", key: "home" },
-      { kind: "divider" },
       { kind: "following" },
       { kind: "divider" },
       { kind: "link", key: "saved" },

@@ -2,10 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useRef } from "react";
 import { useSettingsPatch } from "@/components/settings/use-settings-patch";
 import { BrandLogo } from "@/components/shell/brand-logo";
 import { activeForPath, navItemByKey } from "@/components/shell/nav-config";
 import { SidebarFollowing } from "@/components/shell/sidebar-subscriptions";
+import { useScrollFade } from "@/hooks/use-scroll-fade";
 import {
   DEFAULT_SIDEBAR_NAV,
   resolveSidebarEntries,
@@ -23,6 +25,8 @@ type ShellSidebarProps = {
 
 export function ShellSidebar({ open, onClose, isLoggedIn }: ShellSidebarProps) {
   const pathname = usePathname();
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useScrollFade(scrollRef);
   const { settings, save } = useSettingsPatch({ enabled: isLoggedIn });
   const sidebarNav = settings?.sidebarNav ?? DEFAULT_SIDEBAR_NAV;
   const slots = sidebarSlots(resolveSidebarEntries(sidebarNav.items), {
@@ -67,7 +71,10 @@ export function ShellSidebar({ open, onClose, isLoggedIn }: ShellSidebarProps) {
           <BrandLogo compact tile className="min-w-0 shrink" />
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden px-2.5 pb-4 pt-3">
+        <div
+          ref={scrollRef}
+          className="ot-scroll-fade ot-hide-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden px-2.5 pb-4 pt-3"
+        >
           <nav className="flex flex-col gap-0.5" aria-label="Main">
             {slots.map((slot, i) => {
               if (slot.kind === "divider") {

@@ -14,7 +14,7 @@ export default async function SettingsPage() {
   const { instanceSources, ...settings } = await caller.settings.get();
 
   return (
-    <main className="ot-page max-w-5xl">
+    <main className="ot-page max-w-3xl">
       <PageHeader title="Settings" />
       <SettingsPanel
         initial={settings}

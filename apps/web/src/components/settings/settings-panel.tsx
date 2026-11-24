@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { ApiTokensSection } from "@/components/settings/api-tokens-section";
 import { BottomNavEditor } from "@/components/settings/bottom-nav-editor";
 import { InstanceSourceHint } from "@/components/settings/instance-source-hint";
@@ -154,23 +154,9 @@ export function SettingsPanel({
   };
 
   return (
-    <div className="lg:grid lg:grid-cols-[10.5rem_minmax(0,1fr)] lg:gap-10">
-      <nav aria-label="Settings sections" className="hidden lg:block">
-        <ul className="sticky top-6 space-y-0.5 text-sm">
-          {SECTIONS.map((sec) => (
-            <li key={sec.id}>
-              <a
-                href={`#${sec.id}`}
-                className="block rounded-[var(--radius-shell)] px-3 py-1.5 text-[hsl(var(--muted-foreground))] transition hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))]"
-              >
-                {sec.title}
-              </a>
-            </li>
-          ))}
-        </ul>
-      </nav>
-
-      <div className="min-w-0 space-y-10">
+    <div>
+      <SectionTabs />
+      <div className="mt-6 min-w-0 space-y-10">
         <SaveStatus state={state} error={error} />
 
         <SettingsSection id="appearance" title={sectionTitle("appearance")}>
@@ -207,7 +193,7 @@ export function SettingsPanel({
           <SettingRow
             stack
             title="Sidebar"
-            description="On wider screens. Drag to reorder; switch an item off to hide it. Collapse Following from its heading in the sidebar."
+            description="On wider screens. Drag to reorder, switch items off to hide them, and add separators where you want a line. Collapse Following from its heading in the sidebar."
           >
             <SidebarNavEditor />
           </SettingRow>
@@ -379,6 +365,76 @@ export function SettingsPanel({
         </SettingsSection>
       </div>
     </div>
+  );
+}
+
+/**
+ * The section index: a sticky row of tabs atop the page (the app sidebar
+ * already takes the left), highlighting the section being read.
+ */
+function SectionTabs() {
+  const [current, setCurrent] = useState<string>(SECTIONS[0].id);
+  const barRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const root = barRef.current?.closest(".ot-app-scroll") ?? null;
+    const visible = new Map<string, boolean>();
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) visible.set(e.target.id, e.isIntersecting);
+        const first = SECTIONS.find((sec) => visible.get(sec.id));
+        if (first) setCurrent(first.id);
+      },
+      // A band just under the sticky bar: the section crossing it is "current".
+      { root, rootMargin: "-72px 0px -60% 0px" },
+    );
+    for (const sec of SECTIONS) {
+      const el = document.getElementById(sec.id);
+      if (el) io.observe(el);
+    }
+    return () => io.disconnect();
+  }, []);
+
+  // Keep the highlighted tab in view on narrow screens.
+  useEffect(() => {
+    barRef.current
+      ?.querySelector<HTMLElement>(`[data-section="${current}"]`)
+      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [current]);
+
+  return (
+    <nav
+      ref={barRef}
+      aria-label="Settings sections"
+      className="sticky top-0 z-20 -mx-1 border-b border-[hsl(var(--border))] bg-[hsl(var(--background))]/90 px-1 backdrop-blur"
+    >
+      <ul className="ot-hide-scrollbar flex gap-1 overflow-x-auto py-2">
+        {SECTIONS.map((sec) => (
+          <li key={sec.id} className="shrink-0">
+            <a
+              href={`#${sec.id}`}
+              data-section={sec.id}
+              aria-current={current === sec.id ? "location" : undefined}
+              onClick={(e) => {
+                e.preventDefault();
+                setCurrent(sec.id);
+                document
+                  .getElementById(sec.id)
+                  ?.scrollIntoView({ behavior: "smooth", block: "start" });
+              }}
+              className={cn(
+                "block rounded-full px-3 py-1.5 text-sm font-medium transition",
+                current === sec.id
+                  ? "bg-[hsl(var(--foreground))] text-[hsl(var(--background))]"
+                  : "text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))]",
+              )}
+            >
+              {sec.title}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </nav>
   );
 }
 

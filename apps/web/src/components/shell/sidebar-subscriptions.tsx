@@ -55,7 +55,7 @@ export function SidebarSubscriptions({ enabled }: Props) {
 
   return (
     <div className="flex min-h-0 flex-col gap-1">
-      <div className="max-h-[min(52vh,22rem)] min-h-0 overflow-y-auto overscroll-contain pr-0.5">
+      <div>
         {rows.map((s) => {
           const label = s.channelName || s.channelId;
           return (

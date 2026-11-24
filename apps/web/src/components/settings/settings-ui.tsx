@@ -19,7 +19,7 @@ export function SettingsSection({
     <section
       id={id}
       aria-labelledby={`${id}-title`}
-      className="scroll-mt-6 space-y-3"
+      className="scroll-mt-20 space-y-3"
     >
       <div className="px-1">
         <h2

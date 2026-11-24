@@ -5,8 +5,8 @@
  *
  * The setting is the ordered list of sidebar entries, each shown or hidden,
  * plus whether the Following list is collapsed. Besides the nav destinations
- * there are two special entries: `divider` (a separator line) and `following`
- * (the subscribed-channels list).
+ * there are separators (`divider`, `divider:<n>`; as many as the user adds)
+ * and `following` (the subscribed-channels list).
  */
 
 export const SIDEBAR_DIVIDER = "divider";
@@ -25,6 +25,7 @@ export const SIDEBAR_NAV_KEYS = [
   "playlists",
   "queue",
   "saved",
+  "divider:2",
   SIDEBAR_FOLLOWING,
 ] as const;
 
@@ -42,27 +43,62 @@ export const DEFAULT_SIDEBAR_NAV: SidebarNavSetting = {
 
 const KNOWN = new Set<string>(SIDEBAR_NAV_KEYS);
 
+/** Most separators a sidebar may have. */
+export const MAX_SIDEBAR_DIVIDERS = 8;
+
+/**
+ * Separators can repeat, so each has its own key: the built-in one is
+ * `divider`, added ones `divider:<suffix>`.
+ */
+export function isDividerKey(key: string): boolean {
+  return key === SIDEBAR_DIVIDER || /^divider:[a-z0-9]{1,16}$/.test(key);
+}
+
+/** A key for a new separator, unique among `entries`. */
+export function newDividerKey(entries: readonly SidebarNavEntry[]): string {
+  const taken = new Set(entries.map((e) => e.key));
+  for (let n = 1; ; n++) {
+    const key = `divider:${n}`;
+    if (!taken.has(key)) return key;
+  }
+}
+
 /**
  * The stored entries as a complete list: unknown and duplicate keys dropped,
- * and any entry the stored list lacks (one added in a later release) shown,
- * right after the entry that precedes it in the built-in order.
+ * and any nav entry the stored list lacks (one added in a later release)
+ * shown, right after the entry that precedes it in the built-in order.
+ * Separators are the user's own: the ones stored, never re-added once
+ * removed (the built-in one only when nothing is stored at all).
  */
 export function resolveSidebarEntries(
   stored: readonly SidebarNavEntry[] | undefined,
 ): SidebarNavEntry[] {
+  if (!stored || stored.length === 0) return DEFAULT_SIDEBAR_NAV.items;
   const out: SidebarNavEntry[] = [];
   const seen = new Set<string>();
-  for (const entry of stored ?? []) {
-    if (KNOWN.has(entry.key) && !seen.has(entry.key)) {
-      seen.add(entry.key);
-      out.push({ key: entry.key, hidden: entry.hidden });
-    }
+  let dividers = 0;
+  for (const entry of stored) {
+    if (seen.has(entry.key)) continue;
+    if (isDividerKey(entry.key)) {
+      // A separator switched off (before they could be removed) is a removed one.
+      if (entry.hidden || dividers >= MAX_SIDEBAR_DIVIDERS) continue;
+      dividers++;
+    } else if (!KNOWN.has(entry.key)) continue;
+    seen.add(entry.key);
+    out.push({ key: entry.key, hidden: entry.hidden });
   }
   SIDEBAR_NAV_KEYS.forEach((key, i) => {
-    if (seen.has(key)) return;
+    if (seen.has(key) || isDividerKey(key)) return;
     seen.add(key);
-    const before = i > 0 ? SIDEBAR_NAV_KEYS[i - 1] : undefined;
-    const at = before ? out.findIndex((e) => e.key === before) + 1 : 0;
+    // After the nearest built-in predecessor still in the list (else first).
+    let at = 0;
+    for (let j = i - 1; j >= 0; j--) {
+      const found = out.findIndex((e) => e.key === SIDEBAR_NAV_KEYS[j]);
+      if (found >= 0) {
+        at = found + 1;
+        break;
+      }
+    }
     out.splice(at, 0, { key, hidden: false });
   });
   return out;
@@ -76,7 +112,7 @@ export type SidebarSlot =
 /**
  * What the sidebar renders, top to bottom: hidden entries dropped, Following
  * only when signed in, and separators tidied: never first, last or twice in a
- * row, and always around the Following list (its own section).
+ * row.
  */
 export function sidebarSlots(
   entries: readonly SidebarNavEntry[],
@@ -85,10 +121,9 @@ export function sidebarSlots(
   const raw: SidebarSlot[] = [];
   for (const { key, hidden } of entries) {
     if (hidden) continue;
-    if (key === SIDEBAR_DIVIDER) raw.push({ kind: "divider" });
+    if (isDividerKey(key)) raw.push({ kind: "divider" });
     else if (key === SIDEBAR_FOLLOWING) {
-      if (!signedIn) continue;
-      raw.push({ kind: "divider" }, { kind: "following" }, { kind: "divider" });
+      if (signedIn) raw.push({ kind: "following" });
     } else raw.push({ kind: "link", key });
   }
   const out: SidebarSlot[] = [];
