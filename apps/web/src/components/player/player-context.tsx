@@ -87,3 +87,11 @@ export function usePlayerContext(): PlayerContextValue {
   }
   return ctx;
 }
+
+/**
+ * Whether the active video's viewer is signed in; false outside a
+ * PlayerProvider (previews, tests) rather than throwing.
+ */
+export function useActiveViewerIsAuthed(): boolean {
+  return useContext(PlayerContext)?.active?.isAuthed ?? false;
+}

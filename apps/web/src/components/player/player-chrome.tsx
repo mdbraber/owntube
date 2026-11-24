@@ -11,13 +11,15 @@ import {
 } from "react";
 import {
   CastAudioNotice,
-  CastButton,
-  CastMenuItem,
+  TvButton,
+  TvMenuItems,
+  useHasTvTargets,
 } from "@/components/player/player-cast";
 import {
   formatClock,
   LIVE_EDGE_SECONDS,
 } from "@/components/player/player-constants";
+import { useActiveViewerIsAuthed } from "@/components/player/player-context";
 import {
   ProgressBar,
   SettingsMenu,
@@ -95,6 +97,8 @@ export function PlayerChrome({
   miniStartPaused = false,
   isLive = false,
 }: ChromeProps) {
+  // OwnTube TV apps are listed for a signed-in viewer on the full player only.
+  const tvsEnabled = useActiveViewerIsAuthed() && !shortsMode && !miniMode;
   const [hydrated, setHydrated] = useState(false);
   const { active: fsActive, toggle: toggleFs } = useFullscreenShell(shellRef);
   const { visible, ping, hide } = useIdleVisible(adapter.paused, settingsOpen);
@@ -951,7 +955,13 @@ export function PlayerChrome({
                 </button>
               ) : null}
 
-              {hydrated ? <CastButton adapter={adapter} /> : null}
+              {hydrated ? (
+                <TvButton
+                  adapter={adapter}
+                  videoId={videoId}
+                  isAuthed={tvsEnabled}
+                />
+              ) : null}
             </div>
           </div>
         </div>
@@ -975,6 +985,8 @@ export function PlayerChrome({
           canPip={false}
           pipActive={adapter.pictureInPicture}
           onTogglePip={() => adapter.togglePictureInPicture()}
+          videoId={videoId}
+          isAuthed={tvsEnabled}
           adapter={adapter}
         />
       ) : null}
@@ -1019,6 +1031,8 @@ function PlayerMobileMenu({
   pipActive,
   onTogglePip,
   adapter,
+  videoId,
+  isAuthed,
   open,
   onOpenChange,
   shellRef,
@@ -1034,16 +1048,18 @@ function PlayerMobileMenu({
   canPip: boolean;
   pipActive: boolean;
   onTogglePip: () => void;
-  /** For the cast row. */
+  /** For the TV rows (OwnTube TVs, AirPlay / Cast). */
   adapter: PlayerAdapter;
+  videoId: string;
+  isAuthed: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** The element that goes fullscreen — the sheet portals into it so it also paints there. */
   shellRef: React.RefObject<HTMLElement | null>;
 }) {
   const onClose = () => onOpenChange(false);
-  const hasActions =
-    Boolean(nextUp) || canPip || adapter.castButton !== "hidden";
+  const hasTvTargets = useHasTvTargets({ adapter, videoId, isAuthed });
+  const hasActions = Boolean(nextUp) || canPip || hasTvTargets;
   return (
     <Sheet
       open={open}
@@ -1111,7 +1127,12 @@ function PlayerMobileMenu({
               </span>
             </button>
           ) : null}
-          <CastMenuItem adapter={adapter} onClose={onClose} />
+          <TvMenuItems
+            adapter={adapter}
+            videoId={videoId}
+            isAuthed={isAuthed}
+            onClose={onClose}
+          />
         </div>
       ) : null}
       <div className={hasActions ? "border-t border-white/10" : ""}>
