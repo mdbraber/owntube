@@ -15,8 +15,12 @@
  * path uses, so the browser never sees a companion URL. Safari plays this
  * natively (H.264 + AAC in fMP4); hls.js handles everything else.
  *
- * Tradeoff, same as the DASH side: the ladder is H.264 capped at the
- * companion's `SABR_MAX_HEIGHT` (1080p), and only the default audio track.
+ * Two video ladders share the audio group: H.264 to 1080p (every device), and
+ * AV1 to 2160p when the video has it (`?video=av01` on the connector). The
+ * AV1 variants come first; a player that can't decode AV1 (no hardware
+ * decoder: before A17 Pro / M3 on Apple) skips them by their CODECS and plays
+ * H.264 as before. VP9 can't be used here: Apple's HLS doesn't take WebM.
+ * Only the default audio track.
  */
 import { fetchCompanionSabrVodManifest } from "@/server/services/dash/sabr-vod";
 import {
@@ -48,8 +52,13 @@ export type SabrAudioTrack = {
   timeline: SabrTimeline;
 };
 
+export type SabrVideoLadder = { timeline: SabrTimeline; reps: SabrVideoRep[] };
+
 export type SabrVod = {
-  video: { timeline: SabrTimeline; reps: SabrVideoRep[] };
+  /** The connector's default ladder: H.264. */
+  video: SabrVideoLadder;
+  /** The AV1 ladder (`av01-v<height>` tracks), when the video has one. */
+  av1?: SabrVideoLadder;
   audio: SabrAudioTrack[];
 };
 
@@ -132,6 +141,20 @@ export function parseSabrVodManifest(mpd: string): SabrVod | null {
   return { video, audio };
 }
 
+/**
+ * The AV1 ladder out of the connector's `?video=av01` manifest (exported for
+ * tests). Null unless its rungs really are AV1: for a video without AV1 the
+ * connector serves its default H.264 ladder instead.
+ */
+export function parseSabrAv1Ladder(mpd: string): SabrVideoLadder | null {
+  const video = parseSabrVodManifest(mpd)?.video;
+  if (!video) return null;
+  const reps = video.reps.filter(
+    (r) => r.id.startsWith("av01-") && r.codecs.startsWith("av01"),
+  );
+  return reps.length > 0 ? { timeline: video.timeline, reps } : null;
+}
+
 /** Quoted-string attribute values may not contain `"` or line breaks. */
 function quoted(value: string): string {
   return value.replace(/["\r\n]/g, "");
@@ -142,9 +165,11 @@ function mediaPlaylistUri(track: string): string {
 }
 
 /**
- * Pure master-playlist builder (exported for tests): the video ladder
- * (highest first, as the byte-range master orders it) sharing one audio
- * group. The first audio track is the default — the connector lists the
+ * Pure master-playlist builder (exported for tests): the AV1 ladder, then the
+ * H.264 one, each highest first (as the byte-range master orders it), all
+ * sharing one audio group. A native player starts on the first variant it can
+ * decode, so AV1-capable devices start on AV1 and the rest on H.264, as
+ * before. The first audio track is the default — the connector lists the
  * original first.
  */
 export function buildSabrMasterPlaylist(
@@ -167,7 +192,12 @@ export function buildSabrMasterPlaylist(
   lines.push(...subtitles);
   const subtitlesGroup = subtitles.length > 0 ? `,SUBTITLES="subs"` : "";
   const audio = vod.audio[0] as SabrAudioTrack;
-  const reps = [...vod.video.reps].sort((a, b) => b.height - a.height);
+  const highestFirst = (reps: SabrVideoRep[]) =>
+    [...reps].sort((a, b) => b.height - a.height);
+  const reps = [
+    ...highestFirst(vod.av1?.reps ?? []),
+    ...highestFirst(vod.video.reps),
+  ];
   for (const v of reps) {
     const res = v.width && v.height ? `,RESOLUTION=${v.width}x${v.height}` : "";
     const codecs = [v.codecs, audio.codecs].filter(Boolean).join(",");
@@ -216,6 +246,36 @@ export function buildSabrMediaPlaylist(
  * playable.
  */
 const SABR_MANIFEST_TTL_MS = 10 * 60_000;
+
+/**
+ * How long the master waits for the AV1 ladder. The connector indexes an AV1
+ * seed track on first request (~0.2-1 s); past this the master goes out with
+ * H.264 only rather than hold up playback.
+ */
+const AV1_LADDER_BUDGET_MS = 5_000;
+
+/**
+ * `INVIDIOUS_COMPANION_SABR_HLS_AV1=off` drops the AV1 ladder (H.264 only,
+ * as before it existed): a switch for a device family that mis-plays it.
+ */
+export function sabrHlsAv1Enabled(): boolean {
+  const raw = (process.env.INVIDIOUS_COMPANION_SABR_HLS_AV1 ?? "")
+    .trim()
+    .toLowerCase();
+  return !["off", "false", "0", "no"].includes(raw);
+}
+
+async function fetchAv1Ladder(
+  videoId: string,
+): Promise<SabrVideoLadder | null> {
+  const mpd = await Promise.race([
+    fetchCompanionSabrVodManifest(videoId, null, "av01"),
+    new Promise<null>((resolve) =>
+      setTimeout(() => resolve(null), AV1_LADDER_BUDGET_MS),
+    ),
+  ]).catch(() => null);
+  return mpd ? parseSabrAv1Ladder(mpd) : null;
+}
 const sabrCache = new Map<
   string,
   { at: number; vod: Promise<SabrVod | null> }
@@ -228,9 +288,16 @@ export function fetchSabrVod(videoId: string): Promise<SabrVod | null> {
   }
   const hit = sabrCache.get(videoId);
   if (hit) return hit.vod;
+  const av1 = sabrHlsAv1Enabled()
+    ? fetchAv1Ladder(videoId)
+    : Promise.resolve(null);
   const vod = fetchCompanionSabrVodManifest(videoId)
     .then((mpd) => (mpd ? parseSabrVodManifest(mpd) : null))
-    .then((parsed) => {
+    .then(async (parsed) => {
+      if (parsed) {
+        const ladder = await av1;
+        if (ladder) parsed.av1 = ladder;
+      }
       // Don't remember a miss: the next request should ask again.
       if (!parsed) sabrCache.delete(videoId);
       return parsed;
@@ -260,8 +327,10 @@ export async function generateSabrMediaPlaylist(
 ): Promise<string | null> {
   const vod = await fetchSabrVod(videoId);
   if (!vod) return null;
-  if (vod.video.reps.some((r) => r.id === track)) {
-    return buildSabrMediaPlaylist(videoId, track, vod.video.timeline);
+  for (const ladder of [vod.video, vod.av1]) {
+    if (ladder?.reps.some((r) => r.id === track)) {
+      return buildSabrMediaPlaylist(videoId, track, ladder.timeline);
+    }
   }
   const audio = vod.audio.find((a) => a.id === track);
   return audio ? buildSabrMediaPlaylist(videoId, track, audio.timeline) : null;

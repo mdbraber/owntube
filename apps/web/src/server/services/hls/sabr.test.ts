@@ -1,7 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildSabrMasterPlaylist,
   buildSabrMediaPlaylist,
+  fetchSabrVod,
+  generateSabrMasterPlaylist,
+  generateSabrMediaPlaylist,
+  parseSabrAv1Ladder,
   parseSabrVodManifest,
 } from "@/server/services/hls/sabr";
 
@@ -189,5 +193,112 @@ describe("buildSabrMediaPlaylist", () => {
     });
     expect(out).toContain("/sabr/a-default/seg-0.m4s\n");
     expect(out).toContain("/sabr/a-default/seg-1.m4s\n");
+  });
+});
+
+/** The connector's `?video=av01` answer: the AV1 family ladder, own timeline. */
+const AV1_MPD = MPD.replace(
+  /<Representation id="v360"[\s\S]*?height="720" bandwidth="4206005"\/>/,
+  [
+    '<Representation id="av01-v720" codecs="av01.0.08M.08" width="1280" height="720" bandwidth="1500000"/>',
+    '      <Representation id="av01-v2160" codecs="av01.0.13M.08" width="3840" height="2160" bandwidth="22000000"/>',
+  ].join("\n"),
+)
+  .replace(
+    /<S d="61952"\/>[\s\S]*?<S d="30720"\/>/,
+    '<S d="4033"/>\n          <S d="4334"/>',
+  )
+  .replace('timescale="15360"', 'timescale="1000"');
+
+describe("parseSabrAv1Ladder", () => {
+  it("reads the AV1 rungs and their own timeline", () => {
+    const ladder = parseSabrAv1Ladder(AV1_MPD);
+    expect(ladder?.reps.map((r) => r.id)).toEqual(["av01-v720", "av01-v2160"]);
+    expect(ladder?.timeline).toEqual({
+      timescale: 1000,
+      startNumber: 1,
+      durations: [4033, 4334],
+    });
+  });
+
+  it("is null when the connector fell back to its H.264 ladder", () => {
+    expect(parseSabrAv1Ladder(MPD)).toBeNull();
+  });
+});
+
+describe("buildSabrMasterPlaylist with an AV1 ladder", () => {
+  it("lists AV1 first, then H.264, each highest first", () => {
+    const vod = parseSabrVodManifest(MPD);
+    const av1 = parseSabrAv1Ladder(AV1_MPD);
+    if (!vod || !av1) throw new Error("fixture did not parse");
+    const out = buildSabrMasterPlaylist({ ...vod, av1 });
+    const variants = out
+      .split("\n")
+      .filter((l) => /^sabr\.m3u8\?track=(v|av01-)/.test(l));
+    expect(variants).toEqual([
+      "sabr.m3u8?track=av01-v2160",
+      "sabr.m3u8?track=av01-v720",
+      "sabr.m3u8?track=v1080",
+      "sabr.m3u8?track=v720",
+      "sabr.m3u8?track=v360",
+    ]);
+    expect(out).toContain(
+      '#EXT-X-STREAM-INF:BANDWIDTH=22050452,RESOLUTION=3840x2160,CODECS="av01.0.13M.08,mp4a.40.5",AUDIO="aud"\nsabr.m3u8?track=av01-v2160',
+    );
+  });
+});
+
+describe("fetchSabrVod", () => {
+  const COMPANION = "http://companion.test";
+  let fetchMock: ReturnType<typeof vi.fn>;
+  beforeEach(() => {
+    vi.stubEnv("INVIDIOUS_COMPANION_INTERNAL_URL", COMPANION);
+    vi.stubEnv("INVIDIOUS_COMPANION_SECRET_KEY", "");
+    fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it("adds the AV1 ladder, and serves each track on its own timeline", async () => {
+    fetchMock.mockImplementation(
+      async (u: string | URL) =>
+        new Response(String(u).includes("video=av01") ? AV1_MPD : MPD),
+    );
+    const id = "av1test0001";
+    const master = await generateSabrMasterPlaylist(id, async () => []);
+    expect(master).toContain("sabr.m3u8?track=av01-v2160");
+    expect(master).toContain("sabr.m3u8?track=v1080");
+    const av1 = await generateSabrMediaPlaylist(id, "av01-v2160");
+    expect(av1).toContain("#EXTINF:4.033000,");
+    expect(av1).toContain(`/dash/${id}/sabr/av01-v2160/seg-2.m4s`);
+    const h264 = await generateSabrMediaPlaylist(id, "v1080");
+    expect(h264).toContain("#EXTINF:4.033333,");
+  });
+
+  it("leaves AV1 out when INVIDIOUS_COMPANION_SABR_HLS_AV1=off", async () => {
+    vi.stubEnv("INVIDIOUS_COMPANION_SABR_HLS_AV1", "off");
+    fetchMock.mockImplementation(
+      async (u: string | URL) =>
+        new Response(String(u).includes("video=av01") ? AV1_MPD : MPD),
+    );
+    const vod = await fetchSabrVod("av1test0003");
+    expect(vod?.av1).toBeUndefined();
+    expect(
+      fetchMock.mock.calls.some(([u]) => String(u).includes("video=av01")),
+    ).toBe(false);
+  });
+
+  it("keeps H.264 alone when the video has no AV1 or the AV1 fetch fails", async () => {
+    fetchMock.mockImplementation(async (u: string | URL) =>
+      String(u).includes("video=av01")
+        ? new Response("", { status: 502 })
+        : new Response(MPD),
+    );
+    const vod = await fetchSabrVod("av1test0002");
+    expect(vod?.av1).toBeUndefined();
+    expect(vod?.video.reps).toHaveLength(3);
   });
 });

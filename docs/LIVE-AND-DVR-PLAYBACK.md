@@ -125,13 +125,21 @@ ordinary video:
 | `always` | the companion's SABR connector first, byte-range formats when it has nothing |
 
 The connector (`sabr-vod.ts`) pulls the video over YouTube's SABR protocol on
-the companion and cuts it into a `SegmentTemplate` manifest. Its ladder is
-what SABR hands an ANDROID_VR session: H.264 + AAC, capped at the companion's
-`SABR_MAX_HEIGHT` (1080). So `always` costs the >1080p rungs and shifts the
-per-viewer download onto the companion; it exists for the day YouTube stops
-publishing byte-range formats for VOD, and for testing the connector before
-then. `fallback` is the safe way to run it: nothing changes while the formats
-exist.
+the companion and cuts it into a `SegmentTemplate` manifest. Its default
+ladder is H.264 + AAC to 1080p (decodes everywhere). Since 2026-11-24 it also
+serves codec-family ladders past 1080p:
+
+- **DASH** (browsers with MSE): the player's codec probe asks for
+  `manifest.mpd?video=vp9|av01` and gets VP9 (WebM) or AV1 (fMP4) to 2160p;
+  `avc` gets the default ladder.
+- **HLS** (`hls/sabr.ts`; Safari on iPhone/iPad, the iOS app): one master
+  lists the AV1 ladder ahead of the H.264 one. A player without an AV1
+  decoder (on Apple: hardware AV1, A17 Pro / M3 and later) skips those
+  variants by their `CODECS` and plays H.264 as before. VP9 can't go here:
+  Apple's HLS doesn't take WebM. `INVIDIOUS_COMPANION_SABR_HLS_AV1=off` drops
+  the AV1 variants. Videos without an AV1 encode stay at 1080p on Apple.
+
+`always` shifts the per-viewer download onto the companion.
 
 OwnTube rewrites the connector's template to `/dash/<id>/sabr/<track>/init.mp4`
 and `/dash/<id>/sabr/<track>/seg-<n>.m4s` on the media origin, proxied to the
@@ -186,10 +194,8 @@ Verified 2026-09-23 with that image side by side and owntube-dev on
 `INVIDIOUS_COMPANION_SABR_VOD=always`: Big Buck Bunny and a 39-minute talk
 with 21 dubs play from the start, seek to 120 s in about 4 s (dash.js's own
 buffering; the companion answers in ~50 ms), with every segment 200 and the
-companion at ~1 GB peak against a 640 MB idle baseline. The ladder is still
-H.264 to `SABR_MAX_HEIGHT`, so `always` still costs the VP9/AV1 rungs above
-1080p; `fallback` remains the setting that changes nothing while byte-range
-formats exist.
+companion at ~1 GB peak against a 640 MB idle baseline. (The ladder was then
+H.264 to `SABR_MAX_HEIGHT`; the >1080p family ladders above came later.)
 
 ## Configuration
 
