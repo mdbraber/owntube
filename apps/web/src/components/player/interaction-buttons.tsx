@@ -202,7 +202,6 @@ export function InteractionButtons({
         ) : null}
       </div>
       {toggle("queue")}
-      {isAuthenticated ? <PlayOnTvButton videoId={videoId} /> : null}
       <ShareDialog
         videoId={videoId}
         open={shareOpen}
@@ -240,106 +239,5 @@ export function InteractionButtons({
         ]}
       />
     </div>
-  );
-}
-
-/**
- * "Play on TV": offered while one of the user's TVs is on (it polls
- * `tvRemote.poll`). Sends this video from the current position and pauses
- * it here. The TVs are always listed first, so a stray tap on the button
- * doesn't start the video on a TV.
- */
-function PlayOnTvButton({ videoId }: { videoId: string }) {
-  const devices = trpc.tvRemote.devices.useQuery(undefined, {
-    refetchInterval: 15_000,
-  });
-  const send = trpc.tvRemote.sendToDevice.useMutation();
-  const { showToast } = useActionToast();
-  const [open, setOpen] = useState(false);
-  const tvs = devices.data ?? [];
-  if (tvs.length === 0) return null;
-
-  const playOn = (tv: { deviceId: string; name: string }) => {
-    setOpen(false);
-    const video = document.querySelector<HTMLVideoElement>(
-      "[data-ot-player-root] video",
-    );
-    const at =
-      video && Number.isFinite(video.currentTime) ? video.currentTime : 0;
-    send.mutate(
-      {
-        deviceId: tv.deviceId,
-        videoId,
-        startSeconds: at > 5 ? Math.floor(at) : undefined,
-      },
-      {
-        onSuccess: ({ ok }) => {
-          if (!ok) {
-            showToast(`${tv.name} is no longer on`);
-            return;
-          }
-          video?.pause();
-          showToast(`Playing on ${tv.name}`);
-        },
-        onError: () => showToast("Couldn't reach the TV"),
-      },
-    );
-  };
-
-  const only = tvs.length === 1 ? tvs[0] : undefined;
-  return (
-    <div className="relative">
-      <button
-        type="button"
-        className={cn(pillBase, "rounded-full px-3 sm:px-4", pillTone(false))}
-        disabled={send.isPending}
-        title={only ? `Play on ${only.name}` : "Play on a TV"}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-      >
-        <TvIcon />
-        <span className="hidden sm:inline">
-          {only ? `Play on ${only.name}` : "Play on TV"}
-        </span>
-      </button>
-      {open ? (
-        <div
-          role="menu"
-          className="absolute left-0 top-full z-40 mt-1.5 w-56 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] py-1 text-sm shadow-lg"
-        >
-          {tvs.map((tv) => (
-            <button
-              key={tv.deviceId}
-              type="button"
-              role="menuitem"
-              className="block w-full px-3 py-2 text-left hover:bg-[hsl(var(--muted))]"
-              onClick={() => playOn(tv)}
-            >
-              {tv.name}
-            </button>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function TvIcon() {
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <rect x="2" y="7" width="20" height="15" rx="2" />
-      <polyline points="17 2 12 7 7 2" />
-    </svg>
   );
 }
