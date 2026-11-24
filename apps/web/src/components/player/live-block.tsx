@@ -128,6 +128,7 @@ export function LiveBlock({
         ref={videoRef}
         poster={poster}
         playsInline
+        x-webkit-airplay="allow"
         preload="auto"
         // src + caption <track>s are on the media origin (media-origin.ts);
         // cross-origin <track> loading requires this. No credentials needed.

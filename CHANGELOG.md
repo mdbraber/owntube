@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Player: a "Play on a TV" button (AirPlay, and Cast where the browser offers it) through the standard Remote Playback API. It only appears when a receiver is reachable, and shows disabled with a reason for streams that can't be sent (Media Source playback).
+
+### Fixed
+
+- AirPlay: the stall watchdog no longer seeks every ~12 s while the video plays on an Apple TV, which made the receiver rebuffer.
+
+- iPhone/iPad: videos with captions failed to start on native HLS (`MEDIA_ERR_SRC_NOT_SUPPORTED`) and fell back to the progressive split path, which stalls on iOS and has no audio-language picker. Caption `<track>`s are now attached once the source has loaded metadata.
+
 ## [0.1.0] - 2026-04-27
 
 First public release. The full backlog (P0 → P3) is implemented and reasonably stable on a single-user setup.
