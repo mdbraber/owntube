@@ -65,8 +65,11 @@ EXPO_PUBLIC_OWNTUBE_URL=https://owntube.example.org NODE_ENV=production \
 
 ## Releases
 
-- **Version:** bump `version` and `android.versionCode` in `app.json` for every
-  release. The update check compares `versionCode`.
+- **Version:** every release bumps `version` (in `app.json` and `package.json`) and
+  `android.versionCode` in `app.json`. `version` follows [semver](https://semver.org): patch
+  (0.2.0 → 0.2.1) for bug fixes, minor (0.2.1 → 0.3.0) for new features, major for breaking
+  changes (e.g. a TV build that needs a newer server). `versionCode` goes up by 1 every release,
+  whatever part of `version` changed; the update check compares `versionCode`.
 - **Signing:** set `OWNTUBE_TV_KEYSTORE` (plus `OWNTUBE_TV_KEYSTORE_PASSWORD`,
   optionally `OWNTUBE_TV_KEY_ALIAS` / `OWNTUBE_TV_KEY_PASSWORD`) for both
   prebuild and gradle. `plugins/with-release-signing.js` then signs the release
