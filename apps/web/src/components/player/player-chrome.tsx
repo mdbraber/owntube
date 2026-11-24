@@ -10,6 +10,11 @@ import {
   useState,
 } from "react";
 import {
+  CastAudioNotice,
+  CastButton,
+  CastMenuItem,
+} from "@/components/player/player-cast";
+import {
   formatClock,
   LIVE_EDGE_SECONDS,
 } from "@/components/player/player-constants";
@@ -49,7 +54,10 @@ import {
   useSeekIndicator,
 } from "@/components/player/player-overlay";
 import { StatsForNerdsOverlay } from "@/components/player/player-stats";
-import type { ChromeProps } from "@/components/player/player-types";
+import type {
+  ChromeProps,
+  PlayerAdapter,
+} from "@/components/player/player-types";
 import { ScrubPreviewStage } from "@/components/player/scrub-preview";
 import { Sheet } from "@/components/ui/sheet";
 import { useVideoActions } from "@/components/videos/use-video-actions";
@@ -387,6 +395,8 @@ export function PlayerChrome({
         <PipIcon className="h-10 w-10" />
         <span>Playing in Picture in Picture</span>
       </div>
+
+      <CastAudioNotice adapter={adapter} />
 
       {/* On-video scrub preview: while actively dragging the scrubber, the frame
           fills the whole video area (YouTube-style) with the target time floated
@@ -940,6 +950,8 @@ export function PlayerChrome({
                   <PipIcon className="h-5 w-5" />
                 </button>
               ) : null}
+
+              {hydrated ? <CastButton adapter={adapter} /> : null}
             </div>
           </div>
         </div>
@@ -963,6 +975,7 @@ export function PlayerChrome({
           canPip={false}
           pipActive={adapter.pictureInPicture}
           onTogglePip={() => adapter.togglePictureInPicture()}
+          adapter={adapter}
         />
       ) : null}
 
@@ -1005,6 +1018,7 @@ function PlayerMobileMenu({
   canPip,
   pipActive,
   onTogglePip,
+  adapter,
   open,
   onOpenChange,
   shellRef,
@@ -1020,12 +1034,16 @@ function PlayerMobileMenu({
   canPip: boolean;
   pipActive: boolean;
   onTogglePip: () => void;
+  /** For the cast row. */
+  adapter: PlayerAdapter;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** The element that goes fullscreen — the sheet portals into it so it also paints there. */
   shellRef: React.RefObject<HTMLElement | null>;
 }) {
   const onClose = () => onOpenChange(false);
+  const hasActions =
+    Boolean(nextUp) || canPip || adapter.castButton !== "hidden";
   return (
     <Sheet
       open={open}
@@ -1035,7 +1053,7 @@ function PlayerMobileMenu({
       panelClassName="border-white/10 bg-zinc-950/95 text-zinc-100 backdrop-blur-md"
       contentClassName="text-sm"
     >
-      {nextUp || canPip ? (
+      {hasActions ? (
         <div className="px-1 py-1">
           {nextUp ? (
             <>
@@ -1093,9 +1111,10 @@ function PlayerMobileMenu({
               </span>
             </button>
           ) : null}
+          <CastMenuItem adapter={adapter} onClose={onClose} />
         </div>
       ) : null}
-      <div className={nextUp || canPip ? "border-t border-white/10" : ""}>
+      <div className={hasActions ? "border-t border-white/10" : ""}>
         <SettingsMenu
           variant="embedded"
           quality={quality}

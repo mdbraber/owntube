@@ -6,6 +6,7 @@ import type {
   QualityModel,
 } from "@/components/player/player-quality";
 import type { ScrubPreviewConfig } from "@/hooks/use-scrub-frame-preview";
+import type { CastButtonState } from "@/lib/remote-playback";
 import type { SponsorBlockSegment } from "@/lib/sponsorblock";
 import type { SponsorBlockPrefs } from "@/lib/sponsorblock-prefs";
 import type { VideoChapter } from "@/lib/video-chapters";
@@ -37,6 +38,14 @@ export type PlayerAdapter = {
   canPictureInPicture: boolean;
   pictureInPicture: boolean;
   togglePictureInPicture(): void;
+  /** AirPlay / Cast button: hidden, offered, or shown disabled with a reason. */
+  castButton: CastButtonState;
+  /** Playing on a receiver right now. */
+  castActive: boolean;
+  /** While casting, the sound still comes from this device (see adapter). */
+  castAudioStaysLocal: boolean;
+  /** Opens the device picker; call synchronously from the click. */
+  showCastPicker(): void;
 };
 
 export type ChromeProps = SponsorBlockChromeProps & {

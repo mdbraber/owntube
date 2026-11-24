@@ -193,6 +193,7 @@ export function NativeMuxedBlock({
         src={src}
         poster={poster}
         playsInline
+        x-webkit-airplay="allow"
         preload="auto"
         autoPlay={
           (shortsMode && shortsActive) || miniShouldAutoplay || autoplay

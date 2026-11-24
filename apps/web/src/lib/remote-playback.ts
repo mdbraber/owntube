@@ -21,3 +21,27 @@ export function isPlayingRemotely(media: RemoteAwareMedia): boolean {
     media.remote?.state === "connected"
   );
 }
+
+/**
+ * What the player's cast button shows:
+ * - `hidden`: no receiver is known (or the browser can't tell), so no button —
+ *   most viewers never see a dead icon;
+ * - `castable`: a receiver is there and this source can go to it;
+ * - `unavailable`: a receiver is there but this source can't. Media Source
+ *   playback (hls.js/dash.js, a `blob:` URL) only renders locally, and dash.js
+ *   sets `disableRemotePlayback` for ManagedMediaSource. Casting would send a
+ *   black or silent picture, so the button says why instead.
+ */
+export type CastButtonState = "hidden" | "castable" | "unavailable";
+
+export function castButtonState(opts: {
+  receiverAvailable: boolean;
+  disableRemotePlayback: boolean;
+  currentSrc: string;
+}): CastButtonState {
+  if (!opts.receiverAvailable) return "hidden";
+  if (opts.disableRemotePlayback || opts.currentSrc.startsWith("blob:")) {
+    return "unavailable";
+  }
+  return "castable";
+}

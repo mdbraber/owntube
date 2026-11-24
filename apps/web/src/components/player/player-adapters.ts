@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PlayerAdapter } from "@/components/player/player-types";
+import { useRemotePlayback } from "@/hooks/use-remote-playback";
 import {
   attachPeakLimiter,
   resumePeakLimiter,
   suspendPeakLimiter,
 } from "@/lib/audio-peak-limiter";
 import { volumeGainFor } from "@/lib/player-volume-gain";
-import { isPlayingRemotely } from "@/lib/remote-playback";
+import { castButtonState, isPlayingRemotely } from "@/lib/remote-playback";
 
 export function useNativeAdapter(opts: {
   videoRef: React.RefObject<HTMLVideoElement | null>;
@@ -26,14 +27,31 @@ export function useNativeAdapter(opts: {
   const limiterActiveRef = useRef(false);
   const activatedRef = useRef(false);
 
+  const remotePlayback = useRemotePlayback(videoRef.current);
+  const castButton = castButtonState({
+    receiverAvailable: remotePlayback.receiverAvailable,
+    disableRemotePlayback: videoRef.current?.disableRemotePlayback ?? false,
+    currentSrc: videoRef.current?.currentSrc ?? "",
+  });
+  // Read by ensureLimiter, which runs from event handlers.
+  const castableRef = useRef(false);
+  castableRef.current = castButton === "castable";
+
   // The audible element is the companion <audio> when present (the <video> is
   // muted in split mode), otherwise the muxed <video> itself. Attach the peak
   // limiter to it once the user has activated playback.
+  //
+  // Except on a <video> that could be cast: Web Audio output never follows the
+  // element to an AirPlay receiver, and once wired an element can't be
+  // unwired, so the receiver would get picture without sound. The volume
+  // attenuation fallback covers fast speeds instead. (The companion <audio>
+  // of split playback doesn't cast either way, so it keeps the limiter.)
   const ensureLimiter = useCallback(() => {
     if (!activatedRef.current) return;
     if (!limiterActiveRef.current) {
-      const el = audioRef.current ?? videoRef.current;
-      limiterActiveRef.current = attachPeakLimiter(el);
+      const a = audioRef.current;
+      if (!a && castableRef.current) return;
+      limiterActiveRef.current = attachPeakLimiter(a ?? videoRef.current);
     }
     if (limiterActiveRef.current) resumePeakLimiter();
   }, [audioRef, videoRef]);
@@ -430,5 +448,11 @@ export function useNativeAdapter(opts: {
         void el.requestPictureInPicture().catch(() => {});
       }
     },
+    castButton,
+    castActive: remotePlayback.active,
+    // Split playback's companion <audio>, and a <video> already routed through
+    // the peak limiter, keep their sound on this device while casting.
+    castAudioStaysLocal: Boolean(audioRef.current) || limiterActiveRef.current,
+    showCastPicker: remotePlayback.prompt,
   };
 }

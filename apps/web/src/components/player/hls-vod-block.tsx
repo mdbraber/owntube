@@ -386,6 +386,7 @@ export function HlsVodBlock({
         poster={shortsMode ? undefined : poster}
         muted={shortsMode}
         playsInline
+        x-webkit-airplay="allow"
         preload="auto"
         // Video/segments (dash.js/hls.js fetch these themselves, unaffected
         // by this attribute) and caption <track>s now live on the media

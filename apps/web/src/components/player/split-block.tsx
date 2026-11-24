@@ -472,6 +472,7 @@ export function SplitBlock({
         src={video}
         poster={poster}
         playsInline
+        x-webkit-airplay="allow"
         muted
         preload="auto"
         autoPlay={shortsMode || autoplay}
