@@ -2,6 +2,7 @@
 
 import type Hls from "hls.js";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { registerStatsSource } from "@/components/player/player-stats";
 import { languageFirstAudioMenuLabel } from "@/lib/audio-track-label";
 import {
   buildHlsSameOriginConfig,
@@ -217,7 +218,12 @@ export function useHlsVodPlayback(
       video.addEventListener("error", onError);
       video.src = src;
       video.load();
+      const unregisterStats = registerStatsSource(video, () => ({
+        engine: "Native HLS",
+        src,
+      }));
       return () => {
+        unregisterStats();
         setAudioImplRef.current = () => {};
         trackEvents?.removeEventListener("addtrack", syncNativeAudio);
         trackEvents?.removeEventListener("removetrack", syncNativeAudio);
@@ -235,6 +241,7 @@ export function useHlsVodPlayback(
     // proxies any stray CDN URL.
     let cancelled = false;
     let hls: Hls | null = null;
+    let unregisterStats = () => {};
     const mediaOrigin = getMediaOrigin(getClientAppOrigin());
     const releaseFetchGuard = installSameOriginMediaFetchGuard(mediaOrigin);
     void (async () => {
@@ -278,12 +285,31 @@ export function useHlsVodPlayback(
       setAudioImplRef.current = (i: number) => {
         if (hlsRef.current) hlsRef.current.audioTrack = i;
       };
+      const instance = hls;
+      unregisterStats = registerStatsSource(video, () => {
+        const level = instance.levels[instance.currentLevel];
+        const track = instance.audioTracks[instance.audioTrack];
+        return {
+          engine: `hls.js ${HlsCtor.version}`,
+          src,
+          renditionUrl: level?.uri,
+          width: level?.width,
+          height: level?.height,
+          frameRate: level?.frameRate,
+          videoCodec: level?.videoCodec,
+          audioCodec: track?.audioCodec ?? level?.audioCodec,
+          bitrateKbps: level ? level.bitrate / 1000 : undefined,
+          bandwidthKbps: instance.bandwidthEstimate / 1000,
+          abr: instance.autoLevelEnabled ? "Auto" : "Manual",
+        };
+      });
       hls.loadSource(src);
       hls.attachMedia(video);
     })();
 
     return () => {
       cancelled = true;
+      unregisterStats();
       setAudioImplRef.current = () => {};
       releaseFetchGuard();
       hls?.destroy();

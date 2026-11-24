@@ -41,6 +41,7 @@ import {
   VolLowIcon,
 } from "@/components/player/player-icons";
 import { usePlayerKeyboardShortcuts } from "@/components/player/player-keyboard";
+import { StatsForNerdsOverlay } from "@/components/player/player-stats";
 import type { ChromeProps } from "@/components/player/player-types";
 import { ScrubPreviewStage } from "@/components/player/scrub-preview";
 import { Sheet } from "@/components/ui/sheet";
@@ -386,6 +387,10 @@ export function PlayerChrome({
           </div>
         </div>
       ) : null}
+
+      {miniMode || shortsMode ? null : (
+        <StatsForNerdsOverlay shellRef={shellRef} videoId={videoId} />
+      )}
 
       {hold2xUi ? (
         <div

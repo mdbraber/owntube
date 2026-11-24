@@ -26,6 +26,7 @@ import {
   type QualityModel,
   qualityShortLabel,
 } from "@/components/player/player-quality";
+import { useStatsForNerds } from "@/components/player/player-stats";
 import type { PlayerAdapter } from "@/components/player/player-types";
 import { ScrubPreviewOverlay } from "@/components/player/scrub-preview";
 import type { ScrubPreviewConfig } from "@/hooks/use-scrub-frame-preview";
@@ -64,6 +65,8 @@ export function SettingsMenu({
   variant?: "popover" | "embedded";
 }) {
   const [view, setView] = useState<SettingsView>("root");
+  const statsOn = useStatsForNerds((st) => st.on);
+  const toggleStats = useStatsForNerds((st) => st.toggle);
   useEffect(() => {
     if (audio.kind === "none" && view === "audio") setView("root");
     if (captions.kind === "none" && view === "captions") setView("root");
@@ -142,6 +145,23 @@ export function SettingsMenu({
               </button>
             </li>
           ) : null}
+          <li>
+            <button
+              type="button"
+              role="menuitemcheckbox"
+              aria-checked={statsOn}
+              onClick={() => {
+                toggleStats();
+                onClose();
+              }}
+              className="flex w-full items-center justify-between gap-2 px-3 py-2 text-zinc-100 hover:bg-white/10"
+            >
+              <span>Stats for nerds</span>
+              <span className="text-xs text-zinc-400">
+                {statsOn ? "On" : "Off"}
+              </span>
+            </button>
+          </li>
           {variant === "popover" ? (
             <li className="border-t border-white/10">
               <button

@@ -7,6 +7,7 @@ import type {
   Representation,
 } from "dashjs";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { registerStatsSource } from "@/components/player/player-stats";
 import { languageFirstAudioMenuLabel } from "@/lib/audio-track-label";
 import {
   getClientAppOrigin,
@@ -175,6 +176,7 @@ export function useDashPlayback(
 
     let cancelled = false;
     let player: MediaPlayerClass | null = null;
+    let unregisterStats = () => {};
     let portalObserver: ResizeObserver | null = null;
     let onFullscreenChange: (() => void) | null = null;
     const mediaOrigin = getMediaOrigin(getClientAppOrigin());
@@ -560,6 +562,23 @@ export function useDashPlayback(
       // NaN, not 0, when there's no resume point: dash.js reads NaN as
       // "unset" (the start for VOD, the live edge for a dynamic manifest),
       // whereas 0 would start a live stream at the oldest segment it lists.
+      const instance = player;
+      unregisterStats = registerStatsSource(video, () => {
+        const v = instance.getCurrentRepresentationForType("video");
+        const a = instance.getCurrentRepresentationForType("audio");
+        return {
+          engine: `dash.js ${instance.getVersion()}`,
+          src: manifestUrl,
+          width: v?.width,
+          height: v?.height,
+          frameRate: v?.frameRate,
+          videoCodec: v?.codecs ?? undefined,
+          audioCodec: a?.codecs ?? undefined,
+          bitrateKbps: v ? v.bandwidth / 1000 : undefined,
+          bandwidthKbps: instance.getAverageThroughput("video"),
+          abr: qualityStateRef.current.mode === "auto" ? "Auto" : "Manual",
+        };
+      });
       player.initialize(
         video,
         manifestUrl,
@@ -573,6 +592,7 @@ export function useDashPlayback(
 
     return () => {
       cancelled = true;
+      unregisterStats();
       portalObserver?.disconnect();
       if (onFullscreenChange) {
         document.removeEventListener("fullscreenchange", onFullscreenChange);
