@@ -65,11 +65,13 @@ EXPO_PUBLIC_OWNTUBE_URL=https://owntube.example.org NODE_ENV=production \
 
 ## Releases
 
-- **Version:** every release bumps `version` (in `app.json` and `package.json`) and
-  `android.versionCode` in `app.json`. `version` follows [semver](https://semver.org): patch
-  (0.2.0 → 0.2.1) for bug fixes, minor (0.2.1 → 0.3.0) for new features, major for breaking
-  changes (e.g. a TV build that needs a newer server). `versionCode` goes up by 1 every release,
-  whatever part of `version` changed; the update check compares `versionCode`.
+- **Version:** every release bumps `version` in `package.json`, and only there. It follows
+  [semver](https://semver.org): patch (0.2.0 → 0.2.1) for bug fixes, minor (0.2.1 → 0.3.0) for
+  new features, major for breaking changes (e.g. a TV build that needs a newer server).
+  `android.versionCode`, which the update check and Android's installer compare, is derived:
+  major × 10000 + minor × 100 + patch (0.4.0 → 400), so minor and patch stay below 100.
+  `app.config.js` sets both for Expo, and the `with-version-from-package` plugin makes gradle
+  read them from `package.json` at build time, so a bump needs no new `expo prebuild`.
 - **Signing:** set `OWNTUBE_TV_KEYSTORE` (plus `OWNTUBE_TV_KEYSTORE_PASSWORD`,
   optionally `OWNTUBE_TV_KEY_ALIAS` / `OWNTUBE_TV_KEY_PASSWORD`) for both
   prebuild and gradle. `plugins/with-release-signing.js` then signs the release
@@ -83,8 +85,8 @@ EXPO_PUBLIC_OWNTUBE_URL=https://owntube.example.org NODE_ENV=production \
   `apps/web/data/tv-releases/`):
 
   ```json
-  { "version": "0.3.0", "versionCode": 3,
-    "apkUrl": "/tv/download/owntube-tv-0.3.0.apk", "notes": "What changed" }
+  { "version": "0.4.0", "versionCode": 400,
+    "apkUrl": "/tv/download/owntube-tv-0.4.0.apk", "notes": "What changed" }
   ```
 
   The server serves it at `/tv/update.json` and the APK at

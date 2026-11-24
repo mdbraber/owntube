@@ -2,14 +2,12 @@
   "expo": {
     "name": "OwnTube",
     "slug": "owntube-tv",
-    "version": "0.4.0",
     "orientation": "landscape",
     "userInterfaceStyle": "dark",
     "platforms": ["android"],
     "android": {
       "package": "com.mdbraber.owntube.tv",
       "icon": "./assets/icon.png",
-      "versionCode": 5,
       "intentFilters": [
         {
           "action": "VIEW",
