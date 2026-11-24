@@ -1,6 +1,6 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { newerPublished } from "@/lib/published-sort-key";
+import { sortVideosNewestFirst } from "@/lib/published-sort-key";
 import { RateLimitExceededError } from "@/server/errors/rate-limit-exceeded";
 import { UpstreamUnavailableError } from "@/server/errors/upstream-unavailable";
 import { patchVideosWithChannelRss } from "@/server/rss/patch";
@@ -47,15 +47,17 @@ export const channelRouter = router({
         // at request time and its view counts are sometimes 0 — see
         // patchVideosWithChannelRss. The subscriptions feed already corrected
         // for this; a channel's own page showed the raw values.
-        const videos = await patchVideosWithChannelRss(ctx.db, page.videos);
-        // Re-sort within the page, as the merged feed does after the same
-        // patch. Upstream ordered this list by the dates we just replaced, so a
-        // row whose date was wrong sits in the wrong place — most visibly the
-        // one dated "now" that upstream therefore put first.
-        const nowSec = Math.floor(Date.now() / 1000);
+        //
+        // Sorted again afterwards. fetchChannelPage already orders the page
+        // newest-first (sortVideosNewestFirst), but by the dates Invidious
+        // derived — and a broken row's date is "now", so it arrives at the
+        // top. Once the patch has given it its real date, the same sort puts
+        // it back where it belongs.
         return {
           ...page,
-          videos: [...videos].sort((a, b) => newerPublished(a, b, nowSec)),
+          videos: sortVideosNewestFirst(
+            await patchVideosWithChannelRss(ctx.db, page.videos),
+          ),
         };
       } catch (e) {
         if (e instanceof UpstreamUnavailableError) {
