@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   type ComponentProps,
   type MouseEvent as ReactMouseEvent,
@@ -35,12 +36,18 @@ import {
   PauseIcon,
   PipIcon,
   PlayIcon,
-  SkipBack15Icon,
-  SkipForward15Icon,
   VolHighIcon,
   VolLowIcon,
 } from "@/components/player/player-icons";
 import { usePlayerKeyboardShortcuts } from "@/components/player/player-keyboard";
+import {
+  PlayPauseBezel,
+  SeekIndicator,
+  TouchTransport,
+  useCoarsePointer,
+  usePreviousVideo,
+  useSeekIndicator,
+} from "@/components/player/player-overlay";
 import { StatsForNerdsOverlay } from "@/components/player/player-stats";
 import type { ChromeProps } from "@/components/player/player-types";
 import { ScrubPreviewStage } from "@/components/player/scrub-preview";
@@ -83,6 +90,14 @@ export function PlayerChrome({
   const [hydrated, setHydrated] = useState(false);
   const { active: fsActive, toggle: toggleFs } = useFullscreenShell(shellRef);
   const { visible, ping, hide } = useIdleVisible(adapter.paused, settingsOpen);
+  const router = useRouter();
+  const coarse = useCoarsePointer();
+  const { seekIndicator, showSeek } = useSeekIndicator();
+  const previousVideoId = usePreviousVideo(videoId, !miniMode && !shortsMode);
+  // Last touch tap on a side of the video, for double-tap seeking.
+  const lastTapRef = useRef<{ at: number; side: "back" | "forward" } | null>(
+    null,
+  );
   const [scrub, setScrub] = useState<number | null>(null);
   const [showVolPanel, setShowVolPanel] = useState(false);
   const [queueOpen, setQueueOpen] = useState(false);
@@ -154,6 +169,8 @@ export function PlayerChrome({
     onExitCinema,
     onToggleCinema,
     onSettingsOpenChange,
+    onSeekKey: (delta) => seekBy(delta, "key"),
+    globalShortcuts: !miniMode && !shortsMode,
   });
 
   useEffect(() => {
@@ -191,11 +208,27 @@ export function PlayerChrome({
       onSettingsOpenChange(false);
       return;
     }
-    // Touch: a tap on the video only brings the controls up (play/pause is
-    // the center button). Toggling here paused the video on every tap meant
-    // to reveal the controls — including taps on the hidden scrubber.
+    // Touch, as on YouTube: a tap shows or hides the controls (play/pause is
+    // the center button); a double tap on a side jumps 10 s that way, and
+    // further taps there while the marker shows keep adding 10 s.
     if (surfacePointerTypeRef.current === "touch" && !shortsMode) {
-      ping();
+      const rect = shellRef.current?.getBoundingClientRect();
+      const x = rect ? (e.clientX - rect.left) / rect.width : 0.5;
+      const side = x < 0.4 ? "back" : x > 0.6 ? "forward" : null;
+      const now = Date.now();
+      const last = lastTapRef.current;
+      lastTapRef.current = side ? { at: now, side } : null;
+      const continuing =
+        side &&
+        ((last && last.side === side && now - last.at < 300) ||
+          (seekIndicator?.source === "tap" && seekIndicator.dir === side));
+      if (side && continuing) {
+        seekBy(side === "back" ? -10 : 10, "tap");
+        hide();
+        return;
+      }
+      if (visible && !adapter.paused) hide();
+      else ping();
       return;
     }
     adapter.togglePaused();
@@ -219,7 +252,8 @@ export function PlayerChrome({
     title,
     surface: "related",
   });
-  const skip = (delta: number) => {
+  /** Jump `delta` seconds and show the seek marker on that side. */
+  function seekBy(delta: number, source: "key" | "tap") {
     const d = adapter.duration;
     const target = adapter.currentTime + delta;
     adapter.seek(
@@ -227,8 +261,9 @@ export function PlayerChrome({
         ? Math.min(Math.max(0, target), d)
         : Math.max(0, target),
     );
-    ping();
-  };
+    showSeek(delta < 0 ? "back" : "forward", Math.abs(delta), source);
+    if (source === "key") ping();
+  }
   const liveClockOnly = isLive && (!Number.isFinite(duration) || duration <= 0);
   const liveWithDvr =
     isLive && Number.isFinite(duration) && duration > LIVE_EDGE_SECONDS;
@@ -255,7 +290,14 @@ export function PlayerChrome({
         onPointerUp={onSurfacePointerUp}
         onPointerCancel={onSurfacePointerUp}
         onPointerLeave={onSurfacePointerLeave}
-        onDoubleClick={shortsMode ? undefined : () => void toggleFs()}
+        onDoubleClick={
+          shortsMode
+            ? undefined
+            : () => {
+                // A touch double tap seeks (see onSurfaceClick), not fullscreen.
+                if (surfacePointerTypeRef.current !== "touch") void toggleFs();
+              }
+        }
         className="absolute inset-0 z-10 cursor-pointer bg-transparent"
       />
 
@@ -296,38 +338,18 @@ export function PlayerChrome({
         </div>
       ) : null}
 
-      {/* Center transport cluster — a big play/pause flanked by 15s skip
-          buttons (Apple-style), in every mode except mini. On shorts nothing is
+      {/* Shorts: an invisible center play button. Nothing is
           ever VISIBLE here (taps drive play/pause, button chrome just gets in
           the way of a feed) but the play button element stays mounted as an
           invisible tap target: a native click is reliable on iOS where the
           surface's synthetic click is not — so a center tap always toggles.
-          The skip buttons only capture while the chrome is up, so a side tap
-          otherwise reveals the controls. Buffering is covered by the spinner. */}
-      {!miniMode && !hold2xUi && !(adapter.waiting && !adapter.paused) ? (
+          Buffering is covered by the spinner. */}
+      {shortsMode && !hold2xUi && !(adapter.waiting && !adapter.paused) ? (
         // [container-type:size] makes cqmin below resolve against THIS box (the
         // whole player), so every button scales with the video — small inline,
         // large in fullscreen — clamped to sane min/max. Icons are a fraction of
         // their button, so they scale with it.
         <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center gap-[clamp(0.5rem,5cqmin,3.5rem)] [container-type:size]">
-          {!shortsMode ? (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                skip(-15);
-              }}
-              aria-label="Back 15 seconds"
-              className={cn(
-                "flex h-[clamp(3.25rem,15cqmin,7.5rem)] w-[clamp(3.25rem,15cqmin,7.5rem)] items-center justify-center rounded-full text-white transition hover:bg-black/40 active:scale-90 [&_svg]:drop-shadow-lg",
-                adapter.paused || chromeShown
-                  ? "pointer-events-auto opacity-100"
-                  : "opacity-0",
-              )}
-            >
-              <SkipBack15Icon className="h-1/2 w-1/2" />
-            </button>
-          ) : null}
           <button
             type="button"
             onClick={(e) => {
@@ -338,9 +360,7 @@ export function PlayerChrome({
             aria-label={adapter.paused ? "Play" : "Pause"}
             className={cn(
               "pointer-events-auto flex h-[clamp(4rem,20cqmin,10rem)] w-[clamp(4rem,20cqmin,10rem)] items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm transition active:scale-95",
-              !shortsMode && (adapter.paused || chromeShown)
-                ? "opacity-100"
-                : "opacity-0",
+              "opacity-0",
             )}
           >
             {adapter.paused ? (
@@ -349,43 +369,42 @@ export function PlayerChrome({
               <PauseIcon className="h-1/2 w-1/2" />
             )}
           </button>
-          {!shortsMode ? (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                skip(15);
-              }}
-              aria-label="Forward 15 seconds"
-              className={cn(
-                "flex h-[clamp(3.25rem,15cqmin,7.5rem)] w-[clamp(3.25rem,15cqmin,7.5rem)] items-center justify-center rounded-full text-white transition hover:bg-black/40 active:scale-90 [&_svg]:drop-shadow-lg",
-                adapter.paused || chromeShown
-                  ? "pointer-events-auto opacity-100"
-                  : "opacity-0",
-              )}
-            >
-              <SkipForward15Icon className="h-1/2 w-1/2" />
-            </button>
-          ) : null}
         </div>
       ) : null}
 
-      {/* Toggle hint icon (play/pause) — desktop only; phones use the big
-          center button above. Not on shorts: no play/pause chrome at all
-          there, taps speak for themselves. */}
-      {(centerHint ?? autoCenterHint) && !hold2xUi && !shortsMode ? (
-        <div
-          key={(centerHint ?? autoCenterHint)?.tick}
-          className="pointer-events-none absolute inset-0 z-20 hidden items-center justify-center sm:flex"
-        >
-          <div className="flex h-16 w-16 animate-[ot-hint-fade_1000ms_ease-in-out_forwards] items-center justify-center rounded-full bg-black/55 text-white">
-            {(centerHint ?? autoCenterHint)?.kind === "play" ? (
-              <BigPlayOverlayIcon className="h-10 w-10" />
-            ) : (
-              <PauseIcon className="h-9 w-9" />
-            )}
-          </div>
-        </div>
+      {/* Touch, YouTube-style: previous video · play/pause · next video over
+          a dimmed video while the controls show; seeking is a double tap on
+          either side. Desktop has no center buttons: a click toggles (with
+          the bezel below) and ← → / J L seek. */}
+      {coarse && !miniMode && !shortsMode && !hold2xUi ? (
+        <TouchTransport
+          shown={
+            (adapter.paused || chromeShown) &&
+            !(adapter.waiting && !adapter.paused) &&
+            !seekIndicator
+          }
+          paused={adapter.paused}
+          onTogglePaused={() => {
+            adapter.togglePaused();
+            ping();
+          }}
+          onPrev={
+            previousVideoId
+              ? () =>
+                  router.push(`/watch?v=${encodeURIComponent(previousVideoId)}`)
+              : null
+          }
+          onNext={nextUp ? onPlayNext : null}
+        />
+      ) : null}
+
+      {!miniMode && !shortsMode ? (
+        <SeekIndicator state={seekIndicator} />
+      ) : null}
+
+      {/* Desktop: after play/pause, the icon pops in the center and fades. */}
+      {!coarse && !hold2xUi && !shortsMode && !miniMode ? (
+        <PlayPauseBezel hint={centerHint ?? autoCenterHint} />
       ) : null}
 
       {miniMode || shortsMode ? null : (

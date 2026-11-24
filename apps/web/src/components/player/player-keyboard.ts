@@ -14,6 +14,39 @@ import type { PlayerAdapter } from "@/components/player/player-types";
  * the click-suppression latch, and the tap-surface pointer handlers so the
  * chrome component only wires them onto the surface and reads `hold2xUi`.
  */
+/** Keys the watch page's player takes even while focus is elsewhere. */
+const PAGE_KEYS = new Set([
+  " ",
+  "k",
+  "j",
+  "l",
+  "arrowleft",
+  "arrowright",
+  "m",
+  "f",
+  "c",
+  "i",
+]);
+
+/** Elements that use these keys themselves (typing, sliders, menus, tabs). */
+function ownsKeys(el: HTMLElement): boolean {
+  if (
+    el.isContentEditable ||
+    ["INPUT", "TEXTAREA", "SELECT", "VIDEO", "AUDIO"].includes(el.tagName)
+  ) {
+    return true;
+  }
+  const role = el.getAttribute("role") ?? "";
+  if (
+    /^(slider|spinbutton|listbox|option|menu|menuitem|menuitemcheckbox|menuitemradio|tab|tablist|radio|radiogroup|combobox|textbox|grid|tree|treeitem)$/.test(
+      role,
+    )
+  ) {
+    return true;
+  }
+  return Boolean(el.closest('[role="dialog"],[aria-modal="true"]'));
+}
+
 export function usePlayerKeyboardShortcuts(opts: {
   adapter: PlayerAdapter;
   shellRef: React.RefObject<HTMLDivElement | null>;
@@ -25,6 +58,17 @@ export function usePlayerKeyboardShortcuts(opts: {
   onExitCinema: () => void;
   onToggleCinema: () => void;
   onSettingsOpenChange: (open: boolean) => void;
+  /**
+   * Seek by `delta` seconds from a key (← → J L); the chrome seeks and shows
+   * the seek marker. Falls back to a plain seek.
+   */
+  onSeekKey?: (delta: number) => void;
+  /**
+   * The page's main player (watch page): its shortcuts also work while focus
+   * is elsewhere on the page, as on YouTube, unless a field or another
+   * control that uses the keys has it.
+   */
+  globalShortcuts?: boolean;
 }) {
   const {
     adapter,
@@ -38,6 +82,10 @@ export function usePlayerKeyboardShortcuts(opts: {
     onToggleCinema,
     onSettingsOpenChange,
   } = opts;
+  const globalShortcuts = opts.globalShortcuts ?? false;
+  // A ref: the chrome passes a fresh callback each render.
+  const onSeekKeyRef = useRef(opts.onSeekKey);
+  onSeekKeyRef.current = opts.onSeekKey;
 
   /** True while long-press 2× is active: hides chrome, shows a small ×2 hint. */
   const [hold2xUi, setHold2xUi] = useState(false);
@@ -141,18 +189,9 @@ export function usePlayerKeyboardShortcuts(opts: {
 
     const onKeyUp = (e: KeyboardEvent) => {
       if (e.code !== "Space" && e.key !== " ") return;
+      // Only a space press this handler took (keydown set this) — finish it
+      // wherever focus is now.
       if (!spacePhysDownRef.current) return;
-      if (
-        e.target instanceof HTMLElement &&
-        (e.target.tagName === "INPUT" ||
-          e.target.tagName === "TEXTAREA" ||
-          e.target.isContentEditable)
-      ) {
-        return;
-      }
-      if (!shellRef.current?.contains(document.activeElement) && !fsActive) {
-        return;
-      }
       e.preventDefault();
       spacePhysDownRef.current = false;
       clearSpaceHoldTimer();
@@ -186,10 +225,18 @@ export function usePlayerKeyboardShortcuts(opts: {
       ) {
         return;
       }
-      if (!shellRef.current?.contains(document.activeElement) && !fsActive) {
-        return;
-      }
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
       const key = e.key.toLowerCase();
+      const inPlayer =
+        Boolean(shellRef.current?.contains(document.activeElement)) || fsActive;
+      if (!inPlayer) {
+        if (!globalShortcuts || !PAGE_KEYS.has(key)) return;
+        const active = document.activeElement;
+        // Space on the page only when nothing is focused (on a button it
+        // presses the button); the rest unless a control owns the keys.
+        if (key === " " && active && active !== document.body) return;
+        if (active instanceof HTMLElement && ownsKeys(active)) return;
+      }
       if (key === "escape") {
         releaseSpaceHoldIfNeeded();
         if (settingsOpen) {
@@ -226,19 +273,25 @@ export function usePlayerKeyboardShortcuts(opts: {
         ping();
         return;
       }
-      if (key === "arrowleft" || key === "j") {
+      if (
+        key === "arrowleft" ||
+        key === "j" ||
+        key === "arrowright" ||
+        key === "l"
+      ) {
         e.preventDefault();
-        adapter.seek(Math.max(0, adapter.currentTime - (key === "j" ? 10 : 5)));
-        ping();
-      } else if (key === "arrowright" || key === "l") {
-        e.preventDefault();
-        adapter.seek(
-          Math.min(
-            adapter.duration || adapter.currentTime,
-            adapter.currentTime + (key === "l" ? 10 : 5),
-          ),
-        );
-        ping();
+        const step = key === "j" || key === "l" ? 10 : 5;
+        const delta = key === "arrowleft" || key === "j" ? -step : step;
+        const onSeekKey = onSeekKeyRef.current;
+        if (onSeekKey) onSeekKey(delta);
+        else {
+          const d = adapter.duration;
+          const t = adapter.currentTime + delta;
+          adapter.seek(
+            Math.max(0, Number.isFinite(d) && d > 0 ? Math.min(t, d) : t),
+          );
+          ping();
+        }
       } else if (key === "arrowup") {
         e.preventDefault();
         adapter.setVolume(
@@ -290,6 +343,7 @@ export function usePlayerKeyboardShortcuts(opts: {
     shellRef,
     toggleFs,
     onSettingsOpenChange,
+    globalShortcuts,
   ]);
 
   return {

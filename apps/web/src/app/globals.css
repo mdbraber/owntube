@@ -900,3 +900,26 @@ video[data-native-pip] {
 .ot-scroll-fade[data-fade-bottom] {
   --ot-fade-bottom: 40px;
 }
+
+/* Player bezel: the play/pause icon after a toggle grows and fades. */
+@keyframes ot-bezel {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(2);
+  }
+}
+
+/* Seek marker arrows light up one after another. */
+@keyframes ot-seek-arrow {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  33% {
+    opacity: 1;
+  }
+}
