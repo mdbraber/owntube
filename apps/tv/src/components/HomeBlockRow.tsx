@@ -12,6 +12,7 @@ import { FocusButton } from "@/components/FocusButton";
 import { SkeletonRows } from "@/components/Skeleton";
 import { VideoRow } from "@/components/VideoRow";
 import { errorMessage } from "@/lib/error-message";
+import { stillUrl } from "@/lib/format";
 import type { Nav, PlayContext } from "@/lib/navigation";
 import { playAllStart } from "@/lib/play-all";
 import {
@@ -197,7 +198,7 @@ export function HomeBlockRow({
           videoId: String(p.id),
           title: p.name,
           thumbnailUrl: p.previewVideoIds[0]
-            ? `https://i.ytimg.com/vi/${p.previewVideoIds[0]}/hqdefault.jpg`
+            ? stillUrl(p.previewVideoIds[0], "hqdefault.jpg")
             : undefined,
           channelName: `${p.itemCount} video${p.itemCount === 1 ? "" : "s"}`,
         }));

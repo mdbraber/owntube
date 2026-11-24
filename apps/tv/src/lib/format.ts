@@ -1,4 +1,5 @@
 import { PixelRatio } from "react-native";
+import { baseUrl } from "@/lib/config";
 
 /** mm:ss / h:mm:ss for durations and playback time. */
 export function formatTime(totalSeconds: number): string {
@@ -123,15 +124,43 @@ export function channelInitial(name: string | undefined): string {
   return first ? first.toUpperCase() : "o";
 }
 
+/**
+ * A video still by id, from this instance's `/image` proxy. The TV never asks
+ * YouTube for an image itself: that would tell Google what is on screen,
+ * straight from the living room — the one thing a self-hosted front end exists
+ * to avoid. The proxy caches every still on disk, and when the asked-for still
+ * is missing it answers with the next one down (see `VI_THUMB_FALLBACKS` in
+ * the web app's upstream-proxy.ts), so callers needn't keep a fallback chain.
+ */
+export function stillUrl(videoId: string, name: string): string {
+  return `${baseUrl()}/image/vi/${encodeURIComponent(videoId)}/${name}`;
+}
+
+/**
+ * A still on YouTube's CDN (any `*.ytimg.com` host, `/vi/` or `/vi_webp/`),
+ * with its query: video id, still name. A regex, not `URL`, so it doesn't
+ * depend on how much of `URL` the React Native runtime implements.
+ */
+const YTIMG_STILL_RE =
+  /^https?:\/\/(?:[\w-]+\.)*ytimg\.com\/vi(?:_webp)?\/([\w-]+)\/([\w-]+)\.(?:jpe?g|webp)(?:[?#].*)?$/i;
+
+/**
+ * A still URL from API data, moved onto this instance when it points at
+ * YouTube (see `stillUrl`). YouTube's own query (`sqp=…`) is dropped — the
+ * proxy needs no signature — and `vi_webp` stills are asked for as JPEG, the
+ * name the proxy's fallback chain knows. Anything else (instance URLs, signed
+ * or not) passes through unchanged.
+ */
+export function viaInstance(url: string): string {
+  const m = YTIMG_STILL_RE.exec(url);
+  return m ? stillUrl(m[1], `${m[2]}.jpg`) : url;
+}
+
 /** An unsigned `/vi/<id>/<still>` path on YouTube's CDN or an Invidious instance. */
 const LARGE_STILL_RE =
   /^(\/vi\/[^/]+\/)(?:maxres|maxresdefault|hq720)\.jpe?g$/i;
 
 /**
- * A video's thumbnail for a card, falling back to YouTube's own still by id
- * when the row carries none (history rows, for one, leave it to the client —
- * as on the web).
- *
  * Feed rows arrive with the 1280x720 `maxres` still, chosen for the web's
  * large cards. A TV card is 264x148 dp, and an Invidious instance takes one
  * to two seconds to answer `maxres.jpg` every time (it fetches and re-encodes
@@ -140,14 +169,7 @@ const LARGE_STILL_RE =
  * letterbox bars fall outside the card's 16:9 "cover" crop. Signed instance
  * URLs (`?host=…&rs=…`) pair the tier with the signature and stay as they are.
  */
-export function videoThumbnailUrl(video: {
-  videoId: string;
-  thumbnailUrl?: string;
-}): string {
-  const url = video.thumbnailUrl;
-  if (!url) {
-    return `https://i.ytimg.com/vi/${encodeURIComponent(video.videoId)}/hqdefault.jpg`;
-  }
+function cardTier(url: string): string {
   try {
     const u = new URL(url);
     if (u.search) return url;
@@ -161,21 +183,32 @@ export function videoThumbnailUrl(video: {
 }
 
 /**
+ * A video's thumbnail for a card (see `cardTier`), never straight from
+ * YouTube: the row's own still, or this instance's by id when the row carries
+ * none (history rows, for one, leave it to the client — as on the web).
+ */
+export function videoThumbnailUrl(video: {
+  videoId: string;
+  thumbnailUrl?: string;
+}): string {
+  const url = video.thumbnailUrl;
+  return url
+    ? viaInstance(cardTier(url))
+    : stillUrl(video.videoId, "hqdefault.jpg");
+}
+
+/**
  * Stills for the full-width hero, sharpest first. The row's own thumbnail is
- * card-sized (blurry at 1080p), so try YouTube's larger stills by id, then
- * fall back to it: `maxresdefault` only exists for HD uploads and `hq720`
- * isn't universal either — both answer 404 when missing.
+ * card-sized (blurry at 1080p), so ask for the 1280x720 `hq720` by id first.
+ * When a video has none the proxy answers with `maxresdefault`, and failing
+ * that `hqdefault`, so this one request already covers the large stills; the
+ * row's own is left for when the instance can't serve the id at all.
  */
 export function heroThumbnailUrls(video: {
   videoId: string;
   thumbnailUrl?: string;
 }): string[] {
-  const id = encodeURIComponent(video.videoId);
-  const urls = [
-    `https://i.ytimg.com/vi/${id}/maxresdefault.jpg`,
-    `https://i.ytimg.com/vi/${id}/hq720.jpg`,
-    videoThumbnailUrl(video),
-  ];
+  const urls = [stillUrl(video.videoId, "hq720.jpg"), videoThumbnailUrl(video)];
   return urls.filter((url, index) => urls.indexOf(url) === index);
 }
 

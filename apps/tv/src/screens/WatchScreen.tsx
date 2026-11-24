@@ -58,6 +58,7 @@ import {
   formatTime,
   formatViews,
   sizedAvatarUrl,
+  viaInstance,
 } from "@/lib/format";
 import {
   contextNeighbours,
@@ -747,7 +748,9 @@ export function WatchScreen({
     const metadata = {
       title: state.detail.title,
       artist: state.detail.channelName,
-      artwork: state.detail.thumbnailUrl,
+      artwork: state.detail.thumbnailUrl
+        ? viaInstance(state.detail.thumbnailUrl)
+        : undefined,
     };
     if (selectedOption.kind === "split") {
       player.muted = true;
@@ -967,7 +970,9 @@ export function WatchScreen({
           videoId: detail.videoId,
           title: detail.title,
           channelName: detail.channelName,
-          posterUrl: detail.thumbnailUrl,
+          posterUrl: detail.thumbnailUrl
+            ? viaInstance(detail.thumbnailUrl)
+            : undefined,
           positionMs: Math.floor(position * 1000),
           durationMs: Math.floor(duration * 1000),
         });
