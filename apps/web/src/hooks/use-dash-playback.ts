@@ -16,6 +16,7 @@ import {
 import { isIosLikeBrowser } from "@/lib/ios-playback";
 import { getMediaOrigin } from "@/lib/media-origin";
 import { isLiveDashManifestUrl } from "@/lib/pick-playback";
+import { qualityLabel } from "@/lib/quality-label";
 
 type IsTypeSupported = { isTypeSupported?(type: string): boolean };
 
@@ -409,7 +410,8 @@ export function useDashPlayback(
         setItems(
           allVideoReps.map((r) => ({
             id: r.id,
-            label: r.height ? `${r.height}p` : "?",
+            // By the 16:9 box, as YouTube names it: 1920×960 is "1080p".
+            label: qualityLabel(r.width, r.height),
           })),
         );
         audioTracks = player?.getTracksFor("audio") ?? [];

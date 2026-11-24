@@ -2,6 +2,7 @@
 
 import { type RefObject, useEffect, useState } from "react";
 import { create } from "zustand";
+import { qualityLabel } from "@/lib/quality-label";
 
 /**
  * Stats for nerds: what the player is actually doing, for debugging playback.
@@ -115,7 +116,7 @@ export function statsRows(
   const dpr = window.devicePixelRatio || 1;
   const rendition =
     e.width && e.height
-      ? `${e.width}×${e.height}${e.frameRate ? `@${Math.round(e.frameRate)}` : ""}`
+      ? `${qualityLabel(e.width, e.height)} · ${e.width}×${e.height}${e.frameRate ? `@${Math.round(e.frameRate)}` : ""}`
       : "–";
   return [
     ["Video ID", videoId],

@@ -14,12 +14,16 @@ export default async function SettingsPage() {
   const { instanceSources, ...settings } = await caller.settings.get();
 
   return (
-    <main className="ot-page max-w-3xl">
-      <PageHeader title="Settings" />
-      <SettingsPanel
-        initial={settings}
-        initialInstanceSources={instanceSources}
-      />
+    <main className="ot-page">
+      {/* The width lives on an inner box: .ot-page sets its own max-width,
+          which outranks a max-w-* utility on the same element. */}
+      <div className="mx-auto w-full max-w-3xl">
+        <PageHeader title="Settings" />
+        <SettingsPanel
+          initial={settings}
+          initialInstanceSources={instanceSources}
+        />
+      </div>
     </main>
   );
 }
