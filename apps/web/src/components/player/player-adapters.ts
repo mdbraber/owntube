@@ -18,6 +18,12 @@ export function useNativeAdapter(opts: {
   setExternalVolume: (n: number) => void;
   /** Initial mute state (shorts seed this from the shared audio pref). */
   initialMuted?: boolean;
+  /**
+   * Cast this element itself. Only for live streams: VOD casts through a
+   * separate element with a URL a TV can play (see use-cast-handoff.ts), so
+   * the on-screen one never needs to.
+   */
+  castSelf?: boolean;
 }): PlayerAdapter {
   const { videoRef, audioRef, externalVolume, setExternalVolume } = opts;
   const [, force] = useState(0);
@@ -27,9 +33,10 @@ export function useNativeAdapter(opts: {
   const limiterActiveRef = useRef(false);
   const activatedRef = useRef(false);
 
-  const remotePlayback = useRemotePlayback(videoRef.current);
+  const castSelf = opts.castSelf ?? false;
+  const remotePlayback = useRemotePlayback(castSelf ? videoRef.current : null);
   const castButton = castButtonState({
-    receiverAvailable: remotePlayback.receiverAvailable,
+    receiverAvailable: castSelf && remotePlayback.receiverAvailable,
     disableRemotePlayback: videoRef.current?.disableRemotePlayback ?? false,
     currentSrc: videoRef.current?.currentSrc ?? "",
   });
@@ -453,6 +460,7 @@ export function useNativeAdapter(opts: {
     // Split playback's companion <audio>, and a <video> already routed through
     // the peak limiter, keep their sound on this device while casting.
     castAudioStaysLocal: Boolean(audioRef.current) || limiterActiveRef.current,
+    castError: false,
     showCastPicker: remotePlayback.prompt,
   };
 }

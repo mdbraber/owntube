@@ -85,19 +85,23 @@ export function CastMenuItem({
 }
 
 /**
- * Says so, for a few seconds after casting starts, when the sound stays on
- * this device (split playback's separate audio, or audio already routed
- * through the peak limiter) — otherwise the TV is just silent.
+ * A few seconds of status after casting starts or fails: when the sound stays
+ * on this device (live streams cast their own element, and split audio or the
+ * peak limiter can't follow it), or when the TV couldn't play the video.
  */
 export function CastAudioNotice({ adapter }: { adapter: PlayerAdapter }) {
-  const audioStaysHere = adapter.castActive && adapter.castAudioStaysLocal;
-  const [shown, setShown] = useState(false);
+  const message = adapter.castError
+    ? "This video couldn't be sent to the TV."
+    : adapter.castActive && adapter.castAudioStaysLocal
+      ? "The picture is on the TV; the sound for this video stays on this device."
+      : null;
+  const [shown, setShown] = useState<string | null>(null);
   useEffect(() => {
-    setShown(audioStaysHere);
-    if (!audioStaysHere) return;
-    const t = setTimeout(() => setShown(false), 6000);
+    setShown(message);
+    if (!message) return;
+    const t = setTimeout(() => setShown(null), 6000);
     return () => clearTimeout(t);
-  }, [audioStaysHere]);
+  }, [message]);
   if (!shown) return null;
   return (
     <div className="pointer-events-none absolute inset-x-0 top-4 z-40 flex justify-center px-4">
@@ -106,7 +110,7 @@ export function CastAudioNotice({ adapter }: { adapter: PlayerAdapter }) {
         role="status"
         className="max-w-[90%] rounded-full bg-black/80 px-4 py-2 text-center text-xs text-white shadow-lg sm:text-sm"
       >
-        The picture is on the TV; the sound for this video stays on this device.
+        {shown}
       </div>
     </div>
   );

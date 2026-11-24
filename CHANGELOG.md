@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Player: a "Play on a TV" button (AirPlay, and Cast where the browser offers it) through the standard Remote Playback API. It only appears when a receiver is reachable, and shows disabled with a reason for streams that can't be sent (Media Source playback).
+- Player: a "Play on a TV" button (AirPlay, and Cast where the browser offers it) through the standard Remote Playback API. It only appears when a receiver is reachable. Every VOD stream can be cast, whatever plays it locally (hls.js, split audio, the peak limiter): the TV gets its own SABR HLS URL (`/hls/<id>/master.m3u8?for=cast`) through a hidden cast element, and the player's controls drive it while connected. Live streams cast their own element.
 
 ### Fixed
 
