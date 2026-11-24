@@ -75,6 +75,7 @@ export function LiveBlock({
     audioRef,
     externalVolume: volume,
     setExternalVolume: setVolume,
+    castSelf: true,
   });
 
   const captionModel = usePlayerCaptions(videoRef, captions ?? [], reactKey);

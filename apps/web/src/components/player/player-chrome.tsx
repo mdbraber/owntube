@@ -65,12 +65,13 @@ import { Sheet } from "@/components/ui/sheet";
 import { useVideoActions } from "@/components/videos/use-video-actions";
 import { VideoActionGlyph } from "@/components/videos/video-action-registry";
 import { useWatchProgress } from "@/components/videos/video-membership-context";
+import { castSourceUrl, useCastHandoff } from "@/hooks/use-cast-handoff";
 import { useSponsorBlockAutoSkip } from "@/hooks/use-sponsorblock-auto-skip";
 import { cn } from "@/lib/utils";
 import { chapterIndexAt } from "@/lib/video-chapters";
 
 export function PlayerChrome({
-  adapter,
+  adapter: localAdapter,
   shellRef,
   title,
   chapters,
@@ -99,6 +100,14 @@ export function PlayerChrome({
 }: ChromeProps) {
   // OwnTube TV apps are listed for a signed-in viewer on the full player only.
   const tvsEnabled = useActiveViewerIsAuthed() && !shortsMode && !miniMode;
+  // VOD casts through a hidden element with a URL a TV can play; while it is
+  // connected, every control below drives that element (see use-cast-handoff).
+  const { adapter, castVideoProps } = useCastHandoff(
+    localAdapter,
+    // Not for live, nor the Shorts feed or mini player (many at once, and
+    // nobody casts a preview).
+    isLive || shortsMode || miniMode ? null : castSourceUrl(videoId),
+  );
   const [hydrated, setHydrated] = useState(false);
   const { active: fsActive, toggle: toggleFs } = useFullscreenShell(shellRef);
   const { visible, ping, hide } = useIdleVisible(adapter.paused, settingsOpen);
@@ -401,6 +410,8 @@ export function PlayerChrome({
       </div>
 
       <CastAudioNotice adapter={adapter} />
+      {/* After hydration: its URL is on the browser's own origin. */}
+      {hydrated && castVideoProps ? <video {...castVideoProps} /> : null}
 
       {/* On-video scrub preview: while actively dragging the scrubber, the frame
           fills the whole video area (YouTube-style) with the target time floated

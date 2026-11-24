@@ -18,6 +18,7 @@ const VIDEO_ID_RE = /^[\w-]{6,20}$/;
 /**
  * Serves a synthesized VOD HLS manifest (see `generate.ts`):
  *   /hls/<videoId>/master.m3u8       -> variants + audio group
+ *   /hls/<videoId>/master.m3u8?for=cast -> the same, SABR first (see castMasterPlaylist)
  *   /hls/<videoId>/media.m3u8?itag=… -> one stream's byte-range fragments
  *   /hls/<videoId>/sabr.m3u8?track=… -> one SABR connector track (see sabr.ts)
  *   /hls/<videoId>/subtitles.m3u8?lang=… (or ?label=…) -> one caption track
@@ -47,7 +48,10 @@ async function handleGET(
 
   try {
     if (file === "master.m3u8") {
-      const body = await masterPlaylist(videoId);
+      const forCast = new URL(request.url).searchParams.get("for") === "cast";
+      const body = forCast
+        ? await castMasterPlaylist(videoId)
+        : await masterPlaylist(videoId);
       return new Response(body, {
         headers: {
           "content-type": M3U8_CONTENT_TYPE,
@@ -143,4 +147,19 @@ async function masterPlaylist(videoId: string): Promise<string> {
     }
   }
   return generateMasterPlaylist(videoId);
+}
+
+/**
+ * The master playlist a TV plays when the viewer casts (AirPlay, Cast). The
+ * receiver fetches it itself, outside the browser, so it must be one a native
+ * HLS player takes and keeps playing: the SABR connector's numbered fMP4
+ * segments, whatever `INVIDIOUS_COMPANION_SABR_VOD` says for local playback.
+ * The byte-range manifest is the fallback only — the macOS media stack
+ * rejects it, and its signed URLs are revoked about a minute in.
+ */
+async function castMasterPlaylist(videoId: string): Promise<string> {
+  const body = await generateSabrMasterPlaylist(videoId, () =>
+    fetchVideoCaptions(videoId),
+  ).catch(() => null);
+  return body ?? generateMasterPlaylist(videoId);
 }

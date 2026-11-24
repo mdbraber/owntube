@@ -44,6 +44,8 @@ export type PlayerAdapter = {
   castActive: boolean;
   /** While casting, the sound still comes from this device (see adapter). */
   castAudioStaysLocal: boolean;
+  /** The TV couldn't play this video (the cast source failed to load). */
+  castError: boolean;
   /** Opens the device picker; call synchronously from the click. */
   showCastPicker(): void;
 };
