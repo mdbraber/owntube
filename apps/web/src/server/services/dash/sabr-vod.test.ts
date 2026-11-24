@@ -134,6 +134,18 @@ describe("fetchCompanionSabrVodManifest", () => {
     ]);
   });
 
+  it("asks for a codec family's ladder, but not for avc (the default)", async () => {
+    fetchMock.mockImplementation(async () => new Response(companionMpd));
+    await fetchCompanionSabrVodManifest(VIDEO, null, "vp9");
+    await fetchCompanionSabrVodManifest(VIDEO, "de", "av01");
+    await fetchCompanionSabrVodManifest(VIDEO, null, "avc");
+    expect(fetchMock.mock.calls.map(([u]) => String(u))).toEqual([
+      `${COMPANION}/companion/sabr/${VIDEO}/manifest.mpd?video=vp9`,
+      `${COMPANION}/companion/sabr/${VIDEO}/manifest.mpd?audio=de&video=av01`,
+      `${COMPANION}/companion/sabr/${VIDEO}/manifest.mpd`,
+    ]);
+  });
+
   it("rejects a live (dynamic) manifest and a DVR redirect target", async () => {
     fetchMock.mockResolvedValueOnce(
       new Response(

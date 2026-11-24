@@ -87,8 +87,10 @@ describe("/dash/<id>/manifest.mpd with INVIDIOUS_COMPANION_SABR_VOD", () => {
     expect(body).not.toContain('id="v1080"');
     expect(body).toContain(CAPTIONS_XML);
     expect(body).not.toContain("api/v1/captions");
+    // The player's codec family reaches the companion, which serves that
+    // family's ladder (vp9 = WebM to 2160p).
     expect(requested()).toEqual([
-      `/companion/sabr/${VIDEO}/manifest.mpd?audio=de`,
+      `/companion/sabr/${VIDEO}/manifest.mpd?audio=de&video=vp9`,
     ]);
     expect(generateMpd).not.toHaveBeenCalled();
   });

@@ -61,10 +61,17 @@ const VIDEO_REP_RE = /\n?[ \t]*<Representation\b[^>]*\bheight="(\d+)"[^>]*\/>/g;
 export async function fetchCompanionSabrVodManifest(
   videoId: string,
   audioLang?: string | null,
+  videoFamily?: string | null,
 ): Promise<string | null> {
-  const path = audioLang
-    ? `manifest.mpd?audio=${encodeURIComponent(audioLang)}`
-    : "manifest.mpd";
+  const familyParam =
+    videoFamily && videoFamily !== "avc" ? `video=${videoFamily}` : null;
+  const suffix = [
+    audioLang ? `audio=${encodeURIComponent(audioLang)}` : null,
+    familyParam,
+  ]
+    .filter(Boolean)
+    .join("&");
+  const path = suffix ? `manifest.mpd?${suffix}` : "manifest.mpd";
   const url = companionSabrUrl(videoId, path);
   if (!url) return null;
   try {

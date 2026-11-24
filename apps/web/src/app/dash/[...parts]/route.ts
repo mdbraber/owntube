@@ -257,8 +257,13 @@ async function sabrVodManifest(
   videoId: string,
   audioLang: string | null,
   maxHeight: number | null,
+  videoFamily: string | null,
 ): Promise<string | null> {
-  const mpd = await fetchCompanionSabrVodManifest(videoId, audioLang);
+  const mpd = await fetchCompanionSabrVodManifest(
+    videoId,
+    audioLang,
+    videoFamily,
+  );
   if (!mpd) return null;
   const captionsXml = await vodCaptionAdaptationSets(
     videoId,
@@ -429,7 +434,7 @@ async function handleGET(
 
   const sabr = sabrVodMode();
   if (sabr === "always") {
-    const body = await sabrVodManifest(videoId, audioLang, maxHeight);
+    const body = await sabrVodManifest(videoId, audioLang, maxHeight, family);
     if (body) return mpdResponse(body);
     // The companion had nothing: fall through to the byte-range formats, which
     // is what a video the connector can't serve would have got anyway.
@@ -440,7 +445,7 @@ async function handleGET(
     return mpdResponse(body);
   } catch (e) {
     if (sabr === "fallback") {
-      const body = await sabrVodManifest(videoId, audioLang, maxHeight);
+      const body = await sabrVodManifest(videoId, audioLang, maxHeight, family);
       if (body) return mpdResponse(body);
     }
     // Post-Live-DVR (an ended livestream YouTube hasn't converted to VOD yet)
