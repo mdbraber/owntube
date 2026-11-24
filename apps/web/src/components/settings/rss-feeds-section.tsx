@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { SettingsBlock } from "@/components/settings/settings-ui";
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/trpc/react";
 
@@ -43,9 +44,9 @@ export function RssFeedsSection() {
   };
 
   return (
-    <section className="space-y-3">
-      <h2 className="text-lg font-semibold">Podcast feeds (RSS)</h2>
-      <p className="text-sm text-[hsl(var(--muted-foreground))]">
+    <SettingsBlock>
+      <h3 className="text-sm font-medium">Podcast feeds (RSS)</h3>
+      <p className="text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">
         Subscribe to your queue, playlists and channels in a podcast app.
         {hasAddresses
           ? " Each address below is a private link — anyone who has it can read that feed, so share it only with your own podcast app. Getting new addresses changes every one of them."
@@ -144,6 +145,6 @@ export function RssFeedsSection() {
       ) : (
         <p className="text-sm text-[hsl(var(--muted-foreground))]">Loading…</p>
       )}
-    </section>
+    </SettingsBlock>
   );
 }

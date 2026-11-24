@@ -17,6 +17,7 @@ import {
   LEGACY_DEFAULT_QUICK_ACTIONS_LIST,
   QUICK_ACTION_VALUES,
 } from "@/lib/quick-actions";
+import { DEFAULT_SIDEBAR_NAV } from "@/lib/sidebar-nav";
 import {
   DEFAULT_SPONSORBLOCK_CATEGORIES,
   normalizeSponsorBlockCategories,
@@ -203,6 +204,25 @@ export const appSettingsSchema = z.object({
     .max(MAX_BOTTOM_NAV)
     .default([...DEFAULT_BOTTOM_NAV_KEYS]),
   /**
+   * Desktop sidebar: ordered entries (nav keys, plus `divider` and
+   * `following`), each shown or hidden, and whether the Following list is
+   * collapsed. Unknown keys are ignored and missing ones added by the
+   * renderer (`resolveSidebarEntries`), like `bottomNav`.
+   */
+  sidebarNav: z
+    .object({
+      items: z
+        .array(
+          z.object({
+            key: z.string().min(1).max(32),
+            hidden: z.boolean().default(false),
+          }),
+        )
+        .max(32),
+      followingCollapsed: z.boolean().default(false),
+    })
+    .default(DEFAULT_SIDEBAR_NAV),
+  /**
    * Per-section preferences — the single "base" shared by a section's page
    * and its home block (e.g. History's hide-completed filter), so the option
    * stays in sync wherever the section renders.
@@ -263,6 +283,7 @@ const defaultSettings: AppSettings = {
   favoriteTag: DEFAULT_FAVORITE_TAG,
   homeBlocks: DEFAULT_HOME_BLOCKS,
   bottomNav: [...DEFAULT_BOTTOM_NAV_KEYS],
+  sidebarNav: DEFAULT_SIDEBAR_NAV,
   sectionPrefs: {
     history: DEFAULT_SECTION_PAGE_PREFS,
     queue: DEFAULT_SECTION_PAGE_PREFS,

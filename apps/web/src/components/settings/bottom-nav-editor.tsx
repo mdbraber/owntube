@@ -66,16 +66,6 @@ export function BottomNavEditor() {
 
   return (
     <section className="space-y-4">
-      <div>
-        <h3 className="m-0 text-sm font-semibold text-[hsl(var(--foreground))]">
-          Bottom navigation
-        </h3>
-        <p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">
-          Drag to reorder the mobile tab bar ({MIN_BOTTOM_NAV}–{MAX_BOTTOM_NAV}{" "}
-          tabs). Everything else moves under the Account button.
-        </p>
-      </div>
-
       {/* In the tab bar */}
       <ul className="select-none space-y-1.5" {...drag.listProps}>
         {bar.map((key, i) => {

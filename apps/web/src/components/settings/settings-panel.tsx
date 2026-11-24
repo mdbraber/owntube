@@ -1,14 +1,27 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useEffect, useId, useState } from "react";
 import { ApiTokensSection } from "@/components/settings/api-tokens-section";
+import { BottomNavEditor } from "@/components/settings/bottom-nav-editor";
 import { InstanceSourceHint } from "@/components/settings/instance-source-hint";
 import { RssFeedsSection } from "@/components/settings/rss-feeds-section";
-import { Button } from "@/components/ui/button";
 import {
-  captionLanguageOptions,
-  ORIGINAL_CAPTION_LANGUAGE,
-} from "@/lib/caption-default";
+  Segmented,
+  SettingRow,
+  SettingsSection,
+  selectClassName,
+  ToggleRow,
+} from "@/components/settings/settings-ui";
+import { SidebarNavEditor } from "@/components/settings/sidebar-nav-editor";
+import { TakeoutImportPanel } from "@/components/settings/takeout-import-panel";
+import {
+  type SaveState,
+  type SettingsPatch,
+  useSettingsPatch,
+} from "@/components/settings/use-settings-patch";
+import { Button } from "@/components/ui/button";
+import { captionLanguageOptions } from "@/lib/caption-default";
 import {
   DEFAULT_PLAYBACK_QUALITY_SELECT_OPTIONS,
   type DefaultPlaybackQuality,
@@ -23,7 +36,6 @@ import {
 import {
   SPONSORBLOCK_ALL_CATEGORIES,
   SPONSORBLOCK_CATEGORY_LABELS,
-  type SponsorBlockCategory,
 } from "@/lib/sponsorblock";
 import {
   sponsorBlockPrefsFromAppSettings,
@@ -31,15 +43,91 @@ import {
   writeSponsorBlockPrefs,
 } from "@/lib/sponsorblock-prefs";
 import { TRENDING_REGION_OPTIONS } from "@/lib/trending-regions";
+import { cn } from "@/lib/utils";
 import { writeWatchMiniEnabled } from "@/lib/watch-mini-player-state";
 import type { InstanceSourceInfo } from "@/server/services/proxy";
 import type { AppSettings } from "@/server/settings/profile";
-import {
-  type ThemeMode,
-  useThemeStore,
-  type VisualTheme,
-} from "@/stores/theme-store";
+import { useThemeStore } from "@/stores/theme-store";
 import { trpc } from "@/trpc/react";
+
+type SwipeAction = AppSettings["swipeGestures"]["left"];
+
+const SECTIONS = [
+  { id: "appearance", title: "Appearance" },
+  { id: "navigation", title: "Navigation" },
+  { id: "playback", title: "Playback" },
+  { id: "feed", title: "Feed" },
+  { id: "actions", title: "Gestures & actions" },
+  { id: "sponsorblock", title: "SponsorBlock" },
+  { id: "data", title: "Import & export" },
+  { id: "integrations", title: "Feeds & tokens" },
+  { id: "server", title: "Server" },
+] as const;
+
+const sectionTitle = (id: (typeof SECTIONS)[number]["id"]) =>
+  SECTIONS.find((s) => s.id === id)?.title ?? id;
+
+const SWIPE_OPTIONS: { value: SwipeAction; label: string }[] = [
+  { value: "none", label: "Nothing" },
+  { value: "queue", label: "Add to queue" },
+  { value: "saved", label: "Save" },
+  { value: "ignore", label: "Ignore" },
+  { value: "watched", label: "Mark watched" },
+];
+
+/** Puts `value` in quick-action `slot`, keeping each verb in one slot only. */
+function assignQuickAction(
+  prev: readonly QuickAction[],
+  slot: number,
+  value: QuickAction | "none",
+): QuickAction[] {
+  const next = prev.slice(0, 4);
+  if (value === "none") return next.filter((_, i) => i !== slot);
+  const cleaned = next.filter((a, i) => i === slot || a !== value);
+  if (slot < cleaned.length) cleaned[slot] = value;
+  else cleaned.push(value);
+  return cleaned.slice(0, 4);
+}
+
+/** Mirrors that live outside the settings query (localStorage, the theme store). */
+function applyLocalMirrors(next: AppSettings) {
+  const { setTheme, setVisualTheme } = useThemeStore.getState();
+  setTheme(next.theme);
+  setVisualTheme(next.visualTheme);
+  writeWatchMiniEnabled(next.enableMiniPlayer ?? true);
+  writeDefaultPlaybackQuality(next.defaultPlaybackQuality ?? "1080p");
+  writeSponsorBlockPrefs(sponsorBlockPrefsFromAppSettings(next));
+}
+
+function SaveStatus({
+  state,
+  error,
+}: {
+  state: SaveState;
+  error: string | null;
+}) {
+  const text =
+    state === "saving"
+      ? "Saving…"
+      : state === "saved"
+        ? "Saved"
+        : state === "error"
+          ? `Not saved: ${error ?? "error"}`
+          : "Changes save automatically";
+  return (
+    <p
+      aria-live="polite"
+      className={cn(
+        "text-xs",
+        state === "error"
+          ? "text-[hsl(var(--destructive))]"
+          : "text-[hsl(var(--muted-foreground))]",
+      )}
+    >
+      {text}
+    </p>
+  );
+}
 
 type SettingsPanelProps = {
   initial: AppSettings;
@@ -50,173 +138,573 @@ export function SettingsPanel({
   initial,
   initialInstanceSources,
 }: SettingsPanelProps) {
+  const { settings, save, state, error } = useSettingsPatch();
+  const s: AppSettings = settings ?? initial;
+  const instanceSources = settings?.instanceSources ?? initialInstanceSources;
+
+  // The account's values win over whatever this browser remembered.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once, on open.
+  useEffect(() => {
+    applyLocalMirrors(s);
+  }, []);
+
+  const set = (patch: SettingsPatch) => {
+    applyLocalMirrors({ ...s, ...patch });
+    void save(patch);
+  };
+
+  return (
+    <div className="lg:grid lg:grid-cols-[10.5rem_minmax(0,1fr)] lg:gap-10">
+      <nav aria-label="Settings sections" className="hidden lg:block">
+        <ul className="sticky top-6 space-y-0.5 text-sm">
+          {SECTIONS.map((sec) => (
+            <li key={sec.id}>
+              <a
+                href={`#${sec.id}`}
+                className="block rounded-[var(--radius-shell)] px-3 py-1.5 text-[hsl(var(--muted-foreground))] transition hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))]"
+              >
+                {sec.title}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </nav>
+
+      <div className="min-w-0 space-y-10">
+        <SaveStatus state={state} error={error} />
+
+        <SettingsSection id="appearance" title={sectionTitle("appearance")}>
+          <SettingRow title="Theme">
+            <Segmented
+              label="Theme"
+              value={s.theme}
+              options={[
+                { value: "system", label: "System" },
+                { value: "light", label: "Light" },
+                { value: "dark", label: "Dark" },
+              ]}
+              onChange={(theme) => set({ theme })}
+            />
+          </SettingRow>
+          <SettingRow title="Style">
+            <Segmented
+              label="Style"
+              value={s.visualTheme}
+              options={[
+                { value: "default", label: "Default" },
+                { value: "terminal", label: "Terminal" },
+              ]}
+              onChange={(visualTheme) => set({ visualTheme })}
+            />
+          </SettingRow>
+        </SettingsSection>
+
+        <SettingsSection
+          id="navigation"
+          title={sectionTitle("navigation")}
+          description="Choose what the menus show and in which order."
+        >
+          <SettingRow
+            stack
+            title="Sidebar"
+            description="On wider screens. Drag to reorder; switch an item off to hide it. Collapse Following from its heading in the sidebar."
+          >
+            <SidebarNavEditor />
+          </SettingRow>
+          <SettingRow
+            stack
+            title="Bottom bar"
+            description="On phones. Drag to reorder the tabs (1–5); the rest are under the Account button."
+          >
+            <BottomNavEditor />
+          </SettingRow>
+        </SettingsSection>
+
+        <SettingsSection id="playback" title={sectionTitle("playback")}>
+          <PlaybackSelects s={s} set={set} />
+          <ToggleRow
+            title="Best quality in fullscreen"
+            description="Switches up while fullscreen and back on exit. Uses more data."
+            checked={s.fullscreenAutoBestQuality}
+            onChange={(v) => set({ fullscreenAutoBestQuality: v })}
+          />
+          <ToggleRow
+            title="Autoplay on the watch page"
+            checked={s.autoplayOnWatch}
+            onChange={(v) => set({ autoplayOnWatch: v })}
+          />
+          <ToggleRow
+            title="Cinema mode by default"
+            checked={s.defaultCinemaMode}
+            onChange={(v) => set({ defaultCinemaMode: v })}
+          />
+          <ToggleRow
+            title="Mini-player"
+            description="Keep playing in a small player when you leave the watch page."
+            checked={s.enableMiniPlayer}
+            onChange={(v) => set({ enableMiniPlayer: v })}
+          />
+          <ToggleRow
+            title="Preload the next short"
+            description="Faster swipes in Shorts, more data."
+            checked={s.shortsPreloadNext}
+            onChange={(v) => set({ shortsPreloadNext: v })}
+          />
+        </SettingsSection>
+
+        <SettingsSection id="feed" title={sectionTitle("feed")}>
+          <RegionRow s={s} set={set} />
+          <ToggleRow
+            title="Hide Shorts in Subscriptions"
+            checked={s.hideShortsInSubscriptions}
+            onChange={(v) => set({ hideShortsInSubscriptions: v })}
+          />
+          <FavoriteTagRow
+            value={s.favoriteTag}
+            onSave={(favoriteTag) => set({ favoriteTag })}
+          />
+          <SettingRow
+            title="Recommendations"
+            description="Set interest keywords and rate sample videos. Likes, dislikes and saves shape your feed too."
+          >
+            <Button type="button" variant="outline" size="sm" asChild>
+              <Link href="/onboarding/taste?manual=1">Refine</Link>
+            </Button>
+          </SettingRow>
+        </SettingsSection>
+
+        <SettingsSection id="actions" title={sectionTitle("actions")}>
+          <ToggleRow
+            title="Swipe gestures"
+            description="Swipe video cards on Home, Explore and Subscriptions (touch screens)."
+            checked={s.enableSwipeGestures}
+            onChange={(v) => set({ enableSwipeGestures: v })}
+          />
+          {(["left", "right"] as const).map((dir) => (
+            <SwipeRow key={dir} dir={dir} s={s} set={set} />
+          ))}
+          <QuickActionsRow s={s} set={set} />
+        </SettingsSection>
+
+        <SettingsSection
+          id="sponsorblock"
+          title={sectionTitle("sponsorblock")}
+          description={
+            <>
+              Community-marked segments from{" "}
+              <a
+                href="https://sponsor.ajay.app"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[hsl(var(--primary))] hover:underline"
+              >
+                SponsorBlock
+              </a>
+              , shown on the player timeline.
+            </>
+          }
+        >
+          <ToggleRow
+            title="Show segments"
+            checked={s.sponsorBlockEnabled}
+            onChange={(v) => set({ sponsorBlockEnabled: v })}
+          />
+          <ToggleRow
+            title="Skip segments automatically"
+            checked={s.sponsorBlockAutoSkip}
+            disabled={!s.sponsorBlockEnabled}
+            onChange={(v) => set({ sponsorBlockAutoSkip: v })}
+          />
+          <SettingRow
+            stack
+            title="Categories"
+            disabled={!s.sponsorBlockEnabled}
+          >
+            <div className="flex flex-wrap gap-2">
+              {SPONSORBLOCK_ALL_CATEGORIES.map((category) => {
+                const on = s.sponsorBlockCategories.includes(category);
+                return (
+                  <button
+                    key={category}
+                    type="button"
+                    aria-pressed={on}
+                    disabled={!s.sponsorBlockEnabled}
+                    onClick={() =>
+                      set({
+                        sponsorBlockCategories: toggleSponsorBlockCategory(
+                          s.sponsorBlockCategories,
+                          category,
+                        ),
+                      })
+                    }
+                    className={cn(
+                      "rounded-full border px-3 py-1 text-xs font-medium transition disabled:cursor-not-allowed",
+                      on
+                        ? "border-[hsl(var(--primary))] bg-[hsl(var(--primary))]/12 text-[hsl(var(--primary))]"
+                        : "border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]",
+                    )}
+                  >
+                    {SPONSORBLOCK_CATEGORY_LABELS[category]}
+                  </button>
+                );
+              })}
+            </div>
+          </SettingRow>
+        </SettingsSection>
+
+        <SettingsSection id="data" title={sectionTitle("data")}>
+          <DataExportRows />
+          <TakeoutImportPanel />
+        </SettingsSection>
+
+        <SettingsSection id="integrations" title={sectionTitle("integrations")}>
+          <RssFeedsSection />
+          <ApiTokensSection />
+        </SettingsSection>
+
+        <SettingsSection
+          id="server"
+          title={sectionTitle("server")}
+          description={
+            <>
+              Video sources come from{" "}
+              <code className="rounded bg-[hsl(var(--muted))] px-1 font-mono text-xs">
+                INVIDIOUS_BASE_URL
+              </code>{" "}
+              on the server; list several to fail over between them.
+            </>
+          }
+        >
+          <ServerRows initial={instanceSources} />
+        </SettingsSection>
+      </div>
+    </div>
+  );
+}
+
+type RowProps = { s: AppSettings; set: (patch: SettingsPatch) => void };
+
+function PlaybackSelects({ s, set }: RowProps) {
+  const qualityId = useId();
+  const captionsId = useId();
+  return (
+    <>
+      <SettingRow
+        title="Default quality"
+        htmlFor={qualityId}
+        description="720p and 360p start fastest; 1080p and up load video and audio separately."
+      >
+        <select
+          id={qualityId}
+          className={selectClassName}
+          value={s.defaultPlaybackQuality}
+          onChange={(e) =>
+            set({
+              defaultPlaybackQuality: e.currentTarget
+                .value as DefaultPlaybackQuality,
+            })
+          }
+        >
+          {DEFAULT_PLAYBACK_QUALITY_SELECT_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </SettingRow>
+      <SettingRow
+        title="Subtitle language"
+        htmlFor={captionsId}
+        description="Used when subtitles are on; videos without it use their own language."
+      >
+        <select
+          id={captionsId}
+          className={selectClassName}
+          value={s.captionLanguage}
+          onChange={(e) => set({ captionLanguage: e.currentTarget.value })}
+        >
+          {captionLanguageOptions().map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </SettingRow>
+    </>
+  );
+}
+
+function RegionRow({ s, set }: RowProps) {
+  const id = useId();
+  return (
+    <SettingRow
+      title="Region"
+      htmlFor={id}
+      description="For trending videos on Home and Explore."
+    >
+      <select
+        id={id}
+        className={cn(selectClassName, "w-56")}
+        value={s.trendingRegion}
+        onChange={(e) => set({ trendingRegion: e.currentTarget.value })}
+      >
+        {TRENDING_REGION_OPTIONS.map((o) => (
+          <option key={o.code} value={o.code}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </SettingRow>
+  );
+}
+
+function FavoriteTagRow({
+  value,
+  onSave,
+}: {
+  value: string;
+  onSave: (tag: string) => void;
+}) {
+  const id = useId();
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+  const tags = trpc.channelTags.listAll.useQuery();
+  const commit = () => {
+    const tag = draft.trim();
+    if (tag && tag !== value) onSave(tag);
+    else setDraft(value);
+  };
+  return (
+    <SettingRow
+      title="Favorite tag"
+      htmlFor={id}
+      description="The star on a channel adds this tag. Favorites shows the channels that have it."
+    >
+      <input
+        id={id}
+        list={`${id}-options`}
+        className={cn(selectClassName, "w-40")}
+        value={draft}
+        maxLength={32}
+        onChange={(e) => setDraft(e.currentTarget.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+        }}
+      />
+      <datalist id={`${id}-options`}>
+        {(tags.data ?? []).map(({ tag }) => (
+          <option key={tag} value={tag} />
+        ))}
+      </datalist>
+    </SettingRow>
+  );
+}
+
+function SwipeRow({ dir, s, set }: RowProps & { dir: "left" | "right" }) {
+  const id = useId();
+  return (
+    <SettingRow
+      title={dir === "left" ? "Swipe left" : "Swipe right"}
+      htmlFor={id}
+      disabled={!s.enableSwipeGestures}
+    >
+      <select
+        id={id}
+        className={selectClassName}
+        disabled={!s.enableSwipeGestures}
+        value={s.swipeGestures[dir]}
+        onChange={(e) =>
+          set({
+            swipeGestures: {
+              ...s.swipeGestures,
+              [dir]: e.currentTarget.value as SwipeAction,
+            },
+          })
+        }
+      >
+        {SWIPE_OPTIONS.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </SettingRow>
+  );
+}
+
+function QuickActionsRow({ s, set }: RowProps) {
+  const isDefault =
+    s.quickActions.join(",") === DEFAULT_QUICK_ACTIONS.join(",");
+  return (
+    <SettingRow
+      stack
+      title="Quick actions"
+      description="Slots 1–2 are the hover buttons on thumbnails (desktop); all four are the buttons atop a video's menu on phones."
+    >
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {[0, 1, 2, 3].map((slot) => (
+          <label key={slot} className="space-y-1">
+            <span className="block text-xs text-[hsl(var(--muted-foreground))]">
+              Slot {slot + 1}
+            </span>
+            <select
+              className={cn(selectClassName, "w-full")}
+              value={s.quickActions[slot] ?? "none"}
+              onChange={(e) =>
+                set({
+                  quickActions: assignQuickAction(
+                    s.quickActions,
+                    slot,
+                    e.currentTarget.value as QuickAction | "none",
+                  ),
+                })
+              }
+            >
+              <option value="none">None</option>
+              {QUICK_ACTION_VALUES.map((a) => (
+                <option key={a} value={a}>
+                  {QUICK_ACTION_LABELS[a]}
+                </option>
+              ))}
+            </select>
+          </label>
+        ))}
+      </div>
+      {isDefault ? null : (
+        <button
+          type="button"
+          className="mt-2 text-xs text-[hsl(var(--muted-foreground))] underline-offset-2 hover:text-[hsl(var(--foreground))] hover:underline"
+          onClick={() => set({ quickActions: DEFAULT_QUICK_ACTIONS })}
+        >
+          Reset to Queue, Save, Like, Dislike
+        </button>
+      )}
+    </SettingRow>
+  );
+}
+
+function DataExportRows() {
   const utils = trpc.useUtils();
-  const setTheme = useThemeStore((s) => s.setTheme);
-  const setVisualTheme = useThemeStore((s) => s.setVisualTheme);
-
-  const settingsQuery = trpc.settings.get.useQuery(undefined, {
-    initialData: { ...initial, instanceSources: initialInstanceSources },
-  });
-  const instanceSources =
-    settingsQuery.data?.instanceSources ?? initialInstanceSources;
-
-  const [theme, setThemeLocal] = useState<ThemeMode>(initial.theme);
-  const [visualTheme, setVisualThemeLocal] = useState<VisualTheme>(
-    initial.visualTheme,
-  );
-  const [trendingRegion, setTrendingRegion] = useState(
-    initial.trendingRegion ?? "US",
-  );
-  const [favoriteTag, setFavoriteTag] = useState(
-    initial.favoriteTag ?? "favorite",
-  );
-  const channelTagList = trpc.channelTags.listAll.useQuery();
-  const [hideShortsInSubscriptions, setHideShortsInSubscriptions] = useState(
-    initial.hideShortsInSubscriptions ?? true,
-  );
-  const [defaultCinemaMode, setDefaultCinemaMode] = useState(
-    initial.defaultCinemaMode ?? false,
-  );
-  const [enableMiniPlayer, setEnableMiniPlayer] = useState(
-    initial.enableMiniPlayer ?? true,
-  );
-  const [autoplayOnWatch, setAutoplayOnWatch] = useState(
-    initial.autoplayOnWatch ?? true,
-  );
-  const [shortsPreloadNext, setShortsPreloadNext] = useState(
-    initial.shortsPreloadNext ?? true,
-  );
-  const [defaultPlaybackQuality, setDefaultPlaybackQuality] =
-    useState<DefaultPlaybackQuality>(initial.defaultPlaybackQuality ?? "1080p");
-  const [fullscreenAutoBestQuality, setFullscreenAutoBestQuality] = useState(
-    initial.fullscreenAutoBestQuality ?? false,
-  );
-  const [captionLanguage, setCaptionLanguage] = useState(
-    initial.captionLanguage ?? ORIGINAL_CAPTION_LANGUAGE,
-  );
-  const [enableSwipeGestures, setEnableSwipeGestures] = useState(
-    initial.enableSwipeGestures ?? true,
-  );
-  const [swipeGestures, setSwipeGestures] = useState<
-    Record<"left" | "right", "none" | "queue" | "saved" | "ignore" | "watched">
-  >(
-    initial.swipeGestures ?? {
-      left: "ignore",
-      right: "queue",
-    },
-  );
-  const [quickActions, setQuickActions] = useState<QuickAction[]>(
-    initial.quickActions ?? DEFAULT_QUICK_ACTIONS,
-  );
-  const initialSponsorPrefs = sponsorBlockPrefsFromAppSettings(initial);
-  const [sponsorBlockEnabled, setSponsorBlockEnabled] = useState(
-    initialSponsorPrefs.enabled,
-  );
-  const [sponsorBlockAutoSkip, setSponsorBlockAutoSkip] = useState(
-    initialSponsorPrefs.autoSkip,
-  );
-  const [sponsorBlockCategories, setSponsorBlockCategories] = useState(
-    initialSponsorPrefs.categories,
-  );
-  const [importJson, setImportJson] = useState("");
-  const [importModeReplace, setImportModeReplace] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
-  const [healthMessage, setHealthMessage] = useState<string | null>(null);
-  const [checkedInstanceSources, setCheckedInstanceSources] =
-    useState<InstanceSourceInfo | null>(null);
-
-  useEffect(() => {
-    setTheme(initial.theme);
-  }, [initial.theme, setTheme]);
-
-  useEffect(() => {
-    setVisualTheme(initial.visualTheme);
-  }, [initial.visualTheme, setVisualTheme]);
-
-  useEffect(() => {
-    setTrendingRegion(initial.trendingRegion ?? "US");
-  }, [initial.trendingRegion]);
-
-  useEffect(() => {
-    setHideShortsInSubscriptions(initial.hideShortsInSubscriptions ?? true);
-  }, [initial.hideShortsInSubscriptions]);
-
-  useEffect(() => {
-    setDefaultCinemaMode(initial.defaultCinemaMode ?? false);
-  }, [initial.defaultCinemaMode]);
-
-  useEffect(() => {
-    setFullscreenAutoBestQuality(initial.fullscreenAutoBestQuality ?? false);
-  }, [initial.fullscreenAutoBestQuality]);
-
-  useEffect(() => {
-    setEnableMiniPlayer(initial.enableMiniPlayer ?? true);
-    writeWatchMiniEnabled(initial.enableMiniPlayer ?? true);
-  }, [initial.enableMiniPlayer]);
-
-  useEffect(() => {
-    setAutoplayOnWatch(initial.autoplayOnWatch ?? true);
-  }, [initial.autoplayOnWatch]);
-
-  useEffect(() => {
-    setShortsPreloadNext(initial.shortsPreloadNext ?? true);
-  }, [initial.shortsPreloadNext]);
-
-  useEffect(() => {
-    setCaptionLanguage(initial.captionLanguage ?? ORIGINAL_CAPTION_LANGUAGE);
-  }, [initial.captionLanguage]);
-
-  useEffect(() => {
-    const q = initial.defaultPlaybackQuality ?? "1080p";
-    setDefaultPlaybackQuality(q);
-    writeDefaultPlaybackQuality(q);
-  }, [initial.defaultPlaybackQuality]);
-
-  useEffect(() => {
-    const prefs = sponsorBlockPrefsFromAppSettings(initial);
-    setSponsorBlockEnabled(prefs.enabled);
-    setSponsorBlockAutoSkip(prefs.autoSkip);
-    setSponsorBlockCategories(prefs.categories);
-    writeSponsorBlockPrefs(prefs);
-  }, [initial]);
-
-  const updateMutation = trpc.settings.update.useMutation({
-    onSuccess: async (data) => {
-      setTheme(data.theme);
-      setThemeLocal(data.theme);
-      setVisualTheme(data.visualTheme);
-      setVisualThemeLocal(data.visualTheme);
-      setTrendingRegion(data.trendingRegion ?? "US");
-      setFavoriteTag(data.favoriteTag);
-      writeWatchMiniEnabled(data.enableMiniPlayer ?? true);
-      writeDefaultPlaybackQuality(data.defaultPlaybackQuality ?? "1080p");
-      writeSponsorBlockPrefs(sponsorBlockPrefsFromAppSettings(data));
-      await utils.settings.get.invalidate();
-      await utils.favorites.invalidate();
-      await utils.subscriptions.listTagged.invalidate();
-      await utils.subscriptions.mergedFeedInfinite.invalidate();
-      await utils.feed.home.invalidate();
-      await utils.trending.list.invalidate();
-      setMessage("Settings saved.");
-    },
-  });
-
+  const [importJson, setImportJson] = useState("");
+  const [replace, setReplace] = useState(true);
   const exportQuery = trpc.settings.exportData.useQuery(undefined, {
     enabled: false,
   });
-
   const opmlQuery = trpc.subscriptions.exportOpml.useQuery(undefined, {
     enabled: false,
   });
-
   const importMutation = trpc.settings.importData.useMutation({
     onSuccess: async () => {
       await utils.settings.get.invalidate();
+      setImportJson("");
       setMessage("Import finished.");
     },
+    onError: (e) => setMessage(`Import failed: ${e.message}`),
   });
 
-  const clearCachesMutation = trpc.settings.clearCaches.useMutation({
+  async function onExport() {
+    const data = await exportQuery.refetch();
+    if (!data.data) return setMessage("Export failed.");
+    await navigator.clipboard.writeText(JSON.stringify(data.data, null, 2));
+    setMessage("Export copied to the clipboard.");
+  }
+
+  async function onExportOpml() {
+    const data = await opmlQuery.refetch();
+    if (!data.data) return setMessage("OPML export failed.");
+    const url = URL.createObjectURL(
+      new Blob([data.data.opml], { type: "text/xml" }),
+    );
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "owntube-subscriptions.opml";
+    a.click();
+    URL.revokeObjectURL(url);
+    setMessage(`OPML exported (${data.data.count} subscriptions).`);
+  }
+
+  return (
+    <>
+      <SettingRow
+        title="Export"
+        description="Settings, history, likes and subscriptions as JSON (copied), or subscriptions as OPML."
+      >
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onExport}
+            disabled={exportQuery.isFetching}
+          >
+            Copy JSON
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onExportOpml}
+            disabled={opmlQuery.isFetching}
+          >
+            OPML
+          </Button>
+        </div>
+      </SettingRow>
+      <SettingRow
+        stack
+        title="Import OwnTube JSON"
+        description="Paste an export from this or another OwnTube."
+      >
+        <textarea
+          value={importJson}
+          onChange={(e) => setImportJson(e.currentTarget.value)}
+          placeholder="Paste export JSON here"
+          className="min-h-24 w-full rounded-[var(--radius-shell)] border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-3 font-mono text-xs"
+        />
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          <Button
+            type="button"
+            size="sm"
+            onClick={() =>
+              importMutation.mutate({
+                replaceExisting: replace,
+                payloadJson: importJson,
+              })
+            }
+            disabled={importMutation.isPending || !importJson.trim()}
+          >
+            Import
+          </Button>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={replace}
+              onChange={(e) => setReplace(e.currentTarget.checked)}
+            />
+            Replace existing data
+          </label>
+        </div>
+        {message ? (
+          <p className="mt-2 text-xs text-[hsl(var(--muted-foreground))]">
+            {message}
+          </p>
+        ) : null}
+      </SettingRow>
+    </>
+  );
+}
+
+function ServerRows({ initial }: { initial: InstanceSourceInfo }) {
+  const utils = trpc.useUtils();
+  const [checked, setChecked] = useState<InstanceSourceInfo | null>(null);
+  const [health, setHealth] = useState<string | null>(null);
+  const [cacheMessage, setCacheMessage] = useState<string | null>(null);
+  const healthQuery = trpc.settings.checkInstances.useQuery(undefined, {
+    enabled: false,
+  });
+  const clearCaches = trpc.settings.clearCaches.useMutation({
     onSuccess: async (res) => {
       await Promise.all([
         utils.feed.home.invalidate(),
@@ -226,587 +714,64 @@ export function SettingsPanel({
         utils.video.related.invalidate(),
         utils.channel.page.invalidate(),
       ]);
-      setMessage(`Cache cleared (${res.clearedRows} cached rows removed).`);
+      setCacheMessage(`Cleared ${res.clearedRows} cached rows.`);
     },
-    onError: (e) => {
-      setMessage(`Cache clear failed: ${e.message}`);
-    },
+    onError: (e) => setCacheMessage(`Clearing failed: ${e.message}`),
   });
 
-  const exporting = exportQuery.isFetching;
-  const saving = updateMutation.isPending;
-  const importing = importMutation.isPending;
-  const clearingCaches = clearCachesMutation.isPending;
-  const healthQuery = trpc.settings.checkInstances.useQuery(undefined, {
-    enabled: false,
-  });
-
-  const appearanceButtons = useMemo(
-    () =>
-      (["system", "light", "dark"] as const).map((value) => (
-        <Button
-          key={value}
-          type="button"
-          variant={theme === value ? "default" : "outline"}
-          size="sm"
-          onClick={() => {
-            setThemeLocal(value);
-            setTheme(value);
-          }}
-        >
-          {value === "system" ? "System" : value === "light" ? "Light" : "Dark"}
-        </Button>
-      )),
-    [setTheme, theme],
-  );
-
-  const visualThemeButtons = useMemo(
-    () =>
-      (["default", "terminal"] as const).map((value) => (
-        <Button
-          key={value}
-          type="button"
-          variant={visualTheme === value ? "default" : "outline"}
-          size="sm"
-          onClick={() => {
-            setVisualThemeLocal(value);
-            setVisualTheme(value);
-          }}
-        >
-          {value === "default" ? "Default" : "Terminal"}
-        </Button>
-      )),
-    [setVisualTheme, visualTheme],
-  );
-
-  async function onSave() {
-    setMessage(null);
-    await updateMutation.mutateAsync({
-      theme,
-      visualTheme,
-      trendingRegion,
-      ...(favoriteTag.trim() ? { favoriteTag } : {}),
-      hideShortsInSubscriptions,
-      defaultCinemaMode,
-      enableMiniPlayer,
-      autoplayOnWatch,
-      shortsPreloadNext,
-      defaultPlaybackQuality,
-      fullscreenAutoBestQuality,
-      captionLanguage,
-      sponsorBlockEnabled,
-      sponsorBlockAutoSkip,
-      sponsorBlockCategories,
-      enableSwipeGestures,
-      swipeGestures,
-      quickActions,
-    });
-  }
-
-  function onSponsorCategoryToggle(category: SponsorBlockCategory) {
-    setSponsorBlockCategories((prev) =>
-      toggleSponsorBlockCategory(prev, category),
-    );
-  }
-
-  async function onExport() {
-    setMessage(null);
-    const data = await exportQuery.refetch();
-    if (!data.data) {
-      setMessage("Export failed.");
-      return;
-    }
-    const text = JSON.stringify(data.data, null, 2);
-    await navigator.clipboard.writeText(text);
-    setMessage("Export copied to clipboard.");
-  }
-
-  async function onImport() {
-    setMessage(null);
-    await importMutation.mutateAsync({
-      replaceExisting: importModeReplace,
-      payloadJson: importJson,
-    });
-  }
-
-  async function onExportOpml() {
-    setMessage(null);
-    const data = await opmlQuery.refetch();
-    if (!data.data) {
-      setMessage("OPML export failed.");
-      return;
-    }
-    const blob = new Blob([data.data.opml], { type: "text/xml" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = "owntube-subscriptions.opml";
-    anchor.click();
-    URL.revokeObjectURL(url);
-    setMessage(`OPML exported (${data.data.count} subscriptions).`);
-  }
-
-  async function onCheckInstances() {
-    setHealthMessage(null);
+  async function onCheck() {
+    setHealth(null);
     const data = await healthQuery.refetch();
-    if (!data.data) {
-      setHealthMessage("Health check failed.");
-      return;
-    }
-    setCheckedInstanceSources(data.data.instanceSources);
-    setHealthMessage(
+    if (!data.data) return setHealth("Health check failed.");
+    setChecked(data.data.instanceSources);
+    setHealth(
       data.data.invidiousOk == null
         ? "Invidious: not set"
         : `Invidious: ${data.data.invidiousOk ? "healthy" : "down"}`,
     );
   }
 
-  const displayedInstanceSources = checkedInstanceSources ?? instanceSources;
-
   return (
-    <div className="space-y-8">
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Theme</h2>
-        <div className="space-y-3">
-          <div className="space-y-2">
-            <p className="text-sm font-medium">Appearance</p>
-            <div className="flex flex-wrap gap-2">{appearanceButtons}</div>
-          </div>
-          <div className="space-y-2">
-            <p className="text-sm font-medium">Style</p>
-            <div className="flex flex-wrap gap-2">{visualThemeButtons}</div>
-          </div>
-        </div>
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Home / trending region</h2>
-        <p className="text-sm text-[hsl(var(--muted-foreground))]">
-          Used for the trending slice of your feed and the Explore page when no{" "}
-          <code className="rounded bg-[hsl(var(--muted))] px-1 font-mono text-xs">
-            ?region=
-          </code>{" "}
-          query is set.
-        </p>
-        <div className="max-w-md space-y-1">
-          <label
-            htmlFor="settings-trending-region"
-            className="text-sm font-medium"
+    <>
+      <SettingRow stack title="Instances">
+        <InstanceSourceHint row={(checked ?? initial).invidious} />
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onCheck}
+            disabled={healthQuery.isFetching}
           >
-            Region (ISO code)
-          </label>
-          <select
-            id="settings-trending-region"
-            className="w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 py-2 text-sm"
-            value={trendingRegion}
-            onChange={(e) => setTrendingRegion(e.target.value)}
-          >
-            {TRENDING_REGION_OPTIONS.map((o) => (
-              <option key={o.code} value={o.code}>
-                {o.label} ({o.code})
-              </option>
-            ))}
-          </select>
-        </div>
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Favorites</h2>
-        <p className="text-sm text-[hsl(var(--muted-foreground))]">
-          The star on a channel puts this tag on it (and subscribes). Favorites
-          in the sidebar and the Favorites home block show the channels carrying
-          it. Pick one of your existing tags to make those channels your
-          favorites; channels starred under the old tag keep that tag.
-        </p>
-        <div className="max-w-md space-y-1">
-          <label
-            htmlFor="settings-favorite-tag"
-            className="text-sm font-medium"
-          >
-            Favorite tag
-          </label>
-          <input
-            id="settings-favorite-tag"
-            list="settings-favorite-tag-options"
-            className="w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 py-2 text-sm"
-            value={favoriteTag}
-            maxLength={32}
-            onChange={(e) => setFavoriteTag(e.target.value)}
-          />
-          <datalist id="settings-favorite-tag-options">
-            {(channelTagList.data ?? []).map(({ tag }) => (
-              <option key={tag} value={tag} />
-            ))}
-          </datalist>
-        </div>
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Video source instances</h2>
-        <p className="text-sm text-[hsl(var(--muted-foreground))]">
-          Configured on the server via{" "}
-          <code className="rounded bg-[hsl(var(--muted))] px-1 font-mono text-xs">
-            INVIDIOUS_BASE_URL
-          </code>
-          . List several instances (comma or space separated) to fail over
-          between them.
-        </p>
-        <div className="space-y-4 max-w-2xl">
-          <InstanceSourceHint row={displayedInstanceSources.invidious} />
-          <Button type="button" onClick={onSave} disabled={saving}>
-            Save settings
+            {healthQuery.isFetching ? "Checking…" : "Check health"}
           </Button>
-          <Button type="button" variant="outline" onClick={onCheckInstances}>
-            Check instances health
-          </Button>
-          {healthMessage ? (
-            <p className="text-sm text-[hsl(var(--muted-foreground))]">
-              {healthMessage}
-            </p>
+          {health ? (
+            <span className="text-xs text-[hsl(var(--muted-foreground))]">
+              {health}
+            </span>
           ) : null}
         </div>
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Watch and feed behavior</h2>
-        <div className="space-y-2">
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={hideShortsInSubscriptions}
-              onChange={(e) =>
-                setHideShortsInSubscriptions(e.currentTarget.checked)
-              }
-            />
-            Hide Shorts from the Subscriptions feed
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={enableSwipeGestures}
-              onChange={(e) => setEnableSwipeGestures(e.currentTarget.checked)}
-            />
-            Enable swipe gestures on Home / Explore / Subscriptions cards
-            (mobile)
-          </label>
-          {enableSwipeGestures ? (
-            <div className="grid grid-cols-1 gap-2 pl-6 sm:grid-cols-2">
-              {(
-                [
-                  ["left", "Swipe left"],
-                  ["right", "Swipe right"],
-                ] as const
-              ).map(([key, label]) => (
-                <label
-                  key={key}
-                  className="flex items-center justify-between gap-2 text-sm"
-                >
-                  <span className="text-[hsl(var(--muted-foreground))]">
-                    {label}
-                  </span>
-                  <select
-                    className="rounded border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-2 py-1 text-sm"
-                    value={swipeGestures[key]}
-                    onChange={(e) =>
-                      setSwipeGestures((g) => ({
-                        ...g,
-                        [key]: e.currentTarget.value as
-                          | "none"
-                          | "queue"
-                          | "saved"
-                          | "ignore"
-                          | "watched",
-                      }))
-                    }
-                  >
-                    <option value="none">None</option>
-                    <option value="queue">Queue</option>
-                    <option value="saved">Save</option>
-                    <option value="ignore">Ignore</option>
-                    <option value="watched">Mark watched</option>
-                  </select>
-                </label>
-              ))}
-            </div>
-          ) : null}
-          <div className="space-y-2">
-            <p className="text-sm">Quick actions</p>
-            <p className="text-xs text-[hsl(var(--muted-foreground))]">
-              The first three appear as hover buttons on video thumbnails
-              (desktop); all four as the button row in the mobile action sheet.
-            </p>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {[0, 1, 2, 3].map((slot) => (
-                <label
-                  key={slot}
-                  className="flex items-center justify-between gap-2 text-sm"
-                >
-                  <span className="text-[hsl(var(--muted-foreground))]">
-                    {slot < 2
-                      ? `Slot ${slot + 1} (thumbnail)`
-                      : `Slot ${slot + 1}`}
-                  </span>
-                  <select
-                    className="rounded border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-2 py-1 text-sm"
-                    value={quickActions[slot] ?? "none"}
-                    onChange={(e) => {
-                      const value = e.currentTarget.value;
-                      setQuickActions((prev) => {
-                        const next = prev.slice(0, 4);
-                        if (value === "none") {
-                          return next.filter((_, i) => i !== slot);
-                        }
-                        const action = value as QuickAction;
-                        // One slot per verb: drop it elsewhere first.
-                        const cleaned = next.filter(
-                          (a, i) => i === slot || a !== action,
-                        );
-                        const idx = Math.min(slot, cleaned.length);
-                        if (cleaned[slot] !== undefined && idx === slot) {
-                          cleaned[slot] = action;
-                        } else {
-                          cleaned.splice(idx, 0, action);
-                        }
-                        return cleaned.slice(0, 4);
-                      });
-                    }}
-                  >
-                    <option value="none">None</option>
-                    {QUICK_ACTION_VALUES.map((a) => (
-                      <option key={a} value={a}>
-                        {QUICK_ACTION_LABELS[a]}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ))}
-            </div>
-            <button
-              type="button"
-              className="text-xs text-[hsl(var(--muted-foreground))] underline-offset-2 hover:underline"
-              onClick={() => setQuickActions(DEFAULT_QUICK_ACTIONS)}
-            >
-              Reset to default (Queue, Save, Like, Dislike)
-            </button>
-          </div>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={defaultCinemaMode}
-              onChange={(e) => setDefaultCinemaMode(e.currentTarget.checked)}
-            />
-            Enable cinema mode by default on watch pages
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={enableMiniPlayer}
-              onChange={(e) => setEnableMiniPlayer(e.currentTarget.checked)}
-            />
-            Keep mini-player when leaving watch page
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={autoplayOnWatch}
-              onChange={(e) => setAutoplayOnWatch(e.currentTarget.checked)}
-            />
-            Autoplay videos when opening the watch page
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={shortsPreloadNext}
-              onChange={(e) => setShortsPreloadNext(e.currentTarget.checked)}
-            />
-            Preload the next short while watching (faster swipes, more data)
-          </label>
-          <div className="max-w-md space-y-1 pt-1">
-            <label
-              htmlFor="settings-default-playback-quality"
-              className="text-sm font-medium"
-            >
-              Default playback quality
-            </label>
-            <select
-              id="settings-default-playback-quality"
-              className="w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 py-2 text-sm"
-              value={defaultPlaybackQuality}
-              onChange={(e) =>
-                setDefaultPlaybackQuality(
-                  e.currentTarget.value as DefaultPlaybackQuality,
-                )
-              }
-            >
-              {DEFAULT_PLAYBACK_QUALITY_SELECT_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-            <p className="text-xs text-[hsl(var(--muted-foreground))]">
-              Used when a video opens. 720p or 360p muxed start faster; 1080p
-              uses separate video and audio streams (slower start, more
-              sensitive at 2× speed).
-            </p>
-          </div>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={fullscreenAutoBestQuality}
-              onChange={(e) =>
-                setFullscreenAutoBestQuality(e.currentTarget.checked)
-              }
-            />
-            Switch to the best available quality in fullscreen (uses more data;
-            reverts on exit)
-          </label>
-          <div className="max-w-md space-y-1 pt-1">
-            <label
-              htmlFor="settings-caption-language"
-              className="text-sm font-medium"
-            >
-              Default subtitle language
-            </label>
-            <select
-              id="settings-caption-language"
-              className="w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 py-2 text-sm"
-              value={captionLanguage}
-              onChange={(e) => setCaptionLanguage(e.currentTarget.value)}
-            >
-              {captionLanguageOptions().map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-            <p className="text-xs text-[hsl(var(--muted-foreground))]">
-              Language subtitles start in when they're on. Videos without it use
-              their original language. Picking another language in the player
-              only changes that video.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold">SponsorBlock</h2>
-        <p className="text-sm text-[hsl(var(--muted-foreground))]">
-          Community-submitted segments (sponsors, intros, outros) from{" "}
-          <a
-            href="https://sponsor.ajay.app"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[hsl(var(--primary))] hover:underline"
-          >
-            SponsorBlock
-          </a>
-          . Shown on the watch player timeline; optional auto-skip.
-        </p>
-        <div className="space-y-2">
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={sponsorBlockEnabled}
-              onChange={(e) => setSponsorBlockEnabled(e.currentTarget.checked)}
-            />
-            Enable SponsorBlock segments
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={sponsorBlockAutoSkip}
-              disabled={!sponsorBlockEnabled}
-              onChange={(e) => setSponsorBlockAutoSkip(e.currentTarget.checked)}
-            />
-            Auto-skip segments during playback
-          </label>
-        </div>
-        <fieldset className="space-y-2" disabled={!sponsorBlockEnabled}>
-          <legend className="text-sm font-medium">Categories</legend>
-          <div className="grid gap-2 sm:grid-cols-2">
-            {SPONSORBLOCK_ALL_CATEGORIES.map((category) => (
-              <label key={category} className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={sponsorBlockCategories.includes(category)}
-                  onChange={() => onSponsorCategoryToggle(category)}
-                />
-                {SPONSORBLOCK_CATEGORY_LABELS[category]}
-              </label>
-            ))}
-          </div>
-        </fieldset>
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Cache maintenance</h2>
-        <p className="text-sm text-[hsl(var(--muted-foreground))]">
-          Force-clear server-side caches after major imports or upstream issues.
-        </p>
+      </SettingRow>
+      <SettingRow
+        title="Cache"
+        description={
+          cacheMessage ??
+          "Clear the server's caches after big imports or upstream trouble."
+        }
+      >
         <Button
           type="button"
           variant="outline"
+          size="sm"
           onClick={() => {
-            setMessage(null);
-            clearCachesMutation.mutate();
+            setCacheMessage(null);
+            clearCaches.mutate();
           }}
-          disabled={clearingCaches}
+          disabled={clearCaches.isPending}
         >
-          {clearingCaches ? "Clearing cache…" : "Clear cache"}
+          {clearCaches.isPending ? "Clearing…" : "Clear cache"}
         </Button>
-      </section>
-
-      <RssFeedsSection />
-
-      <ApiTokensSection />
-
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Data export / import</h2>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onExport}
-            disabled={exporting}
-          >
-            Export (copy JSON)
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onExportOpml}
-            disabled={opmlQuery.isFetching}
-          >
-            Export subscriptions (OPML)
-          </Button>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={importModeReplace}
-              onChange={(e) => setImportModeReplace(e.currentTarget.checked)}
-            />
-            Replace existing data
-          </label>
-        </div>
-        <textarea
-          value={importJson}
-          onChange={(e) => setImportJson(e.currentTarget.value)}
-          placeholder="Paste export JSON here"
-          className="min-h-48 w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-3 text-sm"
-        />
-        <Button
-          type="button"
-          onClick={onImport}
-          disabled={importing || !importJson.trim()}
-        >
-          Import JSON
-        </Button>
-      </section>
-
-      {message ? (
-        <p className="text-sm text-[hsl(var(--muted-foreground))]">{message}</p>
-      ) : null}
-    </div>
+      </SettingRow>
+    </>
   );
 }

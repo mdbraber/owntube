@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { SettingsBlock } from "@/components/settings/settings-ui";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { ApiTokenScope } from "@/server/api-token";
@@ -62,9 +63,9 @@ export function ApiTokensSection() {
     label.trim().length > 0 && scopes.length > 0 && !create.isPending;
 
   return (
-    <section className="space-y-3">
-      <h2 className="text-lg font-semibold">API tokens</h2>
-      <p className="text-sm text-[hsl(var(--muted-foreground))]">
+    <SettingsBlock>
+      <h3 className="text-sm font-medium">API tokens</h3>
+      <p className="text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">
         For services that update OwnTube on your behalf, such as the Pocket
         Casts playback sync. Send a token as{" "}
         <code className="rounded bg-[hsl(var(--muted))] px-1 py-0.5">
@@ -200,6 +201,6 @@ export function ApiTokensSection() {
           {create.isPending ? "Creating…" : "Create token"}
         </Button>
       </form>
-    </section>
+    </SettingsBlock>
   );
 }

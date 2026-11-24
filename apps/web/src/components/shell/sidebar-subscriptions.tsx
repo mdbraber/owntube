@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef } from "react";
+import { useEffect, useId, useRef } from "react";
 import { ChannelAvatarCircle } from "@/components/videos/channel-avatar-circle";
 import { trpc } from "@/trpc/react";
 
@@ -84,6 +84,52 @@ export function SidebarSubscriptions({ enabled }: Props) {
       >
         View all channels
       </Link>
+    </div>
+  );
+}
+
+/**
+ * The Following section of the sidebar: a header that expands and collapses
+ * the subscribed-channels list (the choice is saved with the sidebar setting).
+ */
+export function SidebarFollowing({
+  collapsed,
+  onToggle,
+}: {
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
+  const listId = useId();
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={!collapsed}
+        aria-controls={listId}
+        className="flex w-full items-center justify-between rounded-[var(--radius-shell)] px-3 py-1.5 text-[11px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))] transition hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+      >
+        Following
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+          className={`h-4 w-4 transition-transform duration-150 ${collapsed ? "-rotate-90" : ""}`}
+        >
+          <title>{collapsed ? "Expand" : "Collapse"}</title>
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </button>
+      <div
+        id={listId}
+        className={collapsed ? "hidden" : "mt-1 flex flex-col gap-0.5"}
+      >
+        {collapsed ? null : <SidebarSubscriptions enabled />}
+      </div>
     </div>
   );
 }

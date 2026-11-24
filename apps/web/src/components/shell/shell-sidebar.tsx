@@ -2,13 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useSettingsPatch } from "@/components/settings/use-settings-patch";
 import { BrandLogo } from "@/components/shell/brand-logo";
+import { activeForPath, navItemByKey } from "@/components/shell/nav-config";
+import { SidebarFollowing } from "@/components/shell/sidebar-subscriptions";
 import {
-  activeForPath,
-  SECONDARY_NAV,
-  SIDEBAR_NAV,
-} from "@/components/shell/nav-config";
-import { SidebarSubscriptions } from "@/components/shell/sidebar-subscriptions";
+  DEFAULT_SIDEBAR_NAV,
+  resolveSidebarEntries,
+  sidebarSlots,
+} from "@/lib/sidebar-nav";
 import { cn } from "@/lib/utils";
 
 const SHELL_SIDEBAR_WIDTH_PX = 228;
@@ -21,6 +23,11 @@ type ShellSidebarProps = {
 
 export function ShellSidebar({ open, onClose, isLoggedIn }: ShellSidebarProps) {
   const pathname = usePathname();
+  const { settings, save } = useSettingsPatch({ enabled: isLoggedIn });
+  const sidebarNav = settings?.sidebarNav ?? DEFAULT_SIDEBAR_NAV;
+  const slots = sidebarSlots(resolveSidebarEntries(sidebarNav.items), {
+    signedIn: isLoggedIn,
+  });
 
   return (
     <aside
@@ -61,8 +68,35 @@ export function ShellSidebar({ open, onClose, isLoggedIn }: ShellSidebarProps) {
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden px-2.5 pb-4 pt-3">
-          <nav className="flex flex-col gap-0.5">
-            {SIDEBAR_NAV.map((n) => {
+          <nav className="flex flex-col gap-0.5" aria-label="Main">
+            {slots.map((slot, i) => {
+              if (slot.kind === "divider") {
+                return (
+                  <div
+                    // biome-ignore lint/suspicious/noArrayIndexKey: separators have no identity; their position is the key.
+                    key={`divider-${i}`}
+                    className="mx-2.5 my-3 h-px shrink-0 bg-[hsl(var(--border))]"
+                  />
+                );
+              }
+              if (slot.kind === "following") {
+                return (
+                  <SidebarFollowing
+                    key="following"
+                    collapsed={sidebarNav.followingCollapsed}
+                    onToggle={() =>
+                      void save({
+                        sidebarNav: {
+                          ...sidebarNav,
+                          followingCollapsed: !sidebarNav.followingCollapsed,
+                        },
+                      })
+                    }
+                  />
+                );
+              }
+              const n = navItemByKey(slot.key);
+              if (!n) return null;
               const active = activeForPath(pathname, n.href, n.key);
               return (
                 <Link
@@ -82,44 +116,6 @@ export function ShellSidebar({ open, onClose, isLoggedIn }: ShellSidebarProps) {
               );
             })}
           </nav>
-
-          <div className="mx-2.5 my-3.5 h-px bg-[hsl(var(--border))]" />
-
-          <div className="flex flex-col gap-0.5">
-            {SECONDARY_NAV.map((n) => {
-              const active = activeForPath(pathname, n.href, n.key);
-              return (
-                <Link
-                  key={n.key}
-                  href={n.href}
-                  aria-current={active ? "page" : undefined}
-                  className={cn(
-                    "ot-shell-nav-link",
-                    active && "ot-shell-nav-link--active",
-                  )}
-                >
-                  <span className="inline-flex h-5 w-5 shrink-0 [&_svg]:h-full [&_svg]:w-full">
-                    {active ? (n.iconActive ?? n.icon) : n.icon}
-                  </span>
-                  <span className="ot-shell-nav-label">{n.label}</span>
-                </Link>
-              );
-            })}
-          </div>
-
-          {isLoggedIn ? (
-            <>
-              <div className="mx-2.5 my-3.5 h-px bg-[hsl(var(--border))]" />
-              <div>
-                <div className="px-3 pb-2 text-[11px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
-                  Following
-                </div>
-                <div className="flex flex-col gap-0.5">
-                  <SidebarSubscriptions enabled={isLoggedIn} />
-                </div>
-              </div>
-            </>
-          ) : null}
 
           <div className="mt-auto border-t border-[hsl(var(--border))] px-3 pb-2 pt-4 text-xs text-[hsl(var(--muted-foreground))]">
             <div className="flex items-center gap-2">
