@@ -309,7 +309,7 @@ Needed before the APK can go to anyone else.
     current server, because tRPC wants a string when the link is built.
   - TVs that were already signed in keep their built-in server without
     being asked.
-- Versioning: app.json 0.2.1 / versionCode 3. Settings → About shows the
+- Versioning: app.json 0.3.0 / versionCode 4. Settings → About shows the
   version, versionCode and `EXPO_PUBLIC_BUILD_ID`.
 - Updates: the simple check.
   - The web serves `/tv/update.json` and `/tv/download/<file>.apk` from
