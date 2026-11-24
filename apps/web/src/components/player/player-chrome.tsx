@@ -255,7 +255,13 @@ export function PlayerChrome({
   /** Jump `delta` seconds and show the seek marker on that side. */
   function seekBy(delta: number, source: "key" | "tap") {
     const d = adapter.duration;
-    const target = adapter.currentTime + delta;
+    // From the element's own time: it changes the moment a seek is set,
+    // while adapter.currentTime waits for the next timeupdate — quick
+    // repeated taps/presses would otherwise all start from the same spot.
+    const now =
+      shellRef.current?.querySelector("video")?.currentTime ??
+      adapter.currentTime;
+    const target = now + delta;
     adapter.seek(
       Number.isFinite(d) && d > 0
         ? Math.min(Math.max(0, target), d)
