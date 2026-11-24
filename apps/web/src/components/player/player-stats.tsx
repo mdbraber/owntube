@@ -53,6 +53,23 @@ export function registerStatsSource(
   };
 }
 
+const lastErrors = new WeakMap<
+  HTMLVideoElement,
+  { text: string; at: number; time: number }
+>();
+
+/**
+ * Notes a playback error on this element for the overlay ("Last error"),
+ * with the video time it happened at.
+ */
+export function recordPlayerError(video: HTMLVideoElement, text: string) {
+  lastErrors.set(video, {
+    text: text.slice(0, 200),
+    at: Date.now(),
+    time: video.currentTime,
+  });
+}
+
 function readEngine(video: HTMLVideoElement, hasAudioEl: boolean): EngineStats {
   const read = sources.get(video);
   if (read) {
@@ -142,6 +159,16 @@ export function statsRows(
       "Frames",
       q ? `${q.droppedVideoFrames} dropped of ${q.totalVideoFrames}` : "–",
     ],
+    ...((): [string, string][] => {
+      const err = lastErrors.get(video);
+      if (!err) return [];
+      const ago = Math.round((Date.now() - err.at) / 1000);
+      const m = Math.floor(err.time / 60);
+      const sec = Math.floor(err.time % 60)
+        .toString()
+        .padStart(2, "0");
+      return [["Last error", `${err.text} (at ${m}:${sec}, ${ago} s ago)`]];
+    })(),
     [
       "State",
       `${READY_STATES[video.readyState] ?? video.readyState}${video.paused ? ", paused" : ""} · ${video.playbackRate}×`,

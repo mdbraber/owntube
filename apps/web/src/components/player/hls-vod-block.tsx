@@ -145,6 +145,12 @@ export function HlsVodBlock({
   } | null>(null);
   const [dashFailedKey, setDashFailedKey] = useState<string | null>(null);
   const dashFailed = dashFailedKey === reactKey;
+  // Where the video was when DASH failed: the HLS fallback continues there
+  // instead of starting the video over.
+  const [fallbackStart, setFallbackStart] = useState<{
+    key: string;
+    at: number;
+  } | null>(null);
   useEffect(() => {
     // `src` is our own synthesized HLS manifest (absolute, on the media
     // origin — see media-origin.ts) whenever it's this pathname; check the
@@ -221,7 +227,7 @@ export function HlsVodBlock({
     videoRef,
     decided && !dashSrc ? src : "",
     reactKey,
-    startAtSeconds,
+    fallbackStart?.key === reactKey ? fallbackStart.at : startAtSeconds,
     shortsShouldPlay || miniShouldAutoplay || autoplay,
     emitPlaybackError,
   );
@@ -232,7 +238,13 @@ export function HlsVodBlock({
     reactKey,
     startAtSeconds,
     shortsShouldPlay || miniShouldAutoplay || autoplay,
-    () => setDashFailedKey(reactKey),
+    () => {
+      const at = videoRef.current?.currentTime;
+      if (typeof at === "number" && Number.isFinite(at) && at > 0) {
+        setFallbackStart({ key: reactKey, at });
+      }
+      setDashFailedKey(reactKey);
+    },
     defaultQualityHeightCap,
     fullscreenAutoBestQuality,
   );

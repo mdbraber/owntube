@@ -7,7 +7,10 @@ import type {
   Representation,
 } from "dashjs";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { registerStatsSource } from "@/components/player/player-stats";
+import {
+  recordPlayerError,
+  registerStatsSource,
+} from "@/components/player/player-stats";
 import { languageFirstAudioMenuLabel } from "@/lib/audio-track-label";
 import {
   getClientAppOrigin,
@@ -288,6 +291,21 @@ export function useDashPlayback(
         // come from <track> instead). A failed "cc" track must not tear down
         // an otherwise-healthy video/audio pipeline.
         if (e.error === "cc") return;
+        // Say what failed (console and stats for nerds): the fallback that
+        // follows is otherwise silent, and the cause is browser-specific.
+        const err =
+          e.error && typeof e.error === "object"
+            ? (e.error as { code?: number | null; message?: string | null })
+            : { code: null, message: String(e.error ?? "") };
+        const text = [
+          "dash.js",
+          err.code != null ? `#${err.code}` : null,
+          err.message || null,
+        ]
+          .filter(Boolean)
+          .join(" ");
+        console.warn("[owntube] dash.js error, falling back to HLS:", e);
+        recordPlayerError(video, `${text} → HLS`);
         onFatalErrorRef.current?.();
       });
 
