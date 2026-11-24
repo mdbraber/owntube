@@ -375,6 +375,9 @@ export function SettingsPanel({
 function SectionTabs() {
   const [current, setCurrent] = useState<string>(SECTIONS[0].id);
   const barRef = useRef<HTMLElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+  // While a tab click scrolls the page, the sections it passes don't count.
+  const pinnedUntil = useRef(0);
 
   useEffect(() => {
     const root = barRef.current?.closest(".ot-app-scroll") ?? null;
@@ -382,6 +385,7 @@ function SectionTabs() {
     const io = new IntersectionObserver(
       (entries) => {
         for (const e of entries) visible.set(e.target.id, e.isIntersecting);
+        if (Date.now() < pinnedUntil.current) return;
         const first = SECTIONS.find((sec) => visible.get(sec.id));
         if (first) setCurrent(first.id);
       },
@@ -395,12 +399,36 @@ function SectionTabs() {
     return () => io.disconnect();
   }, []);
 
-  // Keep the highlighted tab in view on narrow screens.
+  // Keep the highlighted tab in view on narrow screens. Scroll the tab row
+  // itself: scrollIntoView would also "scroll" the page, which cancels a
+  // smooth scroll a tab click has under way (the tabs then didn't move).
   useEffect(() => {
-    barRef.current
-      ?.querySelector<HTMLElement>(`[data-section="${current}"]`)
-      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    const list = listRef.current;
+    const tab = list?.querySelector<HTMLElement>(`[data-section="${current}"]`);
+    if (!list || !tab || list.scrollWidth <= list.clientWidth) return;
+    const left = tab.offsetLeft - (list.clientWidth - tab.offsetWidth) / 2;
+    list.scrollTo({ left, behavior: "smooth" });
   }, [current]);
+
+  const goTo = (id: string) => {
+    const el = document.getElementById(id);
+    const bar = barRef.current;
+    const root = bar?.closest<HTMLElement>(".ot-app-scroll");
+    if (!el || !bar) return;
+    setCurrent(id);
+    pinnedUntil.current = Date.now() + 1200;
+    if (!root) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    const top =
+      el.getBoundingClientRect().top -
+      root.getBoundingClientRect().top +
+      root.scrollTop -
+      bar.offsetHeight -
+      12;
+    root.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+  };
 
   return (
     <nav
@@ -408,7 +436,10 @@ function SectionTabs() {
       aria-label="Settings sections"
       className="sticky top-0 z-20 -mx-1 border-b border-[hsl(var(--border))] bg-[hsl(var(--background))]/90 px-1 backdrop-blur"
     >
-      <ul className="ot-hide-scrollbar flex gap-1 overflow-x-auto py-2">
+      <ul
+        ref={listRef}
+        className="ot-hide-scrollbar flex gap-1 overflow-x-auto py-2"
+      >
         {SECTIONS.map((sec) => (
           <li key={sec.id} className="shrink-0">
             <a
@@ -417,10 +448,7 @@ function SectionTabs() {
               aria-current={current === sec.id ? "location" : undefined}
               onClick={(e) => {
                 e.preventDefault();
-                setCurrent(sec.id);
-                document
-                  .getElementById(sec.id)
-                  ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                goTo(sec.id);
               }}
               className={cn(
                 "block rounded-full px-3 py-1.5 text-sm font-medium transition",
