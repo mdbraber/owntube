@@ -64,14 +64,31 @@ type PaneLevel = "root" | "tags";
  * `mergedFeed` pulls several upstream pages for every subscribed channel before
  * returning anything, so it gets slower the more channels you follow.
  */
-export function SubscriptionsScreen({ nav }: { nav: Nav }) {
+export function SubscriptionsScreen({
+  nav,
+  favoritesOnly = false,
+}: {
+  nav: Nav;
+  /**
+   * The Favorites section: the same two panes, limited to channels carrying
+   * the favorite tag, without the tag menus.
+   */
+  favoritesOnly?: boolean;
+}) {
   const [selected, setSelected] = useState<Selection>({ kind: "all" });
   const [level, setLevel] = useState<PaneLevel>("root");
   const selectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Every subscription (listSidebar stops at 50), ordered the way the sidebar
   // is: newest upload first, then newest subscription.
-  const sidebar = trpc.subscriptions.listDetailed.useQuery();
+  const allSubscriptions = trpc.subscriptions.listDetailed.useQuery(undefined, {
+    enabled: !favoritesOnly,
+  });
+  const favoriteChannels = trpc.subscriptions.listTagged.useQuery(
+    { favorites: true },
+    { enabled: favoritesOnly },
+  );
+  const sidebar = favoritesOnly ? favoriteChannels : allSubscriptions;
   const channels = useMemo(
     () =>
       [...(sidebar.data ?? [])].sort(
@@ -134,10 +151,26 @@ export function SubscriptionsScreen({ nav }: { nav: Nav }) {
       })
       .catch(() => notify("Couldn't unsubscribe"));
   };
+  const unfavorite = (channelId: string, name: string) => {
+    trpcClient.favorites.set
+      .mutate({ channelId, favorite: false })
+      .then(() => {
+        notify(`Removed ${name} from favorites`);
+        if (selected.kind === "channel" && selected.channelId === channelId) {
+          setSelected({ kind: "all" });
+        }
+        void sidebar.refetch();
+        void queryClient.invalidateQueries({ queryKey: ["feed"] });
+        void queryClient.invalidateQueries({ queryKey: [["favorites"]] });
+      })
+      .catch(() => notify("Couldn't update favorites"));
+  };
   const channelsError = sidebar.error ? errorMessage(sidebar.error) : null;
 
-  const tagList = trpc.channelTags.listAll.useQuery();
-  const tags = tagList.data ?? [];
+  const tagList = trpc.channelTags.listAll.useQuery(undefined, {
+    enabled: !favoritesOnly,
+  });
+  const tags = favoritesOnly ? [] : (tagList.data ?? []);
 
   useEffect(() => {
     // listSidebar orders by newest upload, but that field is only populated by
@@ -204,11 +237,12 @@ export function SubscriptionsScreen({ nav }: { nav: Nav }) {
           limit: FEED_PAGE_SIZE,
           cursor: cursor ?? null,
           includeTags: selected.kind === "tag" ? [selected.tag] : undefined,
+          favorites: favoritesOnly || undefined,
         })
         .then((r) => ({ items: r.videos, next: r.nextCursor ?? undefined }));
     },
-    [selected],
-    "subscriptions.feed",
+    [selected, favoritesOnly],
+    favoritesOnly ? "favorites.feed" : "subscriptions.feed",
   );
 
   // Stable, so the memoized shelves don't re-render on every screen render.
@@ -228,11 +262,15 @@ export function SubscriptionsScreen({ nav }: { nav: Nav }) {
         ? selected.tag
         : selected.kind === "byTag"
           ? "By tag"
-          : "All subscriptions";
+          : favoritesOnly
+            ? "All favorites"
+            : "All subscriptions";
 
   return (
     <View style={styles.screen}>
-      <Text style={styles.title}>Subscriptions</Text>
+      <Text style={styles.title}>
+        {favoritesOnly ? "Favorites" : "Subscriptions"}
+      </Text>
       <View style={styles.columns}>
         <View style={styles.pane}>
           {level === "root" ? (
@@ -363,9 +401,11 @@ export function SubscriptionsScreen({ nav }: { nav: Nav }) {
               }
               header={<Text style={styles.heading}>{heading}</Text>}
               emptyText={
-                selected.kind === "all"
-                  ? "You're not subscribed to any channels yet."
-                  : "No videos here yet."
+                selected.kind !== "all"
+                  ? "No videos here yet."
+                  : favoritesOnly
+                    ? "No favorites yet. Star a channel on its page to add it here."
+                    : "You're not subscribed to any channels yet."
               }
               // The channel list owns focus here; grabbing it back on every
               // selection change would fight the user's way down the list.
@@ -388,6 +428,18 @@ export function SubscriptionsScreen({ nav }: { nav: Nav }) {
                   nav.openChannel(channelMenu.channelId);
                 },
               },
+              ...(favoritesOnly
+                ? [
+                    {
+                      key: "unfavorite",
+                      label: "Remove from favorites",
+                      onPress: () => {
+                        setChannelMenu(null);
+                        unfavorite(channelMenu.channelId, channelMenu.name);
+                      },
+                    },
+                  ]
+                : []),
               {
                 key: "unsubscribe",
                 label: "Unsubscribe",

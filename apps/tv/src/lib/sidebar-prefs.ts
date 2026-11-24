@@ -19,6 +19,7 @@ export const ALL_SECTIONS: Section[] = [
   "home",
   "shorts",
   "subscriptions",
+  "favorites",
   "library",
   "recommended",
   "trending",
@@ -82,10 +83,24 @@ function withNewSections(order: Section[], known: unknown): Section[] {
       (s) => s !== "library" && !LIBRARY_SECTIONS.includes(s),
     );
   }
-  if (rest.length === 0) return order;
-  const settings = order.indexOf("settings");
-  const at = settings >= 0 ? settings : order.length;
-  return [...order.slice(0, at), ...rest, ...order.slice(at)];
+  // Each arrival goes where it ships: after the nearest section before it in
+  // ALL_SECTIONS that the rail shows (Favorites after Subscriptions), or
+  // before Settings when none of those is shown.
+  let next = [...order];
+  for (const section of rest) {
+    const shipped = ALL_SECTIONS.indexOf(section);
+    let at = -1;
+    for (let i = shipped - 1; i >= 0 && at < 0; i--) {
+      const shown = next.indexOf(ALL_SECTIONS[i]);
+      if (shown >= 0) at = shown + 1;
+    }
+    if (at < 0) {
+      const settings = next.indexOf("settings");
+      at = settings >= 0 ? settings : next.length;
+    }
+    next = [...next.slice(0, at), section, ...next.slice(at)];
+  }
+  return next;
 }
 
 /** The sections that existed before `known` was stored. */

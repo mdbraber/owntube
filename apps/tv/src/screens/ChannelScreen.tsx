@@ -47,10 +47,38 @@ export function ChannelScreen({
 
   // Drop the optimistic value when the channel changes, so it can't leak
   // across screens; channelId is the only trigger.
+  // Starred = carries the favorite tag (and subscribed). Same optimistic
+  // pattern as the subscribe button.
+  const favoriteStatus = trpc.favorites.status.useQuery({ channelId });
+  const [favoriteOverride, setFavoriteOverride] = useState<boolean | null>(
+    null,
+  );
+  const favorite = favoriteOverride ?? favoriteStatus.data?.favorite ?? null;
+  const [favoritePending, setFavoritePending] = useState(false);
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset on channel
   useEffect(() => {
     setOverride(null);
+    setFavoriteOverride(null);
   }, [channelId]);
+
+  const toggleFavorite = () => {
+    if (favorite === null || favoritePending) return;
+    setFavoritePending(true);
+    const next = !favorite;
+    trpcClient.favorites.set
+      .mutate({ channelId, favorite: next })
+      .then(() => {
+        setFavoriteOverride(next);
+        // Starring subscribes too.
+        if (next) setOverride(true);
+        void queryClient.invalidateQueries({ queryKey: ["feed"] });
+        void queryClient.invalidateQueries({ queryKey: [["subscriptions"]] });
+        void queryClient.invalidateQueries({ queryKey: [["channelTags"]] });
+      })
+      .catch(() => setFavoriteOverride(null))
+      .finally(() => setFavoritePending(false));
+  };
 
   const toggleSubscription = () => {
     if (subscribed === null || pending) return;
@@ -62,6 +90,10 @@ export function ChannelScreen({
     call
       .then(() => {
         setOverride(next);
+        // A favorite counts only while subscribed; the tag stays, so
+        // subscribing again brings the star back.
+        setFavoriteOverride(null);
+        void favoriteStatus.refetch();
         // The subscriptions feed and channel rail both change on subscribe.
         void queryClient.invalidateQueries({ queryKey: ["feed"] });
       })
@@ -150,6 +182,14 @@ export function ChannelScreen({
           <Text style={styles.subs}>{subscribersLabel}</Text>
         ) : null}
       </View>
+      {favorite !== null ? (
+        <FocusButton
+          label={favorite ? "★ Favorite" : "☆ Favorite"}
+          selected={favorite}
+          onPress={toggleFavorite}
+          disabled={favoritePending}
+        />
+      ) : null}
       {subscribed !== null ? (
         <FocusButton
           label={subscribed ? "Subscribed" : "Subscribe"}

@@ -1,4 +1,9 @@
 import type { inferRouterOutputs } from "@trpc/server";
+import {
+  blockFeedFilter,
+  homeBlockTitle,
+  isSubscriptionFeedBlock,
+} from "@web/lib/home-blocks";
 import type { UnifiedVideo } from "@web/server/services/proxy.types";
 import type { AppRouter } from "@web/server/trpc/root";
 import { useMemo } from "react";
@@ -27,6 +32,8 @@ const ROW_VIDEOS = 24;
 /** Row headings per block type; a "playlist" block shows its playlist's name. */
 export const HOME_BLOCK_TITLES: Record<HomeBlock["type"], string> = {
   subscriptions: "Subscriptions",
+  favorites: "Favorites",
+  tag: "Tag",
   recommended: "Recommended",
   explore: "Trending",
   history: "History",
@@ -39,19 +46,6 @@ export const HOME_BLOCK_TITLES: Record<HomeBlock["type"], string> = {
 /** Block options, with the web's defaults (lib/home-blocks.ts). */
 function option(block: HomeBlock, key: string, fallback: boolean): boolean {
   return block.options?.[key] ?? fallback;
-}
-
-function tagFilters(block: HomeBlock) {
-  const include: string[] = [];
-  const exclude: string[] = [];
-  for (const [key, value] of Object.entries(block.options ?? {})) {
-    if (!key.startsWith("tag:")) continue;
-    (value ? include : exclude).push(key.slice(4));
-  }
-  return {
-    includeTags: include.length > 0 ? include : undefined,
-    excludeTags: exclude.length > 0 ? exclude : undefined,
-  };
 }
 
 /**
@@ -80,6 +74,7 @@ export function HomeBlockRow({
 }) {
   const progress = useProgressLookup();
   const { type } = block;
+  const isFeed = isSubscriptionFeedBlock(type);
   // Kept mounted while Home is hidden: keeps its data without re-rendering,
   // and refetches the row's query on return if it went stale.
   const kept = useKeptQueryOptions();
@@ -91,10 +86,10 @@ export function HomeBlockRow({
       limit: ROW_VIDEOS,
       hideShorts: option(block, "hideShorts", true),
       hideIgnored: option(block, "hideIgnored", true),
-      ...tagFilters(block),
+      ...blockFeedFilter(block),
     },
     {
-      enabled: type === "subscriptions",
+      enabled: isFeed,
       getNextPageParam: (page) => page.nextCursor ?? undefined,
       ...kept,
     },
@@ -145,7 +140,8 @@ export function HomeBlockRow({
     playlist: playlistItems,
     playlists,
   };
-  useRefetchStaleOnShow(rowQueries[type] ?? NOTHING_TO_REFETCH);
+  const rowQuery = isFeed ? subscriptions : rowQueries[type];
+  useRefetchStaleOnShow(rowQuery ?? NOTHING_TO_REFETCH);
 
   const videos: UnifiedVideo[] = useMemo(() => {
     const libraryRows = (
@@ -172,6 +168,8 @@ export function HomeBlockRow({
       }));
     switch (type) {
       case "subscriptions":
+      case "favorites":
+      case "tag":
         return subscriptions.data?.pages.flatMap((p) => p.videos) ?? [];
       case "recommended":
         return recommended.data?.videos ?? [];
@@ -223,20 +221,23 @@ export function HomeBlockRow({
       (hideFinished
         ? videos.filter((v) => !progress(v.videoId)?.completed)
         : videos
-      ).slice(0, type === "subscriptions" ? undefined : ROW_VIDEOS),
-    [videos, hideFinished, progress, type],
+      ).slice(0, isFeed ? undefined : ROW_VIDEOS),
+    [videos, hideFinished, progress, isFeed],
   );
 
   const title =
-    type === "playlist"
-      ? (playlists.data?.find((p) => p.id === playlistId)?.name ??
-        HOME_BLOCK_TITLES.playlist)
-      : HOME_BLOCK_TITLES[type];
+    type === "subscriptions" || type === "favorites" || type === "tag"
+      ? homeBlockTitle(block)
+      : type === "playlist"
+        ? ((block.title?.trim() ||
+            playlists.data?.find((p) => p.id === playlistId)?.name) ??
+          HOME_BLOCK_TITLES.playlist)
+        : block.title?.trim() || HOME_BLOCK_TITLES[type];
 
   // The row Home opens on keeps its place while it loads and says so when
   // it fails: rendering nothing let the rows below move up into its spot and
   // take the first focus, and hid why it was missing.
-  const lead = rowQueries[type];
+  const lead = rowQuery;
   if (shown.length === 0 && preferFirstFocus && lead) {
     const status = lead as {
       isPending?: boolean;
@@ -304,7 +305,7 @@ export function HomeBlockRow({
       videos={shown}
       preferFirstFocus={preferFirstFocus}
       onEndReached={
-        type === "subscriptions"
+        isFeed
           ? () => {
               if (
                 subscriptions.hasNextPage &&

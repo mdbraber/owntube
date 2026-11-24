@@ -1,4 +1,5 @@
 import { Feather } from "@expo/vector-icons";
+import { blockTagLists, homeBlockTitle } from "@web/lib/home-blocks";
 import { useEffect, useRef, useState } from "react";
 import {
   BackHandler,
@@ -19,9 +20,13 @@ import { colors, focus, fontSize, radius, spacing } from "@/theme";
 
 const ROW_HEIGHT = 44;
 
-/** Block types the TV can add; a "playlist" block needs a playlist picked on the web. */
+/**
+ * Block types the TV can add; a "playlist" block needs a playlist picked on
+ * the web. Tag blocks are offered per tag, below these.
+ */
 const ADDABLE: HomeBlock["type"][] = [
   "subscriptions",
+  "favorites",
   "recommended",
   "explore",
   "history",
@@ -31,10 +36,11 @@ const ADDABLE: HomeBlock["type"][] = [
 ];
 
 /** A block added here gets the web's defaults (lib/home-blocks.ts). */
-function defaultBlock(type: HomeBlock["type"]): HomeBlock {
+function defaultBlock(type: HomeBlock["type"], tag?: string): HomeBlock {
   return {
     id: `b${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`,
     type,
+    options: tag ? { [`tag:${tag}`]: true } : undefined,
     limit: 8,
     rows: 2,
     layout: "cards",
@@ -44,7 +50,15 @@ function defaultBlock(type: HomeBlock["type"]): HomeBlock {
 
 type Row =
   | { kind: "block"; block: HomeBlock }
-  | { kind: "available"; type: HomeBlock["type"] };
+  | { kind: "available"; type: HomeBlock["type"] }
+  | { kind: "availableTag"; tag: string };
+
+/** The one tag a single-tag block shows, else null (bundles, other types). */
+function singleTag(block: HomeBlock): string | null {
+  if (block.type !== "tag") return null;
+  const { includeTags } = blockTagLists(block);
+  return includeTags?.length === 1 ? includeTags[0] : null;
+}
 
 /**
  * Reorder, hide and restore the home rows. The same `homeBlocks` setting the
@@ -58,6 +72,7 @@ type Row =
 export function HomeRowsSettingsScreen({ onBack }: { onBack: () => void }) {
   const stored = trpc.settings.get.useQuery();
   const playlists = trpc.playlists.list.useQuery();
+  const tags = trpc.channelTags.listAll.useQuery();
   const [blocks, setBlocks] = useState<HomeBlock[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [grabbed, setGrabbed] = useState<string | null>(null);
@@ -102,10 +117,10 @@ export function HomeRowsSettingsScreen({ onBack }: { onBack: () => void }) {
     setGrabbed(null);
   };
 
-  const add = (type: HomeBlock["type"]) => {
+  const add = (type: HomeBlock["type"], tag?: string) => {
     const current = blocksRef.current;
     if (!current) return;
-    persist([...current, defaultBlock(type)]);
+    persist([...current, defaultBlock(type, tag)]);
     setGrabbed(null);
   };
 
@@ -141,6 +156,7 @@ export function HomeRowsSettingsScreen({ onBack }: { onBack: () => void }) {
   });
   const toggle = (id: string) => {
     if (id.startsWith("add:")) add(id.slice(4) as HomeBlock["type"]);
+    else if (id.startsWith("addtag:")) add("tag", id.slice(7));
     else remove(id);
   };
 
@@ -162,12 +178,37 @@ export function HomeRowsSettingsScreen({ onBack }: { onBack: () => void }) {
     ...ADDABLE.filter((type) => !blocks?.some((b) => b.type === type)).map(
       (type): Row => ({ kind: "available", type }),
     ),
+    ...(tags.data ?? [])
+      .filter(({ tag }) => !blocks?.some((b) => singleTag(b) === tag))
+      .map(({ tag }): Row => ({ kind: "availableTag", tag })),
   ];
   const titleOf = (block: HomeBlock) =>
     block.type === "playlist"
       ? (playlists.data?.find((p) => p.id === block.playlistId)?.name ??
         "Playlist")
-      : HOME_BLOCK_TITLES[block.type];
+      : block.type === "tag" || block.title?.trim()
+        ? homeBlockTitle(block)
+        : HOME_BLOCK_TITLES[block.type];
+  const rowId = (row: Row) =>
+    row.kind === "block"
+      ? row.block.id
+      : row.kind === "available"
+        ? `add:${row.type}`
+        : `addtag:${row.tag}`;
+  const rowLabel = (row: Row) =>
+    row.kind === "block"
+      ? titleOf(row.block)
+      : row.kind === "available"
+        ? HOME_BLOCK_TITLES[row.type]
+        : `#${row.tag}`;
+  const rowState = (row: Row) => {
+    if (row.kind !== "block") return "Hidden";
+    if (row.block.type === "playlist") return "Shown · add back on the web";
+    if (row.block.type === "tag" && singleTag(row.block) === null) {
+      return "Shown · add back on the web";
+    }
+    return "Shown";
+  };
 
   return (
     <ScrollView showsVerticalScrollIndicator={false}>
@@ -182,26 +223,16 @@ export function HomeRowsSettingsScreen({ onBack }: { onBack: () => void }) {
         </Text>
       ) : null}
       {rows.map((row, index) => {
-        const id = row.kind === "block" ? row.block.id : `add:${row.type}`;
+        const id = rowId(row);
         return (
           <BlockRow
             key={id}
             // The button that opened the page is gone; without a first
             // row to land on, focus fell back to the rail.
             hasTVPreferredFocus={index === 0}
-            label={
-              row.kind === "block"
-                ? titleOf(row.block)
-                : HOME_BLOCK_TITLES[row.type]
-            }
-            state={
-              row.kind === "block"
-                ? row.block.type === "playlist"
-                  ? "Shown · add back on the web"
-                  : "Shown"
-                : "Hidden"
-            }
-            hidden={row.kind === "available"}
+            label={rowLabel(row)}
+            state={rowState(row)}
+            hidden={row.kind !== "block"}
             grabbed={grabbed === id}
             onPress={() => setGrabbed(grabbed === id ? null : id)}
           />

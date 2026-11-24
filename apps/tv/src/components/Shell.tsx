@@ -120,6 +120,7 @@ const KEPT_SECTIONS: ReadonlySet<Section> = new Set<Section>([
   "saved",
   "trending",
   "subscriptions",
+  "favorites",
   "playlists",
   "queue",
   "history",
@@ -431,6 +432,8 @@ export function Shell({
         );
       case "subscriptions":
         return <SubscriptionsScreen nav={nav} />;
+      case "favorites":
+        return <SubscriptionsScreen nav={nav} favoritesOnly />;
       case "settings":
         return (
           <SettingsScreen
