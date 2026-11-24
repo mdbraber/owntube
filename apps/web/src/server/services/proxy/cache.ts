@@ -42,7 +42,8 @@ export type CacheKind =
   | "rss"
   | "comments"
   | "sponsorblock"
-  | "home";
+  | "home"
+  | "listing-row";
 
 export type CacheSource = "invidious" | "youtube" | "sponsorblock";
 
@@ -189,13 +190,15 @@ export function writeCache(
   source: CacheSource,
   payload: unknown,
   kind: CacheKind,
-  options?: { shortsPurpose?: "feed" | "shelf" },
+  options?: { shortsPurpose?: "feed" | "shelf"; ttlSec?: number },
 ): void {
   const t = nowUnix();
   const ttl =
-    kind === "streams"
-      ? streamsTtlSec(JSON.stringify(payload), t)
-      : cacheTtlSecForKind(kind, options);
+    options?.ttlSec !== undefined
+      ? options.ttlSec
+      : kind === "streams"
+        ? streamsTtlSec(JSON.stringify(payload), t)
+        : cacheTtlSecForKind(kind, options);
   const row = {
     cacheKey: key,
     source,

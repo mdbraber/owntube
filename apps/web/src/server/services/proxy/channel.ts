@@ -10,6 +10,8 @@ import {
 import { preferHighResVideoThumbnailUrl } from "@/lib/video-thumbnail-url";
 import type { AppDb } from "@/server/db/client";
 import { channelIdAliases } from "@/server/db/schema";
+import { repairListingRows } from "@/server/listing-rows/repair";
+import { getChannelRssEntries } from "@/server/rss/cache";
 import {
   channelCacheKey,
   readFreshCacheRow,
@@ -31,6 +33,7 @@ import {
   resolveInvidiousAbsoluteMediaUrl,
   resolveInvidiousThumbnail,
 } from "@/server/services/proxy/normalize";
+import { fetchVideoDetail } from "@/server/services/proxy/video";
 import {
   type ChannelPageInput,
   type ChannelPageResult,
@@ -809,6 +812,20 @@ export async function fetchChannelPage(
             sourceUsed: resolved.sourceUsed,
           },
         ),
+      };
+    }
+
+    // Before caching, so every reader gets corrected rows: zero-view rows get
+    // their real date and count, or are dropped when YouTube refuses them
+    // (members-only). See listing-rows/repair.ts. Sorted after, so a repaired
+    // row stops sitting at the top on its fake "now" date.
+    if (tab === "videos") {
+      resolved = {
+        ...resolved,
+        videos: await repairListingRows(db, input.channelId, resolved.videos, {
+          rssEntries: getChannelRssEntries,
+          videoDetail: (d, videoId) => fetchVideoDetail(d, { videoId }),
+        }),
       };
     }
 
