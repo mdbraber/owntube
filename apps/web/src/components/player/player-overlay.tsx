@@ -48,10 +48,20 @@ export function useSeekIndicator() {
     },
     [],
   );
-  return { seekIndicator: state, showSeek: show };
+  const clear = useCallback(() => {
+    if (timer.current) window.clearTimeout(timer.current);
+    setState(null);
+  }, []);
+  return { seekIndicator: state, showSeek: show, clearSeek: clear };
 }
 
-function SeekArrows({ dir }: { dir: "back" | "forward" }) {
+function SeekArrows({
+  dir,
+  size = "sm",
+}: {
+  dir: "back" | "forward";
+  size?: "sm" | "lg";
+}) {
   // Three triangles lighting up one after another in the seek direction.
   const order = dir === "forward" ? [0, 1, 2] : [2, 1, 0];
   return (
@@ -61,7 +71,10 @@ function SeekArrows({ dir }: { dir: "back" | "forward" }) {
           // biome-ignore lint/suspicious/noArrayIndexKey: fixed set of three
           key={i}
           viewBox="0 0 12 14"
-          className="h-3.5 w-3 animate-[ot-seek-arrow_0.75s_linear_infinite] fill-current opacity-30"
+          className={cn(
+            "animate-[ot-seek-arrow_0.75s_linear_infinite] fill-current opacity-30",
+            size === "lg" ? "h-5 w-4" : "h-3.5 w-3",
+          )}
           style={{ animationDelay: `${delay * 0.25}s` }}
         >
           <title>{dir === "forward" ? "Forward" : "Back"}</title>
@@ -96,17 +109,17 @@ export function SeekIndicator({ state }: { state: SeekIndicatorState | null }) {
       </div>
     );
   }
-  // Keyboard: a dark round marker between the center and that edge.
+  // Keyboard: arrows and the total at the far edge, straight on the video.
   return (
     <div
       className={cn(
         "pointer-events-none absolute top-1/2 z-30 -translate-y-1/2",
-        forward ? "right-[18%]" : "left-[18%]",
+        forward ? "right-[5%]" : "left-[5%]",
       )}
       aria-live="polite"
     >
-      <div className="flex h-[88px] w-[88px] flex-col items-center justify-center gap-1.5 rounded-full bg-black/50 text-[11px] font-medium text-white">
-        <SeekArrows dir={state.dir} />
+      <div className="flex flex-col items-center gap-1.5 text-sm font-medium text-white [filter:drop-shadow(0_1px_2px_rgb(0_0_0/0.8))]">
+        <SeekArrows dir={state.dir} size="lg" />
         <span>{label}</span>
       </div>
     </div>

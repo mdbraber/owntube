@@ -64,6 +64,12 @@ export function usePlayerKeyboardShortcuts(opts: {
    */
   onSeekKey?: (delta: number) => void;
   /**
+   * A seek key held down (its auto-repeat): scrub toward `dir` until
+   * `onSeekHoldEnd` (the key's release, or the window losing focus).
+   */
+  onSeekHold?: (dir: -1 | 1) => void;
+  onSeekHoldEnd?: () => void;
+  /**
    * The page's main player (watch page): its shortcuts also work while focus
    * is elsewhere on the page, as on YouTube, unless a field or another
    * control that uses the keys has it.
@@ -86,6 +92,12 @@ export function usePlayerKeyboardShortcuts(opts: {
   // A ref: the chrome passes a fresh callback each render.
   const onSeekKeyRef = useRef(opts.onSeekKey);
   onSeekKeyRef.current = opts.onSeekKey;
+  const onSeekHoldRef = useRef(opts.onSeekHold);
+  onSeekHoldRef.current = opts.onSeekHold;
+  const onSeekHoldEndRef = useRef(opts.onSeekHoldEnd);
+  onSeekHoldEndRef.current = opts.onSeekHoldEnd;
+  // The seek key being held (its auto-repeat took over), if any.
+  const heldSeekKeyRef = useRef<string | null>(null);
 
   /** True while long-press 2× is active: hides chrome, shows a small ×2 hint. */
   const [hold2xUi, setHold2xUi] = useState(false);
@@ -188,6 +200,14 @@ export function usePlayerKeyboardShortcuts(opts: {
     };
 
     const onKeyUp = (e: KeyboardEvent) => {
+      if (
+        heldSeekKeyRef.current &&
+        e.key.toLowerCase() === heldSeekKeyRef.current
+      ) {
+        heldSeekKeyRef.current = null;
+        onSeekHoldEndRef.current?.();
+        return;
+      }
       if (e.code !== "Space" && e.key !== " ") return;
       // Only a space press this handler took (keydown set this) — finish it
       // wherever focus is now.
@@ -206,6 +226,10 @@ export function usePlayerKeyboardShortcuts(opts: {
     };
 
     const onWinBlur = () => {
+      if (heldSeekKeyRef.current) {
+        heldSeekKeyRef.current = null;
+        onSeekHoldEndRef.current?.();
+      }
       clearSpaceHoldTimer();
       if (!spacePhysDownRef.current) return;
       spacePhysDownRef.current = false;
@@ -280,8 +304,17 @@ export function usePlayerKeyboardShortcuts(opts: {
         key === "l"
       ) {
         e.preventDefault();
+        const backward = key === "arrowleft" || key === "j";
+        if (e.repeat) {
+          // Held: scrub instead of a burst of separate seeks.
+          if (onSeekHoldRef.current && heldSeekKeyRef.current !== key) {
+            heldSeekKeyRef.current = key;
+            onSeekHoldRef.current(backward ? -1 : 1);
+          }
+          if (onSeekHoldRef.current) return;
+        }
         const step = key === "j" || key === "l" ? 10 : 5;
-        const delta = key === "arrowleft" || key === "j" ? -step : step;
+        const delta = backward ? -step : step;
         const onSeekKey = onSeekKeyRef.current;
         if (onSeekKey) onSeekKey(delta);
         else {

@@ -92,7 +92,24 @@ export function PlayerChrome({
   const { visible, ping, hide } = useIdleVisible(adapter.paused, settingsOpen);
   const router = useRouter();
   const coarse = useCoarsePointer();
-  const { seekIndicator, showSeek } = useSeekIndicator();
+  const { seekIndicator, showSeek, clearSeek } = useSeekIndicator();
+  // A held seek key scrubs this position (the progress bar and clock show
+  // it); the video jumps there once, on release.
+  const [keyScrub, setKeyScrub] = useState<number | null>(null);
+  const keyHoldRef = useRef<{
+    dir: -1 | 1;
+    pos: number;
+    start: number;
+    last: number;
+    pinged: number;
+    raf: number;
+  } | null>(null);
+  useEffect(
+    () => () => {
+      if (keyHoldRef.current) cancelAnimationFrame(keyHoldRef.current.raf);
+    },
+    [],
+  );
   const previousVideoId = usePreviousVideo(videoId, !miniMode && !shortsMode);
   // Last touch tap on a side of the video, for double-tap seeking.
   const lastTapRef = useRef<{ at: number; side: "back" | "forward" } | null>(
@@ -170,6 +187,8 @@ export function PlayerChrome({
     onToggleCinema,
     onSettingsOpenChange,
     onSeekKey: (delta) => seekBy(delta, "key"),
+    onSeekHold: startSeekHold,
+    onSeekHoldEnd: endSeekHold,
     globalShortcuts: !miniMode && !shortsMode,
   });
 
@@ -236,7 +255,7 @@ export function PlayerChrome({
 
   const level = adapter.muted ? 0 : adapter.volume;
   const levelUi = hydrated ? level : 1;
-  const seekPos = scrub ?? adapter.currentTime;
+  const seekPos = scrub ?? keyScrub ?? adapter.currentTime;
   const duration = adapter.duration;
   // Watched video → green scrubber (matches the completed bar on cards). Use
   // the stored completion, plus a live near-end fallback so finishing this
@@ -252,6 +271,58 @@ export function PlayerChrome({
     title,
     surface: "related",
   });
+  /**
+   * Holding ← → (J L) scrubs like YouTube: the bar moves, faster the longer
+   * the key is held (10 s of video per second at first, up to 120, or a
+   * fifteenth of the video per second on long ones), without seeking the
+   * video on the way; the release seeks once.
+   */
+  function startSeekHold(dir: -1 | 1) {
+    if (keyHoldRef.current) return;
+    clearSeek();
+    const start = performance.now();
+    const hold = {
+      dir,
+      pos:
+        shellRef.current?.querySelector("video")?.currentTime ??
+        adapter.currentTime,
+      start,
+      last: start,
+      pinged: 0,
+      raf: 0,
+    };
+    keyHoldRef.current = hold;
+    const frame = (now: number) => {
+      if (keyHoldRef.current !== hold) return;
+      const dt = (now - hold.last) / 1000;
+      hold.last = now;
+      const held = (now - hold.start) / 1000;
+      const d = adapter.duration;
+      const finite = Number.isFinite(d) && d > 0;
+      const maxSpeed = finite ? Math.max(120, d / 15) : 120;
+      const speed = Math.min(maxSpeed, 10 + 25 * held);
+      hold.pos = Math.max(0, hold.pos + hold.dir * speed * dt);
+      if (finite) hold.pos = Math.min(hold.pos, d);
+      setKeyScrub(hold.pos);
+      if (now - hold.pinged > 1000) {
+        hold.pinged = now;
+        ping();
+      }
+      hold.raf = requestAnimationFrame(frame);
+    };
+    hold.raf = requestAnimationFrame(frame);
+  }
+
+  function endSeekHold() {
+    const hold = keyHoldRef.current;
+    if (!hold) return;
+    cancelAnimationFrame(hold.raf);
+    keyHoldRef.current = null;
+    adapter.seek(hold.pos);
+    setKeyScrub(null);
+    ping();
+  }
+
   /** Jump `delta` seconds and show the seek marker on that side. */
   function seekBy(delta: number, source: "key" | "tap") {
     const d = adapter.duration;
