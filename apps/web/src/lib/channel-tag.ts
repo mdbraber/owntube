@@ -2,6 +2,12 @@
 export const CHANNEL_TAG_MAX_LEN = 32;
 
 /**
+ * The tag the favorite (star) button puts on a channel, until the user picks
+ * another in settings. Favorites are just channels carrying this tag.
+ */
+export const DEFAULT_FAVORITE_TAG = "favorite";
+
+/**
  * Normalize a user-entered channel tag: strip a leading `#`, trim, lowercase,
  * collapse inner whitespace to single spaces, and drop characters other than
  * letters, numbers, space, `-` and `_`. Returns null when nothing usable

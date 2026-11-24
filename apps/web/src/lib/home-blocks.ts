@@ -6,6 +6,8 @@
 
 export const HOME_BLOCK_TYPES = [
   "subscriptions",
+  "favorites",
+  "tag",
   "recommended",
   "explore",
   "history",
@@ -50,6 +52,8 @@ export type HomeBlock = {
   type: HomeBlockType;
   /** Only for type "playlist" — the local playlist to show. */
   playlistId?: number;
+  /** Optional heading override (used by "tag" blocks; default is the tags). */
+  title?: string;
   /** Max items shown (rows layout). */
   limit: number;
   /**
@@ -105,10 +109,22 @@ const HIDE_IGNORED: SectionOptionDef = {
   defaultValue: true,
 };
 
+/**
+ * Tag blocks: a channel must carry *every* included tag instead of any one of
+ * them, so a bundle like #music + #live narrows rather than widens.
+ */
+const MATCH_ALL_TAGS: SectionOptionDef = {
+  key: "matchAll",
+  label: "Channels must have all included tags",
+  defaultValue: false,
+};
+
 export const SECTION_OPTIONS: Partial<
   Record<HomeBlockType, SectionOptionDef[]>
 > = {
   subscriptions: [HIDE_WATCHED, HIDE_SHORTS, HIDE_IGNORED],
+  favorites: [HIDE_WATCHED, HIDE_SHORTS, HIDE_IGNORED],
+  tag: [MATCH_ALL_TAGS, HIDE_WATCHED, HIDE_SHORTS, HIDE_IGNORED],
   queue: [HIDE_WATCHED],
   saved: [HIDE_WATCHED],
   playlist: [HIDE_WATCHED],
@@ -148,6 +164,79 @@ export function blockTagLists(block: HomeBlock): {
   };
 }
 
+/** Block types whose feed is the merged subscription uploads. */
+export function isSubscriptionFeedBlock(type: HomeBlockType): boolean {
+  return type === "subscriptions" || type === "favorites" || type === "tag";
+}
+
+/** Block types whose options carry per-tag include/exclude toggles. */
+export function hasTagFilter(type: HomeBlockType): boolean {
+  return type === "subscriptions" || type === "tag";
+}
+
+/**
+ * Channel filter for a subscription-feed block, in the shape
+ * `subscriptions.mergedFeedInfinite` and `subscriptions.listTagged` take.
+ * Favorites resolve their tag on the server, so renaming the favorite tag in
+ * settings never leaves a stale block behind.
+ */
+export type TagFeedFilter = {
+  includeTags?: string[];
+  excludeTags?: string[];
+  tagMatch?: "any" | "all";
+  favorites?: boolean;
+};
+
+export function blockFeedFilter(block: HomeBlock): TagFeedFilter {
+  switch (block.type) {
+    case "favorites":
+      return { favorites: true };
+    case "tag": {
+      const lists = blockTagLists(block);
+      return {
+        ...lists,
+        tagMatch: homeBlockOption(block, "matchAll") ? "all" : "any",
+      };
+    }
+    default:
+      return blockTagLists(block);
+  }
+}
+
+/** "#music + #live" for match-all, "#music · #jazz" for match-any. */
+export function tagBundleLabel(
+  tags: string[] | undefined,
+  tagMatch: "any" | "all" = "any",
+): string {
+  if (!tags || tags.length === 0) return "Tag";
+  return tags.map((t) => `#${t}`).join(tagMatch === "all" ? " + " : " · ");
+}
+
+/** Heading for a block; a "playlist" block needs its name passed in. */
+export function homeBlockTitle(
+  block: HomeBlock,
+  playlistName?: string,
+): string {
+  const custom = block.title?.trim();
+  if (custom) return custom;
+  if (block.type === "playlist") return playlistName ?? "Playlist";
+  if (block.type === "tag") {
+    const { includeTags, tagMatch } = blockFeedFilter(block);
+    return tagBundleLabel(includeTags, tagMatch);
+  }
+  return HOME_BLOCK_LABEL[block.type];
+}
+
+/** Query string for the /tags page showing a tag bundle. */
+export function tagViewHref(filter: TagFeedFilter): string {
+  const params = new URLSearchParams();
+  for (const t of filter.includeTags ?? []) params.append("tag", t);
+  for (const t of filter.excludeTags ?? []) params.append("not", t);
+  if (filter.tagMatch === "all") params.set("match", "all");
+  const qs = params.toString();
+  return qs ? `/tags?${qs}` : "/subscriptions";
+}
+
 /** True when the block renders as one horizontally scrollable shelf. */
 export function isScrollRow(block: HomeBlock): boolean {
   return block.rows === 1 && (block.options?.scrollRow ?? false);
@@ -161,6 +250,8 @@ export function blockFetchCount(block: HomeBlock): number {
 
 export const HOME_BLOCK_LABEL: Record<HomeBlockType, string> = {
   subscriptions: "Subscriptions",
+  favorites: "Favorites",
+  tag: "Tag",
   recommended: "Recommended",
   explore: "Explore",
   history: "History",
@@ -175,6 +266,10 @@ export function homeBlockHref(block: HomeBlock): string {
   switch (block.type) {
     case "subscriptions":
       return "/subscriptions";
+    case "favorites":
+      return "/favorites";
+    case "tag":
+      return tagViewHref(blockFeedFilter(block));
     case "recommended":
       return "/recommended";
     case "explore":

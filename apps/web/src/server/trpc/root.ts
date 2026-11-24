@@ -3,6 +3,7 @@ import { apiTokensRouter } from "@/server/trpc/routers/api-tokens";
 import { authRouter } from "@/server/trpc/routers/auth";
 import { channelRouter } from "@/server/trpc/routers/channel";
 import { channelTagsRouter } from "@/server/trpc/routers/channel-tags";
+import { favoritesRouter } from "@/server/trpc/routers/favorites";
 import { feedRouter } from "@/server/trpc/routers/feed";
 import { historyRouter } from "@/server/trpc/routers/history";
 import { interactionsRouter } from "@/server/trpc/routers/interactions";
@@ -26,6 +27,7 @@ export const appRouter = router({
   auth: authRouter,
   channel: channelRouter,
   channelTags: channelTagsRouter,
+  favorites: favoritesRouter,
   feed: feedRouter,
   history: historyRouter,
   interactions: interactionsRouter,

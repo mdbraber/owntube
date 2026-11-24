@@ -5,6 +5,11 @@ import {
   MAX_BOTTOM_NAV,
   MIN_BOTTOM_NAV,
 } from "@/lib/bottom-nav";
+import {
+  CHANNEL_TAG_MAX_LEN,
+  DEFAULT_FAVORITE_TAG,
+  normalizeChannelTag,
+} from "@/lib/channel-tag";
 import { defaultPlaybackQualitySchema } from "@/lib/default-playback-quality";
 import { DEFAULT_HOME_BLOCKS, HOME_BLOCK_TYPES } from "@/lib/home-blocks";
 import {
@@ -159,6 +164,15 @@ export const appSettingsSchema = z.object({
         : value,
     z.array(quickActionSchema).max(4).default(DEFAULT_QUICK_ACTIONS),
   ),
+  /**
+   * The channel tag the favorite button toggles. Favorites (sidebar page and
+   * home block) are the subscribed channels carrying it. Stored normalized.
+   */
+  favoriteTag: z
+    .string()
+    .min(1)
+    .max(CHANNEL_TAG_MAX_LEN)
+    .default(DEFAULT_FAVORITE_TAG),
   /** Ordered blocks of the modular home page. */
   homeBlocks: z
     .array(
@@ -166,6 +180,8 @@ export const appSettingsSchema = z.object({
         id: z.string().min(1).max(64),
         type: z.enum(HOME_BLOCK_TYPES),
         playlistId: z.number().int().positive().optional(),
+        /** Heading override (tag blocks). */
+        title: z.string().trim().max(60).optional(),
         limit: z.number().int().min(1).max(24).default(8),
         rows: z.number().int().min(1).max(8).default(2),
         layout: z.enum(["cards", "rows"]).default("cards"),
@@ -244,6 +260,7 @@ const defaultSettings: AppSettings = {
     right: "queue",
   },
   quickActions: DEFAULT_QUICK_ACTIONS,
+  favoriteTag: DEFAULT_FAVORITE_TAG,
   homeBlocks: DEFAULT_HOME_BLOCKS,
   bottomNav: [...DEFAULT_BOTTOM_NAV_KEYS],
   sectionPrefs: {
@@ -349,6 +366,10 @@ export function upsertUserSettings(
     tasteKeywords: nextKeywords,
     blockedRecommendationChannels: nextBlockedChannels,
     sponsorBlockCategories: nextSponsorBlockCategories,
+    favoriteTag:
+      patch.favoriteTag !== undefined
+        ? (normalizeChannelTag(patch.favoriteTag) ?? previous.favoriteTag)
+        : previous.favoriteTag,
     trendingRegion: normalizeTrendingRegionStored(
       patch.trendingRegion ?? previous.trendingRegion,
     ),

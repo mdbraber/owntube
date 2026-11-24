@@ -1,6 +1,5 @@
 import { and, desc, eq, inArray, or } from "drizzle-orm";
 import { z } from "zod";
-import { normalizeChannelTag } from "@/lib/channel-tag";
 import { isSubscriptionShort } from "@/lib/long-form-uploads";
 import {
   compareSubscriptionHeads,
@@ -16,22 +15,11 @@ import {
   refreshChannelMetaIfStale,
 } from "@/server/channel-meta/store";
 import type { AppDb } from "@/server/db/client";
-import {
-  channelTags,
-  interactions,
-  subscriptions,
-  watchHistory,
-} from "@/server/db/schema";
+import { interactions, subscriptions, watchHistory } from "@/server/db/schema";
 import { RateLimitExceededError } from "@/server/errors/rate-limit-exceeded";
 import { UpstreamUnavailableError } from "@/server/errors/upstream-unavailable";
 import { removeWatchedFromQueue } from "@/server/queue/remove-watched";
-import { requestFeedPublish } from "@/server/remote/publish-loop";
-import {
-  getChannelRssEntries,
-  getLongFormWindows,
-  refreshChannelRss,
-  refreshLongFormWindow,
-} from "@/server/rss/cache";
+import { getChannelRssEntries, getLongFormWindows } from "@/server/rss/cache";
 import { fetchChannelPage } from "@/server/services/proxy";
 import {
   channelCacheKey,
@@ -47,6 +35,11 @@ import {
   mergedPageKey,
 } from "@/server/subscriptions/merged-page-cache";
 import { reconcileSubscriptionChannelIdsForUser } from "@/server/subscriptions/reconcile-channel-ids";
+import { subscribeToChannel } from "@/server/subscriptions/subscribe";
+import {
+  filterChannelIdsByTags,
+  tagFeedFilterSchema,
+} from "@/server/subscriptions/tag-filter";
 import {
   protectedProcedure,
   publicProcedure,
@@ -55,68 +48,6 @@ import {
 
 const channelIdSchema = z.string().min(1).max(128);
 const videoIdSchema = z.string().min(5).max(64);
-const tagFilterSchema = z.array(z.string().max(40)).max(64).optional();
-
-function normalizeTagList(raw: string[] | undefined): string[] {
-  if (!raw || raw.length === 0) return [];
-  const out = new Set<string>();
-  for (const t of raw) {
-    const norm = normalizeChannelTag(t);
-    if (norm) out.add(norm);
-  }
-  return [...out];
-}
-
-/**
- * Filter a channel-id list by the user's local tags. A channel is kept when it
- * has none of the excluded tags AND (no include tags are active OR it carries at
- * least one). Untagged channels drop out as soon as any include tag is active.
- */
-function filterChannelIdsByTags(
-  db: AppDb,
-  userId: number,
-  channelIds: string[],
-  includeTagsRaw: string[] | undefined,
-  excludeTagsRaw: string[] | undefined,
-): string[] {
-  const include = normalizeTagList(includeTagsRaw);
-  const exclude = normalizeTagList(excludeTagsRaw);
-  if (include.length === 0 && exclude.length === 0) return channelIds;
-
-  const wanted = [...new Set([...include, ...exclude])];
-  const rows = db
-    .select({ channelId: channelTags.channelId, tag: channelTags.tag })
-    .from(channelTags)
-    .where(
-      and(eq(channelTags.userId, userId), inArray(channelTags.tag, wanted)),
-    )
-    .all();
-  const tagsByChannel = new Map<string, Set<string>>();
-  for (const r of rows) {
-    let set = tagsByChannel.get(r.channelId);
-    if (!set) {
-      set = new Set<string>();
-      tagsByChannel.set(r.channelId, set);
-    }
-    set.add(r.tag);
-  }
-
-  const includeSet = new Set(include);
-  const excludeSet = new Set(exclude);
-  return channelIds.filter((id) => {
-    const tags = tagsByChannel.get(id);
-    if (excludeSet.size > 0 && tags) {
-      for (const t of tags) if (excludeSet.has(t)) return false;
-    }
-    if (includeSet.size > 0) {
-      if (!tags) return false;
-      for (const t of tags) if (includeSet.has(t)) return true;
-      return false;
-    }
-    return true;
-  });
-}
-
 /** Avoid hundreds of parallel upstream calls (rate limit → names fall back to raw IDs). */
 const LIST_DETAILED_BATCH = 5;
 const SIDEBAR_SUBSCRIPTION_LIMIT_DEFAULT = 24;
@@ -858,6 +789,53 @@ export const subscriptionsRouter = router({
     }),
 
   /**
+   * Subscribed channels matching a tag filter (Favorites / tag pages' channel
+   * strip), newest upload first. SQLite + `channel_meta` only, no upstream.
+   */
+  listTagged: protectedProcedure
+    .input(tagFeedFilterSchema)
+    .query(({ ctx, input }) => {
+      reconcileSubscriptionChannelIdsForUser(ctx.db, ctx.userId);
+      const subs = ctx.db
+        .select({
+          channelId: subscriptions.channelId,
+          subscribedAt: subscriptions.subscribedAt,
+        })
+        .from(subscriptions)
+        .where(eq(subscriptions.userId, ctx.userId))
+        .all();
+      const kept = new Set(
+        filterChannelIdsByTags(
+          ctx.db,
+          ctx.userId,
+          subs.map((s) => s.channelId),
+          input,
+        ),
+      );
+      const matching = subs.filter((s) => kept.has(s.channelId));
+      const metaById = readChannelMetaByIds(
+        ctx.db,
+        matching.map((s) => s.channelId),
+      );
+      return matching
+        .map((s) => {
+          const meta = metaById.get(s.channelId);
+          return {
+            channelId: s.channelId,
+            channelName: meta?.channelName ?? s.channelId,
+            avatarUrl: meta?.avatarUrl ?? null,
+            latestVideoAt: meta?.latestVideoAt ?? null,
+            subscribedAt: s.subscribedAt,
+          };
+        })
+        .sort(
+          (a, b) =>
+            (b.latestVideoAt ?? 0) - (a.latestVideoAt ?? 0) ||
+            a.channelName.localeCompare(b.channelName),
+        );
+    }),
+
+  /**
    * Backfill sidebar data that only the merged feed used to populate: each
    * channel's newest-upload time (via cheap RSS) for ordering, and name/avatar
    * for any channel that still lacks meta. Idempotent and self-throttling — once
@@ -932,33 +910,10 @@ export const subscriptionsRouter = router({
   add: protectedProcedure
     .input(z.object({ channelId: channelIdSchema }))
     .mutation(async ({ ctx, input }) => {
-      const ts = nowUnix();
-      const channelId = normalizeYoutubeChannelId(input.channelId);
-      ctx.db
-        .insert(subscriptions)
-        .values({
-          userId: ctx.userId,
-          channelId,
-          subscribedAt: ts,
-        })
-        .onConflictDoNothing({
-          target: [subscriptions.userId, subscriptions.channelId],
-        })
-        .run();
-      // Populate name + avatar now so the sidebar shows them immediately instead
-      // of the raw channel id (usually cached already from viewing the channel).
-      await refreshChannelMetaIfStale(ctx.db, channelId).catch(() => {});
-      // Warm the new channel's feed inputs immediately (fire-and-forget) so it
-      // shows up in the merged feed and sorts correctly without waiting for
-      // the next cache-warmer cycle. Once its uploads are cached, publish the
-      // feeds right away so the channel's RSS URL can be copied immediately
-      // (the publisher skips channels with no cached uploads).
-      void Promise.allSettled([
-        refreshChannelRss(ctx.db, channelId).finally(requestFeedPublish),
-        refreshLongFormWindow(ctx.db, channelId),
-        fetchChannelPage(ctx.db, { channelId }),
-      ]).then(() =>
-        refreshChannelsLatestVideoAt(ctx.db, [channelId]).catch(() => {}),
+      await subscribeToChannel(
+        ctx.db,
+        ctx.userId,
+        normalizeYoutubeChannelId(input.channelId),
       );
       return { ok: true as const };
     }),
@@ -1128,8 +1083,7 @@ export const subscriptionsRouter = router({
         cursor: z.string().max(512).optional().nullable(),
         direction: z.enum(["forward", "backward"]).optional(),
         refreshToken: z.number().optional(),
-        includeTags: tagFilterSchema,
-        excludeTags: tagFilterSchema,
+        ...tagFeedFilterSchema.shape,
         /** Per-surface override of the profile hideShortsInSubscriptions setting (home blocks). */
         hideShorts: z.boolean().optional(),
         /** Drop videos the user ignored. Default true — matches every existing caller. */
@@ -1153,8 +1107,7 @@ export const subscriptionsRouter = router({
         ctx.db,
         ctx.userId,
         subs.map((s) => s.channelId),
-        input.includeTags,
-        input.excludeTags,
+        input,
       );
 
       if (channelIds.length === 0) {

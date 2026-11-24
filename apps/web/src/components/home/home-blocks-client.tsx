@@ -25,6 +25,7 @@ import { VideoRow } from "@/components/videos/video-row";
 import { VideoThumbnailImg } from "@/components/videos/video-thumbnail-img";
 import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
 import {
+  blockFeedFilter,
   blockFetchCount,
   blockTagLists,
   CARD_MIN_WIDTH_PX,
@@ -36,8 +37,10 @@ import {
   type HomeBlock,
   type HomeBlockSize,
   type HomeBlockType,
+  hasTagFilter,
   homeBlockHref,
   homeBlockOption,
+  homeBlockTitle,
   isScrollRow,
   newHomeBlockId,
   SECTION_OPTIONS,
@@ -301,7 +304,6 @@ function SubscriptionsBlockBody({
   /** Videos per fetch; defaults to what the block shows (over-fetched). */
   pageSize?: number;
 }) {
-  const { includeTags, excludeTags } = blockTagLists(block);
   const hideIgnored = homeBlockOption(block, "hideIgnored");
   // Server-fetched pages already exclude ignored videos; this also drops the
   // ones ignored *this session*, so pressing Ignore removes the card at once
@@ -313,8 +315,7 @@ function SubscriptionsBlockBody({
   const query = trpc.subscriptions.mergedFeedInfinite.useInfiniteQuery(
     {
       limit: pageSize ?? Math.min(48, Math.max(8, blockFetchCount(block) * 2)),
-      includeTags,
-      excludeTags,
+      ...blockFeedFilter(block),
       hideShorts: homeBlockOption(block, "hideShorts"),
       hideIgnored,
     },
@@ -656,6 +657,8 @@ function PlaylistsBlockBody({ block }: { block: HomeBlock }) {
 function BlockBody({ block }: { block: HomeBlock }) {
   switch (block.type) {
     case "subscriptions":
+    case "favorites":
+    case "tag":
       return <SubscriptionsBlockBody block={block} />;
     case "recommended":
       return <RecommendedBlockBody block={block} />;
@@ -682,10 +685,7 @@ function BlockHeading({ block }: { block: HomeBlock }) {
       enabled: block.type === "playlist",
     })
     .data?.find((p) => p.id === block.playlistId)?.name;
-  const label =
-    block.type === "playlist"
-      ? (playlistName ?? "Playlist")
-      : HOME_BLOCK_LABEL[block.type];
+  const label = homeBlockTitle(block, playlistName);
   return (
     <Link
       href={homeBlockHref(block)}
@@ -735,6 +735,44 @@ function SubscriptionTagsSummary({ block }: { block: HomeBlock }) {
 }
 
 /**
+ * Heading override for a tag block. Saved on blur / Enter rather than per
+ * keystroke, since every patch persists the whole home layout.
+ */
+function BlockTitleField({
+  block,
+  onPatch,
+}: {
+  block: HomeBlock;
+  onPatch: (patch: Partial<HomeBlock>) => void;
+}) {
+  const [value, setValue] = useState(block.title ?? "");
+  useEffect(() => setValue(block.title ?? ""), [block.title]);
+  const commit = () => {
+    const next = value.trim().slice(0, 60);
+    if (next !== (block.title ?? "")) onPatch({ title: next || undefined });
+  };
+  return (
+    <label className="block px-2.5 pb-2 pt-1.5">
+      <span className="pb-1 text-xs font-medium text-[hsl(var(--muted-foreground))]">
+        Title
+      </span>
+      <input
+        type="text"
+        value={value}
+        maxLength={60}
+        placeholder={homeBlockTitle({ ...block, title: undefined })}
+        className="mt-1 w-full rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-2.5 py-1.5 text-sm"
+        onChange={(e) => setValue(e.currentTarget.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+        }}
+      />
+    </label>
+  );
+}
+
+/**
  * Per-block options behind a dot menu (edit mode) — options live in the
  * shared sectionPrefs "base", so the section's own page stays in sync.
  */
@@ -749,7 +787,7 @@ function BlockOptionsBody({
   active: boolean;
 }) {
   const defs = SECTION_OPTIONS[block.type] ?? [];
-  const withTags = block.type === "subscriptions";
+  const withTags = hasTagFilter(block.type);
   const allTags = trpc.channelTags.listAll.useQuery(undefined, {
     enabled: active && withTags,
   });
@@ -781,6 +819,9 @@ function BlockOptionsBody({
 
   return (
     <>
+      {block.type === "tag" ? (
+        <BlockTitleField block={block} onPatch={onPatch} />
+      ) : null}
       {defs.map((def) => (
         <label
           key={def.key}
@@ -851,7 +892,7 @@ function BlockOptionsMenu({
   const rootRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const defs = SECTION_OPTIONS[block.type] ?? [];
-  const withTags = block.type === "subscriptions";
+  const withTags = hasTagFilter(block.type);
 
   useEffect(() => {
     if (!open) return;
@@ -942,7 +983,7 @@ function BlockEditSheet({
       </button>
       <Sheet open={open} onOpenChange={setOpen} title="Edit block">
         <div className="px-4 pb-1 pt-2 text-sm font-semibold">
-          {HOME_BLOCK_LABEL[block.type]}
+          {homeBlockTitle(block)}
         </div>
 
         <div className="space-y-3 px-4 py-2">
@@ -1028,8 +1069,9 @@ function BlockEditSheet({
 
 /* ----------------------------- add-block menu ---------------------------- */
 
-const ADDABLE_TYPES: Exclude<HomeBlockType, "playlist">[] = [
+const ADDABLE_TYPES: Exclude<HomeBlockType, "playlist" | "tag">[] = [
   "subscriptions",
+  "favorites",
   "recommended",
   "explore",
   "history",
@@ -1042,6 +1084,7 @@ function AddBlockMenu({ onAdd }: { onAdd: (block: HomeBlock) => void }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const playlists = trpc.playlists.list.useQuery(undefined, { enabled: open });
+  const tags = trpc.channelTags.listAll.useQuery(undefined, { enabled: open });
 
   useEffect(() => {
     if (!open) return;
@@ -1059,11 +1102,12 @@ function AddBlockMenu({ onAdd }: { onAdd: (block: HomeBlock) => void }) {
     };
   }, [open]);
 
-  const add = (type: HomeBlockType, playlistId?: number) => {
+  const add = (type: HomeBlockType, playlistId?: number, tag?: string) => {
     onAdd({
       id: newHomeBlockId(),
       type,
       playlistId,
+      options: tag ? { [`${TAG_OPTION_PREFIX}${tag}`]: true } : undefined,
       limit: type === "playlists" ? 4 : 8,
       rows: type === "playlists" ? 1 : 2,
       layout: "cards",
@@ -1093,6 +1137,27 @@ function AddBlockMenu({ onAdd }: { onAdd: (block: HomeBlock) => void }) {
               {HOME_BLOCK_LABEL[type]}
             </button>
           ))}
+          {(tags.data ?? []).length > 0 ? (
+            <>
+              <p className="border-t border-[hsl(var(--border))] px-3 pb-1 pt-2 font-mono text-[10px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
+                Channels tagged
+              </p>
+              {(tags.data ?? []).map(({ tag, count }) => (
+                <button
+                  key={tag}
+                  type="button"
+                  role="menuitem"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left transition hover:bg-[hsl(var(--muted)_/_0.65)]"
+                  onClick={() => add("tag", undefined, tag)}
+                >
+                  <span className="min-w-0 flex-1 truncate">#{tag}</span>
+                  <span className="text-xs text-[hsl(var(--muted-foreground))]">
+                    {count}
+                  </span>
+                </button>
+              ))}
+            </>
+          ) : null}
           {(playlists.data ?? []).length > 0 ? (
             <>
               <p className="border-t border-[hsl(var(--border))] px-3 pb-1 pt-2 font-mono text-[10px] font-semibold uppercase tracking-widest text-[hsl(var(--muted-foreground))]">
@@ -1363,7 +1428,8 @@ export function HomeBlocksClient({
                   </>
                 ) : null}
               </div>
-              {block.type === "subscriptions" ? (
+              {block.type === "subscriptions" ||
+              (block.type === "tag" && block.title?.trim()) ? (
                 <SubscriptionTagsSummary block={block} />
               ) : null}
               <BlockBody block={block} />

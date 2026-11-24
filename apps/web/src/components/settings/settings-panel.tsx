@@ -67,6 +67,10 @@ export function SettingsPanel({
   const [trendingRegion, setTrendingRegion] = useState(
     initial.trendingRegion ?? "US",
   );
+  const [favoriteTag, setFavoriteTag] = useState(
+    initial.favoriteTag ?? "favorite",
+  );
+  const channelTagList = trpc.channelTags.listAll.useQuery();
   const [hideShortsInSubscriptions, setHideShortsInSubscriptions] = useState(
     initial.hideShortsInSubscriptions ?? true,
   );
@@ -183,10 +187,14 @@ export function SettingsPanel({
       setVisualTheme(data.visualTheme);
       setVisualThemeLocal(data.visualTheme);
       setTrendingRegion(data.trendingRegion ?? "US");
+      setFavoriteTag(data.favoriteTag);
       writeWatchMiniEnabled(data.enableMiniPlayer ?? true);
       writeDefaultPlaybackQuality(data.defaultPlaybackQuality ?? "1080p");
       writeSponsorBlockPrefs(sponsorBlockPrefsFromAppSettings(data));
       await utils.settings.get.invalidate();
+      await utils.favorites.invalidate();
+      await utils.subscriptions.listTagged.invalidate();
+      await utils.subscriptions.mergedFeedInfinite.invalidate();
       await utils.feed.home.invalidate();
       await utils.trending.list.invalidate();
       setMessage("Settings saved.");
@@ -277,6 +285,7 @@ export function SettingsPanel({
       theme,
       visualTheme,
       trendingRegion,
+      ...(favoriteTag.trim() ? { favoriteTag } : {}),
       hideShortsInSubscriptions,
       defaultCinemaMode,
       enableMiniPlayer,
@@ -398,6 +407,37 @@ export function SettingsPanel({
               </option>
             ))}
           </select>
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold">Favorites</h2>
+        <p className="text-sm text-[hsl(var(--muted-foreground))]">
+          The star on a channel puts this tag on it (and subscribes). Favorites
+          in the sidebar and the Favorites home block show the channels carrying
+          it. Pick one of your existing tags to make those channels your
+          favorites; channels starred under the old tag keep that tag.
+        </p>
+        <div className="max-w-md space-y-1">
+          <label
+            htmlFor="settings-favorite-tag"
+            className="text-sm font-medium"
+          >
+            Favorite tag
+          </label>
+          <input
+            id="settings-favorite-tag"
+            list="settings-favorite-tag-options"
+            className="w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 py-2 text-sm"
+            value={favoriteTag}
+            maxLength={32}
+            onChange={(e) => setFavoriteTag(e.target.value)}
+          />
+          <datalist id="settings-favorite-tag-options">
+            {(channelTagList.data ?? []).map(({ tag }) => (
+              <option key={tag} value={tag} />
+            ))}
+          </datalist>
         </div>
       </section>
 

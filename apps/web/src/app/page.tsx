@@ -4,8 +4,8 @@ import { redirect } from "next/navigation";
 import superjson from "superjson";
 import { HomeBlocksClient } from "@/components/home/home-blocks-client";
 import {
+  blockFeedFilter,
   blockFetchCount,
-  blockTagLists,
   DEFAULT_HOME_BLOCKS,
   type HomeBlock,
   homeBlockOption,
@@ -33,12 +33,12 @@ function prefetchBlock(
   region: string,
 ): Promise<unknown> {
   switch (block.type) {
-    case "subscriptions": {
-      const { includeTags, excludeTags } = blockTagLists(block);
+    case "subscriptions":
+    case "favorites":
+    case "tag": {
       return helpers.subscriptions.mergedFeedInfinite.prefetchInfinite({
         limit: Math.min(48, Math.max(8, blockFetchCount(block) * 2)),
-        includeTags,
-        excludeTags,
+        ...blockFeedFilter(block),
         hideShorts: homeBlockOption(block, "hideShorts"),
         hideIgnored: homeBlockOption(block, "hideIgnored"),
       });

@@ -76,6 +76,7 @@ const settingsPatchSchema = z.object({
   ).optional(),
   quickActions: withoutDefault(appSettingsSchema.shape.quickActions).optional(),
   homeBlocks: withoutDefault(appSettingsSchema.shape.homeBlocks).optional(),
+  favoriteTag: z.string().min(1).max(40).optional(),
   bottomNav: withoutDefault(appSettingsSchema.shape.bottomNav).optional(),
   sectionPrefs: withoutDefault(appSettingsSchema.shape.sectionPrefs).optional(),
 });

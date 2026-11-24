@@ -18,11 +18,17 @@ type SubscriptionVideosInfiniteProps = {
   /** Shared tag filter, owned by SubscriptionsTabs. */
   includeTags: string[];
   excludeTags: string[];
+  /** "all": channels need every included tag (tag pages). */
+  tagMatch?: "any" | "all";
+  /** Only favorite channels (the Favorites page). */
+  favorites?: boolean;
 };
 
 export function SubscriptionVideosInfinite({
   includeTags,
   excludeTags,
+  tagMatch,
+  favorites,
 }: SubscriptionVideosInfiniteProps) {
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const { sessionIgnored } = useIgnoredVideos();
@@ -35,7 +41,8 @@ export function SubscriptionVideosInfinite({
   // refetch. Keep in sync with the prefetch in app/subscriptions/page.tsx.
   const refreshTokenRef = useRef<number>(0);
   const utils = trpc.useUtils();
-  const filterActive = includeTags.length > 0 || excludeTags.length > 0;
+  const filterActive =
+    includeTags.length > 0 || excludeTags.length > 0 || favorites === true;
 
   const query = trpc.subscriptions.mergedFeedInfinite.useInfiniteQuery(
     {
@@ -43,6 +50,10 @@ export function SubscriptionVideosInfinite({
       refreshToken: refreshTokenRef.current,
       includeTags: includeTags.length > 0 ? includeTags : undefined,
       excludeTags: excludeTags.length > 0 ? excludeTags : undefined,
+      // Only set when used, so the Subscriptions page's key still matches
+      // its SSR prefetch.
+      ...(tagMatch === "all" ? { tagMatch } : {}),
+      ...(favorites ? { favorites } : {}),
     },
     {
       getNextPageParam: (last) => last.nextCursor ?? undefined,

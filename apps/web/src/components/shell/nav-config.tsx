@@ -6,6 +6,7 @@ export type NavKey =
   | "shorts"
   | "explore"
   | "subs"
+  | "favorites"
   | "library"
   | "algorithm"
   | "playlists"
@@ -251,6 +252,35 @@ const QueueIcon = (
   </svg>
 );
 
+const FavoritesIcon = (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden
+  >
+    <title>Favorites</title>
+    <path d="m12 3.2 2.7 5.5 6 .9-4.35 4.25 1.03 6-5.38-2.83-5.38 2.83 1.03-6L3.3 9.6l6-.9z" />
+  </svg>
+);
+
+const FavoritesIconActive = (
+  <svg
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinejoin="round"
+    aria-hidden
+  >
+    <title>Favorites</title>
+    <path d="m12 3.2 2.7 5.5 6 .9-4.35 4.25 1.03 6-5.38-2.83-5.38 2.83 1.03-6L3.3 9.6l6-.9z" />
+  </svg>
+);
+
 const SUBSCRIPTIONS_ITEM: NavItem = {
   key: "subs",
   href: "/subscriptions",
@@ -324,6 +354,13 @@ export const SECONDARY_NAV: NavItem[] = [
   // fillable body, so a filled variant would lose its identity.
   { key: "library", href: "/history", label: "History", icon: HistoryIcon },
   SUBSCRIPTIONS_ITEM,
+  {
+    key: "favorites",
+    href: "/favorites",
+    label: "Favorites",
+    icon: FavoritesIcon,
+    iconActive: FavoritesIconActive,
+  },
   {
     key: "playlists",
     href: "/playlists",
