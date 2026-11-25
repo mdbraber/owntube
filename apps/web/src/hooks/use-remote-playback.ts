@@ -69,10 +69,25 @@ function watchRemote(
   setAvailable: (a: boolean) => void,
   setActive: (a: boolean) => void,
 ): () => void {
-  const syncState = () => setActive(remote.state === "connected");
+  // Either signal means "on a receiver". On iPhone and iPad an AirPlay cast
+  // starts by switching the device's route, and Safari then flags the element
+  // as wireless without the Remote Playback API ever reporting "connected"
+  // (seen on an iPad: the cast played, `connect` never fired).
+  const webkit = video as WebKitAirPlayVideo;
+  const syncState = () =>
+    setActive(
+      remote.state === "connected" ||
+        webkit.webkitCurrentPlaybackTargetIsWireless === true,
+    );
+  const videoEvents = [
+    "webkitcurrentplaybacktargetiswirelesschanged",
+    "playing",
+    "pause",
+  ];
   for (const type of ["connecting", "connect", "disconnect"]) {
     remote.addEventListener(type, syncState);
   }
+  for (const type of videoEvents) video.addEventListener(type, syncState);
   syncState();
 
   // watchAvailability throws while `disableRemotePlayback` is set (dash.js
@@ -96,6 +111,7 @@ function watchRemote(
     for (const type of ["connecting", "connect", "disconnect"]) {
       remote.removeEventListener(type, syncState);
     }
+    for (const type of videoEvents) video.removeEventListener(type, syncState);
     if (watchId !== undefined) {
       void remote.cancelWatchAvailability(watchId).catch(() => {});
     }
