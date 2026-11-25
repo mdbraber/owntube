@@ -14,6 +14,11 @@ type AppShellProps = {
   topbarRight: ReactNode;
   bottomNavAccount: ReactNode;
   isLoggedIn: boolean;
+  /**
+   * Inside the iOS app, which draws the tab bar, navigation bar and menus
+   * natively: leave out the web's own (sidebar, top bar, bottom tab bar).
+   */
+  nativeApp?: boolean;
 };
 
 function readDesktopSidebarDefault(): boolean {
@@ -26,6 +31,7 @@ export function AppShell({
   topbarRight,
   bottomNavAccount,
   isLoggedIn,
+  nativeApp = false,
 }: AppShellProps) {
   const pathname = usePathname();
   const isShortsRoute =
@@ -46,18 +52,22 @@ export function AppShell({
 
   return (
     <div className="ot-app-shell flex h-[100dvh] w-full overflow-hidden bg-[hsl(var(--background))] text-[hsl(var(--foreground))]">
-      <ShellSidebar
-        open={sidebarOpen}
-        onClose={close}
-        isLoggedIn={isLoggedIn}
-      />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <ShellTopbar
-          sidebarOpen={sidebarOpen}
-          onOpenMenu={toggleSidebar}
-          topbarRight={topbarRight}
-          hiddenOnMobile={isShortsRoute}
+      {nativeApp ? null : (
+        <ShellSidebar
+          open={sidebarOpen}
+          onClose={close}
+          isLoggedIn={isLoggedIn}
         />
+      )}
+      <div className="flex min-w-0 flex-1 flex-col">
+        {nativeApp ? null : (
+          <ShellTopbar
+            sidebarOpen={sidebarOpen}
+            onOpenMenu={toggleSidebar}
+            topbarRight={topbarRight}
+            hiddenOnMobile={isShortsRoute}
+          />
+        )}
         {/* Stable, relatively-positioned scroll container. PlayerHost lives
             inside it so the full-size player is position:absolute in content
             space — the browser scrolls it natively (no per-frame JS). */}
@@ -75,7 +85,9 @@ export function AppShell({
         {/* Shorts is a full-bleed, chrome-free experience on phones (the topbar
             is hidden too) — drop the bottom tab bar so the feed uses the whole
             height; the in-feed exit cross navigates back. */}
-        {isShortsRoute ? null : <ShellBottomNav account={bottomNavAccount} />}
+        {isShortsRoute || nativeApp ? null : (
+          <ShellBottomNav account={bottomNavAccount} />
+        )}
       </div>
     </div>
   );

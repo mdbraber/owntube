@@ -18,7 +18,8 @@
       "!apps/tv/android",
       "!apps/tv/ios",
       "!apps/tv/.expo",
-      "!apps/ios/src-tauri/gen",
+      "!apps/ios/ios",
+      "!apps/ios/.expo",
       "!spikes"
     ]
   },

@@ -1,0 +1,4 @@
+# apps/ios is its own pnpm root, outside the repo's workspace (see the root
+# pnpm-workspace.yaml). React Native and Metro expect a flat node_modules, so
+# install it npm-style. pnpm 10+ reads this setting from here, not from .npmrc.
+nodeLinker: hoisted

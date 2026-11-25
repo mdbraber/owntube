@@ -1,110 +1,83 @@
-# OwnTube iOS
+# OwnTube for iPhone and iPad (`apps/ios`)
 
-A minimal native iOS shell (Tauri v2 + WKWebView) that loads your self-hosted
-OwnTube web app, wherever it runs — the address is configuration, not code.
+An Expo app that puts the OwnTube web app in a native iOS shell. iOS draws
+the tab bar, navigation bars, menus, search field and lists, with Liquid Glass
+on iOS 26 and later. The web app's pages fill the space in between. The server
+address is configuration, not code.
 
-Why it exists: the installed **PWA** cannot do Picture-in-Picture or background /
-screen-off playback — iOS blocks those in `display: standalone` home-screen web
-apps. A native WKWebView is not subject to that restriction, so PiP works from
-the native player controls and audio can keep playing when the screen locks
-(`UIBackgroundModes: audio`).
+It replaces the earlier Tauri shell. Like that shell, it plays video
+inline, in Picture-in-Picture and with the screen off (`UIBackgroundModes:
+audio`), none of which the home-screen PWA can do. Being Expo, it shares its
+toolchain and patterns with `apps/tv`.
 
-## Prerequisites
-- Xcode + command line tools, an iPhone, and a free Apple ID for personal signing.
-- Rust and the iOS toolchain (`xcodegen`, `cocoapods`).
+## How it fits together
 
-## Configuration
-Nothing environment-specific lives in the repo: `tauri.conf.json` ships a
-neutral `http://localhost:3000` and no signing team. Your own values go in a
-gitignored `.env`:
+- **Native tabs** (`app/_layout.tsx`): Home, Subscriptions, Library and the
+  system Search tab, each with its own navigation stack.
+- **Web pages** (`src/components/web-screen.tsx`): one WebView per screen. Each
+  gets a native navigation bar showing the page's title, a back button while
+  the page has history (the edge swipe goes back too), and a menu with Share,
+  Open in Safari and Reload. Links that leave the server open in a Safari
+  sheet. All WebViews share one cookie store and localStorage.
+- **Library** (`app/library/index.tsx`): the web app's account destinations as
+  a native SwiftUI list (`@expo/ui`).
+- **Embedded mode in the web app**: the WebView adds `OwnTubeApp/<version>` to
+  its user agent. The server sees it (`apps/web/src/lib/native-app.ts`) and
+  leaves its own top bar, sidebar and bottom tab bar out of the first render.
+  The page pads itself by the safe area, so content scrolls under the glass
+  bars.
+- **Bridge**: inside the app, the page sends messages through
+  `window.ReactNativeWebView` (`components/native-app/native-app-bridge.tsx`).
+  It reports its title and URL on every navigation, and the watch queue for the
+  widget. Both sides share the message types in `@web/lib/native-app`.
+- **Links** (`src/lib/use-incoming-links.ts`, `src/lib/app-path.ts`): these open
+  in the Home tab, whether they launch the app or arrive while it runs:
+  - `owntube://watch?v=<id>` (the widget)
+  - `owntube://watch/<id>` (Privacy Redirect)
+  - `owntube://<any web path>`
+  - YouTube URLs
+
+  YouTube-shaped paths are canonicalised by the web middleware.
+- **Widget** (`targets/widget`, `plugins/with-widget.js`): "Continue watching"
+  from the queue. The app's `widget-bridge` module writes the queue to the App
+  Group `group.<bundle id>` and reloads the widget. Built the same way as the
+  TV app's Top Shelf (`apps/tv/plugins/with-top-shelf.js`).
+
+## Setup
+
+`apps/ios` is installed on its own, outside the repo's pnpm workspace (see the
+root `pnpm-workspace.yaml`). Its own `pnpm-workspace.yaml` makes the
+`node_modules` flat (`nodeLinker: hoisted`), which React Native needs.
+
 ```sh
-cp .env.example .env    # then set OWNTUBE_URL and IOS_DEVELOPMENT_TEAM
-```
-`scripts/tauri.ts` merges them into the build via the Tauri CLI's `--config`
-flag, and writes `capabilities/remote.local.json` granting your server's origin
-permission to call the app's commands. A real environment variable overrides
-`.env`, so CI can set `OWNTUBE_URL` directly. The Rust side reads the origin
-from whatever the window is showing, so no address is compiled in.
-
-## Run on a connected iPhone
-Unlike `apps/tv`, this app is part of the pnpm workspace, so a root `pnpm install`
-covers it.
-```sh
-pnpm --filter ios ios:dev   # from the repo root
-pnpm ios:dev                # or from apps/ios
-```
-Or open the generated Xcode project and Run (⌘R):
-```sh
-pnpm ios:open         # opens src-tauri/gen/apple/owntube.xcodeproj
-```
-First run: in Xcode, select your device, confirm "Automatically manage signing"
-with your Apple ID, then trust the developer profile on the phone under
-Settings → General → VPN & Device Management.
-
-> Personal (free) signing certificates expire after 7 days — re-run `pnpm ios:dev`
-> (or Xcode Run) to refresh. A paid Apple Developer account removes this limit.
-
-### Known issue: `pnpm ios:build` (release) is broken
-The generated Xcode project copies the Rust static library from
-`Externals/$(CONFIGURATION)/libapp.a`, but that resolves to `debug` even in a
-release build, while `tauri ios build` compiles the library to
-`Externals/arm64/release/`. On a clean checkout the release build therefore
-fails with *"libapp.a couldn't be opened"*.
-
-Worse, it does **not** fail on a working copy that has previously run
-`ios:dev`: a stale `Externals/arm64/debug/libapp.a` is left behind there, so the
-release build silently bundles the **debug** Rust library instead. `Externals/`
-is gitignored, which is why only fresh clones surface the error.
-
-Once a release build *has* run, `ios:dev` breaks too: `Externals` is a source
-group in `project.yml`, so with both `arm64/debug/libapp.a` and
-`arm64/release/libapp.a` present, xcodegen emits two copy commands for the same
-destination and Xcode fails with *"Multiple commands produce libapp.a"*. The
-workaround is to delete the configuration you are not building:
-```sh
-rm -rf src-tauri/gen/apple/Externals/arm64/release
+cd apps/ios
+pnpm install
+cp .env.example .env    # set EXPO_PUBLIC_OWNTUBE_URL
+pnpm prebuild           # generates ios/ (gitignored) from app.json + plugins
+pnpm ios                # build, install and run on a simulator or device
 ```
 
-Fixing this properly means correcting the copy phase in
-`src-tauri/gen/apple/project.yml` so it tracks `$(CONFIGURATION)` honestly;
-left alone for now since only dev builds are in use.
+To run on a phone, open `ios/OwnTube.xcworkspace` in Xcode, pick your team
+under Signing & Capabilities for both the OwnTube and OwnTubeWidget targets,
+and run. The App Group must be enabled for both; Xcode's automatic signing
+registers it.
 
-## Network note
-If `OWNTUBE_URL` points at a host on your home network, the phone has to be able
-to reach it (same Wi‑Fi, or VPN/Tailscale). If it can't, you'll see the local
-fallback page in `dist/index.html`.
-
-## Layout
-- `src-tauri/tauri.conf.json` — app config; the main window `url` points at the
-  remote server, `csp: null` so the server's own headers apply.
-- `src-tauri/Info-ios.plist` — declarative extra Info.plist keys (background audio).
-- `src-tauri/gen/apple/` — generated Xcode project (regenerated by the CLI).
-- `scripts/export-app-icon.ts` — derives the app icon from the shared web logo.
-- `dist/index.html` — offline fallback only; the real UI is the remote server.
+If `EXPO_PUBLIC_OWNTUBE_URL` points at a host on your home network, the phone
+has to be able to reach it (same Wi‑Fi, or VPN/Tailscale).
 
 ## App icon
-This app keeps **no brand assets of its own**. The icon set under
-`src-tauri/icons/` and `src-tauri/gen/apple/Assets.xcassets/` is generated from
-`apps/web/public/logo-dark.svg` — the same file the web app and its favicons use.
-Edit the logo there, then:
+
+`assets/icon.png` is generated from the web logo, like the TV app's icons:
+
 ```sh
-pnpm icon
+pnpm --filter web export:icons   # from the repo root
 ```
 
-The one iOS-specific transform, done in `scripts/export-app-icon.ts`: the web
-logo draws its own rounded tile plus a 12%-white border, and an app icon must
-not carry either. iOS applies its own corner mask, so the logo's border would
-appear as a faint second frame just inside the rounded corners. The script
-strips the tile rects and re-renders the mark full-bleed on the tile's own
-background colour, which it also reuses as the `--ios-color` fill. If the logo
-ever changes shape such that no tile rect is found, the script fails loudly
-rather than quietly shipping a wrong icon.
+## Next steps
 
-Rendering goes through `sharp`, matching `apps/web`'s icon export. Do not
-substitute ImageMagick: its built-in SVG renderer silently drops the chevron,
-which is a stroked rather than filled path.
-
-## Not included (add only if needed)
-No custom native code yet. If lock-screen audio without PiP doesn't hold on
-device, the next step is a small **Swift** file activating an
-`AVAudioSession(.playback)` — deliberately deferred to keep this minimal.
+1. **Native player**: `expo-video` (AVPlayer) for reliable background audio,
+   Now Playing / lock screen controls, PiP and AirPlay. The web page hands
+   playback over through the bridge. This needs the device-token sign-in the
+   TV app uses, so native code can call the API.
+2. Home-screen quick actions (`expo-quick-actions`), native settings.
+3. Push notifications for new uploads (needs a sender on the server).
