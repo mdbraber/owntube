@@ -31,6 +31,14 @@ type ChannelVideosSectionProps = {
   stale?: boolean;
 };
 
+/**
+ * Cards rendered per batch. A cached channel page can hold 100+ videos; drawing
+ * them all at once costs a second or more of main-thread work (SSR markup,
+ * hydration, layout) before the page responds. The rest are revealed as the
+ * sentinel scrolls into view, before any further upstream page is fetched.
+ */
+const RENDER_BATCH = 24;
+
 const TABS: { id: SectionTab; label: string }[] = [
   { id: "videos", label: "Videos" },
   { id: "shorts", label: "Shorts" },
@@ -47,6 +55,7 @@ export function ChannelVideosSection({
   stale,
 }: ChannelVideosSectionProps) {
   const [tab, setTab] = useState<SectionTab>(initialTab);
+  const [renderCount, setRenderCount] = useState(RENDER_BATCH);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const isVideoTab = tab === "videos" || tab === "shorts";
   const videoTab: ChannelTab = isVideoTab ? tab : "videos";
@@ -90,6 +99,13 @@ export function ChannelVideosSection({
     [query.data?.pages],
   );
 
+  const visibleVideos = useMemo(
+    () => videos.slice(0, renderCount),
+    [videos, renderCount],
+  );
+  const hasHiddenVideos = videos.length > renderCount;
+  const canShowMore = hasHiddenVideos || Boolean(query.hasNextPage);
+
   const { sessionIgnored } = useIgnoredVideos();
   const ignoredQuery = trpc.interactions.ignoredAmong.useQuery(
     { videoIds: videos.slice(0, 200).map((v) => v.videoId) },
@@ -100,25 +116,39 @@ export function ChannelVideosSection({
     [ignoredQuery.data, sessionIgnored],
   );
 
+  const showMore = () => {
+    if (hasHiddenVideos) {
+      setRenderCount((n) => n + RENDER_BATCH);
+      return;
+    }
+    if (query.hasNextPage && !query.isFetchingNextPage) {
+      void query.fetchNextPage();
+      setRenderCount((n) => n + RENDER_BATCH);
+    }
+  };
+  const showMoreRef = useRef(showMore);
+  showMoreRef.current = showMore;
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-observe after each batch so a sentinel still in view keeps filling.
   useEffect(() => {
-    if (!query.hasNextPage) return;
+    if (!canShowMore) return;
     const el = sentinelRef.current;
     if (!el) return;
     const obs = new IntersectionObserver(
       (entries) => {
         if (!entries[0]?.isIntersecting) return;
-        if (!query.hasNextPage || query.isFetchingNextPage) return;
-        void query.fetchNextPage();
+        showMoreRef.current();
       },
       { root: null, rootMargin: "480px 0px", threshold: 0 },
     );
     obs.observe(el);
     return () => obs.disconnect();
-  }, [query]);
+  }, [canShowMore, renderCount, videos.length]);
 
   const onTabChange = (next: SectionTab) => {
     if (next === tab) return;
     setTab(next);
+    setRenderCount(RENDER_BATCH);
   };
 
   return (
@@ -181,7 +211,7 @@ export function ChannelVideosSection({
 
           {videos.length > 0 ? (
             <VideoGrid
-              videos={videos}
+              videos={visibleVideos}
               size="large"
               variant={tab === "shorts" ? "short" : "video"}
               dimVideoIds={dimVideoIds}
@@ -193,7 +223,7 @@ export function ChannelVideosSection({
             </p>
           ) : null}
 
-          {query.hasNextPage ? (
+          {canShowMore ? (
             <div
               ref={sentinelRef}
               className="h-1 w-full shrink-0"
@@ -207,13 +237,9 @@ export function ChannelVideosSection({
             </p>
           ) : null}
 
-          {query.hasNextPage && !query.isFetchingNextPage ? (
+          {canShowMore && !query.isFetchingNextPage ? (
             <div className="flex justify-center pt-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => void query.fetchNextPage()}
-              >
+              <Button type="button" variant="outline" onClick={showMore}>
                 Load more
               </Button>
             </div>
