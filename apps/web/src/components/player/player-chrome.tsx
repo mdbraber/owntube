@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   type ComponentProps,
   type MouseEvent as ReactMouseEvent,
@@ -54,7 +53,6 @@ import {
   SeekIndicator,
   TouchTransport,
   useCoarsePointer,
-  usePreviousVideo,
   useSeekIndicator,
 } from "@/components/player/player-overlay";
 import { StatsForNerdsOverlay } from "@/components/player/player-stats";
@@ -118,7 +116,6 @@ export function PlayerChrome({
   const [hydrated, setHydrated] = useState(false);
   const { active: fsActive, toggle: toggleFs } = useFullscreenShell(shellRef);
   const { visible, ping, hide } = useIdleVisible(adapter.paused, settingsOpen);
-  const router = useRouter();
   const coarse = useCoarsePointer();
   const { seekIndicator, showSeek, clearSeek } = useSeekIndicator();
   // A held seek key scrubs this position (the progress bar and clock show
@@ -138,7 +135,6 @@ export function PlayerChrome({
     },
     [],
   );
-  const previousVideoId = usePreviousVideo(videoId, !miniMode && !shortsMode);
   // Last touch tap on a side of the video, for double-tap seeking.
   const lastTapRef = useRef<{ at: number; side: "back" | "forward" } | null>(
     null,
@@ -483,10 +479,9 @@ export function PlayerChrome({
         </div>
       ) : null}
 
-      {/* Touch, YouTube-style: previous video · play/pause · next video over
-          a dimmed video while the controls show; seeking is a double tap on
-          either side. Desktop has no center buttons: a click toggles (with
-          the bezel below) and ← → / J L seek. */}
+      {/* Touch: play/pause over a dimmed video while the controls show;
+          seeking is a double tap on either side. Desktop has no center
+          button: a click toggles (with the bezel below) and ← → / J L seek. */}
       {coarse && !miniMode && !shortsMode && !hold2xUi ? (
         <TouchTransport
           shown={
@@ -499,13 +494,6 @@ export function PlayerChrome({
             adapter.togglePaused();
             ping();
           }}
-          onPrev={
-            previousVideoId
-              ? () =>
-                  router.push(`/watch?v=${encodeURIComponent(previousVideoId)}`)
-              : null
-          }
-          onNext={nextUp ? onPlayNext : null}
         />
       ) : null}
 
