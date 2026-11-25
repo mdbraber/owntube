@@ -83,19 +83,23 @@ export function useCastHandoff(
 
   // Hand playback over on connect, and back on disconnect.
   const wasActiveRef = useRef(false);
+  const isActiveRef = useRef(false);
+  isActiveRef.current = remote.active;
   useEffect(() => {
     if (!el) return;
     if (remote.active && !wasActiveRef.current) {
       wasActiveRef.current = true;
-      const at = localRef.current.currentTime;
       localRef.current.pause();
-      try {
-        el.currentTime = at;
-      } catch {
-        /* not seekable yet: the default start position set on click applies */
-      }
       el.muted = false;
-      void el.play().catch(() => {});
+      // Normally already playing since the click (see `prompt`).
+      if (el.paused) {
+        try {
+          el.currentTime = localRef.current.currentTime;
+        } catch {
+          /* not seekable yet: the start position set on click applies */
+        }
+        void el.play().catch(() => {});
+      }
     } else if (!remote.active && wasActiveRef.current) {
       wasActiveRef.current = false;
       const at = el.currentTime;
@@ -123,23 +127,46 @@ export function useCastHandoff(
   const prompt = useCallback(() => {
     if (!el) return;
     setCastError(false);
-    // A play() inside the click lifts WebKit's playback restrictions for this
-    // element, so play() on connect (no gesture by then) is allowed. Muted and
-    // paused at once, so nothing plays here. Not load(): that would reset the
-    // element to "nothing known" and the picker would offer an audio-only
-    // route (see the preload note below).
-    // Still nothing known (the browser held the load back): ask for it now,
-    // the old way, rather than not at all.
-    if (el.readyState === HTMLMediaElement.HAVE_NOTHING) el.load();
-    el.muted = true;
-    void el.play().catch(() => {});
-    el.pause();
-    try {
-      el.currentTime = localRef.current.currentTime;
-    } catch {
-      /* set again on connect */
+    // Already on a TV: the picker only switches or disconnects.
+    if (isActiveRef.current) {
+      void remote.prompt();
+      return;
     }
-    remote.prompt();
+    // On iPhone and iPad AirPlay is a route for the whole device: picking a
+    // receiver moves whatever is *playing* onto it, video only if that element
+    // can send video. So the cast element must already be playing when the
+    // viewer picks; a paused one never goes, and the page's Media Source
+    // player sends its sound alone (an audio-only AirPlay view, the video
+    // still on the iPad). Hand over inside the click (a user gesture, so
+    // play() is allowed): pause here, play the cast element from the same
+    // spot, then open the picker. It is heard from this device for the
+    // moment the picker is open.
+    if (el.readyState === HTMLMediaElement.HAVE_NOTHING) el.load();
+    const local = localRef.current;
+    const at = local.currentTime;
+    const wasPlaying = !local.paused;
+    try {
+      el.currentTime = at;
+    } catch {
+      /* not seekable yet: a fresh load starts here anyway */
+    }
+    local.pause();
+    el.muted = false;
+    void el.play().catch(() => {});
+    const handBack = () => {
+      if (isActiveRef.current) return;
+      const t = el.currentTime;
+      el.pause();
+      if (Number.isFinite(t) && t > 0) local.seek(t);
+      if (wasPlaying) local.play();
+    };
+    void remote.prompt().then((outcome) => {
+      // Dismissed without casting: put playback back where it was.
+      if (outcome === "dismissed") handBack();
+      // WebKit's older picker doesn't say; if nothing connected after a
+      // while, assume it was dismissed.
+      if (outcome === "unknown") setTimeout(handBack, 15_000);
+    });
   }, [el, remote]);
 
   if (!castSrc) return { adapter: local, castVideoProps: null };

@@ -15,8 +15,13 @@ export type RemotePlaybackState = {
   receiverAvailable: boolean;
   /** The element is playing on a receiver right now. */
   active: boolean;
-  /** Opens the browser's device picker. Call straight from a click. */
-  prompt: () => void;
+  /**
+   * Opens the browser's device picker. Call straight from a click. Resolves
+   * `"picked"` when a device was chosen, `"dismissed"` when the picker was
+   * closed or failed, and `"unknown"` with WebKit's older picker, which says
+   * neither.
+   */
+  prompt: () => Promise<"picked" | "dismissed" | "unknown">;
 };
 
 /**
@@ -42,14 +47,17 @@ export function useRemotePlayback(
     return watchWebKit(video, setReceiverAvailable, setActive);
   }, [video]);
 
-  const prompt = useCallback(() => {
-    if (!video) return;
+  const prompt = useCallback(async () => {
+    if (!video) return "dismissed" as const;
     if ("remote" in video && video.remote) {
       // Rejects when the viewer dismisses the picker, or the source can't go.
-      void video.remote.prompt().catch(() => {});
-      return;
+      return video.remote.prompt().then(
+        () => "picked" as const,
+        () => "dismissed" as const,
+      );
     }
     (video as WebKitAirPlayVideo).webkitShowPlaybackTargetPicker?.();
+    return "unknown" as const;
   }, [video]);
 
   return { receiverAvailable, active, prompt };
