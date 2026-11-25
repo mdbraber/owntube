@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { TaggedChannelsView } from "@/components/favorites/tagged-channels-view";
 import { PageHeader } from "@/components/layout/page-header";
+import { SectionOptionsMenu } from "@/components/library/section-options-menu";
 import { normalizeChannelTag } from "@/lib/channel-tag";
 import { tagBundleLabel, tagViewHref } from "@/lib/home-blocks";
 import { auth } from "@/server/auth";
@@ -38,9 +39,12 @@ export default async function TagsPage({
             ? "Subscribed channels carrying all of these tags."
             : "Subscribed channels carrying any of these tags."
         }
-      />
+      >
+        <SectionOptionsMenu section="tags" />
+      </PageHeader>
       <TaggedChannelsView
         filter={{ includeTags, excludeTags, tagMatch }}
+        section="tags"
         empty="No subscribed channel carries these tags."
       />
     </main>

@@ -72,6 +72,29 @@ const sectionPagePrefsSchema = z
   })
   .default(DEFAULT_SECTION_PAGE_PREFS);
 
+/**
+ * Subscription-feed pages (Subscriptions, Favorites, tag pages) take the home
+ * block options too: layout, a row cap (0 = all, infinite scroll) and the
+ * Shorts / ignored filters. hideShorts unset follows the profile-level
+ * hideShortsInSubscriptions; rowSize is the card/row size on every tab.
+ */
+const DEFAULT_FEED_PAGE_PREFS = {
+  ...DEFAULT_SECTION_PAGE_PREFS,
+  layout: "cards",
+  rows: 0,
+  hideIgnored: true,
+} as const;
+const feedPagePrefsSchema = z
+  .object({
+    hideCompleted: z.boolean().default(false),
+    rowSize: z.enum(["xs", "sm", "md", "lg", "xl"]).default("md"),
+    layout: z.enum(["cards", "rows"]).default("cards"),
+    rows: z.number().int().min(0).max(8).default(0),
+    hideShorts: z.boolean().optional(),
+    hideIgnored: z.boolean().default(true),
+  })
+  .default(DEFAULT_FEED_PAGE_PREFS);
+
 export const appSettingsSchema = z.object({
   theme: themeSchema.default("system"),
   visualTheme: visualThemeSchema.default("default"),
@@ -232,14 +255,19 @@ export const appSettingsSchema = z.object({
       history: sectionPagePrefsSchema,
       queue: sectionPagePrefsSchema,
       saved: sectionPagePrefsSchema,
-      /** Subscriptions > By tag. Defaults in, for profiles saved before it. */
-      subscriptions: sectionPagePrefsSchema,
+      /** Subscriptions (all tabs). Defaults in, for profiles saved before it. */
+      subscriptions: feedPagePrefsSchema,
+      favorites: feedPagePrefsSchema,
+      /** Every /tags page (tag bundles share one set of options). */
+      tags: feedPagePrefsSchema,
     })
     .default({
       history: DEFAULT_SECTION_PAGE_PREFS,
       queue: DEFAULT_SECTION_PAGE_PREFS,
       saved: DEFAULT_SECTION_PAGE_PREFS,
-      subscriptions: DEFAULT_SECTION_PAGE_PREFS,
+      subscriptions: DEFAULT_FEED_PAGE_PREFS,
+      favorites: DEFAULT_FEED_PAGE_PREFS,
+      tags: DEFAULT_FEED_PAGE_PREFS,
     }),
 });
 
@@ -288,7 +316,9 @@ const defaultSettings: AppSettings = {
     history: DEFAULT_SECTION_PAGE_PREFS,
     queue: DEFAULT_SECTION_PAGE_PREFS,
     saved: DEFAULT_SECTION_PAGE_PREFS,
-    subscriptions: DEFAULT_SECTION_PAGE_PREFS,
+    subscriptions: DEFAULT_FEED_PAGE_PREFS,
+    favorites: DEFAULT_FEED_PAGE_PREFS,
+    tags: DEFAULT_FEED_PAGE_PREFS,
   },
 };
 
