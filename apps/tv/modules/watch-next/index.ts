@@ -14,7 +14,8 @@ type WatchNextNative = {
   remove: (videoId: string) => Promise<boolean>;
 };
 
-// Absent in builds without the native side (and off Android): a no-op.
+// Android TV: the launcher's Watch Next row. tvOS: the Top Shelf (see
+// ios/WatchNextModule.swift). Absent in builds without a native side: a no-op.
 const native = requireOptionalNativeModule<WatchNextNative>("WatchNext");
 
 /** Puts (or refreshes) a video in the home screen's Continue watching row. */

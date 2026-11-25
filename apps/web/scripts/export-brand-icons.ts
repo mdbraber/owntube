@@ -19,6 +19,25 @@ const TV_BANNER_FILL = 0.82;
 /** Wordmark SVG viewBox width × height (see public/logo-wordmark-*.svg). */
 const WORDMARK_VIEWBOX_WIDTH = 168;
 const WORDMARK_EXPORT_WIDTH = WORDMARK_VIEWBOX_WIDTH * 3;
+/**
+ * Apple TV app icon sizes (each with a back and a front layer, which tvOS
+ * shifts apart for the focus parallax) and Top Shelf banners, fixed by tvOS.
+ */
+const APPLE_TV_ICONS = [
+  { name: "icon", width: 1280, height: 768 },
+  { name: "icon-small", width: 400, height: 240 },
+  { name: "icon-small@2x", width: 800, height: 480 },
+] as const;
+const APPLE_TV_TOP_SHELVES = [
+  { name: "top-shelf", width: 1920, height: 720 },
+  { name: "top-shelf@2x", width: 3840, height: 1440 },
+  { name: "top-shelf-wide", width: 2320, height: 720 },
+  { name: "top-shelf-wide@2x", width: 4640, height: 1440 },
+] as const;
+/** Share of an Apple TV icon's width the wordmark spans (tvOS crops the edges). */
+const APPLE_TV_ICON_FILL = 0.72;
+/** Share of a Top Shelf banner's height the wordmark spans. */
+const APPLE_TV_TOP_SHELF_FILL = 0.22;
 
 async function exportVariant(variant: (typeof VARIANTS)[number]) {
   const svgPath = path.join(PUBLIC_DIR, `logo-${variant}.svg`);
@@ -125,12 +144,62 @@ async function exportTvAssets() {
     .png()
     .toFile(path.join(TV_ASSETS_DIR, "banner.png"));
 
+  await exportAppleTvImages(background);
+
   // The in-app logo/wordmark the TV shell renders, kept in step with the web.
   for (const name of ["logo-dark.png", "logo-wordmark-dark.png"] as const) {
     await fs.copyFile(
       path.join(PUBLIC_DIR, name),
       path.join(TV_ASSETS_DIR, name.replace("-dark", "")),
     );
+  }
+}
+
+/**
+ * Apple TV icons and Top Shelf banners for apps/tv (see app.json's
+ * `appleTVImages`), from the same wordmark as the Android TV banner. An icon
+ * is two layers, the opaque background and the wordmark on transparency, so
+ * tvOS can give it its parallax when focused; the Top Shelf images are flat.
+ */
+async function exportAppleTvImages(background: sharp.Color) {
+  const dir = path.join(TV_ASSETS_DIR, "appletv");
+  await fs.mkdir(dir, { recursive: true });
+  const wordmarkSvg = await fs.readFile(
+    path.join(PUBLIC_DIR, "logo-wordmark-dark.svg"),
+  );
+  const wordmark = (width: number, height: number) =>
+    sharp(wordmarkSvg, { density: 1200 })
+      .trim()
+      .resize({ width, height, fit: "inside" })
+      .png()
+      .toBuffer();
+  const canvas = (width: number, height: number, fill: sharp.Color) =>
+    sharp({ create: { width, height, channels: 4, background: fill } });
+
+  for (const { name, width, height } of APPLE_TV_ICONS) {
+    await canvas(width, height, background)
+      .png()
+      .toFile(path.join(dir, `${name}-back.png`));
+    const mark = await wordmark(
+      Math.round(width * APPLE_TV_ICON_FILL),
+      Math.round(height * APPLE_TV_ICON_FILL),
+    );
+    await canvas(width, height, { r: 0, g: 0, b: 0, alpha: 0 })
+      .composite([{ input: mark, gravity: "center" }])
+      .png()
+      .toFile(path.join(dir, `${name}-front.png`));
+  }
+
+  for (const { name, width, height } of APPLE_TV_TOP_SHELVES) {
+    const mark = await wordmark(
+      width,
+      Math.round(height * APPLE_TV_TOP_SHELF_FILL),
+    );
+    await canvas(width, height, background)
+      .composite([{ input: mark, gravity: "center" }])
+      .flatten({ background })
+      .png()
+      .toFile(path.join(dir, `${name}.png`));
   }
 }
 

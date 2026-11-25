@@ -54,7 +54,25 @@
         "@react-native-tvos/config-tv",
         {
           "isTV": true,
-          "androidTVBanner": "./assets/banner.png"
+          "androidTVBanner": "./assets/banner.png",
+          "appleTVImages": {
+            "iconLayers": {
+              "front": "./assets/appletv/icon-front.png",
+              "back": "./assets/appletv/icon-back.png"
+            },
+            "iconSmallLayers": {
+              "front": "./assets/appletv/icon-small-front.png",
+              "back": "./assets/appletv/icon-small-back.png"
+            },
+            "iconSmall2xLayers": {
+              "front": "./assets/appletv/icon-small@2x-front.png",
+              "back": "./assets/appletv/icon-small@2x-back.png"
+            },
+            "topShelf": "./assets/appletv/top-shelf.png",
+            "topShelf2x": "./assets/appletv/top-shelf@2x.png",
+            "topShelfWide": "./assets/appletv/top-shelf-wide.png",
+            "topShelfWide2x": "./assets/appletv/top-shelf-wide@2x.png"
+          }
         }
       ],
       [
@@ -69,7 +87,8 @@
       "./plugins/with-tv-search",
       "./plugins/with-media-keys",
       "./plugins/with-release-signing",
-      "./plugins/with-image-memory"
+      "./plugins/with-image-memory",
+      "./plugins/with-top-shelf"
     ],
     "extra": {
       "owntubeUrl": "http://10.0.2.2:3000"

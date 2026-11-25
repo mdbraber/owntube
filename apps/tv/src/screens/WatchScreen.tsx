@@ -171,6 +171,9 @@ const TOAST_MS = 5000;
 const SCRUB_STEP_SECONDS = 10;
 const SCRUB_HOLD_TICK_MS = 120;
 
+/** The adaptive sources whose "Auto" label shows the rendition playing. */
+const AUTO_SOURCE_IDS = new Set(["dash-vp9", "hls-server"]);
+
 /** Fallback ceiling if settings can't be read. */
 const DEFAULT_HEIGHT = 1080;
 
@@ -339,31 +342,16 @@ export function WatchScreen({
   );
   const [statsOn, setStatsOn] = useState(false);
   /**
-   * Height of the rendition Auto is playing, read from ExoPlayer every 2 s so
+   * Height of the rendition Auto is playing, read from the player every 2 s so
    * the label can say what Auto picked. Only changes re-render the screen.
    */
   const [autoHeight, setAutoHeight] = useState<number | null>(null);
   const autoActive =
     state.status === "ready" &&
-    state.playbackOptions[state.selectedOptionIndex]?.id === "dash-vp9" &&
+    AUTO_SOURCE_IDS.has(
+      state.playbackOptions[state.selectedOptionIndex]?.id ?? "",
+    ) &&
     qualityCap === null;
-  useEffect(() => {
-    if (!autoActive) {
-      setAutoHeight(null);
-      return;
-    }
-    let cancelled = false;
-    const poll = () =>
-      getPlayingVideoFormat().then((format) => {
-        if (!cancelled) setAutoHeight(format?.height ?? null);
-      });
-    poll();
-    const timer = setInterval(poll, 2000);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [autoActive]);
   const [segments, setSegments] = useState<SponsorBlockSegment[]>([]);
   /** Segments the viewer chose to watch (undo), so they aren't skipped again. */
   const keptSegmentsRef = useRef(new Set<string>());
@@ -535,6 +523,23 @@ export function WatchScreen({
     p.timeUpdateEventInterval = 1;
     p.audioMixingMode = "mixWithOthers";
   });
+  useEffect(() => {
+    if (!autoActive) {
+      setAutoHeight(null);
+      return;
+    }
+    let cancelled = false;
+    const poll = () =>
+      getPlayingVideoFormat(player).then((format) => {
+        if (!cancelled) setAutoHeight(format?.height ?? null);
+      });
+    poll();
+    const timer = setInterval(poll, 2000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [autoActive, player]);
 
   // Playback detail (blocking) + SponsorBlock/related (best-effort, parallel).
   // Re-runs on reloadKey too: Retry on the error screen.
@@ -2591,7 +2596,7 @@ function StatsOverlay({
   useEffect(() => {
     let cancelled = false;
     const poll = () =>
-      getPlayingVideoFormat().then((f) => {
+      getPlayingVideoFormat(player).then((f) => {
         if (!cancelled) setFormat(f);
       });
     poll();
@@ -2600,7 +2605,7 @@ function StatsOverlay({
       cancelled = true;
       clearInterval(timer);
     };
-  }, []);
+  }, [player]);
   const buffered = Math.max(0, player.bufferedPosition - player.currentTime);
   const host = (() => {
     try {
