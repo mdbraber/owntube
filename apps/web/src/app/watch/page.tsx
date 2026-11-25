@@ -40,6 +40,7 @@ import {
   formatSubscribersLabel,
   formatViews,
 } from "@/lib/video-display";
+import { stripGoogleImageUrls } from "@/lib/youtube-image-via-instance";
 import { readWatchParams, type WatchParams } from "@/lib/youtube-url";
 import { watchHref } from "@/lib/yt-routes";
 import { auth } from "@/server/auth";
@@ -142,9 +143,13 @@ export default async function WatchPage({ searchParams }: WatchPageProps) {
   let ageRestricted: UpstreamAgeRestrictedError | null = null;
   let unavailable: UpstreamVideoUnavailableError | null = null;
   try {
-    detail = await fetchVideoDetail(db, input, {
-      bypassDetailCache: true,
-    });
+    // Handed to the browser: Google image URLs moved onto the instance, so
+    // the page source names none (see stripGoogleImageUrls).
+    detail = stripGoogleImageUrls(
+      await fetchVideoDetail(db, input, {
+        bypassDetailCache: true,
+      }),
+    );
   } catch (error) {
     if (error instanceof UpstreamLiveUpcomingError) {
       upcomingLive = error;
@@ -228,6 +233,7 @@ export default async function WatchPage({ searchParams }: WatchPageProps) {
       .slice(0, 20);
     sidebarFromFeedFallback = sidebarVideos.length > 0;
   }
+  sidebarVideos = stripGoogleImageUrls(sidebarVideos);
   const rawPlayback = detail ? buildWatchPlayback(detail) : null;
   const onlyDashOrUnsupported =
     rawPlayback !== null &&

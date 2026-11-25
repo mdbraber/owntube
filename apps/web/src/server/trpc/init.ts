@@ -1,5 +1,6 @@
 import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
+import { stripGoogleImageUrls } from "@/lib/youtube-image-via-instance";
 import { apiTokenAllows } from "@/server/api-token";
 import { UpstreamLiveUpcomingError } from "@/server/errors/upstream-live-upcoming";
 import type { TRPCContext } from "@/server/trpc/context";
@@ -23,8 +24,22 @@ const t = initTRPC.context<TRPCContext>().create({
 });
 
 export const router = t.router;
-export const publicProcedure = t.procedure;
-export const protectedProcedure = t.procedure.use(({ ctx, path, next }) => {
+
+/**
+ * Browser responses carry no Google image URLs: they are moved onto the
+ * instance (`stripGoogleImageUrls`), so a page's data and source name none and
+ * nothing in the browser can load from Google by mistake. Native clients keep
+ * upstream URLs: the TV resizes Google avatars itself, and installed TV apps
+ * can't load relative paths.
+ */
+const browserSafeImages = t.middleware(async ({ ctx, next }) => {
+  const result = await next();
+  if (!result.ok || ctx.browser !== true) return result;
+  return { ...result, data: stripGoogleImageUrls(result.data) };
+});
+
+export const publicProcedure = t.procedure.use(browserSafeImages);
+export const protectedProcedure = publicProcedure.use(({ ctx, path, next }) => {
   if (!ctx.userId) {
     throw new TRPCError({
       code: "UNAUTHORIZED",

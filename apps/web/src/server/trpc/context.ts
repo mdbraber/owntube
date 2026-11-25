@@ -24,6 +24,12 @@ export type TRPCContext = {
   /** Set when the request authenticated with an API token: protected
    * procedures are then limited to its scopes (see protectedProcedure). */
   apiToken?: ResolvedApiToken;
+  /**
+   * The request came from a browser (cookie or anonymous, no Authorization
+   * header): its responses name no Google image URL (see init.ts). Native
+   * clients (the TV) and API tokens get upstream URLs as they are.
+   */
+  browser?: boolean;
 };
 
 export async function createTRPCContext(opts?: {
@@ -60,6 +66,7 @@ export async function createTRPCContext(opts?: {
   return {
     db,
     userId,
+    browser: !opts?.req?.headers.get("authorization"),
     anon: createAnonViewer(opts?.req, opts?.resHeaders),
     ...(apiToken ? { apiToken } : {}),
   };

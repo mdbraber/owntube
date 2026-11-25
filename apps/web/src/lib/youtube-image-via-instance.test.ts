@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { youtubeImageViaInstance } from "@/lib/youtube-image-via-instance";
+import {
+  stripGoogleImageUrls,
+  youtubeImageViaInstance,
+} from "@/lib/youtube-image-via-instance";
 
 describe("youtubeImageViaInstance", () => {
   it("sends video stills to the thumbnail proxy, without YouTube's query", () => {
@@ -53,5 +56,38 @@ describe("youtubeImageViaInstance", () => {
     ]) {
       expect(youtubeImageViaInstance(url)).toBe(url);
     }
+  });
+});
+
+describe("stripGoogleImageUrls", () => {
+  it("moves Google image URLs at any depth, keeping storyboard $M", () => {
+    const sb =
+      "https://i.ytimg.com/sb/abc/storyboard3_L2/M$M.jpg?sqp=x&sigh=rs%24y";
+    const out = stripGoogleImageUrls({
+      title: "See https://i.ytimg.com/vi/abc/0.jpg",
+      thumbnailUrl: "https://i.ytimg.com/vi/abc/hq720.jpg",
+      channelAvatarUrl: "//yt3.ggpht.com/x=s88",
+      storyboard: { templateUrl: sb, count: 3 },
+      relatedVideos: [{ thumbnailUrl: "https://i9.ytimg.com/vi/def/1.jpg" }],
+      publishedAt: new Date(0),
+    });
+    expect(out.title).toBe("See https://i.ytimg.com/vi/abc/0.jpg");
+    expect(out.thumbnailUrl).toBe("/image/vi/abc/hq720.jpg");
+    expect(out.channelAvatarUrl).toBe(
+      `/channel-avatar?url=${encodeURIComponent("https://yt3.ggpht.com/x=s88")}`,
+    );
+    expect(out.storyboard.templateUrl).toContain("M$M.jpg");
+    expect(
+      decodeURIComponent(
+        out.storyboard.templateUrl.replace("$M", "2").split("url=")[1] ?? "",
+      ),
+    ).toBe(sb.replace("$M", "2"));
+    expect(out.relatedVideos[0]?.thumbnailUrl).toBe("/image/vi/def/1.jpg");
+    expect(out.publishedAt).toBeInstanceOf(Date);
+  });
+
+  it("returns the same object when nothing changes", () => {
+    const v = { a: [1, "x"], b: { c: "https://example.com/i.jpg" } };
+    expect(stripGoogleImageUrls(v)).toBe(v);
   });
 });
