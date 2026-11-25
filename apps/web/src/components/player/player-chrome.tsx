@@ -10,8 +10,8 @@ import {
 } from "react";
 import {
   CastAudioNotice,
-  CastDebug,
   CastingScreen,
+  SentToTvScreen,
   TvButton,
   TvMenuItems,
   useHasTvTargets,
@@ -100,6 +100,8 @@ export function PlayerChrome({
 }: ChromeProps) {
   // OwnTube TV apps are listed for a signed-in viewer on the full player only.
   const tvsEnabled = useActiveViewerIsAuthed() && !shortsMode && !miniMode;
+  // The OwnTube TV this video was just sent to, while it stays paused here.
+  const [sentToTv, setSentToTv] = useState<string | null>(null);
   // VOD that plays through Media Source (hls.js, dash.js) casts through a
   // hidden element with a URL a TV can play; while it is connected, every
   // control below drives that element (see use-cast-handoff). An element that
@@ -112,6 +114,14 @@ export function PlayerChrome({
       ? null
       : castSourceUrl(videoId),
   );
+  // Playing here again, or another video: the TV no longer has it "from here".
+  useEffect(() => {
+    if (!adapter.paused) setSentToTv(null);
+  }, [adapter.paused]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset per video.
+  useEffect(() => {
+    setSentToTv(null);
+  }, [videoId]);
   const [hydrated, setHydrated] = useState(false);
   const { active: fsActive, toggle: toggleFs } = useFullscreenShell(shellRef);
   const { visible, ping, hide } = useIdleVisible(adapter.paused, settingsOpen);
@@ -428,7 +438,15 @@ export function PlayerChrome({
       </div>
 
       <CastingScreen adapter={adapter} />
-      <CastDebug adapter={adapter} />
+      {sentToTv && adapter.paused && !adapter.castActive ? (
+        <SentToTvScreen
+          tvName={sentToTv}
+          onPlayHere={() => {
+            setSentToTv(null);
+            adapter.play();
+          }}
+        />
+      ) : null}
       <CastAudioNotice adapter={adapter} />
       {/* After hydration: its URL is on the browser's own origin. */}
       {hydrated && castVideoProps ? <video {...castVideoProps} /> : null}
@@ -972,6 +990,7 @@ export function PlayerChrome({
                   adapter={adapter}
                   videoId={videoId}
                   isAuthed={tvsEnabled}
+                  onSentToTv={setSentToTv}
                 />
               ) : null}
             </div>
@@ -999,6 +1018,7 @@ export function PlayerChrome({
           onTogglePip={() => adapter.togglePictureInPicture()}
           videoId={videoId}
           isAuthed={tvsEnabled}
+          onSentToTv={setSentToTv}
           adapter={adapter}
         />
       ) : null}
@@ -1045,6 +1065,7 @@ function PlayerMobileMenu({
   adapter,
   videoId,
   isAuthed,
+  onSentToTv,
   open,
   onOpenChange,
   shellRef,
@@ -1064,6 +1085,7 @@ function PlayerMobileMenu({
   adapter: PlayerAdapter;
   videoId: string;
   isAuthed: boolean;
+  onSentToTv: (tvName: string) => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** The element that goes fullscreen — the sheet portals into it so it also paints there. */
@@ -1143,6 +1165,7 @@ function PlayerMobileMenu({
             adapter={adapter}
             videoId={videoId}
             isAuthed={isAuthed}
+            onSentToTv={onSentToTv}
             onClose={onClose}
           />
         </div>
