@@ -135,6 +135,15 @@ export function PlayerChrome({
   // A held seek key scrubs this position (the progress bar and clock show
   // it); the video jumps there once, on release.
   const [keyScrub, setKeyScrub] = useState<number | null>(null);
+  // Which way the held key scrubs and from where: the seek marker shows the
+  // arrows and how far the scrub has gone while the key is down.
+  const [keyHold, setKeyHold] = useState<{ dir: -1 | 1; from: number } | null>(
+    null,
+  );
+  // Where the release sent the video: the bar and clock stay there until the
+  // player reports a time near it (the seek takes a moment to land), instead
+  // of jumping back to where the scrub started.
+  const [seekLanding, setSeekLanding] = useState<number | null>(null);
   const keyHoldRef = useRef<{
     dir: -1 | 1;
     pos: number;
@@ -149,6 +158,17 @@ export function PlayerChrome({
     },
     [],
   );
+  // Let go of the landing spot once the player is there, or after a few
+  // seconds if it never gets close (a seek it couldn't make).
+  useEffect(() => {
+    if (seekLanding == null) return;
+    if (Math.abs(adapter.currentTime - seekLanding) < 1.5) {
+      setSeekLanding(null);
+      return;
+    }
+    const t = window.setTimeout(() => setSeekLanding(null), 3000);
+    return () => window.clearTimeout(t);
+  }, [seekLanding, adapter.currentTime]);
   // Last touch tap on a side of the video, for double-tap seeking.
   const lastTapRef = useRef<{ at: number; side: "back" | "forward" } | null>(
     null,
@@ -303,7 +323,7 @@ export function PlayerChrome({
 
   const level = adapter.muted ? 0 : adapter.volume;
   const levelUi = hydrated ? level : 1;
-  const seekPos = scrub ?? keyScrub ?? adapter.currentTime;
+  const seekPos = scrub ?? keyScrub ?? seekLanding ?? adapter.currentTime;
   const duration = adapter.duration;
   // Watched video → green scrubber (matches the completed bar on cards). Use
   // the stored completion, plus a live near-end fallback so finishing this
@@ -340,6 +360,7 @@ export function PlayerChrome({
       raf: 0,
     };
     keyHoldRef.current = hold;
+    setKeyHold({ dir, from: hold.pos });
     const frame = (now: number) => {
       if (keyHoldRef.current !== hold) return;
       const dt = (now - hold.last) / 1000;
@@ -367,7 +388,9 @@ export function PlayerChrome({
     cancelAnimationFrame(hold.raf);
     keyHoldRef.current = null;
     adapter.seek(hold.pos);
+    setSeekLanding(hold.pos);
     setKeyScrub(null);
+    setKeyHold(null);
     ping();
   }
 
@@ -531,7 +554,18 @@ export function PlayerChrome({
       ) : null}
 
       {!miniMode && !shortsMode ? (
-        <SeekIndicator state={seekIndicator} />
+        <SeekIndicator
+          state={
+            keyHold && keyScrub != null
+              ? {
+                  dir: keyHold.dir < 0 ? "back" : "forward",
+                  seconds: Math.round(Math.abs(keyScrub - keyHold.from)),
+                  source: "key",
+                  tick: 0,
+                }
+              : seekIndicator
+          }
+        />
       ) : null}
 
       {/* Desktop: after play/pause, the icon pops in the center and fades. */}

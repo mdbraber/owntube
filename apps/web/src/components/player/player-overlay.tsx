@@ -85,9 +85,17 @@ function SeekArrows({
   );
 }
 
+/** "10 seconds", or minutes once a held key has scrubbed past one. */
+export function seekLabel(seconds: number): string {
+  if (seconds < 60) return `${seconds} seconds`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return s ? `${m} min ${s} s` : `${m} min`;
+}
+
 export function SeekIndicator({ state }: { state: SeekIndicatorState | null }) {
   if (!state) return null;
-  const label = `${state.seconds} seconds`;
+  const label = seekLabel(state.seconds);
   const forward = state.dir === "forward";
   if (state.source === "tap") {
     // Touch: a soft ripple filling that side of the video, curved toward the
