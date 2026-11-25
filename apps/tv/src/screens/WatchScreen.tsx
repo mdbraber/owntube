@@ -82,7 +82,11 @@ import {
 } from "@/lib/sponsorblock-labels";
 import { trpcClient } from "@/lib/trpc";
 import { trpc } from "@/lib/trpc-react";
-import type { TVView } from "@/lib/tv-focus";
+import {
+  type TVFocusGuide,
+  TVFocusGuideView,
+  type TVView,
+} from "@/lib/tv-focus";
 import { createStyles, s, UI_SCALE } from "@/lib/ui-scale";
 import { colors, focus, fontSize, monoFont, radius, spacing } from "@/theme";
 import {
@@ -168,6 +172,16 @@ type Toast = {
 
 /** How long a toast stays up; a SponsorBlock undo is offered for this long. */
 const TOAST_MS = 5000;
+
+/**
+ * The player controls' container: a focus guide on tvOS, so focus comes back
+ * to the control that had it when hidden controls reappear; a plain View on
+ * Android TV, where focus never leaves the hidden controls.
+ */
+const ControlsLayer = Platform.OS === "ios" ? TVFocusGuideView : View;
+
+/** Whether the scrubber pins Left/Right to itself (see its nextFocus props). */
+const pinScrubberFocus = Platform.OS !== "ios";
 
 /** Seconds moved per D-pad press, and per tick while a direction is held. */
 const SCRUB_STEP_SECONDS = 10;
@@ -409,6 +423,7 @@ export function WatchScreen({
    * keeps focus and left/right can only scrub.
    */
   const scrubberRef = useRef<TVView>(null);
+  const controlsGuideRef = useRef<TVFocusGuide>(null);
   const [scrubberHandle, setScrubberHandle] = useState<number | null>(null);
   // Animated between the cropped peek and the row's measured natural height.
   const relatedHeight = useRef(
@@ -593,7 +608,10 @@ export function WatchScreen({
         if (playbackOptions.length === 0) {
           setState({
             status: "error",
-            message: "This video has no playable stream available.",
+            message:
+              detail.isLive && Platform.OS === "ios"
+                ? "This live stream can't play on Apple TV: it is only available as DASH, which Apple TV doesn't play."
+                : "This video has no playable stream available.",
             problem: detail.isUpcoming
               ? { kind: "upcoming" }
               : { kind: "other" },
@@ -1102,6 +1120,22 @@ export function WatchScreen({
       if (isPlayingRef.current) setControlsVisible(false);
     }, 4000);
   }, []);
+
+  // tvOS's focus engine skips views at (near) zero opacity, so while the
+  // controls are hidden nothing in them can hold focus, and revealing them
+  // doesn't bring it back the way Android TV's focus does: the remote's Down
+  // then has nowhere to go. Focus the controls' guide when they appear, which
+  // hands it to the control that had it last (the scrubber the first time),
+  // unless one of them has it already.
+  useEffect(() => {
+    if (Platform.OS !== "ios" || !controlsVisible) return;
+    if (scrubberFocusedRef.current || focusedButtonsRef.current > 0) return;
+    const timer = setTimeout(
+      () => controlsGuideRef.current?.requestTVFocus?.(),
+      0,
+    );
+    return () => clearTimeout(timer);
+  }, [controlsVisible]);
 
   // Closing the settings panel remounts the controls; show them, with the
   // usual auto-hide, rather than leaving whatever state they were in.
@@ -1893,7 +1927,11 @@ export function WatchScreen({
         // Controls stay mounted (so a focused button always catches the next key
         // to re-reveal them); visibility is just opacity. The up-next card
         // replaces them, so focus can't wander into hidden buttons behind it.
-        <View
+        // On tvOS hidden controls can't hold focus at all; the guide remembers
+        // which one had it (see the effect after revealControls).
+        <ControlsLayer
+          ref={controlsGuideRef}
+          autoFocus={Platform.OS === "ios"}
           style={[
             StyleSheet.absoluteFill,
             { opacity: controlsVisible ? 1 : 0 },
@@ -1951,8 +1989,15 @@ export function WatchScreen({
                     );
                   }
                 }}
-                nextFocusLeft={scrubberHandle ?? undefined}
-                nextFocusRight={scrubberHandle ?? undefined}
+                // Android: keep Left/Right on the scrubber (they scrub, see the
+                // key handler). Not on tvOS, where react-native-tvos builds
+                // these from focus guides that also kept Down from leaving it.
+                nextFocusLeft={
+                  pinScrubberFocus ? (scrubberHandle ?? undefined) : undefined
+                }
+                nextFocusRight={
+                  pinScrubberFocus ? (scrubberHandle ?? undefined) : undefined
+                }
                 hasTVPreferredFocus
                 onFocus={() => setScrubberFocused(true)}
                 onBlur={() => setScrubberFocused(false)}
@@ -2181,7 +2226,7 @@ export function WatchScreen({
               </Animated.View>
             ) : null}
           </View>
-        </View>
+        </ControlsLayer>
       )}
     </View>
   );
@@ -2672,12 +2717,16 @@ function buildPlaybackOptions(detail: VideoDetail): PlaybackOption[] {
   // is only a last resort. Mirrors apps/web/src/lib/pick-playback.ts's
   // `dash-live` branch.
   if (detail.isLive) {
-    addOption({
-      id: "live-dash",
-      label: "Live",
-      videoUrl: `${baseUrl()}/dash/${encodeURIComponent(detail.videoId)}/live.mpd`,
-      kind: "auto",
-    });
+    // AVPlayer (tvOS) can't play DASH, so there only HLS can carry a live
+    // stream; without one the screen says so instead of staying black.
+    if (Platform.OS !== "ios") {
+      addOption({
+        id: "live-dash",
+        label: "Live",
+        videoUrl: `${baseUrl()}/dash/${encodeURIComponent(detail.videoId)}/live.mpd`,
+        kind: "auto",
+      });
+    }
     if (detail.hlsUrl) {
       addOption({
         id: "live-hls",

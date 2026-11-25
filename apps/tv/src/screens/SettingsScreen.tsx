@@ -19,7 +19,6 @@ import { trpc } from "@/lib/trpc-react";
 import {
   createStyles,
   setUiSize,
-  UI_SIZE_ADJUSTABLE,
   UI_SIZES,
   type UiSize,
   uiSize,
@@ -198,22 +197,18 @@ export function SettingsScreen({
         />
       </View>
 
-      {UI_SIZE_ADJUSTABLE ? (
-        <>
-          <Text style={styles.section}>Text size</Text>
-          <View style={styles.row}>
-            {UI_SIZES.map((size) => (
-              <FocusButton
-                key={size}
-                label={UI_SIZE_LABELS[size]}
-                // Applies by reloading the app (see lib/ui-scale).
-                onPress={() => void setUiSize(size)}
-                style={size === uiSize ? styles.active : undefined}
-              />
-            ))}
-          </View>
-        </>
-      ) : null}
+      <Text style={styles.section}>Text size</Text>
+      <View style={styles.row}>
+        {UI_SIZES.map((size) => (
+          <FocusButton
+            key={size}
+            label={UI_SIZE_LABELS[size]}
+            // Applies by reloading the app (see lib/ui-scale).
+            onPress={() => void setUiSize(size)}
+            style={size === uiSize ? styles.active : undefined}
+          />
+        ))}
+      </View>
 
       <Text style={styles.section}>Layout</Text>
       <View style={styles.row}>

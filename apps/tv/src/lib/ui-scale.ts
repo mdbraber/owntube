@@ -3,14 +3,15 @@ import * as SecureStore from "expo-secure-store";
 import { PixelRatio, Platform, StyleSheet } from "react-native";
 
 /**
- * Interface size on Apple TV.
+ * Interface size: Compact, Default or Large, chosen in Settings.
  *
- * Every size in this app is written for Android TV, which lays a 1080p screen
- * out as 960×540 dp. tvOS lays the same screen out as 1920×1080 points, so the
- * same numbers draw everything at half the size. On tvOS the numbers are scaled
- * by the chosen size: Large (2×) matches Android TV and Apple's own apps,
- * Default (1.5×) shows more per screen, Compact (1×) is the unscaled layout.
- * Android TV is always 1×: nothing changes there.
+ * Every size in this app is written in Android TV dp, where a 1080p screen is
+ * 960×540 dp, and those numbers as written are Large: the size of Apple's and
+ * Google's own TV apps. Default draws everything at three quarters of that, so
+ * more fits on a screen, and Compact at half.
+ *
+ * tvOS lays the same screen out as 1920×1080 points, twice the numbers, so
+ * there every size is doubled first: Large is 2×, Default 1.5×, Compact 1×.
  *
  * The scale is fixed for a run of the app: styles are created once, when their
  * module loads. Changing it saves the choice and reloads the app.
@@ -19,16 +20,17 @@ export type UiSize = "compact" | "default" | "large";
 
 export const UI_SIZES: readonly UiSize[] = ["compact", "default", "large"];
 
-const TVOS_FACTORS: Record<UiSize, number> = {
-  compact: 1,
-  default: 1.5,
-  large: 2,
+/** Each size as a share of the written (Large) sizes. */
+const SIZE_FACTORS: Record<UiSize, number> = {
+  compact: 0.5,
+  default: 0.75,
+  large: 1,
 };
 
-const STORAGE_KEY = "ui-size";
+/** Platform units per written dp: tvOS points are half a dp on a 1080p TV. */
+const PLATFORM_FACTOR = Platform.OS === "ios" ? 2 : 1;
 
-/** Whether this build offers a choice of size (Apple TV). */
-export const UI_SIZE_ADJUSTABLE = Platform.OS === "ios";
+const STORAGE_KEY = "ui-size";
 
 function readUiSize(): UiSize {
   try {
@@ -40,10 +42,10 @@ function readUiSize(): UiSize {
 }
 
 /** The size this run of the app uses. */
-export const uiSize: UiSize = UI_SIZE_ADJUSTABLE ? readUiSize() : "default";
+export const uiSize: UiSize = readUiSize();
 
-/** Multiplier from the Android TV (dp) numbers to this platform's units. */
-export const UI_SCALE = UI_SIZE_ADJUSTABLE ? TVOS_FACTORS[uiSize] : 1;
+/** Multiplier from the written (Android TV dp) numbers to this platform's units. */
+export const UI_SCALE = SIZE_FACTORS[uiSize] * PLATFORM_FACTOR;
 
 /**
  * A size written in Android TV dp, in this platform's units. Styles made with

@@ -1,0 +1,6 @@
+patchedDependencies:
+  expo-video: patches/expo-video.patch
+
+# React Native / Metro need a flat node_modules (see .npmrc). pnpm 10+ reads
+# this setting here, not from .npmrc, so it has to be set in this file too.
+shamefullyHoist: true

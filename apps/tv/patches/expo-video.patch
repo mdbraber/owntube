@@ -1,0 +1,15 @@
+diff --git a/ios/VideoModule.swift b/ios/VideoModule.swift
+index a34afc4a755cb3a0fbe43878c89b9f1174c511a2..f479931de12a24682a801b132b643f08d480340b 100644
+--- a/ios/VideoModule.swift
++++ b/ios/VideoModule.swift
+@@ -45,6 +45,10 @@ public final class VideoModule: Module {
+         #if os(tvOS)
+         view.playerViewController.isSkipForwardEnabled = nativeControls ?? true
+         view.playerViewController.isSkipBackwardEnabled = nativeControls ?? true
++        // Without its own controls the player view still takes focus, and being
++        // full-screen it wins every move, so the app's own controls drawn over
++        // it can't be reached. Views without user interaction can't be focused.
++        view.playerViewController.view.isUserInteractionEnabled = nativeControls ?? true
+         #endif
+       }
+ 

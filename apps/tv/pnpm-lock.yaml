@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  expo-video: 7b3c9d1d04b29a94c846e84d3638bb914ae137caee7adaac4fc067debe4a3173
+
 importers:
 
   .:
@@ -58,7 +61,7 @@ importers:
         version: 58.0.5(expo@58.0.26(@babel/core@7.29.7(supports-color@8.1.1))(react-native-tvos@0.88.1-0(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react-native-tvos@0.88.1-0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)(supports-color@8.1.1)(typescript@5.9.3))(react-native-tvos@0.88.1-0(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react-native-tvos@0.88.1-0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)
       expo-video:
         specifier: ~58.0.14
-        version: 58.0.14(expo@58.0.26(@babel/core@7.29.7(supports-color@8.1.1))(react-native-tvos@0.88.1-0(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react-native-tvos@0.88.1-0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)(supports-color@8.1.1)(typescript@5.9.3))(react-native-tvos@0.88.1-0(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react-native-tvos@0.88.1-0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)
+        version: 58.0.14(patch_hash=7b3c9d1d04b29a94c846e84d3638bb914ae137caee7adaac4fc067debe4a3173)(expo@58.0.26(@babel/core@7.29.7(supports-color@8.1.1))(react-native-tvos@0.88.1-0(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react-native-tvos@0.88.1-0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)(supports-color@8.1.1)(typescript@5.9.3))(react-native-tvos@0.88.1-0(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react-native-tvos@0.88.1-0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)
       qrcode:
         specifier: ^1.5.4
         version: 1.5.4
@@ -3414,7 +3417,7 @@ snapshots:
   '@react-native/codegen@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))':
     dependencies:
       '@babel/core': 7.29.7(supports-color@8.1.1)
-      '@babel/parser': 7.29.7
+      '@babel/parser': 7.29.15
       flow-parser: 0.327.0
       invariant: 2.2.4
       nullthrows: 1.1.1
@@ -4021,7 +4024,7 @@ snapshots:
       react: 19.3.0
       react-native: react-native-tvos@0.88.1-0(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react-native-tvos@0.88.1-0)(react@19.3.0)(supports-color@8.1.1)
 
-  expo-video@58.0.14(expo@58.0.26(@babel/core@7.29.7(supports-color@8.1.1))(react-native-tvos@0.88.1-0(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react-native-tvos@0.88.1-0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)(supports-color@8.1.1)(typescript@5.9.3))(react-native-tvos@0.88.1-0(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react-native-tvos@0.88.1-0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0):
+  expo-video@58.0.14(patch_hash=7b3c9d1d04b29a94c846e84d3638bb914ae137caee7adaac4fc067debe4a3173)(expo@58.0.26(@babel/core@7.29.7(supports-color@8.1.1))(react-native-tvos@0.88.1-0(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react-native-tvos@0.88.1-0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)(supports-color@8.1.1)(typescript@5.9.3))(react-native-tvos@0.88.1-0(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react-native-tvos@0.88.1-0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0):
     dependencies:
       expo: 58.0.26(@babel/core@7.29.7(supports-color@8.1.1))(react-native-tvos@0.88.1-0(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react-native-tvos@0.88.1-0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)(supports-color@8.1.1)(typescript@5.9.3)
       react: 19.3.0
@@ -4542,7 +4545,7 @@ snapshots:
   metro-transform-plugins@0.87.3(supports-color@8.1.1):
     dependencies:
       '@babel/core': 7.29.7(supports-color@8.1.1)
-      '@babel/generator': 7.29.7
+      '@babel/generator': 7.29.15
       '@babel/template': 7.29.7
       '@babel/traverse': 7.29.15(supports-color@8.1.1)
       flow-enums-runtime: 0.0.6
@@ -4573,7 +4576,7 @@ snapshots:
   metro-transform-worker@0.87.3(supports-color@8.1.1):
     dependencies:
       '@babel/core': 7.29.7(supports-color@8.1.1)
-      '@babel/generator': 7.29.7
+      '@babel/generator': 7.29.15
       '@babel/parser': 7.29.15
       '@babel/types': 7.29.15
       '@jridgewell/sourcemap-codec': 1.5.5
@@ -4639,7 +4642,7 @@ snapshots:
     dependencies:
       '@babel/code-frame': 7.29.7
       '@babel/core': 7.29.7(supports-color@8.1.1)
-      '@babel/generator': 7.29.7
+      '@babel/generator': 7.29.15
       '@babel/parser': 7.29.15
       '@babel/template': 7.29.7
       '@babel/traverse': 7.29.15(supports-color@8.1.1)
