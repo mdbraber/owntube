@@ -7,10 +7,11 @@ import { openPageInTab } from "@/lib/use-incoming-links";
 
 /**
  * The home-screen long-press menu. A quick action opens a tab (`tab`),
- * optionally with a web page pushed fresh over its first screen (`path`).
+ * optionally with a web page pushed fresh over its first screen (`path`), or
+ * a video in the player panel (`video`).
  */
 type Tab = "/" | "/subscriptions" | "/library" | "/search";
-type Params = { tab?: Tab; path?: string; title?: string };
+type Params = { tab?: Tab; path?: string; title?: string; video?: string };
 
 const STATIC_ACTIONS: QuickActions.Action[] = [
   {
@@ -35,7 +36,7 @@ const STATIC_ACTIONS: QuickActions.Action[] = [
 
 /**
  * Puts the last video played first in the menu, as "Resume": it opens the
- * watch page, which resumes from the position saved to history.
+ * player panel, whose page resumes from the position saved to history.
  */
 const RESUME_KEY = "owntube.quick-action.resume";
 
@@ -70,7 +71,11 @@ function applyActions(video: ResumeVideo | null) {
 }
 
 function perform(action: QuickActions.Action | undefined) {
-  const { tab, path, title } = (action?.params ?? {}) as Params;
+  const { tab, path, title, video } = (action?.params ?? {}) as Params;
+  if (video) {
+    router.navigate({ pathname: "/player", params: { v: video } });
+    return;
+  }
   if (!tab) return;
   if (path) openPageInTab(tab, path, title);
   else router.dismissTo(tab as never);

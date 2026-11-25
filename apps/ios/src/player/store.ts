@@ -73,6 +73,7 @@ export function getPlayer(): VideoPlayer {
     progress.playing = isPlaying;
   });
   created.addListener("playToEnd", () => {
+    resumeSettled = true;
     void saveProgress();
     // The queue always plays on; related videos only with Autoplay next on.
     const next = state?.upNext[0];
@@ -88,11 +89,6 @@ export function getPlayer(): VideoPlayer {
 
 /** The sources still to try for the current video, best first. */
 let pending: string[] = [];
-/** The watch page that follows what plays (see `playVideo`'s `follow`). */
-let follower: ((videoId: string) => void) | null = null;
-/** The video that page was just turned into; its own play request is a no-op. */
-let followedTo: string | null = null;
-
 /** The current video's detail while it loads (it brings the fallbacks). */
 let detailLoading: Promise<unknown> | null = null;
 
@@ -191,50 +187,78 @@ async function tryNextSource(message?: string) {
   }
 }
 
+/** What's known about a video when it's opened (a link knows little). */
+export type OpenVideo = {
+  videoId: string;
+  /** A start time the user chose (a link's `t`). */
+  startSeconds?: number;
+  title?: string;
+  channelName?: string;
+  poster?: string;
+  durationSeconds?: number;
+  isLive?: boolean;
+};
+
 /**
- * Plays a video the web page asked for (or opens the player on it again).
+ * The page's resume position was applied, or isn't wanted: the opener chose
+ * a start (a link's `t`), or the video already ended.
+ */
+let resumeSettled = false;
+
+/** How long to hold the first load for the video's title and artwork. */
+const METADATA_WAIT_MS = 1500;
+
+/**
+ * Opens a video in the player panel, YouTube-style: the panel slides up over
+ * whatever you were browsing (nothing is added to Back), and swiping it down
+ * leaves the video playing in the mini player. The same video opens the panel
+ * again; another one replaces what's playing.
+ *
  * Starts with the server's HLS, which AVPlayer plays natively, and keeps the
  * detail-based sources as fallbacks.
  */
-export function playVideo(
-  video: NativePlayRequest,
-  {
-    present = true,
-    follow,
-  }: {
-    present?: boolean;
-    /** Turns the asking watch page into another video's (Up next). */
-    follow?: (videoId: string) => void;
-  } = {},
+export function openVideo(
+  video: OpenVideo,
+  { present = true }: { present?: boolean } = {},
 ) {
-  if (follow) follower = follow;
-  const current = getPlayer();
   if (state?.video.videoId === video.videoId && !state.error) {
-    if (followedTo === video.videoId) {
-      // The page we turned into this video's (Up next) reloaded and asks for
-      // it: it already plays, and the user didn't ask to see the player.
-      followedTo = null;
-      return;
-    }
-    if (video.autoplay) current.play();
     if (present) router.navigate("/player");
     return;
   }
 
   void saveProgress();
-  setState({ video, upNext: [], autoplayNext: false });
-  setResumeAction(video);
+  const request: NativePlayRequest = {
+    videoId: video.videoId,
+    title: video.title ?? "",
+    channelName: video.channelName,
+    poster: video.poster,
+    startSeconds: video.startSeconds,
+    durationSeconds: video.durationSeconds,
+    isLive: video.isLive,
+    autoplay: true,
+  };
+  setState({ video: request, upNext: [], autoplayNext: false });
   loadingId = video.videoId;
+  resumeSettled = video.startSeconds !== undefined;
   seekTo = video.startSeconds && !video.isLive ? video.startSeconds : undefined;
-  autoplay = video.autoplay;
-  progress.reset(video);
-
+  autoplay = true;
+  progress.reset(request);
   pending = [];
+  getPlayer().pause();
+  if (present) router.navigate("/player");
+
   const detail: Promise<VideoDetail | null> = trpc.video.detail
     .query({ videoId: video.videoId })
     .then((value) => {
       if (loadingId !== video.videoId) return null;
       progress.detail = value;
+      mergeVideo(video.videoId, {
+        title: value.title,
+        channelName: value.channelName,
+        poster: value.thumbnailUrl && absolute(value.thumbnailUrl),
+        durationSeconds: value.durationSeconds,
+        isLive: value.isLive,
+      });
       pending.push(...fallbackSources(value));
       void loadUpNext(video.videoId);
       return value;
@@ -244,15 +268,67 @@ export function playVideo(
     if (loadingId === video.videoId) detailLoading = null;
   });
 
-  if (video.isLive) {
-    // Live has no server HLS; its stream comes from the detail.
-    void detail.then((value) => {
-      if (value && loadingId === video.videoId) void tryNextSource();
-    });
-  } else {
+  // Hold the first load briefly for the detail: Now Playing (lock screen,
+  // Control Center) takes its title and artwork from the source.
+  const metadata = new Promise((resolve) =>
+    setTimeout(resolve, METADATA_WAIT_MS),
+  );
+  void Promise.race([detail, metadata]).then(() => {
+    if (loadingId !== video.videoId) return;
+    if (state?.video.isLive) {
+      // Live has no server HLS; its stream comes from the detail.
+      void detail.then(() => {
+        if (loadingId === video.videoId) void tryNextSource();
+      });
+      return;
+    }
     load(`${SERVER_URL}/hls/${encodeURIComponent(video.videoId)}/master.m3u8`);
+  });
+  if (state) setResumeAction(state.video);
+}
+
+/** Fills in what the opener didn't know about the current video. */
+function mergeVideo(videoId: string, known: Partial<NativePlayRequest>) {
+  if (!state || state.video.videoId !== videoId) return;
+  const video = { ...state.video };
+  for (const [key, value] of Object.entries(known)) {
+    const field = key as keyof NativePlayRequest;
+    if (value !== undefined && !video[field]) {
+      (video as Record<string, unknown>)[field] = value;
+    }
   }
-  if (present) router.navigate("/player");
+  setState({ ...state, video });
+  progress.video = video;
+  setResumeAction(video);
+}
+
+/**
+ * The watch page in the panel reports its video (`play` message): its
+ * metadata, and where to resume from history. A resume position applies only
+ * near the start, so it never yanks a video the user is already watching.
+ */
+export function applyPageHints(video: NativePlayRequest) {
+  if (state?.video.videoId !== video.videoId) return;
+  mergeVideo(video.videoId, video);
+  if (resumeSettled || video.isLive) return;
+  resumeSettled = true;
+  const resumeAt = video.startSeconds ?? 0;
+  if (resumeAt < 5) return;
+  const current = getPlayer();
+  if (current.status === "readyToPlay") {
+    if (current.currentTime < 3) current.currentTime = resumeAt;
+  } else {
+    seekTo = resumeAt;
+  }
+}
+
+/**
+ * A page outside the panel asked to play (a watch page loaded in a tab): open
+ * it in the panel, with what the page knows.
+ */
+export function playVideo(video: NativePlayRequest) {
+  openVideo(video);
+  applyPageHints(video);
 }
 
 /** Plays an Up next item (tapped, or at the end of the current video). */
@@ -263,18 +339,13 @@ export function playNext(
   if (item.fromQueue) {
     void trpc.queue.remove.mutate({ videoId: item.videoId }).catch(() => {});
   }
-  if (follower) {
-    followedTo = item.videoId;
-    follower(item.videoId);
-  }
-  playVideo(
+  openVideo(
     {
       videoId: item.videoId,
       title: item.title,
       channelName: item.channelName,
       poster: item.thumbnailUrl,
       durationSeconds: item.durationSeconds,
-      autoplay: true,
     },
     options,
   );
@@ -337,11 +408,10 @@ export function retryPlayback() {
   if (!video) return;
   const position = getPlayer().currentTime;
   setState(null);
-  playVideo(
+  openVideo(
     {
       ...video,
       startSeconds: position > 0 ? position : video.startSeconds,
-      autoplay: true,
     },
     { present: false },
   );
@@ -350,8 +420,6 @@ export function retryPlayback() {
 /** Stops playback and leaves the mini player. */
 export function stopPlayback() {
   clearReadyTimer();
-  follower = null;
-  followedTo = null;
   void saveProgress();
   getPlayer().pause();
   void getPlayer().replaceAsync(null);

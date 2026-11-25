@@ -1,4 +1,7 @@
+import { useSegments } from "expo-router";
 import { NativeTabs } from "expo-router/native-tabs";
+import { useEffect } from "react";
+import { setCurrentTab } from "@/lib/current-tab";
 import { ACCENT } from "@/lib/theme";
 import { MiniPlayer } from "@/player/mini-player";
 import { useNowPlaying } from "@/player/store";
@@ -10,6 +13,10 @@ import { useNowPlaying } from "@/player/store";
  */
 export default function TabsLayout() {
   const nowPlaying = useNowPlaying();
+  const segments = useSegments() as string[];
+  useEffect(() => {
+    if (segments[0] === "(tabs)") setCurrentTab(segments[1]);
+  }, [segments]);
   return (
     <NativeTabs minimizeBehavior="never" tintColor={ACCENT}>
       {nowPlaying ? (

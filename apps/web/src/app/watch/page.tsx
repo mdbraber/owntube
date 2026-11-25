@@ -409,6 +409,7 @@ export default async function WatchPage({ searchParams }: WatchPageProps) {
                   key={detail.videoId}
                   isAuthed={isAuthed}
                   nativeApp={isNativeAppUserAgent(h.get("user-agent"))}
+                  nativePanel={sp.panel === "1"}
                   channelName={detail.channelName}
                   videoId={detail.videoId}
                   payload={videoPayload}

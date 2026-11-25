@@ -8,6 +8,9 @@ import { flushProgress } from "@/player/store";
  * The tabs, with the video player presented over them as a sheet (swipe down
  * to close; playback goes on in the mini player).
  */
+/** A link straight to the player still has the tabs beneath it. */
+export const unstable_settings = { anchor: "(tabs)" };
+
 export default function RootLayout() {
   useQuickActions();
 

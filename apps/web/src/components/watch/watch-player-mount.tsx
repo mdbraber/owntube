@@ -11,15 +11,21 @@ type WatchPlayerMountProps = VideoPlayerProps & {
   isAuthed: boolean;
   /** Inside the iOS app: the native player plays, not the web one. */
   nativeApp?: boolean;
+  /**
+   * Inside the iOS app's player panel (`?panel=1`), below its native video:
+   * no player area at all, only the video reported to the app.
+   */
+  nativePanel?: boolean;
   /** For the native player's Now Playing info. */
   channelName?: string;
 };
 
 /**
  * Inside the iOS app, the native player (AVPlayer: Picture-in-Picture,
- * background audio, lock screen controls) plays the video. The page asks for
- * it on arrival and leaves the poster in the player's place; tapping the
- * poster opens the player again.
+ * background audio, lock screen controls) plays the video. The page reports
+ * its video on arrival. In the app's player panel that's all; anywhere else
+ * (rare: the app opens videos in the panel) it leaves the poster in the
+ * player's place, and tapping it opens the panel.
  */
 function NativeAppPlayerSlot({
   videoId,
@@ -30,7 +36,8 @@ function NativeAppPlayerSlot({
   durationSeconds,
   isLive,
   autoplayOnWatch,
-}: Pick<
+  panel = false,
+}: { panel?: boolean } & Pick<
   WatchPlayerMountProps,
   | "videoId"
   | "title"
@@ -72,6 +79,10 @@ function NativeAppPlayerSlot({
     play(autoplayOnWatch ?? true);
   }, [videoId]);
 
+  // In the panel the app already plays the video above this page; the report
+  // gives it the title, artwork and resume position.
+  if (panel) return null;
+
   return (
     <button
       type="button"
@@ -105,10 +116,11 @@ function NativeAppPlayerSlot({
  */
 export function WatchPlayerMount({
   nativeApp = false,
+  nativePanel = false,
   ...props
 }: WatchPlayerMountProps) {
   return nativeApp ? (
-    <NativeAppPlayerSlot {...props} />
+    <NativeAppPlayerSlot {...props} panel={nativePanel} />
   ) : (
     <WebPlayerMount {...props} />
   );
@@ -117,6 +129,7 @@ export function WatchPlayerMount({
 function WebPlayerMount({
   isAuthed,
   channelName: _channelName,
+  nativePanel: _nativePanel,
   ...playerProps
 }: Omit<WatchPlayerMountProps, "nativeApp">) {
   const { setActive, registerSlot } = usePlayerContext();

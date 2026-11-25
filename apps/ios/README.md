@@ -12,66 +12,70 @@ toolchain and patterns with `apps/tv`.
 
 ## How it fits together
 
-- **Native tabs** (`app/_layout.tsx`): Home, Subscriptions, Library and the
-  system Search tab, each with its own navigation stack.
-- **Web pages** (`src/components/web-screen.tsx`): one WebView per screen. Each
-  gets a native navigation bar showing the page's title, a back button while
-  the page has history (the edge swipe goes back too), and a menu with Share,
+- **Native tabs** (`app/(tabs)/_layout.tsx`): Home, Subscriptions, Library and
+  the system Search tab, each with its own navigation stack.
+- **Web pages** (`src/components/web-screen.tsx`): one WebView per screen,
+  with a native navigation bar: the page's title, Back, and a menu with Share,
   Open in Safari and Reload. Links that leave the server open in a Safari
   sheet. All WebViews share one cookie store and localStorage.
-- **Navigation**: every page is a native screen. Tapping a link to another
-  page pushes it onto the tab's stack, so Back (the button, the edge swipe,
-  long-press for history) is iOS's own and returns to the page as it was left,
-  scroll position included. There's no forward, as in any iOS app.
+- **Navigation**, as in YouTube's app:
+  - Every page except a video is a native screen. A link to another page
+    pushes it onto the tab's stack, so Back (the button, the edge swipe,
+    long-press for history) is iOS's own and returns to the page as it was
+    left. There's no forward, as in any iOS app.
   - What counts as another page: a different path, or another video or
     playlist (`isNewNativePage` in `@web/lib/native-app`). Tabs, filters,
-    sorting and a new search stay on their screen. Sign-in and onboarding move
-    on in place.
+    sorting and a new search stay on their screen. Sign-in and onboarding
+    move on in place.
   - The page reports link taps to the app (`navigate` message) instead of
-    following them. A few buttons navigate programmatically; the page lets
-    those through, hands them over, and goes back behind the new screen.
+    following them. The few programmatic navigations are let through, handed
+    over, and undone behind the new screen.
   - Each tab keeps its own stack, and tapping the current tab returns to its
     first screen.
-  - Links from outside the app (widget, URLs) open over Home's first screen
-    (`app/+native-intent.tsx`). Quick actions open in their tab the same way.
-`app/library/index.tsx`): the web app's account destinations as
-  a native SwiftUI list (`@expo/ui`).
+- **Player panel** (`app/player.tsx`, `src/player`), as in YouTube's app:
+  - A video opens in one panel that slides up over what you were browsing,
+    with nothing added to Back. The native video (AVPlayer via expo-video,
+    Apple's own controls) is on top. Below it is the video's web page in
+    panel mode (`/watch?v=…&panel=1`, without its own player): title,
+    channel, actions, description, comments and related videos.
+  - Swipe the panel down (or tap the chevron) and the video plays on in the
+    mini player above the tab bar, with you back where you were. Tapping the
+    mini player opens the panel again.
+  - Another video tapped in the panel replaces this one in place.
+  - Any other page tapped in the panel (the channel…) swipes the panel away
+    and opens in the tab you were browsing.
+  - Playback goes on in Picture-in-Picture and in the background, with Now
+    Playing on the lock screen. It starts with the server's HLS
+    (`/hls/<id>/master.m3u8`) and falls back to what the web picks for Safari
+    on iPhone (`buildWatchPlayback`). A stream that never starts fails over
+    after 30 s, and an error offers Try again.
+  - The panel's page reports the title, artwork and resume position (`play`
+    message). Progress goes to history every 20 s and when the app leaves
+    the foreground, as the TV app does.
+  - At the end of a video the queue plays on, then related videos when the
+    account's "Autoplay next" is on. Playing a queued video removes it from
+    the queue.
+- **Library** (`app/(tabs)/library/index.tsx`): the web app's account
+  destinations as a native SwiftUI list (`@expo/ui`).
 - **Embedded mode in the web app**: the WebView adds `OwnTubeApp/<version>` to
   its user agent. The server sees it (`apps/web/src/lib/native-app.ts`) and
   leaves its own top bar, sidebar and bottom tab bar out of the first render.
   The page pads itself by the safe area, so content scrolls under the glass
   bars.
 - **Bridge**: inside the app, the page sends messages through
-  `window.ReactNativeWebView` (`components/native-app/native-app-bridge.tsx`).
-  It reports its title and URL on every navigation, and the watch queue for the
-  widget. Both sides share the message types in `@web/lib/native-app`.
-- **Links** (`src/lib/use-incoming-links.ts`, `src/lib/app-path.ts`): these open
-  in the Home tab, whether they launch the app or arrive while it runs:
+  `window.ReactNativeWebView` (`components/native-app/native-app-bridge.tsx`):
+  its title and URL, link taps, the video it shows, who is signed in, and the
+  watch queue for the widget. Both sides share the message types in
+  `@web/lib/native-app`.
+- **Links** (`app/+native-intent.tsx`, `src/lib/app-path.ts`): these open
+  whether they launch the app or arrive while it runs. A video opens in the
+  player panel; any other page opens as a new screen over Home:
   - `owntube://watch?v=<id>` (the widget)
   - `owntube://watch/<id>` (Privacy Redirect)
   - `owntube://<any web path>`
   - YouTube URLs
 
   YouTube-shaped paths are canonicalised by the web middleware.
-- **Native player** (`src/player`, `app/player.tsx`): inside the app, the web
-  watch page doesn't mount its player. It sends the video to the app
-  (`play` message) and shows the poster in its place; tapping the poster opens
-  the player again. The app plays it with AVPlayer (expo-video) and Apple's own
-  controls, in a sheet over the tabs. It starts with the server's HLS
-  (`/hls/<id>/master.m3u8`) and falls back to what the web picks for Safari on
-  iPhone (`buildWatchPlayback`). Playback continues:
-  - in the mini player, the tab bar's bottom accessory, when the sheet is
-    closed;
-  - in Picture-in-Picture;
-  - in the background, with Now Playing on the lock screen.
-
-  Progress goes to history every 20 s and when the app leaves the
-  foreground, as the TV app does. The resume position comes from the page.
-
-  **Up next**, below the video, lists the queue first, then related videos.
-  At the end of a video the queue always plays on, and related videos play on
-  when the account's "Autoplay next" is on. Playing a queued video removes it
-  from the queue, as on the web.
 - **Settings** (`app/(tabs)/library/settings.tsx`): a native form (SwiftUI)
   with these parts:
   - the server, which you can change at runtime: it's checked, stored on the
@@ -80,7 +84,8 @@ toolchain and patterns with `apps/tv`.
   - the signed-in account;
   - a link to the full web settings.
 - **Quick actions** (`src/lib/home-screen-actions.ts`): long-pressing the
-  icon gives Resume (the last video played), Search, Subscriptions and Queue.
+  icon gives Resume (the last video played, in the panel), Search,
+  Subscriptions and Queue.
 - **App session** (`src/lib/session.ts`): native API calls use a device token,
   as the TV app does. A page reports who is signed in (`session` message). If
   the app has no token for that account, it starts a device pairing and the

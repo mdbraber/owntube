@@ -2,9 +2,11 @@ import {
   isNewNativePage,
   type NativeAppCommand,
   type NativeAppMessage,
+  type NativePlayRequest,
   nativeAppCommandScript,
   parseNativeAppMessage,
 } from "@web/lib/native-app";
+import { isVideoId, parseStartSeconds } from "@web/lib/youtube-url";
 import { router, Stack, useSegments } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import {
@@ -31,7 +33,7 @@ import type {
 } from "react-native-webview/lib/WebViewTypes";
 import { SERVER_ORIGIN, USER_AGENT_TOKEN, webUrl } from "@/lib/config";
 import { onPairingApproved, syncSession } from "@/lib/session";
-import { playVideo } from "@/player/store";
+import { type OpenVideo, openVideo, playVideo } from "@/player/store";
 import { setWatchQueue } from "../../modules/widget-bridge";
 
 /**
@@ -49,13 +51,6 @@ const IOSWebView = WebView as unknown as ComponentType<
  */
 const BACKGROUND = { light: "#fafafa", dark: "#0a0a0b" } as const;
 
-type Props = {
-  /** The web path this screen opens (`/`, `/subscriptions`, `/watch?v=…`). */
-  path: string;
-  /** Navigation bar title until the page reports its own. */
-  title: string;
-};
-
 function isServerUrl(url: string): boolean {
   try {
     return new URL(url).origin === SERVER_ORIGIN;
@@ -64,56 +59,73 @@ function isServerUrl(url: string): boolean {
   }
 }
 
-/**
- * The `page` route of the tab this screen is in: `/page` for Home,
- * `/<tab>/page` for the others.
- */
-function pageRouteOf(segments: string[]): string {
-  const tab = segments[1];
-  return !tab || tab === "(home)" ? "/page" : `/${tab}/page`;
+/** The video a link opens, when it's a watch link (`/watch?v=…&t=…`). */
+export function watchTarget(url: string): OpenVideo | null {
+  let target: URL;
+  try {
+    target = new URL(url, SERVER_ORIGIN);
+  } catch {
+    return null;
+  }
+  if (target.origin !== SERVER_ORIGIN) return null;
+  if (target.pathname.replace(/\/+$/, "") !== "/watch") return null;
+  const videoId = target.searchParams.get("v");
+  if (!videoId || !isVideoId(videoId)) return null;
+  const startSeconds = parseStartSeconds(target.searchParams.get("t"));
+  return startSeconds ? { videoId, startSeconds } : { videoId };
 }
 
-/**
- * Pushes a web page onto the current tab's stack, as its own screen.
- */
-function usePushPage() {
-  const segments = useSegments();
-  return useCallback(
-    (url: string) => {
-      const target = new URL(url, SERVER_ORIGIN);
-      router.push({
-        pathname: pageRouteOf(segments) as never,
-        params: { path: `${target.pathname}${target.search}${target.hash}` },
-      });
-    },
-    [segments],
-  );
+/** A web path from a URL on the server (`/channel/…?tab=…`). */
+export function webPathOf(url: string): string {
+  const target = new URL(url, SERVER_ORIGIN);
+  return `${target.pathname}${target.search}${target.hash}`;
 }
 
+type WebPageViewProps = {
+  /** The web path to open (`/`, `/channel/…`, `/watch?v=…&panel=1`). */
+  path: string;
+  /** The user went to another page (`isNewNativePage`). */
+  onNavigate: (url: string) => void;
+  /** The page asked to play a video (a watch page). */
+  onPlay: (video: NativePlayRequest) => void;
+  /** The page's title and URL, on every navigation. */
+  onPage?: (title: string, url: string) => void;
+  /** Exposes reload/share targets to the screen's chrome. */
+  webViewRef?: Ref<WebView>;
+};
+
 /**
- * One web page in the native shell, as one native screen.
+ * One web page and its bridge to the app, without any chrome: a tab's screen
+ * (WebScreen) and the player panel both show pages through it. Links off the
+ * server open in a Safari sheet; link taps to other pages go to `onNavigate`.
  *
- * Going to another page pushes a new screen onto the tab's stack (the page
- * reports it with a `navigate` message, see `isNewNativePage`), so Back, the
- * edge swipe and Back's long-press history are all native, and returning to a
- * page finds it as it was left. Changes within a page (tabs, filters) stay on
- * its screen. The navigation bar shows the page's title, with a menu for
- * sharing, Safari and reloading. Links off the server open in a Safari sheet.
- *
- * Every screen's WebView shares the default website data store, so they share
- * the sign-in cookie and localStorage.
+ * Every WebView shares the default website data store, so they share the
+ * sign-in cookie and localStorage.
  */
-export function WebScreen({ path, title }: Props) {
-  const ref = useRef<WebView>(null);
+export function WebPageView({
+  path,
+  onNavigate,
+  onPlay,
+  onPage,
+  webViewRef,
+}: WebPageViewProps) {
+  const ref = useRef<WebView | null>(null);
   const scheme = useColorScheme() === "light" ? "light" : "dark";
-  const pushPage = usePushPage();
-  const pushPageRef = useRef(pushPage);
-  pushPageRef.current = pushPage;
   const [source] = useState(() => webUrl(path));
-  const [pageTitle, setPageTitle] = useState("");
-  const [currentUrl, setCurrentUrl] = useState(source);
-  const currentUrlRef = useRef(currentUrl);
-  currentUrlRef.current = currentUrl;
+  const currentUrl = useRef(source);
+  const handlers = useRef({ onNavigate, onPlay, onPage });
+  handlers.current = { onNavigate, onPlay, onPage };
+
+  const setRef = useCallback(
+    (view: WebView | null) => {
+      ref.current = view;
+      if (typeof webViewRef === "function") webViewRef(view);
+      else if (webViewRef) {
+        (webViewRef as { current: WebView | null }).current = view;
+      }
+    },
+    [webViewRef],
+  );
 
   const onMessage = useCallback((event: WebViewMessageEvent) => {
     const message: NativeAppMessage | null = parseNativeAppMessage(
@@ -122,27 +134,17 @@ export function WebScreen({ path, title }: Props) {
     if (!message) return;
     switch (message.type) {
       case "page":
-        setPageTitle(message.title);
-        setCurrentUrl(message.url);
+        currentUrl.current = message.url;
+        handlers.current.onPage?.(message.title, message.url);
         break;
       case "queue":
         setWatchQueue(message.raw);
         break;
       case "play":
-        // When Up next moves on, this page follows: it becomes the watch page
-        // of what's playing (replaced, not stacked), so closing the player
-        // shows that video's details and Back still leaves to where you were.
-        playVideo(message.video, {
-          follow: (videoId) =>
-            ref.current?.injectJavaScript(
-              `window.location.replace(${JSON.stringify(
-                webUrl(`/watch?v=${encodeURIComponent(videoId)}`),
-              )}); true;`,
-            ),
-        });
+        handlers.current.onPlay(message.video);
         break;
       case "navigate":
-        pushPageRef.current(message.url);
+        handlers.current.onNavigate(message.url);
         break;
       case "session":
         void syncSession(message.userId, (command: NativeAppCommand) =>
@@ -156,7 +158,7 @@ export function WebScreen({ path, title }: Props) {
   }, []);
 
   const onNavigationStateChange = useCallback((nav: WebViewNavigation) => {
-    if (isServerUrl(nav.url)) setCurrentUrl(nav.url);
+    if (isServerUrl(nav.url)) currentUrl.current = nav.url;
   }, []);
 
   const onShouldStartLoadWithRequest = useCallback(
@@ -165,13 +167,13 @@ export function WebScreen({ path, title }: Props) {
       if (!isTopFrame) return true;
       if (isServerUrl(url)) {
         // A tapped link the page didn't catch (before it hydrated, or a plain
-        // <a>): a new page is a new screen here too. Redirects, form posts
-        // and reloads load in place.
+        // <a>): handled like any other. Redirects, form posts and reloads
+        // load in place.
         if (
           navigationType === "click" &&
-          isNewNativePage(currentUrlRef.current, url)
+          isNewNativePage(currentUrl.current, url)
         ) {
-          pushPageRef.current(url);
+          handlers.current.onNavigate(url);
           return false;
         }
         return true;
@@ -188,6 +190,94 @@ export function WebScreen({ path, title }: Props) {
     },
     [],
   );
+
+  return (
+    <IOSWebView
+      ref={setRef}
+      source={{ uri: source }}
+      style={[styles.webView, { backgroundColor: BACKGROUND[scheme] }]}
+      applicationNameForUserAgent={USER_AGENT_TOKEN}
+      // A new page shows a spinner until it first paints, not an empty screen.
+      startInLoadingState
+      renderLoading={() => (
+        <View style={[styles.loading, { backgroundColor: BACKGROUND[scheme] }]}>
+          <ActivityIndicator />
+        </View>
+      )}
+      // The page insets itself by env(safe-area-inset-*) (globals.css); an
+      // automatic inset on the WebView's scroll view would count it twice.
+      contentInsetAdjustmentBehavior="never"
+      allowsInlineMediaPlayback
+      allowsPictureInPictureMediaPlayback
+      allowsAirPlayForMediaPlayback
+      mediaPlaybackRequiresUserAction={false}
+      // No WebKit back/forward swipe: the edge swipe is the native stack's.
+      allowsBackForwardNavigationGestures={false}
+      pullToRefreshEnabled
+      onMessage={onMessage}
+      onNavigationStateChange={onNavigationStateChange}
+      onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
+      // iOS reclaims a background WebView's content process under memory
+      // pressure, leaving a blank page; load it again.
+      onContentProcessDidTerminate={() => ref.current?.reload()}
+      webviewDebuggingEnabled={__DEV__}
+    />
+  );
+}
+
+/**
+ * The `page` route of the tab a screen is in: `/page` for Home,
+ * `/<tab>/page` for the others.
+ */
+export function pageRouteOf(tab: string | undefined): string {
+  return !tab || tab === "(home)" ? "/page" : `/${tab}/page`;
+}
+
+type Props = {
+  /** The web path this screen opens (`/`, `/subscriptions`, `/channel/…`). */
+  path: string;
+  /** Navigation bar title until the page reports its own. */
+  title: string;
+};
+
+/**
+ * One web page as one native screen of a tab, YouTube-style:
+ *
+ * - Another page pushes a new screen onto the tab's stack (see
+ *   `isNewNativePage`), so Back, the edge swipe and Back's long-press history
+ *   are native, and a page is found as it was left. Changes within a page
+ *   (tabs, filters) stay on its screen.
+ * - A video opens the player panel over the tab instead (nothing is added to
+ *   Back); swiping the panel down leaves it playing in the mini player.
+ *
+ * The navigation bar shows the page's title, with a menu for sharing, Safari
+ * and reloading.
+ */
+export function WebScreen({ path, title }: Props) {
+  const ref = useRef<WebView | null>(null);
+  const tab = (useSegments() as string[])[1];
+  const [pageTitle, setPageTitle] = useState("");
+  const [currentUrl, setCurrentUrl] = useState(() => webUrl(path));
+
+  const onNavigate = useCallback(
+    (url: string) => {
+      const video = watchTarget(url);
+      if (video) {
+        openVideo(video);
+        return;
+      }
+      router.push({
+        pathname: pageRouteOf(tab) as never,
+        params: { path: webPathOf(url) },
+      });
+    },
+    [tab],
+  );
+
+  const onPage = useCallback((titleText: string, url: string) => {
+    setPageTitle(titleText);
+    setCurrentUrl(url);
+  }, []);
 
   return (
     <>
@@ -214,38 +304,14 @@ export function WebScreen({ path, title }: Props) {
           </Stack.Toolbar.MenuAction>
         </Stack.Toolbar.Menu>
       </Stack.Toolbar>
-      <IOSWebView
-        ref={ref}
-        source={{ uri: source }}
-        style={[styles.webView, { backgroundColor: BACKGROUND[scheme] }]}
-        applicationNameForUserAgent={USER_AGENT_TOKEN}
-        // A pushed screen shows a spinner until its page first paints, rather
-        // than an empty screen.
-        startInLoadingState
-        renderLoading={() => (
-          <View
-            style={[styles.loading, { backgroundColor: BACKGROUND[scheme] }]}
-          >
-            <ActivityIndicator />
-          </View>
-        )}
-        // The page insets itself by env(safe-area-inset-*) (globals.css); an
-        // automatic inset on the WebView's scroll view would count it twice.
-        contentInsetAdjustmentBehavior="never"
-        allowsInlineMediaPlayback
-        allowsPictureInPictureMediaPlayback
-        allowsAirPlayForMediaPlayback
-        mediaPlaybackRequiresUserAction={false}
-        // No WebKit back/forward swipe: the edge swipe is the native stack's.
-        allowsBackForwardNavigationGestures={false}
-        pullToRefreshEnabled
-        onMessage={onMessage}
-        onNavigationStateChange={onNavigationStateChange}
-        onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
-        // iOS reclaims a background WebView's content process under memory
-        // pressure, leaving a blank page; load it again.
-        onContentProcessDidTerminate={() => ref.current?.reload()}
-        webviewDebuggingEnabled={__DEV__}
+      <WebPageView
+        path={path}
+        webViewRef={ref}
+        onNavigate={onNavigate}
+        // A watch page loaded in a tab (rare: links open the panel) hands its
+        // video to the panel.
+        onPlay={playVideo}
+        onPage={onPage}
       />
     </>
   );
