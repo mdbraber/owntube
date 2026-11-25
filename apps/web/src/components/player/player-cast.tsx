@@ -322,29 +322,48 @@ export function CastAudioNotice({ adapter }: { adapter: PlayerAdapter }) {
 }
 
 /**
- * Over the paused, on-screen video while it plays on a TV. Safari draws its
- * own "playing on AirPlay" screen only on the element that casts, and for VOD
- * that is the hidden cast element (see use-cast-handoff), so without this the
- * player would just show its last frame. Under the controls, which keep
- * driving the TV. The receiver's name isn't exposed to the page.
+ * Over the player while the video plays on a TV, styled after Safari's own
+ * AirPlay screen: a TV outline, the kind of cast, and a line saying where the
+ * video is. Safari draws its screen only in its own fullscreen player, and
+ * for Media Source playback the cast goes through the hidden element (see
+ * use-cast-handoff), so without this the player would show its last frame.
+ * Under the controls, which keep driving the TV. Safari doesn't tell a page
+ * the receiver's name, so the line says "your TV".
  */
 export function CastingScreen({ adapter }: { adapter: PlayerAdapter }) {
   if (!adapter.castActive) return null;
   const flavor = castFlavor();
   return (
+    // biome-ignore lint/a11y/useSemanticElements: status text over the video, not a form result
     <div
       role="status"
-      className="pointer-events-none absolute inset-0 z-[5] grid place-content-center justify-items-center gap-3 bg-black text-center text-sm text-white/70"
+      className="pointer-events-none absolute inset-0 z-[5] grid place-content-center justify-items-center bg-black text-center text-zinc-400"
     >
-      <SystemCastIcon
-        flavor={flavor}
-        connected
-        className="h-12 w-12 text-white/80"
-      />
-      <span>
-        {flavor === "airplay" ? "Playing on AirPlay" : "Playing on a TV"}
+      <TvOutline className="mb-3 h-[clamp(3rem,12vmin,5.5rem)] w-auto" />
+      <span className="text-[clamp(1rem,3.2vmin,1.5rem)] leading-tight">
+        {flavor === "airplay" ? "AirPlay" : "Cast"}
+      </span>
+      <span className="mt-1 px-4 text-[clamp(0.75rem,2vmin,0.95rem)] text-zinc-500">
+        This video is playing on your TV.
       </span>
     </div>
+  );
+}
+
+/** The outlined TV of Safari's AirPlay screen: a frame and a stand. */
+function TvOutline({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 64 44"
+      fill="none"
+      stroke="currentColor"
+      className={className}
+      aria-hidden
+    >
+      <title>TV</title>
+      <rect x="2" y="2" width="60" height="34" strokeWidth="2.5" />
+      <line x1="18" y1="42" x2="46" y2="42" strokeWidth="2.5" />
+    </svg>
   );
 }
 
