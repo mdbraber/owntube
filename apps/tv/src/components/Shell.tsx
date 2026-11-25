@@ -12,8 +12,10 @@ import {
   AppState,
   BackHandler,
   Linking,
+  Platform,
   type StyleProp,
   StyleSheet,
+  TVEventControl,
   View,
   type ViewStyle,
 } from "react-native";
@@ -388,6 +390,17 @@ export function Shell({
     });
     return () => sub.remove();
   }, []);
+
+  // tvOS sends the remote's Menu button to the system (back to the Apple TV
+  // home screen) unless the app claims it, and an app may not quit itself.
+  // So claim it only while Back has somewhere to go inside the app, and hand
+  // it back at Home, where Menu should leave.
+  const canGoBack = stack.length > 0 || section !== "home";
+  useEffect(() => {
+    if (Platform.OS !== "ios") return;
+    if (canGoBack) TVEventControl.enableTVMenuKey();
+    else TVEventControl.disableTVMenuKey();
+  }, [canGoBack]);
 
   // Only the newest watch route keeps a player; an older one (under a channel
   // that opened another video) remounts when Back reaches it again.

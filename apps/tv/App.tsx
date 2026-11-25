@@ -1,11 +1,6 @@
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  SafeAreaView,
-  StyleSheet,
-  View,
-} from "react-native";
+import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { Shell } from "@/components/Shell";
 import {
   clearAllProfiles,
@@ -112,7 +107,9 @@ export default function App() {
 
   return (
     <TrpcProvider>
-      <SafeAreaView style={styles.root}>
+      {/* Not SafeAreaView: on tvOS it insets everything by the overscan margins,
+          and the screens already keep their content clear of the edges. */}
+      <View style={styles.root}>
         <StatusBar hidden />
         {auth === "checking" ? (
           <ActivityIndicator
@@ -167,7 +164,7 @@ export default function App() {
             onChangeServer={() => setAuth("server")}
           />
         )}
-      </SafeAreaView>
+      </View>
     </TrpcProvider>
   );
 }
