@@ -21,7 +21,7 @@ export function castSourceUrl(videoId: string): string {
 export type CastVideoProps = {
   ref: (el: HTMLVideoElement | null) => void;
   src: string;
-  preload: "none";
+  preload: "none" | "metadata";
   playsInline: true;
   "x-webkit-airplay": "allow";
   "aria-hidden": true;
@@ -94,6 +94,7 @@ export function useCastHandoff(
       } catch {
         /* not seekable yet: the default start position set on click applies */
       }
+      el.muted = false;
       void el.play().catch(() => {});
     } else if (!remote.active && wasActiveRef.current) {
       wasActiveRef.current = false;
@@ -112,13 +113,27 @@ export function useCastHandoff(
     };
   }, [castSrc]);
 
+  // Start that metadata load as soon as a receiver shows up (changing
+  // `preload` alone doesn't restart a source that was selected under "none").
+  useEffect(() => {
+    if (!el || !castSrc || !remote.receiverAvailable) return;
+    if (el.readyState === HTMLMediaElement.HAVE_NOTHING) el.load();
+  }, [el, castSrc, remote.receiverAvailable]);
+
   const prompt = useCallback(() => {
     if (!el) return;
     setCastError(false);
-    // Inside the click: load() under a user gesture lifts WebKit's playback
-    // restrictions for this element, so play() on connect (no gesture by then)
-    // is allowed. Then start where the viewer is.
-    el.load();
+    // A play() inside the click lifts WebKit's playback restrictions for this
+    // element, so play() on connect (no gesture by then) is allowed. Muted and
+    // paused at once, so nothing plays here. Not load(): that would reset the
+    // element to "nothing known" and the picker would offer an audio-only
+    // route (see the preload note below).
+    // Still nothing known (the browser held the load back): ask for it now,
+    // the old way, rather than not at all.
+    if (el.readyState === HTMLMediaElement.HAVE_NOTHING) el.load();
+    el.muted = true;
+    void el.play().catch(() => {});
+    el.pause();
     try {
       el.currentTime = localRef.current.currentTime;
     } catch {
@@ -132,7 +147,13 @@ export function useCastHandoff(
   const castVideoProps: CastVideoProps = {
     ref: setEl,
     src: castSrc,
-    preload: "none",
+    // Safari decides what the AirPlay picker offers from what the element is
+    // known to hold: with nothing loaded it offers an audio-only route, and
+    // only the page's sound goes to the TV (seen on an iPad). So once a
+    // receiver is nearby, load the metadata (master, a media playlist, the
+    // init segment) and the picker knows it's a video. Viewers without a
+    // receiver load nothing.
+    preload: remote.receiverAvailable ? "metadata" : "none",
     playsInline: true,
     "x-webkit-airplay": "allow",
     "aria-hidden": true,
