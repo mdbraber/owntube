@@ -610,7 +610,7 @@ export function WatchScreen({
             status: "error",
             message:
               detail.isLive && Platform.OS === "ios"
-                ? "This live stream can't play on Apple TV: it is only available as DASH, which Apple TV doesn't play."
+                ? "This live stream can't play on Apple TV."
                 : "This video has no playable stream available.",
             problem: detail.isUpcoming
               ? { kind: "upcoming" }
@@ -2717,9 +2717,16 @@ function buildPlaybackOptions(detail: VideoDetail): PlaybackOption[] {
   // is only a last resort. Mirrors apps/web/src/lib/pick-playback.ts's
   // `dash-live` branch.
   if (detail.isLive) {
-    // AVPlayer (tvOS) can't play DASH, so there only HLS can carry a live
-    // stream; without one the screen says so instead of staying black.
-    if (Platform.OS !== "ios") {
+    // AVPlayer (tvOS) can't play DASH: there the server's live HLS carries it
+    // (apps/web/src/server/services/hls/live.ts), built from the same manifest.
+    if (Platform.OS === "ios") {
+      addOption({
+        id: "live-hls-server",
+        label: "Live",
+        videoUrl: `${baseUrl()}/hls/${encodeURIComponent(detail.videoId)}/live.m3u8`,
+        kind: "auto",
+      });
+    } else {
       addOption({
         id: "live-dash",
         label: "Live",
