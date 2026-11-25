@@ -26,6 +26,8 @@ export type CastVideoProps = {
   "x-webkit-airplay": "allow";
   "aria-hidden": true;
   tabIndex: -1;
+  /** Marks the cast element; set to "" while it plays on a receiver. */
+  "data-ot-cast": "" | "casting";
   className: string;
 };
 
@@ -185,6 +187,8 @@ export function useCastHandoff(
     "x-webkit-airplay": "allow",
     "aria-hidden": true,
     tabIndex: -1,
+    // Read by WatchTracker: while casting, progress comes from this element.
+    "data-ot-cast": remote.active ? "casting" : "",
     // In the DOM (AirPlay wants that) but never seen or clicked.
     className: "pointer-events-none absolute h-px w-px opacity-0",
   };

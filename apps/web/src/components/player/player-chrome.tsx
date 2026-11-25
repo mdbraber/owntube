@@ -11,6 +11,7 @@ import {
 } from "react";
 import {
   CastAudioNotice,
+  CastDebug,
   CastingScreen,
   TvButton,
   TvMenuItems,
@@ -411,6 +412,7 @@ export function PlayerChrome({
       </div>
 
       <CastingScreen adapter={adapter} />
+      <CastDebug adapter={adapter} />
       <CastAudioNotice adapter={adapter} />
       {/* After hydration: its URL is on the browser's own origin. */}
       {hydrated && castVideoProps ? <video {...castVideoProps} /> : null}

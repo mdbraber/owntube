@@ -347,3 +347,47 @@ export function CastingScreen({ adapter }: { adapter: PlayerAdapter }) {
     </div>
   );
 }
+
+/**
+ * `?castdebug=1`: the cast element's live state in a corner of the player, so
+ * a cast that misbehaves on a device can be read off the screen instead of
+ * guessed at. Renders nothing without the flag.
+ */
+export function CastDebug({ adapter }: { adapter: PlayerAdapter }) {
+  const [enabled, setEnabled] = useState(false);
+  const [, tick] = useState(0);
+  useEffect(() => {
+    setEnabled(new URLSearchParams(window.location.search).has("castdebug"));
+  }, []);
+  useEffect(() => {
+    if (!enabled) return;
+    const t = setInterval(() => tick((x) => x + 1), 1000);
+    return () => clearInterval(t);
+  }, [enabled]);
+  if (!enabled) return null;
+  const el = document.querySelector<
+    HTMLVideoElement & { webkitCurrentPlaybackTargetIsWireless?: boolean }
+  >("video[data-ot-cast]");
+  const rows: [string, string][] = [
+    ["button", adapter.castButton],
+    ["castActive", String(adapter.castActive)],
+    ["flavor", castFlavor()],
+    ["remote.state", el?.remote?.state ?? "n/a"],
+    ["wireless", String(el?.webkitCurrentPlaybackTargetIsWireless ?? "n/a")],
+    ["paused", String(el?.paused ?? "n/a")],
+    ["muted", String(el?.muted ?? "n/a")],
+    ["readyState", String(el?.readyState ?? "n/a")],
+    ["time", el ? el.currentTime.toFixed(1) : "n/a"],
+    ["preload", el?.preload ?? "n/a"],
+    ["error", el?.error ? String(el.error.code) : "none"],
+  ];
+  return (
+    <div className="pointer-events-none absolute left-2 top-2 z-50 rounded bg-black/80 px-2 py-1 font-mono text-[10px] leading-tight text-lime-300">
+      {rows.map(([k, v]) => (
+        <div key={k}>
+          {k}: {v}
+        </div>
+      ))}
+    </div>
+  );
+}

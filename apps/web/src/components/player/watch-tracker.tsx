@@ -129,9 +129,15 @@ export function WatchTracker({
     /** Exact playback position from the main watch player, for accurate resume. */
     const readPositionSeconds = (): number | undefined => {
       if (isLive) return undefined;
-      const el = document.querySelector<HTMLVideoElement>(
-        "[data-ot-player-root] video",
-      );
+      // While casting, the on-screen <video> sits paused; the position is the
+      // hidden cast element's (see use-cast-handoff).
+      const el =
+        document.querySelector<HTMLVideoElement>(
+          '[data-ot-player-root] video[data-ot-cast="casting"]',
+        ) ??
+        document.querySelector<HTMLVideoElement>(
+          "[data-ot-player-root] video:not([data-ot-cast])",
+        );
       if (!el || !Number.isFinite(el.currentTime)) return undefined;
       return Math.min(86_400, Math.max(0, Math.floor(el.currentTime)));
     };
