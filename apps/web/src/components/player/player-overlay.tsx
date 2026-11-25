@@ -149,26 +149,6 @@ export function PauseGlyph({ className }: { className?: string }) {
   );
 }
 
-function PrevGlyph({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={cn("fill-current", className)}>
-      <title>Previous</title>
-      <rect x="5" y="6" width="2.4" height="12" rx="0.8" />
-      <path d="M19 6.9v10.2a.9.9 0 0 1-1.38.76L9.8 12.76a.9.9 0 0 1 0-1.52l7.82-5.1A.9.9 0 0 1 19 6.9z" />
-    </svg>
-  );
-}
-
-function NextGlyph({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={cn("fill-current", className)}>
-      <title>Next</title>
-      <rect x="16.6" y="6" width="2.4" height="12" rx="0.8" />
-      <path d="M5 6.9v10.2a.9.9 0 0 0 1.38.76l7.82-5.1a.9.9 0 0 0 0-1.52l-7.82-5.1A.9.9 0 0 0 5 6.9z" />
-    </svg>
-  );
-}
-
 /** Shown after play/pause changes: what just happened, popping and fading. */
 export function PlayPauseBezel({
   hint,
@@ -193,45 +173,26 @@ export function PlayPauseBezel({
 }
 
 /* -------------------------------------------------------------------------- */
-/* Touch transport: previous · play/pause · next, over a dimmed video.        */
+/* Touch transport: play/pause over a dimmed video.                           */
 /* -------------------------------------------------------------------------- */
 
 export function TouchTransport({
   shown,
   paused,
   onTogglePaused,
-  onPrev,
-  onNext,
 }: {
   shown: boolean;
   paused: boolean;
   onTogglePaused: () => void;
-  /** Null when there is no previous/next video: the button is dimmed. */
-  onPrev: (() => void) | null;
-  onNext: (() => void) | null;
 }) {
-  const side =
-    "flex h-[clamp(2.5rem,11cqmin,4rem)] w-[clamp(2.5rem,11cqmin,4rem)] items-center justify-center rounded-full bg-black/40 text-white transition active:scale-90 disabled:opacity-40";
   return (
     <div
       className={cn(
-        "pointer-events-none absolute inset-0 z-30 flex items-center justify-center gap-[clamp(2rem,12cqmin,6rem)] bg-black/35 transition-opacity duration-200 [container-type:size]",
+        "pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-black/35 transition-opacity duration-200 [container-type:size]",
         shown ? "opacity-100" : "opacity-0",
       )}
       data-controls
     >
-      <button
-        type="button"
-        aria-label="Previous video"
-        disabled={!onPrev}
-        onClick={(e) => {
-          e.stopPropagation();
-          onPrev?.();
-        }}
-        className={cn(side, shown && "pointer-events-auto")}
-      >
-        <PrevGlyph className="h-1/2 w-1/2" />
-      </button>
       <button
         type="button"
         aria-label={paused ? "Play" : "Pause"}
@@ -250,63 +211,8 @@ export function TouchTransport({
           <PauseGlyph className="h-1/2 w-1/2" />
         )}
       </button>
-      <button
-        type="button"
-        aria-label="Next video"
-        disabled={!onNext}
-        onClick={(e) => {
-          e.stopPropagation();
-          onNext?.();
-        }}
-        className={cn(side, shown && "pointer-events-auto")}
-      >
-        <NextGlyph className="h-1/2 w-1/2" />
-      </button>
     </div>
   );
-}
-
-/* -------------------------------------------------------------------------- */
-/* Watch trail: the videos played in this tab, for "Previous video".          */
-/* -------------------------------------------------------------------------- */
-
-const TRAIL_KEY = "ot-watch-trail";
-
-function readTrail(): string[] {
-  try {
-    const raw = JSON.parse(sessionStorage.getItem(TRAIL_KEY) ?? "[]");
-    return Array.isArray(raw) ? raw.filter((x) => typeof x === "string") : [];
-  } catch {
-    return [];
-  }
-}
-
-/**
- * Records the videos watched in this tab and returns the one before the
- * current one (null if none). Going back to it pops the current one off, so
- * "previous" keeps walking back like YouTube's.
- */
-export function usePreviousVideo(
-  videoId: string,
-  enabled: boolean,
-): string | null {
-  const [prev, setPrev] = useState<string | null>(null);
-  useEffect(() => {
-    if (!enabled || !videoId) return;
-    const trail = readTrail();
-    if (trail[trail.length - 1] !== videoId) {
-      if (trail[trail.length - 2] === videoId) trail.pop();
-      else trail.push(videoId);
-    }
-    const kept = trail.slice(-50);
-    try {
-      sessionStorage.setItem(TRAIL_KEY, JSON.stringify(kept));
-    } catch {
-      /* storage full or blocked: previous just stays unavailable */
-    }
-    setPrev(kept.length > 1 ? (kept[kept.length - 2] ?? null) : null);
-  }, [videoId, enabled]);
-  return prev;
 }
 
 /* -------------------------------------------------------------------------- */
