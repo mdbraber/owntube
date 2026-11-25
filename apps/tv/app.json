@@ -4,7 +4,7 @@
     "slug": "owntube-tv",
     "orientation": "landscape",
     "userInterfaceStyle": "dark",
-    "platforms": ["android"],
+    "platforms": ["android", "ios"],
     "android": {
       "package": "com.mdbraber.owntube.tv",
       "icon": "./assets/icon.png",
@@ -75,6 +75,9 @@
       "owntubeUrl": "http://10.0.2.2:3000"
     },
     "icon": "./assets/icon.png",
-    "scheme": "owntube"
+    "scheme": "owntube",
+    "ios": {
+      "bundleIdentifier": "com.mdbraber.owntube.tv"
+    }
   }
 }

@@ -8,7 +8,8 @@
     "android": "EXPO_TV=1 expo run:android",
     "prebuild": "EXPO_TV=1 expo prebuild --platform android --clean",
     "typecheck": "tsc --noEmit",
-    "ios": "expo run:ios"
+    "prebuild:tvos": "EXPO_TV=1 REACT_NATIVE_NODE_MODULES_DIR=$PWD/node_modules expo prebuild --platform ios --clean",
+    "tvos": "EXPO_TV=1 REACT_NATIVE_NODE_MODULES_DIR=$PWD/node_modules expo run:ios"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
@@ -38,5 +39,14 @@
     "@types/qrcode": "^1.5.6",
     "@types/react": "~19.3.0",
     "typescript": "~5.9.0"
+  },
+  "expo": {
+    "autolinking": {
+      "ios": {
+        "exclude": [
+          "expo-speech-recognition"
+        ]
+      }
+    }
   }
 }

@@ -1,10 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import type { UnifiedVideo } from "@web/server/services/proxy.types";
 import {
-  ExpoSpeechRecognitionModule,
-  useSpeechRecognitionEvent,
-} from "expo-speech-recognition";
-import {
   forwardRef,
   useCallback,
   useEffect,
@@ -27,6 +23,7 @@ import { VideoRow } from "@/components/VideoRow";
 import type { Nav } from "@/lib/navigation";
 import { loadRecentSearches, rememberSearch } from "@/lib/recent-searches";
 import { useActiveBackHandler } from "@/lib/screen-active";
+import { speechRecognition, useSpeechRecognitionEvent } from "@/lib/speech";
 import { trpcClient } from "@/lib/trpc";
 import { trpc } from "@/lib/trpc-react";
 import { type TVFocusGuide, TVFocusGuideView } from "@/lib/tv-focus";
@@ -60,7 +57,7 @@ export function SearchScreen({
   // hides rather than offering a control that can only fail.
   const [micAvailable] = useState(() => {
     try {
-      return ExpoSpeechRecognitionModule.isRecognitionAvailable();
+      return speechRecognition?.isRecognitionAvailable() ?? false;
     } catch {
       return false;
     }
@@ -81,16 +78,16 @@ export function SearchScreen({
   });
 
   const startListening = async () => {
+    if (!speechRecognition) return;
     setVoiceError(null);
-    const permission =
-      await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+    const permission = await speechRecognition.requestPermissionsAsync();
     if (!permission.granted) {
       setVoiceError("Microphone permission denied");
       return;
     }
     setText("");
     setListening(true);
-    ExpoSpeechRecognitionModule.start({
+    speechRecognition.start({
       lang: "en-US",
       interimResults: true,
       continuous: false,
@@ -99,7 +96,7 @@ export function SearchScreen({
 
   const toggleListening = () => {
     if (listening) {
-      ExpoSpeechRecognitionModule.stop();
+      speechRecognition?.stop();
       return;
     }
     void startListening();

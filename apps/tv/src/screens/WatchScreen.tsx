@@ -29,6 +29,7 @@ import {
   BackHandler,
   findNodeHandle,
   Image,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -2676,12 +2677,25 @@ function buildPlaybackOptions(detail: VideoDetail): PlaybackOption[] {
   // (VP9 unlocks the rungs above 1080p that the AVC-only HLS path cannot) and
   // the audio track, so ExoPlayer owns A/V sync instead of this screen nudging
   // two players into alignment. See apps/web/src/server/services/dash.
-  addOption({
-    id: "dash-vp9",
-    label: "Auto",
-    videoUrl: `${baseUrl()}/dash/${detail.videoId}/manifest.mpd?video=vp9`,
-    kind: "auto",
-  });
+  //
+  // AVPlayer (tvOS, iOS) plays neither DASH nor VP9. There the adaptive source
+  // is the server's VOD HLS instead (apps/web/src/server/services/hls): AVC +
+  // AAC, with every audio language and the captions in the master playlist.
+  if (Platform.OS === "ios") {
+    addOption({
+      id: "hls-server",
+      label: "Auto",
+      videoUrl: `${baseUrl()}/hls/${encodeURIComponent(detail.videoId)}/master.m3u8`,
+      kind: "auto",
+    });
+  } else {
+    addOption({
+      id: "dash-vp9",
+      label: "Auto",
+      videoUrl: `${baseUrl()}/dash/${detail.videoId}/manifest.mpd?video=vp9`,
+      kind: "auto",
+    });
+  }
 
   if (detail.hlsUrl) {
     addOption({
