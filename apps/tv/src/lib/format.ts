@@ -236,17 +236,31 @@ export function htmlToPlainText(html: string): string {
 }
 
 /**
- * A channel avatar URL asking for the size it is drawn at. Feeds hand out
- * Google's 512px avatars (`…=s512-c-k-…`) for circles of 28-96dp; decoded
- * that is 1 MB each, and Subscriptions keeps an avatar per subscribed channel
- * attached. With 177 channels the textures overran the GPU cache and every
- * frame re-uploaded them: 200+ ms frames on a KPN box. Google serves any
- * `=sN`, so ask for the drawn size in pixels. Other URLs pass through.
+ * A channel avatar URL asking for the size it is drawn at, fetched through
+ * this instance.
+ *
+ * Size: feeds hand out Google's 512px avatars (`…=s512-c-k-…`) for circles of
+ * 28-96dp; decoded that is 1 MB each, and Subscriptions keeps an avatar per
+ * subscribed channel attached. With 177 channels the textures overran the GPU
+ * cache and every frame re-uploaded them: 200+ ms frames on a KPN box. Google
+ * serves any `=sN`, so ask for the drawn size in pixels.
+ *
+ * Through the instance: like video stills (see `stillUrl`), the TV never asks
+ * Google for an avatar itself. The server's `/channel-avatar` fetches it and
+ * keeps it in its disk cache. Other URLs (instance-hosted) pass through.
  */
 export function sizedAvatarUrl(url: string, sizeDp: number): string {
   const px = Math.ceil(sizeDp * PixelRatio.get());
-  return url.replace(
+  const absolute = url.startsWith("//") ? `https:${url}` : url;
+  const sized = absolute.replace(
     /^(https:\/\/(?:yt\d\.)?(?:googleusercontent|ggpht)\.com\/[^=?#]+)=s\d+/,
     `$1=s${px}`,
   );
+  return GOOGLE_AVATAR_RE.test(sized)
+    ? `${baseUrl()}/channel-avatar?url=${encodeURIComponent(sized)}`
+    : sized;
 }
+
+/** An avatar on Google's image hosts (what `/channel-avatar` accepts). */
+const GOOGLE_AVATAR_RE =
+  /^https:\/\/(?:[\w-]+\.)*(?:googleusercontent|ggpht)\.com\//i;

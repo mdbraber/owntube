@@ -38,7 +38,7 @@ const ROWS = TILES.map(
     type: tile.key,
     limit: 24,
     rows: 1,
-    layout: "rows",
+    layout: "row",
     size: "md",
   }),
 );
