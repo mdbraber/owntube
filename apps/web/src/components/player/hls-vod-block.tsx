@@ -277,6 +277,10 @@ export function HlsVodBlock({
     // Seed the mute from the shared shorts pref (muted until the viewer unmutes
     // one, then it stays on across shorts).
     initialMuted: shortsMode ? getShortsMuted() : undefined,
+    // Native HLS holds a plain URL, so this element goes to an AirPlay
+    // receiver itself (an iPad AirPlays the element that is playing); there
+    // is no separate cast element then (see `castsItself` below).
+    castSelf: hlsAudio.native && !dashSrc,
   });
   useShortsAudioPersist(adapter.muted, shortsMode);
   useShortsUnmuteAfterPlay(videoRef, shortsMode, reactKey);
@@ -433,6 +437,7 @@ export function HlsVodBlock({
         miniMode={miniMode}
         shortsMode={shortsMode}
         miniStartPaused={miniStartPaused}
+        castsItself={hlsAudio.native && !dashSrc}
       />
     </div>
   );
