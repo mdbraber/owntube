@@ -32,6 +32,8 @@ import {
   CARD_MIN_WIDTH_PX,
   DEFAULT_HOME_BLOCKS,
   HOME_BLOCK_LABEL,
+  HOME_BLOCK_LAYOUT_LABEL,
+  HOME_BLOCK_LAYOUTS,
   HOME_BLOCK_ROWS,
   HOME_BLOCK_SIZE_LABEL,
   HOME_BLOCK_SIZES,
@@ -46,6 +48,7 @@ import {
   newHomeBlockId,
   SECTION_OPTIONS,
   TAG_OPTION_PREFIX,
+  tagViewHref,
 } from "@/lib/home-blocks";
 import { cn } from "@/lib/utils";
 import { formatPublishedLabel } from "@/lib/video-display";
@@ -96,37 +99,42 @@ function fromUnified(v: UnifiedVideo): BlockVideo {
 }
 
 /**
- * One horizontally scrollable row of cards ("Scrollable row" option on
- * single-row blocks). A sentinel at the end asks the host for more when an
- * infinite source backs the block.
+ * One horizontally scrolling row of cards (the Row layout). It runs to the end
+ * of its source: while the source has more, a sentinel near the end loads the
+ * next page; once it has everything, a "See all" tile closes the row.
  */
 function HorizontalShelf({
   videos,
   block,
   surface,
-  onEndReached,
+  hasMore,
+  onLoadMore,
+  seeAllHref,
 }: {
   videos: BlockVideo[];
   block: HomeBlock;
   surface: VideoActionSurface;
-  onEndReached?: () => void;
+  hasMore: boolean;
+  onLoadMore?: () => void;
+  seeAllHref: string;
 }) {
   const sentinelRef = useRef<HTMLLIElement | null>(null);
-  const onEndReachedRef = useRef(onEndReached);
-  onEndReachedRef.current = onEndReached;
+  const onLoadMoreRef = useRef(onLoadMore);
+  onLoadMoreRef.current = onLoadMore;
 
   useEffect(() => {
+    if (!hasMore) return;
     const el = sentinelRef.current;
     if (!el) return;
     const obs = new IntersectionObserver(
       (entries) => {
-        if (entries[0]?.isIntersecting) onEndReachedRef.current?.();
+        if (entries[0]?.isIntersecting) onLoadMoreRef.current?.();
       },
       { rootMargin: "0px 600px 0px 0px", threshold: 0 },
     );
     obs.observe(el);
     return () => obs.disconnect();
-  }, []);
+  }, [hasMore]);
 
   const cardWidth = CARD_MIN_WIDTH_PX[block.size];
   return (
@@ -157,10 +165,29 @@ function HorizontalShelf({
           />
         </li>
       ))}
-      {onEndReached ? (
+      {hasMore ? (
         <li ref={sentinelRef} aria-hidden className="w-px shrink-0" />
-      ) : null}
+      ) : (
+        <li className="shrink-0 snap-start" style={{ width: cardWidth / 2 }}>
+          <SeeAllTile href={seeAllHref} />
+        </li>
+      )}
     </ul>
+  );
+}
+
+/** The closing tile of a Row: the block's full page. */
+function SeeAllTile({ href }: { href: string }) {
+  return (
+    <Link
+      href={href}
+      className="flex aspect-[8/9] w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[hsl(var(--border))] text-sm font-semibold text-[hsl(var(--muted-foreground))] transition hover:border-[hsl(var(--primary)_/_0.5)] hover:text-[hsl(var(--primary))]"
+    >
+      <span className="text-2xl leading-none" aria-hidden>
+        →
+      </span>
+      See all
+    </Link>
   );
 }
 
@@ -169,14 +196,19 @@ function VideoBlockBody({
   block,
   surface,
   isLoading,
-  onEndReached,
+  hasMore = false,
+  onLoadMore,
+  seeAllHref,
 }: {
   videos: BlockVideo[];
   block: HomeBlock;
   surface: VideoActionSurface;
   isLoading: boolean;
-  /** Scroll shelf hit its end — load more (infinite feeds). */
-  onEndReached?: () => void;
+  /** Row layout: the source has more to load as the row is scrolled. */
+  hasMore?: boolean;
+  onLoadMore?: () => void;
+  /** Row layout: where the closing "See all" tile goes (default: the block's page). */
+  seeAllHref?: string;
 }) {
   // Cards render full rows only: computed columns × configured rows, so the
   // last row is never ragged regardless of viewport width. At one column a
@@ -188,7 +220,11 @@ function VideoBlockBody({
   // On phones (single column) every block renders as edge-to-edge cards — the
   // full-width thumbnail people expect on mobile, matching the feed. The block's
   // rows/cards choice applies on wider screens.
-  const effectiveLayout = scrollRow || singleColumn ? "cards" : block.layout;
+  const effectiveLayout = scrollRow
+    ? "row"
+    : singleColumn
+      ? "cards"
+      : block.layout;
   const rowCount = block.rows;
   if (isLoading && videos.length === 0) {
     return (
@@ -204,13 +240,15 @@ function VideoBlockBody({
       </p>
     );
   }
-  if (effectiveLayout === "cards" && scrollRow) {
+  if (effectiveLayout === "row") {
     return (
       <HorizontalShelf
         videos={videos}
         block={block}
         surface={surface}
-        onEndReached={onEndReached}
+        hasMore={hasMore}
+        onLoadMore={onLoadMore}
+        seeAllHref={seeAllHref ?? homeBlockHref(block)}
       />
     );
   }
@@ -277,10 +315,13 @@ function useHideFinished(block: HomeBlock, videos: BlockVideo[]): BlockVideo[] {
 function SubscriptionsBlockBody({
   block,
   pageSize,
+  seeAllHref,
 }: {
   block: HomeBlock;
   /** Videos per fetch; defaults to what the block shows (over-fetched). */
   pageSize?: number;
+  /** Row layout: the closing tile's link (default: the block's page). */
+  seeAllHref?: string;
 }) {
   const hideIgnored = homeBlockOption(block, "hideIgnored");
   // Server-fetched pages already exclude ignored videos; this also drops the
@@ -314,11 +355,11 @@ function SubscriptionsBlockBody({
       block={block}
       surface="subscriptions"
       isLoading={query.isPending}
-      onEndReached={
-        scrollable && query.hasNextPage && !query.isFetchingNextPage
-          ? () => void query.fetchNextPage()
-          : undefined
-      }
+      hasMore={scrollable && query.hasNextPage}
+      onLoadMore={() => {
+        if (!query.isFetchingNextPage) void query.fetchNextPage();
+      }}
+      seeAllHref={seeAllHref}
     />
   );
 }
@@ -348,10 +389,9 @@ export function SubscriptionTagShelf({
       type: "subscriptions",
       limit: 16,
       rows: 1,
-      layout: "cards",
+      layout: "row",
       size,
       options: {
-        scrollRow: true,
         hideFinished: hideWatched,
         hideShorts,
         hideIgnored,
@@ -360,7 +400,13 @@ export function SubscriptionTagShelf({
     }),
     [tag, size, hideWatched, hideShorts, hideIgnored],
   );
-  return <SubscriptionsBlockBody block={block} pageSize={TAG_SHELF_PAGE} />;
+  return (
+    <SubscriptionsBlockBody
+      block={block}
+      pageSize={TAG_SHELF_PAGE}
+      seeAllHref={tagViewHref({ includeTags: [tag] })}
+    />
+  );
 }
 
 /**
@@ -400,11 +446,10 @@ function RecommendedBlockBody({ block }: { block: HomeBlock }) {
       block={block}
       surface="feed"
       isLoading={query.isPending}
-      onEndReached={
-        scrollable && query.hasNextPage && !query.isFetchingNextPage
-          ? () => void query.fetchNextPage()
-          : undefined
-      }
+      hasMore={scrollable && query.hasNextPage}
+      onLoadMore={() => {
+        if (!query.isFetchingNextPage) void query.fetchNextPage();
+      }}
     />
   );
 }
@@ -427,14 +472,28 @@ function ExploreBlockBody({ block }: { block: HomeBlock }) {
   );
 }
 
+/** History pages a Row grows by as it's scrolled (the API caps one at 100). */
+const HISTORY_ROW_STEP = 24;
+const HISTORY_ROW_MAX = 100;
+
 function HistoryBlockBody({ block }: { block: HomeBlock }) {
   // The block's own value for the shared option definition — independent of
   // the History page's filter.
-  const query = trpc.history.list.useQuery({
-    page: 1,
-    pageSize: Math.min(24, blockFetchCount(block)),
-    hideWatched: homeBlockOption(block, "hideCompleted"),
-  });
+  // A Row widens its one page as it's scrolled (keeping what's shown while
+  // the bigger page loads); past the cap, "See all" opens the History page.
+  const scrollable = isScrollRow(block);
+  const [rowPageSize, setRowPageSize] = useState(HISTORY_ROW_STEP);
+  const pageSize = scrollable
+    ? rowPageSize
+    : Math.min(24, blockFetchCount(block));
+  const query = trpc.history.list.useQuery(
+    {
+      page: 1,
+      pageSize,
+      hideWatched: homeBlockOption(block, "hideCompleted"),
+    },
+    { placeholderData: (prev) => prev },
+  );
   const videos: BlockVideo[] = (query.data ?? []).map((item) => ({
     videoId: item.videoId,
     title: item.videoTitle ?? item.videoId,
@@ -451,6 +510,17 @@ function HistoryBlockBody({ block }: { block: HomeBlock }) {
       block={block}
       surface="history"
       isLoading={query.isPending}
+      hasMore={
+        scrollable &&
+        (query.data?.length ?? 0) >= pageSize &&
+        pageSize < HISTORY_ROW_MAX
+      }
+      onLoadMore={() => {
+        if (!query.isFetching)
+          setRowPageSize((n) =>
+            Math.min(HISTORY_ROW_MAX, n + HISTORY_ROW_STEP),
+          );
+      }}
     />
   );
 }
@@ -458,7 +528,7 @@ function HistoryBlockBody({ block }: { block: HomeBlock }) {
 function QueueBlockBody({ block }: { block: HomeBlock }) {
   const query = trpc.queue.listDetailed.useQuery();
   const videos: BlockVideo[] = (query.data ?? [])
-    .slice(0, blockFetchCount(block))
+    .slice(0, isScrollRow(block) ? undefined : blockFetchCount(block))
     .map((item) => ({
       videoId: item.videoId,
       title: item.videoTitle,
@@ -482,7 +552,7 @@ function QueueBlockBody({ block }: { block: HomeBlock }) {
 function SavedBlockBody({ block }: { block: HomeBlock }) {
   const query = trpc.interactions.listSaved.useQuery();
   const videos: BlockVideo[] = (query.data ?? [])
-    .slice(0, blockFetchCount(block))
+    .slice(0, isScrollRow(block) ? undefined : blockFetchCount(block))
     .map((item) => ({
       videoId: item.videoId,
       title: item.videoTitle,
@@ -510,7 +580,7 @@ function PlaylistBlockBody({ block }: { block: HomeBlock }) {
     { enabled: playlistId > 0 },
   );
   const videos: BlockVideo[] = (query.data ?? [])
-    .slice(0, blockFetchCount(block))
+    .slice(0, isScrollRow(block) ? undefined : blockFetchCount(block))
     .map((item) => ({
       videoId: item.videoId,
       title: item.videoTitle,
@@ -531,19 +601,22 @@ function PlaylistBlockBody({ block }: { block: HomeBlock }) {
   );
 }
 
-/** The playlists overview as a block: collage tiles (cards) or rows. */
+/** The playlists overview as a block: collage tiles (cards, row) or a list. */
 function PlaylistsBlockBody({ block }: { block: HomeBlock }) {
   const query = trpc.playlists.list.useQuery();
   const grid = useAutoFillColumns(CARD_MIN_WIDTH_PX[block.size], 16);
   const singleColumn = grid.columns <= 1;
+  const asRow = block.layout === "row";
   const asCards = block.layout === "cards" && !singleColumn;
   const playlists = (query.data ?? []).slice(
     0,
-    block.layout === "cards"
-      ? singleColumn
-        ? block.rows * 2
-        : grid.columns * block.rows
-      : block.limit,
+    asRow
+      ? undefined
+      : block.layout === "cards"
+        ? singleColumn
+          ? block.rows * 2
+          : grid.columns * block.rows
+        : block.rows,
   );
   if (query.isPending) {
     return (
@@ -597,6 +670,37 @@ function PlaylistsBlockBody({ block }: { block: HomeBlock }) {
     </div>
   );
 
+  const tile = (p: (typeof playlists)[number]) => (
+    <Link href={`/playlists/${p.id}`} className="block">
+      {collage(p, false)}
+      <p className="mt-2 line-clamp-1 text-[15px] font-semibold leading-snug tracking-tight transition group-hover:text-[hsl(var(--primary))]">
+        {p.name}
+      </p>
+    </Link>
+  );
+
+  if (asRow) {
+    const width = CARD_MIN_WIDTH_PX[block.size];
+    return (
+      <ul
+        ref={grid.ref}
+        className="-mx-1 flex w-full min-w-0 max-w-full snap-x gap-4 overflow-x-auto px-1 pb-2"
+      >
+        {playlists.map((p) => (
+          <li
+            key={p.id}
+            className="group shrink-0 snap-start"
+            style={{ width }}
+          >
+            {tile(p)}
+          </li>
+        ))}
+        <li className="shrink-0 snap-start" style={{ width: width / 2 }}>
+          <SeeAllTile href="/playlists" />
+        </li>
+      </ul>
+    );
+  }
   if (asCards) {
     return (
       <ul
@@ -608,12 +712,7 @@ function PlaylistsBlockBody({ block }: { block: HomeBlock }) {
       >
         {playlists.map((p) => (
           <li key={p.id} className="group">
-            <Link href={`/playlists/${p.id}`} className="block">
-              {collage(p, false)}
-              <p className="mt-2 line-clamp-1 text-[15px] font-semibold leading-snug tracking-tight transition group-hover:text-[hsl(var(--primary))]">
-                {p.name}
-              </p>
-            </Link>
+            {tile(p)}
           </li>
         ))}
       </ul>
@@ -799,8 +898,6 @@ function BlockOptionsBody({
     onPatch({ options: next });
   };
 
-  const scrollRowEligible = block.rows === 1;
-
   return (
     <>
       {block.type === "tag" ? (
@@ -827,24 +924,6 @@ function BlockOptionsBody({
           {def.label}
         </label>
       ))}
-      {scrollRowEligible ? (
-        <label className="flex cursor-pointer select-none items-center gap-2.5 rounded-lg px-2.5 py-2 transition hover:bg-[hsl(var(--muted)_/_0.65)]">
-          <input
-            type="checkbox"
-            className="h-4 w-4 accent-[hsl(var(--primary))]"
-            checked={block.options?.scrollRow ?? false}
-            onChange={(e) =>
-              onPatch({
-                options: {
-                  ...block.options,
-                  scrollRow: e.currentTarget.checked,
-                },
-              })
-            }
-          />
-          Scrollable row
-        </label>
-      ) : null}
       {withTags && (allTags.data ?? []).length > 0 ? (
         <div
           className={cn(
@@ -894,8 +973,7 @@ function BlockOptionsMenu({
     };
   }, [open]);
 
-  const scrollRowEligible = block.rows === 1;
-  if (defs.length === 0 && !withTags && !scrollRowEligible) return null;
+  if (defs.length === 0 && !withTags) return null;
 
   return (
     <div ref={rootRef} className="relative">
@@ -992,7 +1070,7 @@ function BlockEditSheet({
           )}
           {pillRow(
             "Layout",
-            (["cards", "rows"] as const).map((layout) => (
+            HOME_BLOCK_LAYOUTS.map((layout) => (
               <button
                 key={layout}
                 type="button"
@@ -1005,29 +1083,31 @@ function BlockEditSheet({
                 )}
                 onClick={() => onPatch({ layout })}
               >
-                {layout === "cards" ? "Cards" : "Rows"}
+                {HOME_BLOCK_LAYOUT_LABEL[layout]}
               </button>
             )),
           )}
-          {pillRow(
-            "Rows",
-            HOME_BLOCK_ROWS.map((n) => (
-              <button
-                key={n}
-                type="button"
-                aria-pressed={block.rows === n}
-                className={cn(
-                  "px-3 py-1.5 transition",
-                  block.rows === n
-                    ? "bg-[hsl(var(--primary))] text-white"
-                    : "text-[hsl(var(--muted-foreground))]",
-                )}
-                onClick={() => onPatch({ rows: n })}
-              >
-                {n}
-              </button>
-            )),
-          )}
+          {/* A Row runs to the end of its source: no count. */}
+          {block.layout !== "row" &&
+            pillRow(
+              "Rows",
+              HOME_BLOCK_ROWS.map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  aria-pressed={block.rows === n}
+                  className={cn(
+                    "px-3 py-1.5 transition",
+                    block.rows === n
+                      ? "bg-[hsl(var(--primary))] text-white"
+                      : "text-[hsl(var(--muted-foreground))]",
+                  )}
+                  onClick={() => onPatch({ rows: n })}
+                >
+                  {n}
+                </button>
+              )),
+            )}
         </div>
 
         <div className="mx-2.5 border-t border-[hsl(var(--border))] py-1.5">
@@ -1349,9 +1429,9 @@ export function HomeBlocksClient({
                           </button>
                         ))}
                       </div>
-                      {/* cards ⇄ rows */}
+                      {/* cards / row / list */}
                       <div className="flex overflow-hidden rounded-full border border-[hsl(var(--border))] text-xs font-medium">
-                        {(["cards", "rows"] as const).map((layout) => (
+                        {HOME_BLOCK_LAYOUTS.map((layout) => (
                           <button
                             key={layout}
                             type="button"
@@ -1364,11 +1444,11 @@ export function HomeBlocksClient({
                             )}
                             onClick={() => patchBlock(block.id, { layout })}
                           >
-                            {layout === "cards" ? "Cards" : "Rows"}
+                            {HOME_BLOCK_LAYOUT_LABEL[layout]}
                           </button>
                         ))}
                       </div>
-                      {
+                      {block.layout === "row" ? null : (
                         <select
                           className="rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-2.5 py-1 text-xs"
                           value={block.rows}
@@ -1385,7 +1465,7 @@ export function HomeBlocksClient({
                             </option>
                           ))}
                         </select>
-                      }
+                      )}
                       <BlockOptionsMenu
                         block={block}
                         onPatch={(patch) => patchBlock(block.id, patch)}
