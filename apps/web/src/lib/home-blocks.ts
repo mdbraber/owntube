@@ -19,7 +19,41 @@ export const HOME_BLOCK_TYPES = [
 
 export type HomeBlockType = (typeof HOME_BLOCK_TYPES)[number];
 
-export type HomeBlockLayout = "cards" | "rows";
+/**
+ * How a block arranges its videos: a grid of cards (a number of full rows),
+ * one horizontally scrolling row that runs to the end of the source, or a
+ * vertical list (a number of lines, thumbnail beside the title).
+ */
+export const HOME_BLOCK_LAYOUTS = ["cards", "row", "list"] as const;
+export type HomeBlockLayout = (typeof HOME_BLOCK_LAYOUTS)[number];
+
+export const HOME_BLOCK_LAYOUT_LABEL: Record<HomeBlockLayout, string> = {
+  cards: "Cards",
+  row: "Row",
+  list: "List",
+};
+
+/**
+ * Stored blocks from before the Row layout: "rows" was the vertical list, and
+ * a one-row card grid with the `scrollRow` option was the scrolling row.
+ */
+export function migrateHomeBlockLayout(raw: unknown): unknown {
+  if (!raw || typeof raw !== "object") return raw;
+  const block = raw as Record<string, unknown>;
+  const { scrollRow, ...options } = (block.options ?? {}) as Record<
+    string,
+    unknown
+  >;
+  const layout =
+    scrollRow === true && block.rows === 1
+      ? "row"
+      : block.layout === "rows"
+        ? "list"
+        : block.layout;
+  return block.options === undefined
+    ? { ...block, layout }
+    : { ...block, layout, options };
+}
 
 /**
  * Item size presets. Responsive by construction: for cards the preset sets
@@ -54,11 +88,12 @@ export type HomeBlock = {
   playlistId?: number;
   /** Optional heading override (used by "tag" blocks; default is the tags). */
   title?: string;
-  /** Max items shown (rows layout). */
+  /** Legacy max items (unused; the list layout shows `rows` lines). */
   limit: number;
   /**
-   * Full grid rows shown (cards layout): items = measured columns × rows, so
-   * the last row is never ragged at any viewport width.
+   * Cards: full grid rows shown (items = measured columns × rows, so the
+   * last row is never ragged at any viewport width). List: lines shown.
+   * Row: unused (the row runs to the end of its source).
    */
   rows: number;
   layout: HomeBlockLayout;
@@ -237,12 +272,15 @@ export function tagViewHref(filter: TagFeedFilter): string {
   return qs ? `/tags?${qs}` : "/subscriptions";
 }
 
-/** True when the block renders as one horizontally scrollable shelf. */
+/** True when the block renders as one horizontally scrolling row. */
 export function isScrollRow(block: HomeBlock): boolean {
-  return block.rows === 1 && (block.options?.scrollRow ?? false);
+  return block.layout === "row";
 }
 
-/** Items a block needs at most: full rows on wide screens, or N list rows. */
+/**
+ * Items a block fetches first: full rows on wide screens, N list lines, or a
+ * first screenful-and-more for a row (which then loads on as it's scrolled).
+ */
 export function blockFetchCount(block: HomeBlock): number {
   if (isScrollRow(block)) return 48;
   return block.layout === "cards" ? block.rows * 8 : block.rows;
@@ -305,7 +343,7 @@ export const DEFAULT_HOME_BLOCKS: HomeBlock[] = [
     type: "queue",
     limit: 4,
     rows: 4,
-    layout: "rows",
+    layout: "list",
     size: "md",
   },
   {
@@ -313,7 +351,7 @@ export const DEFAULT_HOME_BLOCKS: HomeBlock[] = [
     type: "history",
     limit: 4,
     rows: 4,
-    layout: "rows",
+    layout: "list",
     size: "md",
   },
 ];

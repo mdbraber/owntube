@@ -1,7 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useCopyRssUrl } from "@/components/feeds/copy-rss-url";
+import { createPortal } from "react-dom";
+import {
+  type RssFeedKind,
+  useCopyRssUrl,
+} from "@/components/feeds/copy-rss-url";
 import { MoreIcon } from "@/components/videos/video-action-icons";
 import {
   HOME_BLOCK_ROWS,
@@ -14,7 +18,7 @@ import { trpc } from "@/trpc/react";
 
 export type LibrarySection = "history" | "queue" | "saved";
 /** Pages showing the merged subscription feed (home-block style options). */
-export type FeedSection = "subscriptions" | "favorites" | "tags";
+export type FeedSection = "subscriptions" | "favorites" | "tags" | "channel";
 export type OptionsSection = LibrarySection | FeedSection;
 
 export type FeedLayout = "cards" | "rows";
@@ -54,8 +58,12 @@ export type FeedPagePrefs = {
 };
 
 /** A feed page's prefs, with hideShorts resolved against the profile. */
-export function useFeedPagePrefs(section: FeedSection): FeedPagePrefs {
-  const settings = trpc.settings.get.useQuery();
+export function useFeedPagePrefs(
+  section: FeedSection,
+  /** Off for signed-out visitors (settings need an account): defaults. */
+  enabled = true,
+): FeedPagePrefs {
+  const settings = trpc.settings.get.useQuery(undefined, { enabled });
   const prefs = settings.data?.sectionPrefs[section] ?? DEFAULT_FEED_PREFS;
   const profileHideShorts = settings.data?.hideShortsInSubscriptions ?? true;
   return {
@@ -71,7 +79,10 @@ export function useFeedPagePrefs(section: FeedSection): FeedPagePrefs {
 
 function isFeedSection(section: OptionsSection): section is FeedSection {
   return (
-    section === "subscriptions" || section === "favorites" || section === "tags"
+    section === "subscriptions" ||
+    section === "favorites" ||
+    section === "tags" ||
+    section === "channel"
   );
 }
 
@@ -85,12 +96,39 @@ function isFeedSection(section: OptionsSection): section is FeedSection {
 export function SectionOptionsMenu({
   section,
   showLayout = true,
+  rssFeed,
+  buttonClassName,
 }: {
   section: OptionsSection;
   /** Feed pages: off where the tab has its own layout (Subscriptions > By tag). */
   showLayout?: boolean;
+  /** A feed to offer Copy RSS URL for (e.g. a subscribed channel). */
+  rssFeed?: { kind: RssFeedKind; refId: string };
+  /** Trigger styling for dark headers (channel banner). */
+  buttonClassName?: string;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  // Portaled to <body> and fixed to the viewport (below the trigger, right-
+  // aligned) so a header that clips overflow or creates a containing block
+  // (the channel banner's backdrop blur) can't cut it off.
+  const [anchor, setAnchor] = useState<{ top: number; right: number } | null>(
+    null,
+  );
+  const toggle = () => {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    const rect = rootRef.current?.getBoundingClientRect();
+    if (rect) {
+      setAnchor({
+        top: rect.bottom + 4,
+        right: Math.max(8, window.innerWidth - rect.right),
+      });
+    }
+    setOpen(true);
+  };
   const [open, setOpen] = useState(false);
   const utils = trpc.useUtils();
   const settings = trpc.settings.get.useQuery();
@@ -122,16 +160,27 @@ export function SectionOptionsMenu({
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (e: PointerEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (
+        !rootRef.current?.contains(target) &&
+        !menuRef.current?.contains(target)
+      )
+        setOpen(false);
     };
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
     };
+    // A fixed popover doesn't follow the trigger: close rather than drift.
+    const onMove = () => setOpen(false);
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
+    window.addEventListener("scroll", onMove, { passive: true });
+    window.addEventListener("resize", onMove);
     return () => {
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("scroll", onMove);
+      window.removeEventListener("resize", onMove);
     };
   }, [open]);
 
@@ -144,8 +193,16 @@ export function SectionOptionsMenu({
     subscriptions: DEFAULT_FEED_PREFS,
     favorites: DEFAULT_FEED_PREFS,
     tags: DEFAULT_FEED_PREFS,
+    channel: { ...DEFAULT_FEED_PREFS, hideIgnored: false },
   };
   const current = prefs[section];
+  // Queue, Saved and Subscriptions publish as fixed slugs; a channel page
+  // passes its feed (only once subscribed). History, Favorites, tags: none.
+  const feedToCopy: { kind: RssFeedKind; refId: string } | undefined =
+    rssFeed ??
+    (section === "queue" || section === "saved" || section === "subscriptions"
+      ? { kind: section, refId: section }
+      : undefined);
 
   const patch = (next: Partial<typeof DEFAULT_FEED_PREFS>) =>
     update.mutate({
@@ -204,79 +261,90 @@ export function SectionOptionsMenu({
     <div ref={rootRef} className="relative">
       <button
         type="button"
-        className="flex h-8 w-8 items-center justify-center rounded-full text-[hsl(var(--muted-foreground))] transition hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))]"
+        className={
+          buttonClassName ??
+          "flex h-8 w-8 items-center justify-center rounded-full text-[hsl(var(--muted-foreground))] transition hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))]"
+        }
         title="Page options"
         aria-label="Page options"
         aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
+        onClick={toggle}
       >
         <MoreIcon className="h-5 w-5" />
       </button>
-      {open ? (
-        <div
-          role="menu"
-          className="absolute right-0 top-full z-40 mt-1 w-64 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-2 text-sm shadow-lg"
-        >
-          {pills(
-            feed ? "Size" : "Row size",
-            HOME_BLOCK_SIZES,
-            current.rowSize,
-            (size) => HOME_BLOCK_SIZE_LABEL[size],
-            (rowSize) => patch({ rowSize }),
-          )}
-          {feed && showLayout ? (
-            <>
+      {open && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              ref={menuRef}
+              role="menu"
+              className="fixed z-50 max-h-[calc(100vh-5rem)] w-64 overflow-y-auto rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-2 text-sm text-[hsl(var(--foreground))] shadow-lg"
+              style={anchor ?? undefined}
+            >
               {pills(
-                "Layout",
-                ["cards", "rows"] as const,
-                feedPrefs.layout,
-                (layout) => (layout === "cards" ? "Cards" : "Rows"),
-                (layout) => patch({ layout }),
+                feed ? "Size" : "Row size",
+                HOME_BLOCK_SIZES,
+                current.rowSize,
+                (size) => HOME_BLOCK_SIZE_LABEL[size],
+                (rowSize) => patch({ rowSize }),
               )}
-              {pills(
-                "Rows",
-                FEED_PAGE_ROWS,
-                feedPrefs.rows,
-                (n) => (n === 0 ? "All" : String(n)),
-                (rows) => patch({ rows }),
+              {feed && showLayout ? (
+                <>
+                  {pills(
+                    "Layout",
+                    ["cards", "rows"] as const,
+                    feedPrefs.layout,
+                    (layout) => (layout === "cards" ? "Cards" : "List"),
+                    (layout) => patch({ layout }),
+                  )}
+                  {pills(
+                    "Rows",
+                    FEED_PAGE_ROWS,
+                    feedPrefs.rows,
+                    (n) => (n === 0 ? "All" : String(n)),
+                    (rows) => patch({ rows }),
+                  )}
+                </>
+              ) : null}
+              {checkbox("Hide watched videos", current.hideCompleted, (v) =>
+                patch({ hideCompleted: v }),
               )}
-            </>
-          ) : null}
-          {checkbox("Hide watched videos", current.hideCompleted, (v) =>
-            patch({ hideCompleted: v }),
-          )}
-          {feed ? (
-            <>
-              {checkbox("Hide Shorts", feedPrefs.hideShorts, (v) =>
-                patch({ hideShorts: v }),
-              )}
-              {checkbox("Hide ignored videos", feedPrefs.hideIgnored, (v) =>
-                patch({ hideIgnored: v }),
-              )}
-            </>
-          ) : null}
-          {/* History, Favorites and tag pages have no page feed; Queue, Saved
-              and Subscriptions publish as fixed slugs. */}
-          {section === "queue" ||
-          section === "saved" ||
-          section === "subscriptions"
-            ? (["audio", "video"] as const).map((variant) => (
-                <button
-                  key={variant}
-                  type="button"
-                  role="menuitem"
-                  className="mt-1 w-full rounded-lg px-1 py-2 text-left transition hover:bg-[hsl(var(--muted)_/_0.65)]"
-                  onClick={() => {
-                    setOpen(false);
-                    void copyRssUrl(section, section, variant);
-                  }}
-                >
-                  Copy RSS URL ({variant})
-                </button>
-              ))
-            : null}
-        </div>
-      ) : null}
+              {feed ? (
+                <>
+                  {/* Channel pages keep Shorts on their own tab. */}
+                  {section !== "channel"
+                    ? checkbox("Hide Shorts", feedPrefs.hideShorts, (v) =>
+                        patch({ hideShorts: v }),
+                      )
+                    : null}
+                  {checkbox("Hide ignored videos", feedPrefs.hideIgnored, (v) =>
+                    patch({ hideIgnored: v }),
+                  )}
+                </>
+              ) : null}
+              {feedToCopy
+                ? (["audio", "video"] as const).map((variant) => (
+                    <button
+                      key={variant}
+                      type="button"
+                      role="menuitem"
+                      className="mt-1 w-full rounded-lg px-1 py-2 text-left transition hover:bg-[hsl(var(--muted)_/_0.65)]"
+                      onClick={() => {
+                        setOpen(false);
+                        void copyRssUrl(
+                          feedToCopy.kind,
+                          feedToCopy.refId,
+                          variant,
+                        );
+                      }}
+                    >
+                      Copy RSS URL ({variant})
+                    </button>
+                  ))
+                : null}
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }

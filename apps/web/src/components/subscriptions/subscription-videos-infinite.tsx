@@ -3,19 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PageActions } from "@/components/layout/page-actions";
 import {
-  type FeedPagePrefs,
   type FeedSection,
   useFeedPagePrefs,
 } from "@/components/library/section-options-menu";
 import { RefreshControl } from "@/components/ui/refresh-control";
+import { FeedVideos } from "@/components/videos/feed-videos";
 import { useIgnoredVideos } from "@/components/videos/ignored-videos-context";
-import { VideoGrid } from "@/components/videos/video-grid";
 import { useWatchProgressMap } from "@/components/videos/video-membership-context";
-import { VideoRow } from "@/components/videos/video-row";
-import { useAutoFillColumns } from "@/hooks/use-auto-fill-columns";
-import { CARD_MIN_WIDTH_PX } from "@/lib/home-blocks";
-import { formatPublishedLabel } from "@/lib/video-display";
-import type { UnifiedVideo } from "@/server/services/proxy.types";
 import { trpc } from "@/trpc/react";
 
 /** Pixels the user must pull past (at the top of the page) to trigger a refresh. */
@@ -224,6 +218,7 @@ export function SubscriptionVideosInfinite({
         </p>
       ) : (
         <FeedVideos
+          surface="subscriptions"
           videos={videos}
           prefs={prefs}
           hasNextPage={query.hasNextPage}
@@ -239,78 +234,6 @@ export function SubscriptionVideosInfinite({
           Loading more…
         </p>
       ) : null}
-    </div>
-  );
-}
-
-/**
- * The feed as cards or rows at the page's size, like a home block. With a row
- * cap it shows exactly that many (full card rows at the measured column
- * count), fetching pages until they're filled; uncapped, the caller's
- * sentinel keeps scrolling. A single column (phones) always renders cards.
- */
-function FeedVideos({
-  videos,
-  prefs,
-  hasNextPage,
-  isFetchingNextPage,
-  fetchNextPage,
-}: {
-  videos: UnifiedVideo[];
-  prefs: FeedPagePrefs;
-  hasNextPage: boolean;
-  isFetchingNextPage: boolean;
-  /** Stable (React Query binds it), so the fill effect runs on change only. */
-  fetchNextPage: () => unknown;
-}) {
-  const minColumnWidthPx = CARD_MIN_WIDTH_PX[prefs.rowSize];
-  const grid = useAutoFillColumns(minColumnWidthPx);
-  const singleColumn = grid.columns <= 1;
-  const layout = singleColumn ? "cards" : prefs.layout;
-  const cap =
-    prefs.rows === 0
-      ? null
-      : layout === "cards"
-        ? grid.columns * prefs.rows
-        : prefs.rows;
-  const short = cap !== null && videos.length < cap;
-  useEffect(() => {
-    if (short && hasNextPage && !isFetchingNextPage) void fetchNextPage();
-  }, [short, hasNextPage, isFetchingNextPage, fetchNextPage]);
-  const shown = cap === null ? videos : videos.slice(0, cap);
-
-  return (
-    <div ref={grid.ref}>
-      {layout === "cards" ? (
-        <VideoGrid
-          videos={shown}
-          size="large"
-          minColumnWidthPx={minColumnWidthPx}
-          enableSwipe
-        />
-      ) : (
-        <ul className="space-y-1">
-          {shown.map((v) => (
-            <li key={v.videoId}>
-              <VideoRow
-                videoId={v.videoId}
-                title={v.title}
-                channelId={v.channelId}
-                channelName={v.channelName}
-                thumbnailUrl={v.thumbnailUrl}
-                durationSeconds={v.durationSeconds}
-                meta={
-                  formatPublishedLabel(v.publishedText, v.publishedAt) ??
-                  undefined
-                }
-                surface="subscriptions"
-                size={prefs.rowSize}
-                enableSwipe
-              />
-            </li>
-          ))}
-        </ul>
-      )}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { unstable_noStore as noStore } from "next/cache";
 import { ChannelBlockedBadge } from "@/components/channel/channel-blocked-badge";
 import { ChannelFavoriteButton } from "@/components/channel/channel-favorite-button";
-import { ChannelRssButton } from "@/components/channel/channel-rss-button";
+import { ChannelOptionsMenu } from "@/components/channel/channel-options-menu";
 import { ChannelSubscribeButton } from "@/components/channel/channel-subscribe-button";
 import { ChannelTags } from "@/components/channel/channel-tags";
 import { ChannelVideosSection } from "@/components/channel/channel-videos-section";
@@ -100,7 +100,7 @@ export default async function ChannelPage({ params }: ChannelPageProps) {
                   channelId={page.channelId}
                   isAuthed={isAuthed}
                 />
-                <ChannelRssButton
+                <ChannelOptionsMenu
                   channelId={page.channelId}
                   isAuthed={isAuthed}
                 />
@@ -127,6 +127,8 @@ export default async function ChannelPage({ params }: ChannelPageProps) {
         initialContinuation={page.continuation}
         sourceUsed={page.sourceUsed}
         stale={page.stale}
+        isAuthed={isAuthed}
+        channelAvatarUrl={page.avatarUrl}
       />
     </main>
   );

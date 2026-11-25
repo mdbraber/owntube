@@ -3,10 +3,13 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChannelListItem } from "@/components/channel/channel-list-item";
+import { useFeedPagePrefs } from "@/components/library/section-options-menu";
 import { Button } from "@/components/ui/button";
+import { FeedVideos } from "@/components/videos/feed-videos";
 import { useIgnoredVideos } from "@/components/videos/ignored-videos-context";
 import { PlaylistIcon } from "@/components/videos/video-action-icons";
 import { VideoGrid } from "@/components/videos/video-grid";
+import { useWatchProgressMap } from "@/components/videos/video-membership-context";
 import { mergeVideosNewestFirst } from "@/lib/published-sort-key";
 import { playlistHref } from "@/lib/yt-routes";
 import type { ChannelTab, UnifiedVideo } from "@/server/services/proxy.types";
@@ -29,6 +32,13 @@ type ChannelVideosSectionProps = {
   initialContinuation?: string | null;
   sourceUsed: string;
   stale?: boolean;
+  /** Signed in: the ⋯ menu's channel-page options apply. */
+  isAuthed?: boolean;
+  /**
+   * The channel's own avatar: channel tab listings carry none per video, so
+   * without it every card falls back to the name's initials.
+   */
+  channelAvatarUrl?: string;
 };
 
 /**
@@ -53,7 +63,11 @@ export function ChannelVideosSection({
   initialContinuation,
   sourceUsed,
   stale,
+  isAuthed = false,
+  channelAvatarUrl,
 }: ChannelVideosSectionProps) {
+  const prefs = useFeedPagePrefs("channel", isAuthed);
+  const progressMap = useWatchProgressMap();
   const [tab, setTab] = useState<SectionTab>(initialTab);
   const [renderCount, setRenderCount] = useState(RENDER_BATCH);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -94,27 +108,54 @@ export function ChannelVideosSection({
     },
   );
 
-  const videos = useMemo(
-    () => mergeVideosNewestFirst(query.data?.pages.map((p) => p.videos) ?? []),
-    [query.data?.pages],
+  const allVideos = useMemo(
+    () =>
+      mergeVideosNewestFirst(query.data?.pages.map((p) => p.videos) ?? []).map(
+        (v) =>
+          v.channelAvatarUrl || !channelAvatarUrl
+            ? v
+            : { ...v, channelAvatarUrl },
+      ),
+    [query.data?.pages, channelAvatarUrl],
   );
+
+  // Ignored videos are dimmed in place, or hidden with the ⋯ option; watched
+  // ones (≥90%, as everywhere) hidden with Hide watched.
+  const { sessionIgnored } = useIgnoredVideos();
+  const ignoredQuery = trpc.interactions.ignoredAmong.useQuery(
+    { videoIds: allVideos.slice(0, 200).map((v) => v.videoId) },
+    { enabled: allVideos.length > 0 },
+  );
+  const dimVideoIds = useMemo(
+    () => new Set([...(ignoredQuery.data ?? []), ...sessionIgnored]),
+    [ignoredQuery.data, sessionIgnored],
+  );
+  const videos = useMemo(
+    () =>
+      allVideos.filter((v) => {
+        if (prefs.hideIgnored && dimVideoIds.has(v.videoId)) return false;
+        if (!prefs.hideCompleted) return true;
+        const p = progressMap.get(v.videoId);
+        return !p || (!p.completed && p.fraction < 0.9);
+      }),
+    [
+      allVideos,
+      dimVideoIds,
+      prefs.hideIgnored,
+      prefs.hideCompleted,
+      progressMap,
+    ],
+  );
+  // A row cap shows exactly that many (FeedVideos fills it), no endless scroll.
+  const capped = prefs.rows > 0 && tab === "videos";
 
   const visibleVideos = useMemo(
     () => videos.slice(0, renderCount),
     [videos, renderCount],
   );
   const hasHiddenVideos = videos.length > renderCount;
-  const canShowMore = hasHiddenVideos || Boolean(query.hasNextPage);
-
-  const { sessionIgnored } = useIgnoredVideos();
-  const ignoredQuery = trpc.interactions.ignoredAmong.useQuery(
-    { videoIds: videos.slice(0, 200).map((v) => v.videoId) },
-    { enabled: videos.length > 0 },
-  );
-  const dimVideoIds = useMemo(
-    () => new Set([...(ignoredQuery.data ?? []), ...sessionIgnored]),
-    [ignoredQuery.data, sessionIgnored],
-  );
+  const canShowMore =
+    !capped && (hasHiddenVideos || Boolean(query.hasNextPage));
 
   const showMore = () => {
     if (hasHiddenVideos) {
@@ -209,12 +250,23 @@ export function ChannelVideosSection({
             </p>
           ) : null}
 
-          {videos.length > 0 ? (
+          {videos.length > 0 && tab === "shorts" ? (
             <VideoGrid
               videos={visibleVideos}
               size="large"
-              variant={tab === "shorts" ? "short" : "video"}
+              variant="short"
               dimVideoIds={dimVideoIds}
+            />
+          ) : videos.length > 0 ? (
+            <FeedVideos
+              videos={capped ? videos : visibleVideos}
+              prefs={prefs}
+              surface="channel"
+              enableSwipe={false}
+              dimVideoIds={dimVideoIds}
+              hasNextPage={Boolean(query.hasNextPage)}
+              isFetchingNextPage={query.isFetchingNextPage}
+              fetchNextPage={query.fetchNextPage}
             />
           ) : !query.isPending && !query.isError ? (
             <p className="rounded-[var(--radius-card)] border border-dashed border-[hsl(var(--border))] bg-[hsl(var(--muted)_/_0.35)] py-14 text-center text-sm text-[hsl(var(--muted-foreground))]">

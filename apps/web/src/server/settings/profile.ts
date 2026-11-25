@@ -11,7 +11,12 @@ import {
   normalizeChannelTag,
 } from "@/lib/channel-tag";
 import { defaultPlaybackQualitySchema } from "@/lib/default-playback-quality";
-import { DEFAULT_HOME_BLOCKS, HOME_BLOCK_TYPES } from "@/lib/home-blocks";
+import {
+  DEFAULT_HOME_BLOCKS,
+  HOME_BLOCK_LAYOUTS,
+  HOME_BLOCK_TYPES,
+  migrateHomeBlockLayout,
+} from "@/lib/home-blocks";
 import {
   DEFAULT_QUICK_ACTIONS,
   LEGACY_DEFAULT_QUICK_ACTIONS_LIST,
@@ -84,16 +89,30 @@ const DEFAULT_FEED_PAGE_PREFS = {
   rows: 0,
   hideIgnored: true,
 } as const;
-const feedPagePrefsSchema = z
-  .object({
+const feedPagePrefsObject = (hideIgnored: boolean) =>
+  z.object({
     hideCompleted: z.boolean().default(false),
     rowSize: z.enum(["xs", "sm", "md", "lg", "xl"]).default("md"),
     layout: z.enum(["cards", "rows"]).default("cards"),
     rows: z.number().int().min(0).max(8).default(0),
     hideShorts: z.boolean().optional(),
-    hideIgnored: z.boolean().default(true),
-  })
-  .default(DEFAULT_FEED_PAGE_PREFS);
+    hideIgnored: z.boolean().default(hideIgnored),
+  });
+const feedPagePrefsSchema = feedPagePrefsObject(true).default(
+  DEFAULT_FEED_PAGE_PREFS,
+);
+/**
+ * Channel pages (one set for all channels). Ignored videos stay visible but
+ * dimmed by default, as before; Shorts have their own tab, so hideShorts is
+ * unused here.
+ */
+const DEFAULT_CHANNEL_PAGE_PREFS = {
+  ...DEFAULT_FEED_PAGE_PREFS,
+  hideIgnored: false,
+} as const;
+const channelPagePrefsSchema = feedPagePrefsObject(false).default(
+  DEFAULT_CHANNEL_PAGE_PREFS,
+);
 
 export const appSettingsSchema = z.object({
   theme: themeSchema.default("system"),
@@ -200,19 +219,22 @@ export const appSettingsSchema = z.object({
   /** Ordered blocks of the modular home page. */
   homeBlocks: z
     .array(
-      z.object({
-        id: z.string().min(1).max(64),
-        type: z.enum(HOME_BLOCK_TYPES),
-        playlistId: z.number().int().positive().optional(),
-        /** Heading override (tag blocks). */
-        title: z.string().trim().max(60).optional(),
-        limit: z.number().int().min(1).max(24).default(8),
-        rows: z.number().int().min(1).max(8).default(2),
-        layout: z.enum(["cards", "rows"]).default("cards"),
-        size: z.enum(["xs", "sm", "md", "lg", "xl"]).default("md"),
-        /** Section-option values for this block (independent of the page's). */
-        options: z.record(z.string(), z.boolean()).optional(),
-      }),
+      z.preprocess(
+        migrateHomeBlockLayout,
+        z.object({
+          id: z.string().min(1).max(64),
+          type: z.enum(HOME_BLOCK_TYPES),
+          playlistId: z.number().int().positive().optional(),
+          /** Heading override (tag blocks). */
+          title: z.string().trim().max(60).optional(),
+          limit: z.number().int().min(1).max(24).default(8),
+          rows: z.number().int().min(1).max(8).default(2),
+          layout: z.enum(HOME_BLOCK_LAYOUTS).default("cards"),
+          size: z.enum(["xs", "sm", "md", "lg", "xl"]).default("md"),
+          /** Section-option values for this block (independent of the page's). */
+          options: z.record(z.string(), z.boolean()).optional(),
+        }),
+      ),
     )
     .max(16)
     .default(DEFAULT_HOME_BLOCKS),
@@ -260,6 +282,8 @@ export const appSettingsSchema = z.object({
       favorites: feedPagePrefsSchema,
       /** Every /tags page (tag bundles share one set of options). */
       tags: feedPagePrefsSchema,
+      /** Every channel page. */
+      channel: channelPagePrefsSchema,
     })
     .default({
       history: DEFAULT_SECTION_PAGE_PREFS,
@@ -268,6 +292,7 @@ export const appSettingsSchema = z.object({
       subscriptions: DEFAULT_FEED_PAGE_PREFS,
       favorites: DEFAULT_FEED_PAGE_PREFS,
       tags: DEFAULT_FEED_PAGE_PREFS,
+      channel: DEFAULT_CHANNEL_PAGE_PREFS,
     }),
 });
 
@@ -319,6 +344,7 @@ const defaultSettings: AppSettings = {
     subscriptions: DEFAULT_FEED_PAGE_PREFS,
     favorites: DEFAULT_FEED_PAGE_PREFS,
     tags: DEFAULT_FEED_PAGE_PREFS,
+    channel: DEFAULT_CHANNEL_PAGE_PREFS,
   },
 };
 

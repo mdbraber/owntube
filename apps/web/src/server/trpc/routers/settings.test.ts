@@ -112,6 +112,8 @@ describe("settingsRouter", () => {
       hideShorts: false,
     });
     expect(updated.sectionPrefs.subscriptions.hideShorts).toBeUndefined();
+    // Channel pages keep ignored videos (dimmed) unless told otherwise.
+    expect(updated.sectionPrefs.channel.hideIgnored).toBe(false);
 
     sqlite.close();
   });
