@@ -18,6 +18,13 @@
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-video",
+        {
+          "supportsBackgroundPlayback": true,
+          "supportsPictureInPicture": true
+        }
+      ],
       ["expo-status-bar"],
       [
         "expo-build-properties",
@@ -28,7 +35,9 @@
         }
       ],
       "./plugins/with-widget",
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-secure-store",
+      "expo-image"
     ]
   }
 }

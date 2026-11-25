@@ -32,6 +32,7 @@ import {
   toProxiedOrDirectVariants,
 } from "@/lib/invidious-proxy";
 import { getMediaOrigin } from "@/lib/media-origin";
+import { isNativeAppUserAgent } from "@/lib/native-app";
 import { buildWatchPlayback } from "@/lib/pick-playback";
 import { scrubPreviewStreamFromDetail } from "@/lib/scrub-preview-stream";
 import { sponsorBlockPrefsFromAppSettings } from "@/lib/sponsorblock-prefs";
@@ -407,6 +408,8 @@ export default async function WatchPage({ searchParams }: WatchPageProps) {
                 <WatchPlayerMount
                   key={detail.videoId}
                   isAuthed={isAuthed}
+                  nativeApp={isNativeAppUserAgent(h.get("user-agent"))}
+                  channelName={detail.channelName}
                   videoId={detail.videoId}
                   payload={videoPayload}
                   captions={videoCaptions}

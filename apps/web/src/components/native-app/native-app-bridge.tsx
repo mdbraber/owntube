@@ -1,8 +1,13 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useEffect } from "react";
-import { postToNativeApp } from "@/lib/native-app";
+import { useEffect, useRef } from "react";
+import {
+  NATIVE_APP_COMMAND_EVENT,
+  parseNativeAppCommand,
+  postToNativeApp,
+} from "@/lib/native-app";
+import { trpc } from "@/trpc/react";
 
 const QUEUE_KEY = "ot:watch-queue";
 
@@ -76,5 +81,45 @@ export function NativeAppBridge() {
     };
   }, []);
 
+  useNativeAppSession();
+
   return null;
+}
+
+/**
+ * The app's own API session follows the page's sign-in: the page reports who
+ * is signed in, and approves the device pairing the app starts to get a token
+ * for that account (see apps/ios/src/lib/session.ts).
+ */
+function useNativeAppSession() {
+  const authed = trpc.auth.session.useQuery().data?.authed;
+  const me = trpc.auth.me.useQuery(undefined, { enabled: authed === true });
+  const approve = trpc.auth.approveDevicePairing.useMutation();
+  const approveRef = useRef(approve.mutateAsync);
+  approveRef.current = approve.mutateAsync;
+
+  const userId = authed === false ? null : (me.data?.id ?? undefined);
+  useEffect(() => {
+    if (userId !== undefined) postToNativeApp({ type: "session", userId });
+  }, [userId]);
+
+  useEffect(() => {
+    const onCommand = (event: Event) => {
+      const command = parseNativeAppCommand((event as CustomEvent).detail);
+      if (command?.type !== "approvePairing") return;
+      const { userCode } = command;
+      approveRef
+        .current({ userCode })
+        .then(
+          (result) => result.status === "approved",
+          () => false,
+        )
+        .then((ok) =>
+          postToNativeApp({ type: "pairingApproved", userCode, ok }),
+        );
+    };
+    window.addEventListener(NATIVE_APP_COMMAND_EVENT, onCommand);
+    return () =>
+      window.removeEventListener(NATIVE_APP_COMMAND_EVENT, onCommand);
+  }, []);
 }

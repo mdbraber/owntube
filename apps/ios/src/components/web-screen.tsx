@@ -1,5 +1,7 @@
 import {
+  type NativeAppCommand,
   type NativeAppMessage,
+  nativeAppCommandScript,
   parseNativeAppMessage,
 } from "@web/lib/native-app";
 import { Stack } from "expo-router";
@@ -21,6 +23,8 @@ import type {
   WebViewNavigation,
 } from "react-native-webview/lib/WebViewTypes";
 import { SERVER_ORIGIN, USER_AGENT_TOKEN, webUrl } from "@/lib/config";
+import { onPairingApproved, syncSession } from "@/lib/session";
+import { playVideo } from "@/player/store";
 import { setWatchQueue } from "../../modules/widget-bridge";
 
 /**
@@ -100,6 +104,17 @@ export function WebScreen({ path, title, nonce }: Props) {
         break;
       case "queue":
         setWatchQueue(message.raw);
+        break;
+      case "play":
+        playVideo(message.video);
+        break;
+      case "session":
+        void syncSession(message.userId, (command: NativeAppCommand) =>
+          ref.current?.injectJavaScript(nativeAppCommandScript(command)),
+        ).catch(() => {});
+        break;
+      case "pairingApproved":
+        onPairingApproved(message.userCode, message.ok);
         break;
     }
   }, []);

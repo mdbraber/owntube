@@ -38,6 +38,25 @@ toolchain and patterns with `apps/tv`.
   - YouTube URLs
 
   YouTube-shaped paths are canonicalised by the web middleware.
+- **Native player** (`src/player`, `app/player.tsx`): inside the app, the web
+  watch page doesn't mount its player. It sends the video to the app
+  (`play` message) and shows the poster in its place; tapping the poster opens
+  the player again. The app plays it with AVPlayer (expo-video) and Apple's own
+  controls, in a sheet over the tabs. It starts with the server's HLS
+  (`/hls/<id>/master.m3u8`) and falls back to what the web picks for Safari on
+  iPhone (`buildWatchPlayback`). Playback continues:
+  - in the mini player, the tab bar's bottom accessory, when the sheet is
+    closed;
+  - in Picture-in-Picture;
+  - in the background, with Now Playing on the lock screen.
+
+  Progress goes to history every 20 s and when the app leaves the
+  foreground, as the TV app does. The resume position comes from the page.
+- **App session** (`src/lib/session.ts`): native API calls use a device token,
+  as the TV app does. A page reports who is signed in (`session` message). If
+  the app has no token for that account, it starts a device pairing and the
+  page approves it with its own sign-in (`approvePairing` command, sent the
+  other way). Signing out of the web drops the token.
 - **Widget** (`targets/widget`, `plugins/with-widget.js`): "Continue watching"
   from the queue. The app's `widget-bridge` module writes the queue to the App
   Group `group.<bundle id>` and reloads the widget. Built the same way as the
@@ -75,9 +94,6 @@ pnpm --filter web export:icons   # from the repo root
 
 ## Next steps
 
-1. **Native player**: `expo-video` (AVPlayer) for reliable background audio,
-   Now Playing / lock screen controls, PiP and AirPlay. The web page hands
-   playback over through the bridge. This needs the device-token sign-in the
-   TV app uses, so native code can call the API.
+1. Up next in the player: queue, playlist and autoplay next, as the TV has.
 2. Home-screen quick actions (`expo-quick-actions`), native settings.
 3. Push notifications for new uploads (needs a sender on the server).

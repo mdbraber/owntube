@@ -1,12 +1,101 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { usePlayerContext } from "@/components/player/player-context";
 import type { VideoPlayerProps } from "@/components/player/video-player";
 import { useWatchCinema } from "@/components/watch/watch-cinema-context";
+import { postToNativeApp } from "@/lib/native-app";
 import { cn } from "@/lib/utils";
 
-type WatchPlayerMountProps = VideoPlayerProps & { isAuthed: boolean };
+type WatchPlayerMountProps = VideoPlayerProps & {
+  isAuthed: boolean;
+  /** Inside the iOS app: the native player plays, not the web one. */
+  nativeApp?: boolean;
+  /** For the native player's Now Playing info. */
+  channelName?: string;
+};
+
+/**
+ * Inside the iOS app, the native player (AVPlayer: Picture-in-Picture,
+ * background audio, lock screen controls) plays the video. The page asks for
+ * it on arrival and leaves the poster in the player's place; tapping the
+ * poster opens the player again.
+ */
+function NativeAppPlayerSlot({
+  videoId,
+  title,
+  channelName,
+  poster,
+  startAtSeconds,
+  durationSeconds,
+  isLive,
+  autoplayOnWatch,
+}: Pick<
+  WatchPlayerMountProps,
+  | "videoId"
+  | "title"
+  | "channelName"
+  | "poster"
+  | "startAtSeconds"
+  | "durationSeconds"
+  | "isLive"
+  | "autoplayOnWatch"
+>) {
+  const play = useCallback(
+    (autoplay: boolean) =>
+      postToNativeApp({
+        type: "play",
+        video: {
+          videoId,
+          title,
+          channelName,
+          poster,
+          startSeconds: startAtSeconds,
+          durationSeconds,
+          isLive,
+          autoplay,
+        },
+      }),
+    [
+      videoId,
+      title,
+      channelName,
+      poster,
+      startAtSeconds,
+      durationSeconds,
+      isLive,
+    ],
+  );
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once per video; the other props describe the same video.
+  useEffect(() => {
+    play(autoplayOnWatch ?? true);
+  }, [videoId]);
+
+  return (
+    <button
+      type="button"
+      onClick={() => play(true)}
+      aria-label={`Play ${title}`}
+      className="relative mx-[-16px] block aspect-video w-[calc(100%_+_2rem)] overflow-hidden bg-black bg-contain bg-center bg-no-repeat sm:mx-0 sm:w-full sm:rounded-[var(--radius-card)]"
+      style={poster ? { backgroundImage: `url(${poster})` } : undefined}
+    >
+      <span className="absolute inset-0 flex items-center justify-center bg-black/25">
+        <svg
+          width="56"
+          height="56"
+          viewBox="0 0 56 56"
+          aria-hidden
+          className="drop-shadow-lg"
+        >
+          <title>Play</title>
+          <circle cx="28" cy="28" r="28" fill="rgb(0 0 0 / 0.55)" />
+          <path d="M22 17.5v21l17-10.5z" fill="white" />
+        </svg>
+      </span>
+    </button>
+  );
+}
 
 /**
  * Watch-page player anchor. Instead of rendering a <VideoPlayer> here (which
@@ -15,9 +104,21 @@ type WatchPlayerMountProps = VideoPlayerProps & { isAuthed: boolean };
  * slot mirrors the player's sizing (incl. cinema) so the overlay lines up.
  */
 export function WatchPlayerMount({
-  isAuthed,
-  ...playerProps
+  nativeApp = false,
+  ...props
 }: WatchPlayerMountProps) {
+  return nativeApp ? (
+    <NativeAppPlayerSlot {...props} />
+  ) : (
+    <WebPlayerMount {...props} />
+  );
+}
+
+function WebPlayerMount({
+  isAuthed,
+  channelName: _channelName,
+  ...playerProps
+}: Omit<WatchPlayerMountProps, "nativeApp">) {
   const { setActive, registerSlot } = usePlayerContext();
   const cinema = useWatchCinema();
   const slotRef = useRef<HTMLDivElement | null>(null);
