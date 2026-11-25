@@ -215,7 +215,7 @@ const CONFIRM_PAGE = "__confirm";
 
 const styles = StyleSheet.create({
   scrim: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: "flex-end",
     backgroundColor: colors.overlay,
   },

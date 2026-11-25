@@ -152,7 +152,7 @@ export function CarouselFeed({
       data={rows}
       keyExtractor={shelfKey}
       ListHeaderComponent={
-        header ? <View style={styles.header}>{header}</View> : null
+        header ? <View style={styles.header}>{header}</View> : undefined
       }
       renderItem={renderItem}
       ItemSeparatorComponent={Gap}
@@ -172,7 +172,7 @@ export function CarouselFeed({
             size="small"
             color={colors.brand}
           />
-        ) : null
+        ) : undefined
       }
     />
   );

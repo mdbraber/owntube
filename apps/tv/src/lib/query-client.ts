@@ -5,7 +5,7 @@ import type {
   Persister,
 } from "@tanstack/react-query-persist-client";
 import { isTransientNetworkError } from "@web/lib/query-retry";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 
 /**
  * The same query configuration the web app uses (see apps/web/src/app/

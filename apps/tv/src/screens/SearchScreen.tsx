@@ -2,11 +2,9 @@ import { Feather } from "@expo/vector-icons";
 import type { UnifiedVideo } from "@web/server/services/proxy.types";
 import {
   ExpoSpeechRecognitionModule,
-  isRecognitionAvailable,
   useSpeechRecognitionEvent,
 } from "expo-speech-recognition";
 import {
-  type ComponentRef,
   forwardRef,
   useCallback,
   useEffect,
@@ -19,8 +17,8 @@ import {
   Pressable,
   StyleSheet,
   Text,
-  TVFocusGuideView,
   View,
+  type ViewInstance,
 } from "react-native";
 import { CarouselFeed } from "@/components/CarouselFeed";
 import { type ChannelTileData, ChannelTiles } from "@/components/ChannelTiles";
@@ -31,6 +29,7 @@ import { loadRecentSearches, rememberSearch } from "@/lib/recent-searches";
 import { useActiveBackHandler } from "@/lib/screen-active";
 import { trpcClient } from "@/lib/trpc";
 import { trpc } from "@/lib/trpc-react";
+import { type TVFocusGuide, TVFocusGuideView } from "@/lib/tv-focus";
 import { useInfiniteFeed } from "@/lib/use-infinite-feed";
 import { colors, focus, fontSize, spacing } from "@/theme";
 
@@ -61,7 +60,7 @@ export function SearchScreen({
   // hides rather than offering a control that can only fail.
   const [micAvailable] = useState(() => {
     try {
-      return isRecognitionAvailable();
+      return ExpoSpeechRecognitionModule.isRecognitionAvailable();
     } catch {
       return false;
     }
@@ -213,8 +212,8 @@ export function SearchScreen({
 
   // Back from the results returns to the query (and its keyboard) first;
   // from there it leaves as before.
-  const barRef = useRef<ComponentRef<typeof TVFocusGuideView>>(null);
-  const [queryBox, setQueryBox] = useState<View | null>(null);
+  const barRef = useRef<TVFocusGuide>(null);
+  const [queryBox, setQueryBox] = useState<ViewInstance | null>(null);
   useActiveBackHandler(() => {
     if (keyboardOpen) return false;
     openKeyboard();
@@ -336,7 +335,7 @@ export function SearchScreen({
 
 /** The query as typed, in a pill; focusing it brings the keyboard back. */
 const QueryPill = forwardRef<
-  View,
+  ViewInstance,
   { text: string; onPress: () => void; onFocusChange: (f: boolean) => void }
 >(function QueryPill({ text, onPress, onFocusChange }, ref) {
   const [focused, setFocused] = useState(false);

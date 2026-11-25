@@ -82,7 +82,7 @@ const THUMB_WIDTH = 256;
 
 const styles = StyleSheet.create({
   scrim: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: colors.overlay,
     justifyContent: "center",
     alignItems: "center",

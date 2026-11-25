@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Text,
   type View,
+  type ViewInstance,
   type ViewStyle,
 } from "react-native";
 import { colors, focus, fontSize, radius, spacing } from "@/theme";
@@ -30,7 +31,7 @@ type Props = {
   onFocusChange?: (focused: boolean) => void;
 };
 
-export const FocusButton = forwardRef<View, Props>(function FocusButton(
+export const FocusButton = forwardRef<ViewInstance, Props>(function FocusButton(
   {
     label,
     onPress,

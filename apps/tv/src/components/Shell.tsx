@@ -1,6 +1,5 @@
 import type { UnifiedVideo } from "@web/server/services/proxy.types";
 import {
-  type ComponentRef,
   type ReactNode,
   useCallback,
   useEffect,
@@ -15,7 +14,6 @@ import {
   Linking,
   type StyleProp,
   StyleSheet,
-  TVFocusGuideView,
   View,
   type ViewStyle,
 } from "react-native";
@@ -34,6 +32,7 @@ import { SidebarFocusContext } from "@/lib/sidebar-focus";
 import { loadSidebarPrefs } from "@/lib/sidebar-prefs";
 import { trpcClient } from "@/lib/trpc";
 import { trpc } from "@/lib/trpc-react";
+import { type TVFocusGuide, TVFocusGuideView } from "@/lib/tv-focus";
 import { useTvRemoteReceiver } from "@/lib/tv-remote";
 import { useResumeLookup, useWatchProgressRefresh } from "@/lib/watch-progress";
 import { ChannelScreen } from "@/screens/ChannelScreen";
@@ -346,7 +345,8 @@ export function Shell({
   };
   // Once: the launch URL must not be handled again on a re-render.
   useEffect(() => {
-    const handle = (url: string | null) => handleLinkRef.current(url);
+    const handle = (url: string | null | undefined) =>
+      handleLinkRef.current(url ?? null);
     Linking.getInitialURL()
       .then(handle)
       .catch(() => {});
@@ -568,7 +568,7 @@ function ScreenLayer({
   style?: StyleProp<ViewStyle>;
   children: ReactNode;
 }) {
-  const guideRef = useRef<ComponentRef<typeof TVFocusGuideView>>(null);
+  const guideRef = useRef<TVFocusGuide>(null);
 
   // Showing a layer again doesn't move Android's focus by itself. A tick
   // later, once the native display change has landed, the guide redirects to
@@ -603,7 +603,7 @@ const styles = StyleSheet.create({
   hidden: { display: "none" },
   // The player covers the sidebar too, so it sits above the base.
   watchLayer: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 20,
     backgroundColor: "#000",
   },

@@ -353,7 +353,7 @@ export function SubscriptionsScreen({
               ListEmptyComponent={
                 channelsError ? (
                   <Text style={styles.paneError}>{channelsError}</Text>
-                ) : null
+                ) : undefined
               }
             />
           ) : (

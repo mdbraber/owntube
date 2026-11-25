@@ -80,6 +80,7 @@ import {
 } from "@/lib/sponsorblock-labels";
 import { trpcClient } from "@/lib/trpc";
 import { trpc } from "@/lib/trpc-react";
+import type { TVView } from "@/lib/tv-focus";
 import { colors, focus, fontSize, monoFont, radius, spacing } from "@/theme";
 import {
   getPlayingVideoFormat,
@@ -416,7 +417,7 @@ export function WatchScreen({
    * press would also jump focus into the control row. Trapping it means the bar
    * keeps focus and left/right can only scrub.
    */
-  const scrubberRef = useRef<View>(null);
+  const scrubberRef = useRef<TVView>(null);
   const [scrubberHandle, setScrubberHandle] = useState<number | null>(null);
   // Animated between the cropped peek and the row's measured natural height.
   const relatedHeight = useRef(new Animated.Value(RELATED_PEEK_HEIGHT)).current;
@@ -1687,7 +1688,7 @@ export function WatchScreen({
               subtitleTracks,
               defaultCaptionTrack(subtitleTracks),
             ).map<MenuItem>((track) => ({
-              key: track.id,
+              key: track.id ?? subtitleLabel(track),
               label: subtitleLabel(track),
               selected: subtitleTrack?.id === track.id,
               onPress: () => chooseSubtitles(track),
@@ -1933,7 +1934,9 @@ export function WatchScreen({
                 ref={scrubberRef}
                 onLayout={() => {
                   if (scrubberHandle === null) {
-                    setScrubberHandle(findNodeHandle(scrubberRef.current));
+                    setScrubberHandle(
+                      findNodeHandle(scrubberRef.current) ?? null,
+                    );
                   }
                 }}
                 nextFocusLeft={scrubberHandle ?? undefined}
@@ -2370,7 +2373,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   bufferingOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: "center",
     justifyContent: "center",
   },

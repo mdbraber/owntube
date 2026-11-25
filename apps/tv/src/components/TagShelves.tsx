@@ -51,7 +51,7 @@ export function TagShelves({ tags, onSelect, header }: Props) {
       data={tags}
       keyExtractor={(item) => item.tag}
       ListHeaderComponent={
-        header ? <View style={styles.header}>{header}</View> : null
+        header ? <View style={styles.header}>{header}</View> : undefined
       }
       renderItem={renderItem}
       contentContainerStyle={styles.list}

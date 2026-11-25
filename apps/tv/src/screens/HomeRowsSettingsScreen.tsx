@@ -16,6 +16,7 @@ import { errorMessage } from "@/lib/error-message";
 import { queryClient } from "@/lib/query-client";
 import { trpcClient } from "@/lib/trpc";
 import { trpc } from "@/lib/trpc-react";
+import type { TVView } from "@/lib/tv-focus";
 import { colors, focus, fontSize, radius, spacing } from "@/theme";
 
 const ROW_HEIGHT = 44;
@@ -259,13 +260,13 @@ function BlockRow({
   onPress: () => void;
 }) {
   const [focused, setFocused] = useState(false);
-  const rowRef = useRef<View>(null);
+  const rowRef = useRef<TVView>(null);
   const [handle, setHandle] = useState<number | null>(null);
   const tint = hidden ? colors.mutedForeground : colors.foreground;
 
   // Focus follows a held row through a reorder (see SidebarSettingsScreen).
   useEffect(() => {
-    if (grabbed && !focused) rowRef.current?.requestTVFocus();
+    if (grabbed && !focused) rowRef.current?.requestTVFocus?.();
   }, [grabbed, focused]);
 
   return (
@@ -273,7 +274,7 @@ function BlockRow({
       ref={rowRef}
       hasTVPreferredFocus={hasTVPreferredFocus}
       onLayout={() => {
-        if (handle === null) setHandle(findNodeHandle(rowRef.current));
+        if (handle === null) setHandle(findNodeHandle(rowRef.current) ?? null);
       }}
       nextFocusUp={grabbed ? (handle ?? undefined) : undefined}
       nextFocusDown={grabbed ? (handle ?? undefined) : undefined}

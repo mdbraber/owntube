@@ -5,10 +5,12 @@ import {
   findNodeHandle,
   Pressable,
   ScrollView,
+  type ScrollViewInstance,
   StyleSheet,
   Text,
   TVFocusGuideView,
   View,
+  type ViewInstance,
 } from "react-native";
 import { channelInitial } from "@/lib/format";
 import { colors, focus, fontSize, radius, spacing } from "@/theme";
@@ -94,7 +96,7 @@ export function Sidebar({
   const [expanded, setExpanded] = useState(false);
   const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
   const [navHeight, setNavHeight] = useState(0);
   // Settings sits at the rail's foot, apart from the scrolling sections, as in
   // the YouTube app.
@@ -102,9 +104,9 @@ export function Sidebar({
   const listed = visible.filter((s) => s.key !== "settings");
   const activeIndex = listed.findIndex((s) => s.key === active);
   // State, not a ref: the guide's destinations must follow the active row.
-  const [activeRow, setActiveRow] = useState<View | null>(null);
+  const [activeRow, setActiveRow] = useState<ViewInstance | null>(null);
   useEffect(() => {
-    onActiveRowHandle?.(activeRow ? findNodeHandle(activeRow) : null);
+    onActiveRowHandle?.(activeRow ? (findNodeHandle(activeRow) ?? null) : null);
   }, [activeRow, onActiveRowHandle]);
 
   // Collapsing hands the rail back to the page, so put the active section back
@@ -265,7 +267,7 @@ function ProfileRow({
 }
 
 const NavRow = forwardRef<
-  View,
+  ViewInstance,
   {
     icon: FeatherName;
     label: string;

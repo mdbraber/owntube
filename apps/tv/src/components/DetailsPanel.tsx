@@ -183,7 +183,7 @@ function Block({ children }: { children: React.ReactNode }) {
 
 const styles = StyleSheet.create({
   scrim: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: "flex-end",
     backgroundColor: colors.overlay,
   },

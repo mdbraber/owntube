@@ -9,7 +9,7 @@
  *
  * React Native takes a Fresco config only through MainReactPackage's
  * MainPackageConfig, which Expo's generated MainApplication doesn't pass, so
- * this rewrites its `PackageList(this)` to hand one in. The config otherwise
+ * this rewrites its `PackageList(this)` call to hand one in. The config otherwise
  * matches FrescoModule's default (OkHttp fetcher, automatic downsampling),
  * minus the cookie forwarding thumbnails don't need.
  */
@@ -18,10 +18,12 @@ const {
   createRunOncePlugin,
 } = require("expo/config-plugins");
 
-const ORIGINAL = "val packages = PackageList(this).packages";
+// Expo 52 assigned `val packages = PackageList(this).packages`; Expo 58 passes
+// `PackageList(this).packages.apply { … }` straight to the ReactHost factory.
+// Swapping the call itself covers both.
+const ORIGINAL = "PackageList(this).packages";
 
-const REPLACEMENT = `// Fresco decodes as RGB_565 (see the with-image-memory plugin).
-            val packages = PackageList(
+const REPLACEMENT = `PackageList( // Fresco decodes as RGB_565 (see the with-image-memory plugin).
               this,
               com.facebook.react.shell.MainPackageConfig(
                 com.facebook.imagepipeline.backends.okhttp3.OkHttpImagePipelineConfigFactory
