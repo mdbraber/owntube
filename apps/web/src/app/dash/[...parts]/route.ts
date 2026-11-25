@@ -16,6 +16,7 @@ import {
   fetchCompanionLiveManifest,
   initSegmentFromSelfInitializing,
   LIVE_INIT_PATH,
+  mediaPartOfSelfInitializing,
   newestLiveSegmentPath,
 } from "@/server/services/dash/live-manifest";
 import {
@@ -236,6 +237,11 @@ async function serveLiveSegment(
     body = await upstream.arrayBuffer();
   } catch {
     return new Response("live segment read failed", { status: 502 });
+  }
+  // `?hls`: for the live HLS playlists (hls/live.ts), the media alone; their
+  // init comes from EXT-X-MAP, and AVPlayer rejects a repeated `moov`.
+  if (new URL(request.url).searchParams.has("hls")) {
+    body = mediaPartOfSelfInitializing(new Uint8Array(body)).buffer;
   }
   return new Response(body, {
     headers: {

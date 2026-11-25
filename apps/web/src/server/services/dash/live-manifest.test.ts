@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   initSegmentFromSelfInitializing,
+  mediaPartOfSelfInitializing,
   newestLiveSegmentPath,
   rewriteLiveManifestBaseUrls,
   segmentListToTemplate,
@@ -163,6 +164,45 @@ describe("newestLiveSegmentPath", () => {
     const mpd = liveMpd({ segments: 3, baseUrls: ["live/c/0/", "live/c/5/"] });
     expect(newestLiveSegmentPath(mpd, "5")).toBe("sq/102/lmt/1");
     expect(newestLiveSegmentPath(mpd, "1")).toBeNull();
+  });
+});
+
+describe("mediaPartOfSelfInitializing", () => {
+  const box = (type: string, payload = 0) => {
+    const b = new Uint8Array(8 + payload);
+    new DataView(b.buffer).setUint32(0, b.length);
+    b.set(new TextEncoder().encode(type), 4);
+    return b;
+  };
+  const concat = (...parts: Uint8Array[]) => {
+    const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+    let o = 0;
+    for (const p of parts) {
+      out.set(p, o);
+      o += p.length;
+    }
+    return out;
+  };
+
+  it("drops the repeated ftyp, moov and emsg before the moof", () => {
+    const media = concat(box("moof", 30), box("mdat", 500));
+    const segment = concat(
+      box("ftyp", 20),
+      box("moov", 100),
+      box("emsg", 10),
+      media,
+    );
+    expect(mediaPartOfSelfInitializing(segment)).toEqual(media);
+  });
+
+  it("leaves a plain media segment as it is", () => {
+    const media = concat(box("moof", 30), box("mdat", 50));
+    expect(mediaPartOfSelfInitializing(media)).toEqual(media);
+  });
+
+  it("returns the bytes unchanged when no moof follows", () => {
+    const odd = concat(box("ftyp", 20), box("moov", 40));
+    expect(mediaPartOfSelfInitializing(odd)).toEqual(odd);
   });
 });
 

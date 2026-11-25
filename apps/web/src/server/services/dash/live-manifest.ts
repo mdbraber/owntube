@@ -362,3 +362,25 @@ export function initSegmentFromSelfInitializing(
   }
   return sawMoov ? bytes.slice(0, end) : null;
 }
+
+/**
+ * A self-initializing segment's media alone: from its first `moof` (or `styp`)
+ * on, without the leading `ftyp`, `moov` and `emsg`. HLS wants fMP4 media
+ * segments to be just that, with the init in `EXT-X-MAP`; AVPlayer fails a
+ * stream whose segments repeat the `moov` (see hls/live.ts). The bytes as
+ * they are when no `moof` follows.
+ */
+export function mediaPartOfSelfInitializing(
+  bytes: Uint8Array,
+): Uint8Array<ArrayBuffer> {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let offset = 0;
+  while (offset + 8 <= bytes.byteLength) {
+    const size = view.getUint32(offset);
+    const type = String.fromCharCode(...bytes.subarray(offset + 4, offset + 8));
+    if (type === "moof" || type === "styp") return bytes.slice(offset);
+    if (size < 8 || offset + size > bytes.byteLength) break;
+    offset += size;
+  }
+  return bytes.slice();
+}
