@@ -320,3 +320,30 @@ export function CastAudioNotice({ adapter }: { adapter: PlayerAdapter }) {
     </div>
   );
 }
+
+/**
+ * Over the paused, on-screen video while it plays on a TV. Safari draws its
+ * own "playing on AirPlay" screen only on the element that casts, and for VOD
+ * that is the hidden cast element (see use-cast-handoff), so without this the
+ * player would just show its last frame. Under the controls, which keep
+ * driving the TV. The receiver's name isn't exposed to the page.
+ */
+export function CastingScreen({ adapter }: { adapter: PlayerAdapter }) {
+  if (!adapter.castActive) return null;
+  const flavor = castFlavor();
+  return (
+    <div
+      role="status"
+      className="pointer-events-none absolute inset-0 z-[5] grid place-content-center justify-items-center gap-3 bg-black text-center text-sm text-white/70"
+    >
+      <SystemCastIcon
+        flavor={flavor}
+        connected
+        className="h-12 w-12 text-white/80"
+      />
+      <span>
+        {flavor === "airplay" ? "Playing on AirPlay" : "Playing on a TV"}
+      </span>
+    </div>
+  );
+}
