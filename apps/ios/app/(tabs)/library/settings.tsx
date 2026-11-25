@@ -20,7 +20,7 @@ import {
 import Constants from "expo-constants";
 import { router, Stack } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
-import { Alert } from "react-native";
+import { Alert, PlatformColor, StyleSheet, View } from "react-native";
 import {
   BUILT_IN_URL,
   changeServer,
@@ -110,52 +110,13 @@ export default function SettingsScreen() {
   return (
     <>
       <Stack.Screen options={{ title: "Settings" }} />
-      <Host style={{ flex: 1 }}>
-        <Form>
-          <Section
-            title="Server"
-            footer={
-              <Text
-                modifiers={[
-                  foregroundStyle({ type: "hierarchical", style: "secondary" }),
-                ]}
-              >
-                The OwnTube server this app opens: the address you use in a
-                browser.
-              </Text>
-            }
-          >
-            <LabeledContent label="Address">
-              <Text>{SERVER_URL.replace(/^https?:\/\//, "")}</Text>
-            </LabeledContent>
-            <TextField
-              placeholder="Another server, e.g. owntube.example.org"
-              onTextChange={setAddress}
-              modifiers={[
-                keyboardType("url"),
-                textInputAutocapitalization("never"),
-                autocorrectionDisabled(true),
-                submitLabel("go"),
-                onSubmit(() => void connect()),
-              ]}
-            />
-            <Button
-              label={checking ? "Checking…" : "Switch server"}
-              onPress={() => void connect()}
-              modifiers={[disabled(checking || !address.trim())]}
-            />
-            {SERVER_URL !== BUILT_IN_URL ? (
-              <Button
-                label="Use the app's own server"
-                onPress={() => void changeServer(null, forgetSession)}
-              />
-            ) : null}
-          </Section>
-
-          <Section
-            title="Playback"
-            footer={
-              account === null ? (
+      {/* iPad: a readable column on the grouped background, as Settings. */}
+      <View style={readable.page}>
+        <Host style={readable.column}>
+          <Form>
+            <Section
+              title="Server"
+              footer={
                 <Text
                   modifiers={[
                     foregroundStyle({
@@ -164,45 +125,99 @@ export default function SettingsScreen() {
                     }),
                   ]}
                 >
-                  Sign in to change playback settings.
+                  The OwnTube server this app opens: the address you use in a
+                  browser.
                 </Text>
-              ) : undefined
-            }
-          >
-            <Toggle
-              label="Autoplay next"
-              systemImage="forward.end"
-              isOn={account?.autoplayNext ?? true}
-              onIsOnChange={(on) => void setAutoplayNext(on)}
-              modifiers={[disabled(!account)]}
-            />
-          </Section>
-
-          <Section title="Account">
-            {account ? (
-              <LabeledContent label="Signed in as">
-                <Text>{account.email}</Text>
+              }
+            >
+              <LabeledContent label="Address">
+                <Text>{SERVER_URL.replace(/^https?:\/\//, "")}</Text>
               </LabeledContent>
-            ) : (
-              <Button
-                label="Sign in"
-                onPress={() => openWeb("/login", "Sign in")}
+              <TextField
+                placeholder="Another server, e.g. owntube.example.org"
+                onTextChange={setAddress}
+                modifiers={[
+                  keyboardType("url"),
+                  textInputAutocapitalization("never"),
+                  autocorrectionDisabled(true),
+                  submitLabel("go"),
+                  onSubmit(() => void connect()),
+                ]}
               />
-            )}
-            <Button
-              label="All settings"
-              systemImage="gearshape"
-              onPress={() => openWeb("/settings", "All settings")}
-            />
-          </Section>
+              <Button
+                label={checking ? "Checking…" : "Switch server"}
+                onPress={() => void connect()}
+                modifiers={[disabled(checking || !address.trim())]}
+              />
+              {SERVER_URL !== BUILT_IN_URL ? (
+                <Button
+                  label="Use the app's own server"
+                  onPress={() => void changeServer(null, forgetSession)}
+                />
+              ) : null}
+            </Section>
 
-          <Section title="About">
-            <LabeledContent label="Version">
-              <Text>{Constants.expoConfig?.version ?? "–"}</Text>
-            </LabeledContent>
-          </Section>
-        </Form>
-      </Host>
+            <Section
+              title="Playback"
+              footer={
+                account === null ? (
+                  <Text
+                    modifiers={[
+                      foregroundStyle({
+                        type: "hierarchical",
+                        style: "secondary",
+                      }),
+                    ]}
+                  >
+                    Sign in to change playback settings.
+                  </Text>
+                ) : undefined
+              }
+            >
+              <Toggle
+                label="Autoplay next"
+                systemImage="forward.end"
+                isOn={account?.autoplayNext ?? true}
+                onIsOnChange={(on) => void setAutoplayNext(on)}
+                modifiers={[disabled(!account)]}
+              />
+            </Section>
+
+            <Section title="Account">
+              {account ? (
+                <LabeledContent label="Signed in as">
+                  <Text>{account.email}</Text>
+                </LabeledContent>
+              ) : (
+                <Button
+                  label="Sign in"
+                  onPress={() => openWeb("/login", "Sign in")}
+                />
+              )}
+              <Button
+                label="All settings"
+                systemImage="gearshape"
+                onPress={() => openWeb("/settings", "All settings")}
+              />
+            </Section>
+
+            <Section title="About">
+              <LabeledContent label="Version">
+                <Text>{Constants.expoConfig?.version ?? "–"}</Text>
+              </LabeledContent>
+            </Section>
+          </Form>
+        </Host>
+      </View>
     </>
   );
 }
+
+const readable = StyleSheet.create({
+  page: {
+    flex: 1,
+    alignItems: "center",
+    backgroundColor: PlatformColor("systemGroupedBackground"),
+  },
+  column: { flex: 1, width: "100%", maxWidth: 720 },
+});

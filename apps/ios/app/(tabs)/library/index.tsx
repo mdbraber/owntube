@@ -1,6 +1,7 @@
 import { Button, Host, Image, Label, List, Section } from "@expo/ui/swift-ui";
 import { foregroundStyle } from "@expo/ui/swift-ui/modifiers";
 import { router, Stack } from "expo-router";
+import { PlatformColor, StyleSheet, View } from "react-native";
 import type { SFSymbol } from "sf-symbols-typescript";
 import { ACCENT } from "@/lib/theme";
 
@@ -48,37 +49,52 @@ export default function LibraryScreen() {
   return (
     <>
       <Stack.Screen options={{ title: "Library", headerLargeTitle: true }} />
-      <Host style={{ flex: 1 }}>
-        <List>
-          {SECTIONS.map((section, index) => (
-            <Section key={section.title ?? index} title={section.title}>
-              {section.rows.map((row) => (
-                <Button
-                  key={row.title}
-                  // Settings-style rows: label text in the primary colour,
-                  // only the icon in the accent.
-                  modifiers={[
-                    foregroundStyle({ type: "hierarchical", style: "primary" }),
-                  ]}
-                  onPress={() =>
-                    row.route
-                      ? router.push(row.route)
-                      : router.push({
-                          pathname: "/library/page",
-                          params: { path: row.path, title: row.title },
-                        })
-                  }
-                >
-                  <Label
-                    title={row.title}
-                    icon={<Image systemName={row.icon} color={ACCENT} />}
-                  />
-                </Button>
-              ))}
-            </Section>
-          ))}
-        </List>
-      </Host>
+      {/* iPad: a readable column on the grouped background, as Settings. */}
+      <View style={readable.page}>
+        <Host style={readable.column}>
+          <List>
+            {SECTIONS.map((section, index) => (
+              <Section key={section.title ?? index} title={section.title}>
+                {section.rows.map((row) => (
+                  <Button
+                    key={row.title}
+                    // Settings-style rows: label text in the primary colour,
+                    // only the icon in the accent.
+                    modifiers={[
+                      foregroundStyle({
+                        type: "hierarchical",
+                        style: "primary",
+                      }),
+                    ]}
+                    onPress={() =>
+                      row.route
+                        ? router.push(row.route)
+                        : router.push({
+                            pathname: "/library/page",
+                            params: { path: row.path, title: row.title },
+                          })
+                    }
+                  >
+                    <Label
+                      title={row.title}
+                      icon={<Image systemName={row.icon} color={ACCENT} />}
+                    />
+                  </Button>
+                ))}
+              </Section>
+            ))}
+          </List>
+        </Host>
+      </View>
     </>
   );
 }
+
+const readable = StyleSheet.create({
+  page: {
+    flex: 1,
+    alignItems: "center",
+    backgroundColor: PlatformColor("systemGroupedBackground"),
+  },
+  column: { flex: 1, width: "100%", maxWidth: 720 },
+});

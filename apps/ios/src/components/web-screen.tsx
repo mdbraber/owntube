@@ -33,7 +33,12 @@ import type {
 } from "react-native-webview/lib/WebViewTypes";
 import { SERVER_ORIGIN, USER_AGENT_TOKEN, webUrl } from "@/lib/config";
 import { onPairingApproved, syncSession } from "@/lib/session";
-import { type OpenVideo, openVideo, playVideo } from "@/player/store";
+import {
+  type OpenVideo,
+  openVideo,
+  playVideo,
+  refreshUpNext,
+} from "@/player/store";
 import { setWatchQueue } from "../../modules/widget-bridge";
 
 /**
@@ -139,6 +144,7 @@ export function WebPageView({
         break;
       case "queue":
         setWatchQueue(message.raw);
+        refreshUpNext();
         break;
       case "play":
         handlers.current.onPlay(message.video);

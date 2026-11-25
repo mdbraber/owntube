@@ -8,7 +8,7 @@ import { useNowPlaying } from "@/player/store";
 
 /**
  * The tabs: a native tab bar (Liquid Glass on iOS 26+), each tab with
- * its own navigation stack. Search is the system search tab. While something
+ * its own navigation stack. On iPad it can turn into the sidebar. Search is the system search tab. While something
  * plays, the mini player sits above the tab bar (its bottom accessory).
  */
 export default function TabsLayout() {
@@ -18,7 +18,12 @@ export default function TabsLayout() {
     if (segments[0] === "(tabs)") setCurrentTab(segments[1]);
   }, [segments]);
   return (
-    <NativeTabs minimizeBehavior="never" tintColor={ACCENT}>
+    <NativeTabs
+      minimizeBehavior="never"
+      tintColor={ACCENT}
+      // iPad: the tab bar can become the iPadOS sidebar.
+      sidebarAdaptable
+    >
       {nowPlaying ? (
         <NativeTabs.BottomAccessory>
           <MiniPlayer />

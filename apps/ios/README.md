@@ -13,7 +13,9 @@ toolchain and patterns with `apps/tv`.
 ## How it fits together
 
 - **Native tabs** (`app/(tabs)/_layout.tsx`): Home, Subscriptions, Library and
-  the system Search tab, each with its own navigation stack.
+  the system Search tab, each with its own navigation stack. On iPad the tab
+  bar can become the iPadOS sidebar, and Library and Settings use a readable
+  column.
 - **Web pages** (`src/components/web-screen.tsx`): one WebView per screen,
   with a native navigation bar: the page's title, Back, and a menu with Share,
   Open in Safari and Reload. Links that leave the server open in a Safari
@@ -32,7 +34,17 @@ toolchain and patterns with `apps/tv`.
     over, and undone behind the new screen.
   - Each tab keeps its own stack, and tapping the current tab returns to its
     first screen.
-- **Player panel** (`app/player.tsx`, `src/player`), as in YouTube's app:
+- **Player panel** (`app/player.tsx`, `src/player`), as in YouTube's app.
+  Layouts:
+  - iPhone: video, the queue bar, then the page. Turning the phone sideways
+    shows only the video, edge to edge; the rest of the app stays portrait
+    (`src/lib/orientation.ts`). The full-screen button opens in landscape and
+    leaves when the phone turns back.
+  - iPad: the panel takes the whole screen. When it's wide, the video and its
+    page sit on the left (`panel=side`) and a native column on the right
+    shows the queue, then Up next.
+
+  How it behaves:
   - A video opens in one panel that slides up over what you were browsing,
     with nothing added to Back. The native video (AVPlayer via expo-video,
     Apple's own controls) is on top. Below it is the video's web page in
@@ -52,6 +64,10 @@ toolchain and patterns with `apps/tv`.
   - The panel's page reports the title, artwork and resume position (`play`
     message). Progress goes to history every 20 s and when the app leaves
     the foreground, as the TV app does.
+  - **Queue**: its own section, as YouTube's. On iPhone it's a bar under the
+    video ("Queue · 3 videos", the next one named) that opens into the whole
+    queue; on wide iPads it heads the right-hand column. It refreshes when
+    the page changes the queue.
   - At the end of a video the queue plays on, then related videos when the
     account's "Autoplay next" is on. Playing a queued video removes it from
     the queue.

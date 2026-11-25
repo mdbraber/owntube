@@ -351,6 +351,22 @@ export function playNext(
   );
 }
 
+let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * The queue changed (the page added or removed a video, or reordered it):
+ * reload Up next. Debounced, as every open page reports the change.
+ */
+export function refreshUpNext() {
+  const videoId = state?.video.videoId;
+  if (!videoId) return;
+  if (refreshTimer) clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(() => {
+    refreshTimer = null;
+    if (state?.video.videoId === videoId) void loadUpNext(videoId);
+  }, 400);
+}
+
 /**
  * Fills in Up next: the queue (signed in), then related videos. "Autoplay
  * next" comes from the account's settings (signed out: on, the web default).

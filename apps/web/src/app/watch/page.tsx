@@ -124,6 +124,10 @@ export default async function WatchPage({ searchParams }: WatchPageProps) {
   const session = await auth();
   const userId = session?.user?.id ? Number.parseInt(session.user.id, 10) : NaN;
   const h = await headers();
+  // The iOS app's player panel (lib/native-app.ts): the page below its native
+  // video. "side": a wide panel, whose native column shows Up next, so the
+  // page leaves out its own related videos.
+  const nativePanel = sp.panel === "1" || sp.panel === "side" ? sp.panel : null;
   const requestHost =
     h.get("x-forwarded-host")?.split(",")[0]?.trim() ?? h.get("host") ?? "";
   const appOrigin = getAppOriginFromRequestHeaders(h);
@@ -409,7 +413,7 @@ export default async function WatchPage({ searchParams }: WatchPageProps) {
                   key={detail.videoId}
                   isAuthed={isAuthed}
                   nativeApp={isNativeAppUserAgent(h.get("user-agent"))}
-                  nativePanel={sp.panel === "1"}
+                  nativePanel={nativePanel !== null}
                   channelName={detail.channelName}
                   videoId={detail.videoId}
                   payload={videoPayload}
@@ -585,17 +589,21 @@ export default async function WatchPage({ searchParams }: WatchPageProps) {
             </>
           }
           sidebar={
-            <>
-              {chaptersNode}
-              <h2 className="text-lg font-bold tracking-tight">
-                {sidebarFromFeedFallback
-                  ? "From your feed"
-                  : sidebarVideos.length > 0
-                    ? "Related"
-                    : "More to watch"}
-              </h2>
-              {relatedNode}
-            </>
+            nativePanel === "side" ? (
+              chaptersNode
+            ) : (
+              <>
+                {chaptersNode}
+                <h2 className="text-lg font-bold tracking-tight">
+                  {sidebarFromFeedFallback
+                    ? "From your feed"
+                    : sidebarVideos.length > 0
+                      ? "Related"
+                      : "More to watch"}
+                </h2>
+                {relatedNode}
+              </>
+            )
           }
         />
       </WatchCinemaProvider>

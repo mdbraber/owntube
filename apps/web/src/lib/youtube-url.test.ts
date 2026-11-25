@@ -153,6 +153,7 @@ describe("canonicalYoutubePath: required behaviour", () => {
     expect(redirectOf(`/watch?v=${ID}&si=x&panel=1`)).toBe(
       `/watch?v=${ID}&panel=1`,
     );
+    expect(redirectOf(`/watch?v=${ID}&panel=side`)).toBeNull();
     expect(redirectOf(`/watch?v=${ID}&panel=yes`)).toBe(`/watch?v=${ID}`);
   });
 

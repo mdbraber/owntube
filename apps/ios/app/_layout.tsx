@@ -2,6 +2,7 @@ import { Stack } from "expo-router";
 import { useEffect } from "react";
 import { AppState } from "react-native";
 import { useQuickActions } from "@/lib/home-screen-actions";
+import { isPhone, lockToPortrait } from "@/lib/orientation";
 import { flushProgress } from "@/player/store";
 
 /**
@@ -13,6 +14,8 @@ export const unstable_settings = { anchor: "(tabs)" };
 
 export default function RootLayout() {
   useQuickActions();
+  // iPhone browses in portrait; the player panel unlocks while it's open.
+  useEffect(lockToPortrait, []);
 
   useEffect(() => {
     // iOS may end the app any time after it leaves the foreground.
@@ -28,7 +31,9 @@ export default function RootLayout() {
       <Stack.Screen
         name="player"
         options={{
-          presentation: "modal",
+          // A sheet on iPhone (swipe it down); the whole screen on iPad, as
+          // YouTube's iPad app.
+          presentation: isPhone ? "modal" : "fullScreenModal",
           contentStyle: { backgroundColor: "#000" },
         }}
       />
