@@ -23,6 +23,7 @@ import { VideoGrid } from "@/components/videos/video-grid";
 import { useWatchProgressMap } from "@/components/videos/video-membership-context";
 import { VideoRow } from "@/components/videos/video-row";
 import { VideoThumbnailImg } from "@/components/videos/video-thumbnail-img";
+import { useAutoFillColumns } from "@/hooks/use-auto-fill-columns";
 import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
 import {
   blockFeedFilter,
@@ -53,29 +54,6 @@ import type { UnifiedVideo } from "@/server/services/proxy.types";
 import { trpc } from "@/trpc/react";
 
 /* ------------------------------ block data ------------------------------ */
-
-/**
- * Columns an auto-fill grid would resolve at the container's width — same
- * formula as CSS `repeat(auto-fill, minmax(min(100%, minPx), 1fr))`.
- * Measured on the block wrapper (which always exists), so it also works when
- * the narrow-screen fallback renders rows instead of the grid.
- */
-function useAutoFillColumns(minWidthPx: number, gapPx = 28) {
-  const [element, setElement] = useState<HTMLElement | null>(null);
-  const [columns, setColumns] = useState(4);
-  useEffect(() => {
-    if (!element) return;
-    const update = () => {
-      const w = element.getBoundingClientRect().width;
-      setColumns(Math.max(1, Math.floor((w + gapPx) / (minWidthPx + gapPx))));
-    };
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [element, minWidthPx, gapPx]);
-  return { ref: setElement, columns };
-}
 
 type BlockVideo = {
   videoId: string;
@@ -355,10 +333,14 @@ export function SubscriptionTagShelf({
   tag,
   size,
   hideWatched,
+  hideShorts,
+  hideIgnored,
 }: {
   tag: string;
   size: HomeBlockSize;
   hideWatched: boolean;
+  hideShorts: boolean;
+  hideIgnored: boolean;
 }) {
   const block = useMemo<HomeBlock>(
     () => ({
@@ -371,10 +353,12 @@ export function SubscriptionTagShelf({
       options: {
         scrollRow: true,
         hideFinished: hideWatched,
+        hideShorts,
+        hideIgnored,
         [`${TAG_OPTION_PREFIX}${tag}`]: true,
       },
     }),
-    [tag, size, hideWatched],
+    [tag, size, hideWatched, hideShorts, hideIgnored],
   );
   return <SubscriptionsBlockBody block={block} pageSize={TAG_SHELF_PAGE} />;
 }

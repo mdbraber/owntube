@@ -14,8 +14,11 @@ import { trpc } from "@/trpc/react";
 export function TaggedChannelsView({
   filter,
   empty,
+  section,
 }: {
   filter: TagFeedFilter;
+  /** Whose ⋯ options the feed uses. */
+  section: "favorites" | "tags";
   /** Shown instead of the feed when no subscribed channel matches. */
   empty: ReactNode;
 }) {
@@ -65,6 +68,7 @@ export function TaggedChannelsView({
         excludeTags={filter.excludeTags ?? []}
         tagMatch={filter.tagMatch}
         favorites={filter.favorites}
+        section={section}
       />
     </div>
   );

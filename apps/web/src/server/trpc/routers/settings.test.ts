@@ -85,6 +85,33 @@ describe("settingsRouter", () => {
     expect(fetched.bottomNav).toEqual(["home", "saved"]);
     expect(fetched.homeBlocks.map((b) => b.id)).toEqual(["only-queue"]);
     expect(fetched.sectionPrefs.history.hideCompleted).toBe(true);
+    // Feed pages saved before their options existed get the defaults.
+    expect(fetched.sectionPrefs.favorites).toEqual({
+      hideCompleted: false,
+      rowSize: "md",
+      layout: "cards",
+      rows: 0,
+      hideIgnored: true,
+    });
+
+    await caller.settings.update({
+      sectionPrefs: {
+        ...fetched.sectionPrefs,
+        favorites: {
+          ...fetched.sectionPrefs.favorites,
+          layout: "rows",
+          rows: 3,
+          hideShorts: false,
+        },
+      },
+    });
+    const updated = await caller.settings.get();
+    expect(updated.sectionPrefs.favorites).toMatchObject({
+      layout: "rows",
+      rows: 3,
+      hideShorts: false,
+    });
+    expect(updated.sectionPrefs.subscriptions.hideShorts).toBeUndefined();
 
     sqlite.close();
   });

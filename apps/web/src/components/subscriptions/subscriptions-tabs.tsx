@@ -172,11 +172,11 @@ export function SubscriptionsTabs() {
             );
           })}
         </div>
-        {/* Hide watched (all tabs' videos) and, on By tag, its row size. */}
+        {/* Size and filters on every tab; By tag keeps its own shelf layout. */}
         <div className="pb-1.5">
           <SectionOptionsMenu
             section="subscriptions"
-            showRowSize={tab === "byTag"}
+            showLayout={tab !== "byTag"}
           />
         </div>
       </div>
