@@ -40,7 +40,6 @@ import {
   FsExitIcon,
   GearIcon,
   MuteIcon,
-  NextIcon,
   PauseIcon,
   PipIcon,
   PlayIcon,
@@ -786,31 +785,20 @@ export function PlayerChrome({
               <span className="ml-auto" />
 
               {nextUp && !miniMode && !shortsMode ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={onToggleAutoplayNext}
-                    className={cn(
-                      "hidden rounded-md px-2 py-1 text-[11px] font-medium tracking-wide transition sm:inline-block",
-                      autoplayNext
-                        ? "ot-brand-gradient text-white"
-                        : "bg-white/10 text-white/90 hover:bg-white/15",
-                    )}
-                    aria-pressed={autoplayNext}
-                    title="Autoplay next"
-                  >
-                    Autoplay
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onPlayNext}
-                    className="hidden h-9 w-9 items-center justify-center rounded-full transition hover:bg-white/15 sm:flex"
-                    aria-label="Play next video"
-                    title={nextUp.title}
-                  >
-                    <NextIcon className="h-5 w-5" />
-                  </button>
-                </>
+                <button
+                  type="button"
+                  onClick={onToggleAutoplayNext}
+                  className={cn(
+                    "hidden rounded-md px-2 py-1 text-[11px] font-medium tracking-wide transition sm:inline-block",
+                    autoplayNext
+                      ? "ot-brand-gradient text-white"
+                      : "bg-white/10 text-white/90 hover:bg-white/15",
+                  )}
+                  aria-pressed={autoplayNext}
+                  title="Autoplay next"
+                >
+                  Autoplay
+                </button>
               ) : null}
 
               {queue.length > 0 && !miniMode && !shortsMode ? (

@@ -146,21 +146,6 @@ export function PipIcon({ className }: { className?: string }) {
   );
 }
 
-export function NextIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      role="img"
-      aria-label="Next video"
-    >
-      <title>Next video</title>
-      <path d="M6 5v14l9-7-9-7zm10 0h2v14h-2z" />
-    </svg>
-  );
-}
-
 export function CinemaIcon({ className }: { className?: string }) {
   return (
     <svg
