@@ -1,20 +1,27 @@
 import {
+  isNewNativePage,
   type NativeAppCommand,
   type NativeAppMessage,
   nativeAppCommandScript,
   parseNativeAppMessage,
 } from "@web/lib/native-app";
-import { Stack } from "expo-router";
+import { router, Stack, useSegments } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import {
   type ComponentType,
   type Ref,
   useCallback,
-  useEffect,
   useRef,
   useState,
 } from "react";
-import { Linking, Share, StyleSheet, useColorScheme } from "react-native";
+import {
+  ActivityIndicator,
+  Linking,
+  Share,
+  StyleSheet,
+  useColorScheme,
+  View,
+} from "react-native";
 import WebView from "react-native-webview";
 import type {
   IOSWebViewProps,
@@ -47,8 +54,6 @@ type Props = {
   path: string;
   /** Navigation bar title until the page reports its own. */
   title: string;
-  /** Changes to load `path` again, even when it is the same (deep links). */
-  nonce?: string;
 };
 
 function isServerUrl(url: string): boolean {
@@ -60,37 +65,55 @@ function isServerUrl(url: string): boolean {
 }
 
 /**
- * One of the web app's pages inside the native shell. Its navigation bar is
- * native: the page's title, a back button while the page has history (the
- * edge swipe goes back too), and a menu for sharing, Safari and reloading.
- * Links that leave the server open in an in-app Safari sheet.
+ * The `page` route of the tab this screen is in: `/page` for Home,
+ * `/<tab>/page` for the others.
+ */
+function pageRouteOf(segments: string[]): string {
+  const tab = segments[1];
+  return !tab || tab === "(home)" ? "/page" : `/${tab}/page`;
+}
+
+/**
+ * Pushes a web page onto the current tab's stack, as its own screen.
+ */
+function usePushPage() {
+  const segments = useSegments();
+  return useCallback(
+    (url: string) => {
+      const target = new URL(url, SERVER_ORIGIN);
+      router.push({
+        pathname: pageRouteOf(segments) as never,
+        params: { path: `${target.pathname}${target.search}${target.hash}` },
+      });
+    },
+    [segments],
+  );
+}
+
+/**
+ * One web page in the native shell, as one native screen.
+ *
+ * Going to another page pushes a new screen onto the tab's stack (the page
+ * reports it with a `navigate` message, see `isNewNativePage`), so Back, the
+ * edge swipe and Back's long-press history are all native, and returning to a
+ * page finds it as it was left. Changes within a page (tabs, filters) stay on
+ * its screen. The navigation bar shows the page's title, with a menu for
+ * sharing, Safari and reloading. Links off the server open in a Safari sheet.
  *
  * Every screen's WebView shares the default website data store, so they share
  * the sign-in cookie and localStorage.
  */
-export function WebScreen({ path, title, nonce }: Props) {
+export function WebScreen({ path, title }: Props) {
   const ref = useRef<WebView>(null);
   const scheme = useColorScheme() === "light" ? "light" : "dark";
-  // The first page only; later ones are navigations inside the page (below),
-  // which keep its history so Back still works.
+  const pushPage = usePushPage();
+  const pushPageRef = useRef(pushPage);
+  pushPageRef.current = pushPage;
   const [source] = useState(() => webUrl(path));
   const [pageTitle, setPageTitle] = useState("");
   const [currentUrl, setCurrentUrl] = useState(source);
-  const [canGoBack, setCanGoBack] = useState(false);
-
-  // A new path for a mounted screen (a deep link into the Home tab) opens it;
-  // the nonce makes a second link to the same page open it again.
-  const first = useRef(true);
-  useEffect(() => {
-    void nonce;
-    if (first.current) {
-      first.current = false;
-      return;
-    }
-    ref.current?.injectJavaScript(
-      `window.location.assign(${JSON.stringify(webUrl(path))}); true;`,
-    );
-  }, [path, nonce]);
+  const currentUrlRef = useRef(currentUrl);
+  currentUrlRef.current = currentUrl;
 
   const onMessage = useCallback((event: WebViewMessageEvent) => {
     const message: NativeAppMessage | null = parseNativeAppMessage(
@@ -106,7 +129,20 @@ export function WebScreen({ path, title, nonce }: Props) {
         setWatchQueue(message.raw);
         break;
       case "play":
-        playVideo(message.video);
+        // When Up next moves on, this page follows: it becomes the watch page
+        // of what's playing (replaced, not stacked), so closing the player
+        // shows that video's details and Back still leaves to where you were.
+        playVideo(message.video, {
+          follow: (videoId) =>
+            ref.current?.injectJavaScript(
+              `window.location.replace(${JSON.stringify(
+                webUrl(`/watch?v=${encodeURIComponent(videoId)}`),
+              )}); true;`,
+            ),
+        });
+        break;
+      case "navigate":
+        pushPageRef.current(message.url);
         break;
       case "session":
         void syncSession(message.userId, (command: NativeAppCommand) =>
@@ -120,14 +156,26 @@ export function WebScreen({ path, title, nonce }: Props) {
   }, []);
 
   const onNavigationStateChange = useCallback((nav: WebViewNavigation) => {
-    setCanGoBack(nav.canGoBack);
     if (isServerUrl(nav.url)) setCurrentUrl(nav.url);
   }, []);
 
   const onShouldStartLoadWithRequest = useCallback(
     (request: ShouldStartLoadRequest) => {
-      const { url, isTopFrame } = request;
-      if (!isTopFrame || isServerUrl(url)) return true;
+      const { url, isTopFrame, navigationType } = request;
+      if (!isTopFrame) return true;
+      if (isServerUrl(url)) {
+        // A tapped link the page didn't catch (before it hydrated, or a plain
+        // <a>): a new page is a new screen here too. Redirects, form posts
+        // and reloads load in place.
+        if (
+          navigationType === "click" &&
+          isNewNativePage(currentUrlRef.current, url)
+        ) {
+          pushPageRef.current(url);
+          return false;
+        }
+        return true;
+      }
       if (/^(about|blob|data):/.test(url)) return true;
       if (/^https?:/.test(url)) {
         void WebBrowser.openBrowserAsync(url, {
@@ -144,14 +192,6 @@ export function WebScreen({ path, title, nonce }: Props) {
   return (
     <>
       <Stack.Screen options={{ title: pageTitle || title }} />
-      <Stack.Toolbar placement="left">
-        <Stack.Toolbar.Button
-          icon="chevron.backward"
-          accessibilityLabel="Back"
-          hidden={!canGoBack}
-          onPress={() => ref.current?.goBack()}
-        />
-      </Stack.Toolbar>
       <Stack.Toolbar placement="right">
         <Stack.Toolbar.Menu icon="ellipsis" accessibilityLabel="More">
           <Stack.Toolbar.MenuAction
@@ -179,6 +219,16 @@ export function WebScreen({ path, title, nonce }: Props) {
         source={{ uri: source }}
         style={[styles.webView, { backgroundColor: BACKGROUND[scheme] }]}
         applicationNameForUserAgent={USER_AGENT_TOKEN}
+        // A pushed screen shows a spinner until its page first paints, rather
+        // than an empty screen.
+        startInLoadingState
+        renderLoading={() => (
+          <View
+            style={[styles.loading, { backgroundColor: BACKGROUND[scheme] }]}
+          >
+            <ActivityIndicator />
+          </View>
+        )}
         // The page insets itself by env(safe-area-inset-*) (globals.css); an
         // automatic inset on the WebView's scroll view would count it twice.
         contentInsetAdjustmentBehavior="never"
@@ -186,7 +236,8 @@ export function WebScreen({ path, title, nonce }: Props) {
         allowsPictureInPictureMediaPlayback
         allowsAirPlayForMediaPlayback
         mediaPlaybackRequiresUserAction={false}
-        allowsBackForwardNavigationGestures
+        // No WebKit back/forward swipe: the edge swipe is the native stack's.
+        allowsBackForwardNavigationGestures={false}
         pullToRefreshEnabled
         onMessage={onMessage}
         onNavigationStateChange={onNavigationStateChange}
@@ -202,4 +253,9 @@ export function WebScreen({ path, title, nonce }: Props) {
 
 const styles = StyleSheet.create({
   webView: { flex: 1 },
+  loading: {
+    ...StyleSheet.absoluteFill,
+    alignItems: "center",
+    justifyContent: "center",
+  },
 });

@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 import {
+  isNewNativePage,
   NATIVE_APP_COMMAND_EVENT,
   parseNativeAppCommand,
   postToNativeApp,
@@ -82,8 +83,63 @@ export function NativeAppBridge() {
   }, []);
 
   useNativeAppSession();
+  useNativeAppNavigation();
 
   return null;
+}
+
+/**
+ * In the app, going to another page opens it as a new native screen (see
+ * `isNewNativePage`) instead of replacing this one, so Back returns here.
+ *
+ * - Link taps (nearly all navigation): caught before Next.js handles them.
+ * - Programmatic navigation (`router.push` in a few buttons) can't be caught
+ *   before it renders. It's let through, handed to the app, and this page
+ *   goes back to where it was, behind the new screen.
+ */
+function useNativeAppNavigation() {
+  useEffect(() => {
+    const onClick = (event: MouseEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.button !== 0 ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey
+      ) {
+        return;
+      }
+      const anchor = (event.target as Element | null)?.closest?.("a[href]");
+      if (!(anchor instanceof HTMLAnchorElement)) return;
+      if (anchor.target && anchor.target !== "_self") return;
+      if (anchor.hasAttribute("download")) return;
+      if (!isNewNativePage(window.location.href, anchor.href)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      postToNativeApp({ type: "navigate", url: anchor.href });
+    };
+    document.addEventListener("click", onClick, true);
+
+    const pushState = window.history.pushState;
+    window.history.pushState = function nativeAppPushState(
+      this: History,
+      ...args: Parameters<History["pushState"]>
+    ) {
+      const from = window.location.href;
+      pushState.apply(this, args);
+      const to = window.location.href;
+      if (isNewNativePage(from, to)) {
+        postToNativeApp({ type: "navigate", url: to });
+        window.history.back();
+      }
+    };
+
+    return () => {
+      document.removeEventListener("click", onClick, true);
+      window.history.pushState = pushState;
+    };
+  }, []);
 }
 
 /**

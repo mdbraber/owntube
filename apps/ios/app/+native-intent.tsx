@@ -1,8 +1,17 @@
+import { appPathFromUrl } from "@/lib/app-path";
+
 /**
- * URLs that open the app are handled by useIncomingLinks (root layout), which
- * turns them into a page in the Home tab. Keep the router itself from trying
- * to match them against the app's routes.
+ * Every URL that opens the app (owntube:// links from the widget or Privacy
+ * Redirect, YouTube links) opens its page as a new screen in the Home tab,
+ * on launch and while running. The key makes a repeated link open again.
  */
-export function redirectSystemPath(_: { path: string; initial: boolean }) {
-  return "/";
+export function redirectSystemPath({
+  path,
+}: {
+  path: string;
+  initial: boolean;
+}) {
+  const appPath = appPathFromUrl(path);
+  if (!appPath || appPath === "/") return "/";
+  return `/page?path=${encodeURIComponent(appPath)}&k=${Date.now()}`;
 }

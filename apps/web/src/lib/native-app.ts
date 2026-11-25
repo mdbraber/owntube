@@ -43,7 +43,12 @@ export type NativeAppMessage =
    *  session can follow it. */
   | { type: "session"; userId: number | null }
   /** The answer to an `approvePairing` command. */
-  | { type: "pairingApproved"; userCode: string; ok: boolean };
+  | { type: "pairingApproved"; userCode: string; ok: boolean }
+  /**
+   * The user went to another page (`isNewNativePage`): the app shows it as a
+   * new screen on its navigation stack, so Back returns here.
+   */
+  | { type: "navigate"; url: string };
 
 /** Commands the native shell sends to a page. */
 export type NativeAppCommand =
@@ -52,6 +57,44 @@ export type NativeAppCommand =
    * app gets its own API token (the TV's pairing flow, without the QR code).
    */
   { type: "approvePairing"; userCode: string };
+
+/**
+ * Pages whose query string names the thing shown, so a different value is a
+ * different page (another video, another playlist). Elsewhere the query only
+ * filters or sorts what the page shows, which stays on the same screen.
+ */
+const IDENTITY_PARAMS: Record<string, string> = {
+  "/watch": "v",
+  "/playlist": "list",
+};
+
+/** Pages that move on by themselves (signing in, onboarding): no Back there. */
+const PASS_THROUGH = /^\/(login|register|onboarding)(\/|$)/;
+
+/**
+ * Whether going from `from` to `to` should open a new screen in the app,
+ * rather than change the current one in place. A new screen per page is how
+ * iOS apps navigate: Back (or the edge swipe) returns to the previous page
+ * as it was. Filters, sorting, tabs and a new search keep their screen.
+ */
+export function isNewNativePage(from: string, to: string): boolean {
+  let a: URL;
+  let b: URL;
+  try {
+    a = new URL(from);
+    b = new URL(to, a);
+  } catch {
+    return false;
+  }
+  if (a.origin !== b.origin) return false;
+  if (PASS_THROUGH.test(a.pathname)) return false;
+  const path = (url: URL) => url.pathname.replace(/\/+$/, "") || "/";
+  if (path(a) !== path(b)) return true;
+  const identity = IDENTITY_PARAMS[path(b)];
+  return Boolean(
+    identity && a.searchParams.get(identity) !== b.searchParams.get(identity),
+  );
+}
 
 /** The window event that carries a `NativeAppCommand` to the page. */
 export const NATIVE_APP_COMMAND_EVENT = "ot:native-command";
@@ -105,6 +148,9 @@ export function parseNativeAppMessage(raw: string): NativeAppMessage | null {
     (message.userId === null || typeof message.userId === "number")
   ) {
     return { type: "session", userId: message.userId };
+  }
+  if (message.type === "navigate" && typeof message.url === "string") {
+    return { type: "navigate", url: message.url };
   }
   if (
     message.type === "pairingApproved" &&

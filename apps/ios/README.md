@@ -19,7 +19,22 @@ toolchain and patterns with `apps/tv`.
   the page has history (the edge swipe goes back too), and a menu with Share,
   Open in Safari and Reload. Links that leave the server open in a Safari
   sheet. All WebViews share one cookie store and localStorage.
-- **Library** (`app/library/index.tsx`): the web app's account destinations as
+- **Navigation**: every page is a native screen. Tapping a link to another
+  page pushes it onto the tab's stack, so Back (the button, the edge swipe,
+  long-press for history) is iOS's own and returns to the page as it was left,
+  scroll position included. There's no forward, as in any iOS app.
+  - What counts as another page: a different path, or another video or
+    playlist (`isNewNativePage` in `@web/lib/native-app`). Tabs, filters,
+    sorting and a new search stay on their screen. Sign-in and onboarding move
+    on in place.
+  - The page reports link taps to the app (`navigate` message) instead of
+    following them. A few buttons navigate programmatically; the page lets
+    those through, hands them over, and goes back behind the new screen.
+  - Each tab keeps its own stack, and tapping the current tab returns to its
+    first screen.
+  - Links from outside the app (widget, URLs) open over Home's first screen
+    (`app/+native-intent.tsx`). Quick actions open in their tab the same way.
+`app/library/index.tsx`): the web app's account destinations as
   a native SwiftUI list (`@expo/ui`).
 - **Embedded mode in the web app**: the WebView adds `OwnTubeApp/<version>` to
   its user agent. The server sees it (`apps/web/src/lib/native-app.ts`) and

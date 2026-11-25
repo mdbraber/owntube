@@ -88,6 +88,14 @@ export function getPlayer(): VideoPlayer {
 
 /** The sources still to try for the current video, best first. */
 let pending: string[] = [];
+/** The watch page that follows what plays (see `playVideo`'s `follow`). */
+let follower: ((videoId: string) => void) | null = null;
+/** The video that page was just turned into; its own play request is a no-op. */
+let followedTo: string | null = null;
+
+/** The current video's detail while it loads (it brings the fallbacks). */
+let detailLoading: Promise<unknown> | null = null;
+
 /** The video id `pending` belongs to; a newer play request replaces it. */
 let loadingId: string | null = null;
 let seekTo: number | undefined;
@@ -113,9 +121,31 @@ function fallbackSources(detail: VideoDetail): string[] {
   return [];
 }
 
+/**
+ * How long a source may take to become playable. AVPlayer can wait on a
+ * stalled stream indefinitely without failing, which would never reach the
+ * fallbacks. Generous, so a slow connection (cellular) isn't mistaken for a
+ * dead stream.
+ */
+const READY_TIMEOUT_MS = 30_000;
+let readyTimer: ReturnType<typeof setTimeout> | null = null;
+
+function clearReadyTimer() {
+  if (readyTimer) clearTimeout(readyTimer);
+  readyTimer = null;
+}
+
 function load(uri: string) {
   const video = state?.video;
   if (!video) return;
+  clearReadyTimer();
+  const forVideo = video.videoId;
+  readyTimer = setTimeout(() => {
+    readyTimer = null;
+    if (loadingId === forVideo && getPlayer().status !== "readyToPlay") {
+      void tryNextSource("The video took too long to load.");
+    }
+  }, READY_TIMEOUT_MS);
   // replaceAsync: `replace` loads the asset on the main thread on iOS.
   void getPlayer().replaceAsync({
     uri,
@@ -129,6 +159,7 @@ function load(uri: string) {
 }
 
 function onReady() {
+  clearReadyTimer();
   const current = getPlayer();
   if (seekTo !== undefined) {
     current.currentTime = seekTo;
@@ -140,6 +171,10 @@ function onReady() {
 
 async function tryNextSource(message?: string) {
   const videoId = loadingId;
+  // The fallbacks come with the video's detail; if the first source failed
+  // before it arrived, wait for it rather than give up.
+  if (!pending.length && detailLoading) await detailLoading;
+  if (videoId !== loadingId) return;
   const next = pending.shift();
   if (next) {
     // Resume where the failed source was, not at the start.
@@ -163,10 +198,24 @@ async function tryNextSource(message?: string) {
  */
 export function playVideo(
   video: NativePlayRequest,
-  { present = true }: { present?: boolean } = {},
+  {
+    present = true,
+    follow,
+  }: {
+    present?: boolean;
+    /** Turns the asking watch page into another video's (Up next). */
+    follow?: (videoId: string) => void;
+  } = {},
 ) {
+  if (follow) follower = follow;
   const current = getPlayer();
   if (state?.video.videoId === video.videoId && !state.error) {
+    if (followedTo === video.videoId) {
+      // The page we turned into this video's (Up next) reloaded and asks for
+      // it: it already plays, and the user didn't ask to see the player.
+      followedTo = null;
+      return;
+    }
     if (video.autoplay) current.play();
     if (present) router.navigate("/player");
     return;
@@ -181,7 +230,7 @@ export function playVideo(
   progress.reset(video);
 
   pending = [];
-  const detail = trpc.video.detail
+  const detail: Promise<VideoDetail | null> = trpc.video.detail
     .query({ videoId: video.videoId })
     .then((value) => {
       if (loadingId !== video.videoId) return null;
@@ -191,6 +240,9 @@ export function playVideo(
       return value;
     })
     .catch(() => null);
+  detailLoading = detail.finally(() => {
+    if (loadingId === video.videoId) detailLoading = null;
+  });
 
   if (video.isLive) {
     // Live has no server HLS; its stream comes from the detail.
@@ -210,6 +262,10 @@ export function playNext(
 ) {
   if (item.fromQueue) {
     void trpc.queue.remove.mutate({ videoId: item.videoId }).catch(() => {});
+  }
+  if (follower) {
+    followedTo = item.videoId;
+    follower(item.videoId);
   }
   playVideo(
     {
@@ -275,8 +331,27 @@ async function loadUpNext(videoId: string) {
   });
 }
 
+/** Loads the current video again from its first source (after an error). */
+export function retryPlayback() {
+  const video = state?.video;
+  if (!video) return;
+  const position = getPlayer().currentTime;
+  setState(null);
+  playVideo(
+    {
+      ...video,
+      startSeconds: position > 0 ? position : video.startSeconds,
+      autoplay: true,
+    },
+    { present: false },
+  );
+}
+
 /** Stops playback and leaves the mini player. */
 export function stopPlayback() {
+  clearReadyTimer();
+  follower = null;
+  followedTo = null;
   void saveProgress();
   getPlayer().pause();
   void getPlayer().replaceAsync(null);

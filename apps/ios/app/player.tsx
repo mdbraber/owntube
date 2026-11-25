@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   getPlayer,
   playNext,
+  retryPlayback,
   type UpNextItem,
   useNowPlaying,
 } from "@/player/store";
@@ -69,7 +70,16 @@ export default function PlayerScreen() {
               <Text style={styles.channel}>{video.channelName}</Text>
             ) : null}
             {error ? (
-              <Text style={styles.error}>{error}</Text>
+              <View style={styles.errorRow}>
+                <Text style={styles.error}>{error}</Text>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={retryPlayback}
+                  style={styles.retry}
+                >
+                  <Text style={styles.retryLabel}>Try again</Text>
+                </Pressable>
+              </View>
             ) : status === "loading" ? (
               <Text style={styles.channel}>Loading…</Text>
             ) : null}
@@ -147,7 +157,15 @@ const styles = StyleSheet.create({
   info: { paddingHorizontal: 16, paddingTop: 16, gap: 6, paddingBottom: 4 },
   title: { color: "#fff", fontSize: 20, fontWeight: "600" },
   channel: { color: "rgba(255,255,255,0.6)", fontSize: 15 },
-  error: { color: "#ff6b81", fontSize: 15, marginTop: 8 },
+  errorRow: { marginTop: 8, gap: 10, alignItems: "flex-start" },
+  error: { color: "#ff6b81", fontSize: 15 },
+  retry: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.14)",
+  },
+  retryLabel: { color: "#fff", fontSize: 15, fontWeight: "600" },
   upNextHeader: {
     flexDirection: "row",
     alignItems: "baseline",

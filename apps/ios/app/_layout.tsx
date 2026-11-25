@@ -2,7 +2,6 @@ import { Stack } from "expo-router";
 import { useEffect } from "react";
 import { AppState } from "react-native";
 import { useQuickActions } from "@/lib/home-screen-actions";
-import { useIncomingLinks } from "@/lib/use-incoming-links";
 import { flushProgress } from "@/player/store";
 
 /**
@@ -10,7 +9,6 @@ import { flushProgress } from "@/player/store";
  * to close; playback goes on in the mini player).
  */
 export default function RootLayout() {
-  useIncomingLinks();
   useQuickActions();
 
   useEffect(() => {

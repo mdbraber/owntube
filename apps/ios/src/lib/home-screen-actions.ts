@@ -3,32 +3,33 @@ import * as QuickActions from "expo-quick-actions";
 import { router, useRootNavigationState } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { useEffect } from "react";
-import { openInHome } from "@/lib/use-incoming-links";
+import { openPageInTab } from "@/lib/use-incoming-links";
 
 /**
- * The home-screen long-press menu. A quick action opens either an app route
- * (`route`) or a web page in the Home tab (`web`).
+ * The home-screen long-press menu. A quick action opens a tab (`tab`),
+ * optionally with a web page pushed fresh over its first screen (`path`).
  */
-type Params = { route?: string; web?: string };
+type Tab = "/" | "/subscriptions" | "/library" | "/search";
+type Params = { tab?: Tab; path?: string; title?: string };
 
 const STATIC_ACTIONS: QuickActions.Action[] = [
   {
     id: "search",
     title: "Search",
     icon: "symbol:magnifyingglass",
-    params: { route: "/search" },
+    params: { tab: "/search" },
   },
   {
     id: "subscriptions",
     title: "Subscriptions",
     icon: "symbol:play.square.stack",
-    params: { route: "/subscriptions" },
+    params: { tab: "/subscriptions" },
   },
   {
     id: "queue",
     title: "Queue",
     icon: "symbol:text.line.first.and.arrowtriangle.forward",
-    params: { route: "/library/page?path=%2Fqueue&title=Queue" },
+    params: { tab: "/library", path: "/queue", title: "Queue" },
   },
 ];
 
@@ -69,9 +70,10 @@ function applyActions(video: ResumeVideo | null) {
 }
 
 function perform(action: QuickActions.Action | undefined) {
-  const params = (action?.params ?? {}) as Params;
-  if (params.web) openInHome(params.web);
-  else if (params.route) router.navigate(params.route as never);
+  const { tab, path, title } = (action?.params ?? {}) as Params;
+  if (!tab) return;
+  if (path) openPageInTab(tab, path, title);
+  else router.dismissTo(tab as never);
 }
 
 /**

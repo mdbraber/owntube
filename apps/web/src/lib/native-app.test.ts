@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   isNativeAppUserAgent,
+  isNewNativePage,
   NATIVE_APP_COMMAND_EVENT,
   nativeAppCommandScript,
   parseNativeAppCommand,
@@ -136,5 +137,41 @@ describe("native app commands", () => {
   it("drops unknown commands", () => {
     expect(parseNativeAppCommand({ type: "other" })).toBeNull();
     expect(parseNativeAppCommand(null)).toBeNull();
+  });
+});
+
+describe("isNewNativePage", () => {
+  const at = (path: string) => `https://ot.test${path}`;
+
+  it("opens another page as a new screen", () => {
+    expect(isNewNativePage(at("/"), at("/channel/UC1"))).toBe(true);
+    expect(isNewNativePage(at("/search?q=a"), at("/watch?v=abc"))).toBe(true);
+  });
+
+  it("treats another video or playlist as another page", () => {
+    expect(isNewNativePage(at("/watch?v=a"), at("/watch?v=b"))).toBe(true);
+    expect(
+      isNewNativePage(at("/playlist?list=1"), at("/playlist?list=2")),
+    ).toBe(true);
+    expect(isNewNativePage(at("/watch?v=a"), at("/watch?v=a&t=30"))).toBe(
+      false,
+    );
+  });
+
+  it("keeps filters, tabs and new searches on the same screen", () => {
+    expect(isNewNativePage(at("/search?q=a"), at("/search?q=b"))).toBe(false);
+    expect(
+      isNewNativePage(at("/channel/UC1"), at("/channel/UC1?tab=shorts")),
+    ).toBe(false);
+    expect(isNewNativePage(at("/trending"), at("/trending/"))).toBe(false);
+  });
+
+  it("lets sign-in and onboarding move on in place", () => {
+    expect(isNewNativePage(at("/login"), at("/"))).toBe(false);
+    expect(isNewNativePage(at("/onboarding/taste"), at("/"))).toBe(false);
+  });
+
+  it("ignores other sites", () => {
+    expect(isNewNativePage(at("/"), "https://example.org/")).toBe(false);
   });
 });
