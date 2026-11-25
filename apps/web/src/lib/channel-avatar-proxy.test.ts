@@ -22,9 +22,11 @@ describe("toBrowserChannelAvatarUrl", () => {
     delete process.env.INVIDIOUS_BASE_URL;
   });
 
-  it("keeps HTTPS YouTube CDN URLs direct", () => {
+  it("loads HTTPS YouTube CDN avatars through this instance", () => {
     const url = "https://yt3.ggpht.com/abc=s88-c-k-c0x00ffffff-no-rj";
-    expect(toBrowserChannelAvatarUrl(url)).toBe(url);
+    expect(toBrowserChannelAvatarUrl(url)).toBe(
+      `/channel-avatar?url=${encodeURIComponent(url)}`,
+    );
   });
 
   it("routes Invidious /vi/ paths through /image", () => {
@@ -86,9 +88,11 @@ describe("toBrowserUpstreamImageUrl", () => {
     delete process.env.INVIDIOUS_BASE_URL;
   });
 
-  it("keeps HTTPS ytimg URLs direct", () => {
+  it("loads HTTPS ytimg stills through this instance's /image", () => {
     const url = "https://i.ytimg.com/vi/abc123/hqdefault.jpg";
-    expect(toBrowserUpstreamImageUrl(url)).toBe(url);
+    expect(toBrowserUpstreamImageUrl(url)).toBe(
+      "/image/vi/abc123/hqdefault.jpg",
+    );
   });
 
   it("routes Invidious /vi/ through /image when origin matches", () => {

@@ -1,5 +1,6 @@
 import { resolveChannelAvatarUrl } from "@/lib/channel-avatar";
 import { normalizeUpstreamBaseUrl } from "@/lib/upstream-base-url";
+import { youtubeImageViaInstance } from "@/lib/youtube-image-via-instance";
 
 const MAX_CHANNEL_AVATAR_URL_LEN = 8_192;
 
@@ -147,8 +148,10 @@ function browserReadyUpstreamImageUrl(
     return undefined;
   }
 
+  // Google's image hosts: never loaded by the browser itself, always through
+  // this instance (see youtube-image-via-instance.ts).
   if (isYoutubeAvatarCdn(parsed.hostname) && parsed.protocol === "https:") {
-    return resolved;
+    return youtubeImageViaInstance(resolved);
   }
 
   const invidiousPath = invidiousUpstreamProxyPath(resolved, invidiousOrigins);

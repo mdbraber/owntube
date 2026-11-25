@@ -11,6 +11,7 @@ import { PlaylistIcon } from "@/components/videos/video-action-icons";
 import { VideoGrid } from "@/components/videos/video-grid";
 import { useWatchProgressMap } from "@/components/videos/video-membership-context";
 import { mergeVideosNewestFirst } from "@/lib/published-sort-key";
+import { youtubeImageViaInstance } from "@/lib/youtube-image-via-instance";
 import { playlistHref } from "@/lib/yt-routes";
 import type { ChannelTab, UnifiedVideo } from "@/server/services/proxy.types";
 import { trpc } from "@/trpc/react";
@@ -348,7 +349,7 @@ function ChannelPlaylistsGrid({
               {p.thumbnailUrl ? (
                 // biome-ignore lint/performance/noImgElement: third-party playlist thumbnail
                 <img
-                  src={p.thumbnailUrl}
+                  src={youtubeImageViaInstance(p.thumbnailUrl)}
                   alt=""
                   loading="lazy"
                   className="h-full w-full object-cover transition duration-500 ease-out group-hover:scale-105"

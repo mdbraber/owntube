@@ -14,6 +14,7 @@ import {
   storyboardSheetUrl,
   storyboardThumbAtTime,
 } from "@web/lib/video-scrub-frames";
+import { youtubeImageViaInstance } from "@web/lib/youtube-image-via-instance";
 import type {
   UnifiedVideo,
   VideoDetail,
@@ -2275,7 +2276,13 @@ function ScrubPreview({
   return (
     <View style={[styles.preview, { width: PREVIEW_WIDTH, height }]}>
       <Image
-        source={{ uri: storyboardSheetUrl(storyboard.templateUrl, sheetIndex) }}
+        // Signed i.ytimg.com sheets: through the instance, never from Google.
+        source={{
+          uri: youtubeImageViaInstance(
+            storyboardSheetUrl(storyboard.templateUrl, sheetIndex),
+            baseUrl(),
+          ),
+        }}
         style={{
           width: storyboard.columns * storyboard.thumbWidth * scale,
           height: storyboard.rows * storyboard.thumbHeight * scale,
