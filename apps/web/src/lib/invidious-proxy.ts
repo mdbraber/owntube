@@ -4,6 +4,7 @@ import {
 } from "@/lib/invidious-playback-url";
 import { toMediaOriginUrl } from "@/lib/media-origin";
 import type { PlayableVariant } from "@/lib/pick-playback";
+import { youtubeImageViaInstance } from "@/lib/youtube-image-via-instance";
 
 function invidiousBaseUrl(): string {
   return process.env.INVIDIOUS_BASE_URL?.trim().replace(/\/+$/, "") ?? "";
@@ -444,6 +445,10 @@ export function toProxiedOrDirectPoster(
   requestHost: string,
 ): string | undefined {
   if (!rawPoster) return undefined;
+  // A still on Google's hosts: through this instance's image proxy.
+  const viaInstance = youtubeImageViaInstance(rawPoster);
+  if (viaInstance !== rawPoster)
+    return toMediaOriginUrl(viaInstance, appOrigin);
   if (shouldUseInvidiousProxyForUrl(rawPoster)) {
     return toStreamProxyUrl(rawPoster, appOrigin);
   }

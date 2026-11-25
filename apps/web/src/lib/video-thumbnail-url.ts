@@ -1,3 +1,5 @@
+import { youtubeImageViaInstance } from "@/lib/youtube-image-via-instance";
+
 const LOWER_TIER_THUMB =
   /^(hq720|hqdefault|mqdefault|sddefault|default)\.(jpe?g|webp)$/i;
 
@@ -220,5 +222,6 @@ export function applyVideoThumbnailImgError(el: HTMLImageElement): void {
   const next = nextFallbackVideoThumbnailUrl(el.src, { variant });
   if (!next || next === el.src) return;
   el.dataset.fallbackSteps = String(steps + 1);
-  el.src = next;
+  // The next still is built on i.ytimg.com; load it through this instance.
+  el.src = youtubeImageViaInstance(next);
 }

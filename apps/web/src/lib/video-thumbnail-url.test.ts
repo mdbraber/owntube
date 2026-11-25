@@ -134,26 +134,33 @@ describe("video-thumbnail-url", () => {
     );
   });
 
-  it("applyVideoThumbnailImgError steps down until exhausted", () => {
+  it("applyVideoThumbnailImgError steps down through this instance until exhausted", () => {
+    // Like a real <img>: `src` reads back absolute, on the page's origin.
+    let src = "https://i.ytimg.com/vi/x/maxresdefault.jpg";
     const el = {
-      src: "https://i.ytimg.com/vi/x/maxresdefault.jpg",
+      get src() {
+        return src;
+      },
+      set src(v: string) {
+        src = new URL(v, "https://owntube.test").toString();
+      },
       dataset: {} as DOMStringMap,
     } as HTMLImageElement;
 
     applyVideoThumbnailImgError(el);
-    expect(el.src).toBe("https://i.ytimg.com/vi/x/hqdefault.jpg");
+    expect(el.src).toBe("https://owntube.test/image/vi/x/hqdefault.jpg");
     expect(el.dataset.fallbackSteps).toBe("1");
 
     applyVideoThumbnailImgError(el);
-    expect(el.src).toBe("https://i.ytimg.com/vi/x/mqdefault.jpg");
+    expect(el.src).toBe("https://owntube.test/image/vi/x/mqdefault.jpg");
     expect(el.dataset.fallbackSteps).toBe("2");
 
     applyVideoThumbnailImgError(el);
-    expect(el.src).toBe("https://i.ytimg.com/vi/x/sddefault.jpg");
+    expect(el.src).toBe("https://owntube.test/image/vi/x/sddefault.jpg");
     applyVideoThumbnailImgError(el);
-    expect(el.src).toBe("https://i.ytimg.com/vi/x/default.jpg");
+    expect(el.src).toBe("https://owntube.test/image/vi/x/default.jpg");
     applyVideoThumbnailImgError(el);
-    expect(el.src).toBe("https://i.ytimg.com/vi/x/default.jpg");
+    expect(el.src).toBe("https://owntube.test/image/vi/x/default.jpg");
     applyVideoThumbnailImgError(el);
     expect(el.dataset.fallbackSteps).toBe("4");
   });

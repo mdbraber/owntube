@@ -1,3 +1,4 @@
+import { youtubeImageViaInstance } from "@/lib/youtube-image-via-instance";
 import type { VideoStoryboard } from "@/server/services/proxy.types";
 
 const DEFAULT_INTERVAL_SEC = 5;
@@ -71,11 +72,16 @@ export function scrubFrameUrlAt(
   durationSeconds: number,
   storyboard?: VideoStoryboard,
 ): string {
+  // Storyboard sheets and stills live on i.ytimg.com: through this instance.
   if (storyboard?.templateUrl) {
     const coords = storyboardThumbAtTime(storyboard, timeSeconds);
-    return storyboardSheetUrl(storyboard.templateUrl, coords.sheetIndex);
+    return youtubeImageViaInstance(
+      storyboardSheetUrl(storyboard.templateUrl, coords.sheetIndex),
+    );
   }
-  return ytimgScrubFrameUrl(videoId, timeSeconds, durationSeconds);
+  return youtubeImageViaInstance(
+    ytimgScrubFrameUrl(videoId, timeSeconds, durationSeconds),
+  );
 }
 
 export function scrubFrameBackgroundPosition(

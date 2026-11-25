@@ -7,6 +7,7 @@ import { ChannelTags } from "@/components/channel/channel-tags";
 import { ChannelVideosSection } from "@/components/channel/channel-videos-section";
 import { ChannelAvatarCircle } from "@/components/videos/channel-avatar-circle";
 import { formatSubscribersLabel } from "@/lib/video-display";
+import { youtubeImageViaInstance } from "@/lib/youtube-image-via-instance";
 import { auth } from "@/server/auth";
 import { channelPageInputSchema } from "@/server/services/proxy.types";
 import { createCaller } from "@/server/trpc/caller";
@@ -50,7 +51,7 @@ export default async function ChannelPage({ params }: ChannelPageProps) {
           <>
             {/* biome-ignore lint/performance/noImgElement: third-party channel banner */}
             <img
-              src={page.bannerUrl}
+              src={youtubeImageViaInstance(page.bannerUrl)}
               alt=""
               className="h-[210px] w-full object-cover sm:h-[250px]"
             />
