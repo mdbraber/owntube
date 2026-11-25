@@ -4,12 +4,12 @@ import {
   Pressable,
   type PressableProps,
   type StyleProp,
-  StyleSheet,
   Text,
   type View,
   type ViewInstance,
   type ViewStyle,
 } from "react-native";
+import { createStyles } from "@/lib/ui-scale";
 import { colors, focus, fontSize, radius, spacing } from "@/theme";
 
 type Variant = "primary" | "ghost";
@@ -91,7 +91,7 @@ export const FocusButton = forwardRef<ViewInstance, Props>(function FocusButton(
   );
 });
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   base: {
     minHeight: 48,
     paddingVertical: spacing.sm,

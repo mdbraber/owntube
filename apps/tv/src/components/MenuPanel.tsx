@@ -11,6 +11,7 @@ import {
   View,
 } from "react-native";
 import { isSuppressedPress } from "@/lib/long-press";
+import { createStyles, s } from "@/lib/ui-scale";
 import { colors, focus, fontSize, radius, spacing } from "@/theme";
 
 export type MenuItem = {
@@ -188,7 +189,7 @@ function MenuRow({
     >
       <View style={styles.check}>
         {item.selected ? (
-          <Feather name="check" size={16} color={colors.foreground} />
+          <Feather name="check" size={s(16)} color={colors.foreground} />
         ) : null}
       </View>
       <Text style={styles.label} numberOfLines={1}>
@@ -202,7 +203,7 @@ function MenuRow({
       {item.submenu ? (
         <Feather
           name="chevron-right"
-          size={16}
+          size={s(16)}
           color={colors.mutedForeground}
         />
       ) : null}
@@ -213,7 +214,7 @@ function MenuRow({
 const PANEL_WIDTH = 380;
 const CONFIRM_PAGE = "__confirm";
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   scrim: {
     ...StyleSheet.absoluteFill,
     alignItems: "flex-end",

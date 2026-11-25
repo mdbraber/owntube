@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
-import { Animated, StyleSheet, View } from "react-native";
+import { Animated, View } from "react-native";
 import { VIDEO_CARD_WIDTH } from "@/components/VideoCard";
+import { createStyles } from "@/lib/ui-scale";
 import { colors, radius, spacing } from "@/theme";
 
 /** Card-sized placeholders per shelf; enough to cross a 1080p panel. */
@@ -67,7 +68,7 @@ export function SkeletonRows({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   rows: { gap: spacing.xl },
   row: { gap: spacing.sm },
   heading: {

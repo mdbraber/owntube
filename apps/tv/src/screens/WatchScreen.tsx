@@ -27,6 +27,7 @@ import {
   Animated,
   AppState,
   BackHandler,
+  Dimensions,
   findNodeHandle,
   Image,
   Platform,
@@ -82,6 +83,7 @@ import {
 import { trpcClient } from "@/lib/trpc";
 import { trpc } from "@/lib/trpc-react";
 import type { TVView } from "@/lib/tv-focus";
+import { createStyles, s, UI_SCALE } from "@/lib/ui-scale";
 import { colors, focus, fontSize, monoFont, radius, spacing } from "@/theme";
 import {
   getPlayingVideoFormat,
@@ -409,8 +411,10 @@ export function WatchScreen({
   const scrubberRef = useRef<TVView>(null);
   const [scrubberHandle, setScrubberHandle] = useState<number | null>(null);
   // Animated between the cropped peek and the row's measured natural height.
-  const relatedHeight = useRef(new Animated.Value(RELATED_PEEK_HEIGHT)).current;
-  const relatedFullHeight = useRef(RELATED_PEEK_HEIGHT);
+  const relatedHeight = useRef(
+    new Animated.Value(s(RELATED_PEEK_HEIGHT)),
+  ).current;
+  const relatedFullHeight = useRef(s(RELATED_PEEK_HEIGHT));
   const [rating, setRating] = useState<"like" | "dislike" | null>(null);
   const [saved, setSaved] = useState(false);
   const [queued, setQueued] = useState(false);
@@ -642,7 +646,9 @@ export function WatchScreen({
 
   useEffect(() => {
     Animated.timing(relatedHeight, {
-      toValue: relatedFocused ? relatedFullHeight.current : RELATED_PEEK_HEIGHT,
+      toValue: relatedFocused
+        ? relatedFullHeight.current
+        : s(RELATED_PEEK_HEIGHT),
       duration: RELATED_REVEAL_MS,
       // Height can't run on the UI thread; the row is small enough to be smooth.
       useNativeDriver: false,
@@ -2188,16 +2194,21 @@ const PREVIEW_WIDTH = 240;
 /**
  * Keeps the centred preview inside the bar. The overlay spans the screen minus
  * a `spacing.screen` margin each side, so half a preview is this share of the
- * bar's width at 960dp — clamping to it stops the frame overhanging either end.
+ * bar's width — clamping to it stops the frame overhanging either end.
  */
 function clampPreviewPct(pct: number): number {
-  const barWidth = TV_WIDTH_DP - spacing.screen * 2;
+  const barWidth = screenWidthDp() - spacing.screen * 2;
   const halfPct = (PREVIEW_WIDTH / 2 / barWidth) * 100;
   return Math.min(100 - halfPct, Math.max(halfPct, pct));
 }
 
-/** Layout width in dp of a 1080p TV panel (density 2). */
-const TV_WIDTH_DP = 960;
+/**
+ * The screen's width in the dp the layout is written in: 960 on a 1080p Android
+ * TV (density 2), and on tvOS the point width divided by the interface scale.
+ */
+function screenWidthDp(): number {
+  return Dimensions.get("window").width / UI_SCALE;
+}
 
 /** Seconds behind the live edge before "Go live" shows (the web's value). */
 const LIVE_EDGE_SECONDS = 15;
@@ -2274,10 +2285,10 @@ function ScrubPreview({
     storyboard,
     atSeconds,
   );
-  const scale = PREVIEW_WIDTH / storyboard.thumbWidth;
+  const scale = s(PREVIEW_WIDTH) / storyboard.thumbWidth;
   const height = storyboard.thumbHeight * scale;
   return (
-    <View style={[styles.preview, { width: PREVIEW_WIDTH, height }]}>
+    <View style={[styles.preview, { width: s(PREVIEW_WIDTH), height }]}>
       <Image
         source={{ uri: storyboardSheetUrl(storyboard.templateUrl, sheetIndex) }}
         style={{
@@ -2291,7 +2302,7 @@ function ScrubPreview({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   container: { flex: 1, backgroundColor: colors.videoBackground },
   topInfo: {
     position: "absolute",

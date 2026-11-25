@@ -14,6 +14,7 @@ import { loadServerUrl } from "@/lib/config";
 import { persister, queryClient } from "@/lib/query-client";
 import { trpcClient } from "@/lib/trpc";
 import { TrpcProvider } from "@/lib/trpc-react";
+import { createStyles } from "@/lib/ui-scale";
 import { WatchProgressProvider } from "@/lib/watch-progress";
 import { LoginScreen } from "@/screens/LoginScreen";
 import { ProfilesScreen } from "@/screens/ProfilesScreen";
@@ -169,7 +170,7 @@ export default function App() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   root: { flex: 1, backgroundColor: colors.background },
   centered: { flex: 1 },
 });

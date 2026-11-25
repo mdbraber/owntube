@@ -1,8 +1,9 @@
-import { StyleSheet, Text } from "react-native";
+import { Text } from "react-native";
 import { CarouselFeed } from "@/components/CarouselFeed";
 import type { Nav } from "@/lib/navigation";
 import { trpcClient } from "@/lib/trpc";
 import { trpc } from "@/lib/trpc-react";
+import { createStyles } from "@/lib/ui-scale";
 import { useInfiniteFeed } from "@/lib/use-infinite-feed";
 import { colors, fontSize } from "@/theme";
 
@@ -31,7 +32,7 @@ export function TrendingScreen({ nav }: { nav: Nav }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   heading: {
     color: colors.foreground,
     fontSize: fontSize.xxl,

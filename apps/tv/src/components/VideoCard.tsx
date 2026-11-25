@@ -1,11 +1,12 @@
 import type { UnifiedVideo } from "@web/server/services/proxy.types";
 import { memo, useState } from "react";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, Text, View } from "react-native";
 import {
   formatPublishedLabel,
   formatThumbnailBadge,
   formatViews,
 } from "@/lib/format";
+import { createStyles } from "@/lib/ui-scale";
 import { useThumbnail } from "@/lib/use-thumbnail";
 import { useWatchProgress } from "@/lib/watch-progress";
 import { colors, fontSize, monoFont, radius, spacing } from "@/theme";
@@ -144,7 +145,7 @@ export const VideoCard = memo(function VideoCard({
 
 export const VIDEO_CARD_WIDTH = CARD_WIDTH;
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   card: { width: CARD_WIDTH },
   thumbFrame: {
     borderRadius: radius.card + 3,

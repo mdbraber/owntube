@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Image, ScrollView, Text, View } from "react-native";
 import { CarouselFeed } from "@/components/CarouselFeed";
 import { ChannelTiles } from "@/components/ChannelTiles";
 import { FocusButton } from "@/components/FocusButton";
@@ -12,6 +12,7 @@ import type { Nav } from "@/lib/navigation";
 import { queryClient } from "@/lib/query-client";
 import { trpcClient } from "@/lib/trpc";
 import { trpc } from "@/lib/trpc-react";
+import { createStyles } from "@/lib/ui-scale";
 import { useInfiniteFeed } from "@/lib/use-infinite-feed";
 import { colors, fontSize, radius, spacing } from "@/theme";
 
@@ -285,7 +286,7 @@ const TABS: { key: ChannelTab; label: string }[] = [
   { key: "similar", label: "Similar" },
 ];
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   chrome: { gap: spacing.md },
   chips: {
     flexDirection: "row",

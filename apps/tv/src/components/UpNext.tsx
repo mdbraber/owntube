@@ -2,6 +2,7 @@ import type { UnifiedVideo } from "@web/server/services/proxy.types";
 import { useEffect, useState } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 import { FocusButton } from "@/components/FocusButton";
+import { createStyles } from "@/lib/ui-scale";
 import { useThumbnail } from "@/lib/use-thumbnail";
 import { colors, fontSize, radius, spacing } from "@/theme";
 
@@ -80,7 +81,7 @@ export function UpNext({
 
 const THUMB_WIDTH = 256;
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   scrim: {
     ...StyleSheet.absoluteFill,
     backgroundColor: colors.overlay,

@@ -36,6 +36,7 @@ import { trpcClient } from "@/lib/trpc";
 import { trpc } from "@/lib/trpc-react";
 import { type TVFocusGuide, TVFocusGuideView } from "@/lib/tv-focus";
 import { useTvRemoteReceiver } from "@/lib/tv-remote";
+import { createStyles, s } from "@/lib/ui-scale";
 import { useResumeLookup, useWatchProgressRefresh } from "@/lib/watch-progress";
 import { ChannelScreen } from "@/screens/ChannelScreen";
 import { HistoryScreen } from "@/screens/HistoryScreen";
@@ -177,7 +178,7 @@ export function Shell({
    * beside it — most visibly the Subscriptions channel list. Shift the content
    * by the same amount instead, so both stay fully visible.
    */
-  const contentInset = useRef(new Animated.Value(RAIL_WIDTH)).current;
+  const contentInset = useRef(new Animated.Value(s(RAIL_WIDTH))).current;
   const onSidebarExpanded = useCallback(
     (expanded: boolean) => {
       // One value drives both the rail's width and the content's inset, so
@@ -185,7 +186,7 @@ export function Shell({
       // a margin can't run on the native driver, and tweening it relaid out
       // the whole screen (every mounted shelf and card) on each frame, which
       // stalled the JS thread and made the D-pad feel sticky at the rail.
-      contentInset.setValue(expanded ? EXPANDED_WIDTH : RAIL_WIDTH);
+      contentInset.setValue(s(expanded ? EXPANDED_WIDTH : RAIL_WIDTH));
     },
     [contentInset],
   );
@@ -609,7 +610,7 @@ function ScreenLayer({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   shell: { flex: 1, backgroundColor: colors.background },
   base: { flex: 1 },
   layer: { flex: 1 },

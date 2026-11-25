@@ -9,7 +9,6 @@ import {
 import {
   Pressable,
   type StyleProp,
-  StyleSheet,
   TextInput,
   type TextInputInstance,
   type TextInputProps,
@@ -18,6 +17,7 @@ import {
   type ViewInstance,
   type ViewStyle,
 } from "react-native";
+import { createStyles } from "@/lib/ui-scale";
 import { colors, focus, fontSize, radius, spacing } from "@/theme";
 
 export type FocusableTextInputHandle = {
@@ -112,7 +112,7 @@ export const FocusableTextInput = forwardRef<FocusableTextInputHandle, Props>(
   },
 );
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   surface: {
     minHeight: 58,
     justifyContent: "center",

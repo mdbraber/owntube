@@ -1,11 +1,12 @@
 import { useRef, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import { type HomeBlock, HomeBlockRow } from "@/components/HomeBlockRow";
 import type { Nav } from "@/lib/navigation";
 import { useRowScroll } from "@/lib/row-scroll";
 import { useActiveBackHandler, useScreenActive } from "@/lib/screen-active";
 import { trpc } from "@/lib/trpc-react";
 import { type TVFocusGuide, TVFocusGuideView } from "@/lib/tv-focus";
+import { createStyles } from "@/lib/ui-scale";
 import { HistoryScreen } from "@/screens/HistoryScreen";
 import { PlaylistsScreen } from "@/screens/PlaylistsScreen";
 import { QueueScreen } from "@/screens/QueueScreen";
@@ -183,7 +184,7 @@ function LibraryTile({
 
 const TILE_HEIGHT = 84;
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   screen: { flex: 1 },
   // display:none also keeps the hidden overview out of D-pad focus search.
   hidden: { display: "none" },

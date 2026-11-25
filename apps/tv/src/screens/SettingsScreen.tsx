@@ -1,12 +1,6 @@
 import type { DefaultPlaybackQuality } from "@web/lib/default-playback-quality";
 import { useEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { ActivityIndicator, ScrollView, Text, View } from "react-native";
 import { FocusButton } from "@/components/FocusButton";
 import type { Section } from "@/components/Sidebar";
 import {
@@ -22,6 +16,14 @@ import { errorMessage } from "@/lib/error-message";
 import { queryClient } from "@/lib/query-client";
 import { trpcClient } from "@/lib/trpc";
 import { trpc } from "@/lib/trpc-react";
+import {
+  createStyles,
+  setUiSize,
+  UI_SIZE_ADJUSTABLE,
+  UI_SIZES,
+  type UiSize,
+  uiSize,
+} from "@/lib/ui-scale";
 import { HomeRowsSettingsScreen } from "@/screens/HomeRowsSettingsScreen";
 import { SidebarSettingsScreen } from "@/screens/SidebarSettingsScreen";
 import { colors, fontSize, radius, spacing } from "@/theme";
@@ -48,6 +50,12 @@ const QUALITIES: DefaultPlaybackQuality[] = [
  * player reads `defaultPlaybackQuality` and the SponsorBlock flags from here,
  * so changing them on either surface affects both.
  */
+const UI_SIZE_LABELS: Record<UiSize, string> = {
+  compact: "Compact",
+  default: "Default",
+  large: "Large",
+};
+
 export function SettingsScreen({
   onSidebarChange,
   onSignOut,
@@ -190,6 +198,23 @@ export function SettingsScreen({
         />
       </View>
 
+      {UI_SIZE_ADJUSTABLE ? (
+        <>
+          <Text style={styles.section}>Text size</Text>
+          <View style={styles.row}>
+            {UI_SIZES.map((size) => (
+              <FocusButton
+                key={size}
+                label={UI_SIZE_LABELS[size]}
+                // Applies by reloading the app (see lib/ui-scale).
+                onPress={() => void setUiSize(size)}
+                style={size === uiSize ? styles.active : undefined}
+              />
+            ))}
+          </View>
+        </>
+      ) : null}
+
       <Text style={styles.section}>Layout</Text>
       <View style={styles.row}>
         <FocusButton label="Edit sidebar" onPress={() => setPage("sidebar")} />
@@ -252,7 +277,7 @@ function Toggle({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   centered: { flex: 1, alignItems: "center", justifyContent: "center" },
   title: {
     color: colors.foreground,

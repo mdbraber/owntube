@@ -13,6 +13,7 @@ import {
 import { FocusButton } from "@/components/FocusButton";
 import { formatCompactCount, formatViews, htmlToPlainText } from "@/lib/format";
 import { trpc } from "@/lib/trpc-react";
+import { createStyles } from "@/lib/ui-scale";
 import { colors, focus, fontSize, radius, spacing } from "@/theme";
 
 type Tab = "description" | "comments";
@@ -181,7 +182,7 @@ function Block({ children }: { children: React.ReactNode }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   scrim: {
     ...StyleSheet.absoluteFill,
     alignItems: "flex-end",

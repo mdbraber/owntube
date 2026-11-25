@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Image, StyleSheet, Text, View } from "react-native";
+import { Image, Text, View } from "react-native";
 import { LOGO_WORDMARK } from "@/assets";
 import { FocusButton } from "@/components/FocusButton";
 import { FocusableTextInput } from "@/components/focusable-text-input";
@@ -10,6 +10,7 @@ import {
   normalizeServerUrl,
   saveServerUrl,
 } from "@/lib/config";
+import { createStyles } from "@/lib/ui-scale";
 import { colors, fontSize, radius, spacing } from "@/theme";
 
 /**
@@ -75,7 +76,7 @@ export function ServerScreen({ onDone }: { onDone: () => void }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   container: {
     flex: 1,
     alignItems: "center",

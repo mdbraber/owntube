@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Image, StyleSheet, Text, View } from "react-native";
+import { Image, Text, View } from "react-native";
 import { LOGO_WORDMARK } from "@/assets";
 import { FocusButton } from "@/components/FocusButton";
 import {
@@ -9,6 +9,7 @@ import {
   switchProfile,
 } from "@/lib/auth-token";
 import { useActiveBackHandler } from "@/lib/screen-active";
+import { createStyles } from "@/lib/ui-scale";
 import { colors, fontSize, radius, spacing } from "@/theme";
 
 /**
@@ -73,7 +74,7 @@ export function ProfilesScreen({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   container: {
     flex: 1,
     alignItems: "center",

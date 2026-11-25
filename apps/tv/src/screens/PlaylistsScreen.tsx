@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import type { UnifiedVideo } from "@web/server/services/proxy.types";
 import { useEffect, useMemo, useState } from "react";
-import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { FlatList, Pressable, Text, View } from "react-native";
 import { type CardMenuExtras, useCardMenu } from "@/components/CardMenu";
 import { CarouselFeed } from "@/components/CarouselFeed";
 import { FocusButton } from "@/components/FocusButton";
@@ -12,6 +12,7 @@ import { queryClient } from "@/lib/query-client";
 import { moveId } from "@/lib/reorder";
 import { trpcClient } from "@/lib/trpc";
 import { trpc } from "@/lib/trpc-react";
+import { createStyles, s } from "@/lib/ui-scale";
 import { useInfiniteFeed } from "@/lib/use-infinite-feed";
 import { useProgressLookup } from "@/lib/watch-progress";
 import { colors, focus, fontSize, radius, spacing } from "@/theme";
@@ -201,7 +202,7 @@ function PlaylistRow({
       ]}
     >
       <View style={styles.rowIcon}>
-        <Feather name="folder" size={16} color={tint} />
+        <Feather name="folder" size={s(16)} color={tint} />
       </View>
       <Text style={[styles.rowLabel, { color: tint }]} numberOfLines={1}>
         {label}
@@ -211,7 +212,7 @@ function PlaylistRow({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   screen: { flex: 1 },
   title: {
     color: colors.foreground,

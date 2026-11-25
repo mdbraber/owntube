@@ -1,5 +1,6 @@
 import { useCallback, useRef } from "react";
 import type { LayoutChangeEvent, ScrollViewInstance } from "react-native";
+import { s } from "@/lib/ui-scale";
 import { spacing } from "@/theme";
 
 /**
@@ -29,7 +30,7 @@ export function useRowScroll() {
     const top = rowTops.current.get(key);
     if (top === undefined) return;
     scrollRef.current?.scrollTo({
-      y: Math.max(0, top - headerHeight.current - spacing.lg),
+      y: Math.max(0, top - headerHeight.current - s(spacing.lg)),
       animated: true,
     });
   }, []);

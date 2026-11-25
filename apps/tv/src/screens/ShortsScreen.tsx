@@ -16,6 +16,7 @@ import { getToken } from "@/lib/auth-token";
 import { baseUrl } from "@/lib/config";
 import { trpcClient } from "@/lib/trpc";
 import type { TVView } from "@/lib/tv-focus";
+import { createStyles } from "@/lib/ui-scale";
 import { colors, fontSize, radius, spacing } from "@/theme";
 
 /** A short counts as seen after this long on screen. */
@@ -190,7 +191,7 @@ export function ShortsScreen({ startVideo }: { startVideo?: UnifiedVideo }) {
 /** Portrait frame, the height of the screen area. */
 const FRAME_ASPECT = 9 / 16;
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   container: {
     flex: 1,
     flexDirection: "row",

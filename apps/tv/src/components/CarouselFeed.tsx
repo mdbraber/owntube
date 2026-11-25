@@ -5,7 +5,6 @@ import {
   ActivityIndicator,
   FlatList,
   type ListRenderItem,
-  StyleSheet,
   Text,
   View,
 } from "react-native";
@@ -13,6 +12,7 @@ import type { CardMenuExtras } from "@/components/CardMenu";
 import { FocusButton } from "@/components/FocusButton";
 import { SkeletonRows } from "@/components/Skeleton";
 import { VideoRow } from "@/components/VideoRow";
+import { createStyles } from "@/lib/ui-scale";
 import type { InfiniteFeed } from "@/lib/use-infinite-feed";
 import { colors, fontSize, spacing } from "@/theme";
 
@@ -202,7 +202,7 @@ function chunk(videos: UnifiedVideo[], size: number): UnifiedVideo[][] {
   return rows;
 }
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   list: { paddingBottom: spacing.screen },
   gap: { height: spacing.xl },
   header: { marginBottom: spacing.lg },

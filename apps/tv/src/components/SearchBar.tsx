@@ -1,6 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
+import { createStyles, s } from "@/lib/ui-scale";
 import { colors, focus, fontSize, spacing } from "@/theme";
 
 /**
@@ -34,7 +35,7 @@ export function SearchBar({
       <View style={[styles.mic, focused && styles.micFocused]}>
         <Feather
           name="mic"
-          size={20}
+          size={s(20)}
           color={focused ? colors.focusForeground : colors.foreground}
         />
       </View>
@@ -52,7 +53,7 @@ export function SearchBar({
 
 const HEIGHT = 44;
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   bar: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   mic: {
     width: HEIGHT,

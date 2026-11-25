@@ -1,9 +1,10 @@
-import { StyleSheet, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { CarouselFeed } from "@/components/CarouselFeed";
 import { VideoRow } from "@/components/VideoRow";
 import type { Nav } from "@/lib/navigation";
 import { trpcClient } from "@/lib/trpc";
 import { trpc } from "@/lib/trpc-react";
+import { createStyles } from "@/lib/ui-scale";
 import { useInfiniteFeed } from "@/lib/use-infinite-feed";
 import { colors, fontSize } from "@/theme";
 
@@ -60,7 +61,7 @@ export function RecommendedScreen({ nav }: { nav: Nav }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   header: { gap: 20 },
   heading: {
     color: colors.foreground,

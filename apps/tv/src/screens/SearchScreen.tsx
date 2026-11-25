@@ -11,7 +11,6 @@ import {
 import {
   type FlatList,
   Pressable,
-  StyleSheet,
   Text,
   View,
   type ViewInstance,
@@ -27,6 +26,7 @@ import { speechRecognition, useSpeechRecognitionEvent } from "@/lib/speech";
 import { trpcClient } from "@/lib/trpc";
 import { trpc } from "@/lib/trpc-react";
 import { type TVFocusGuide, TVFocusGuideView } from "@/lib/tv-focus";
+import { createStyles, s } from "@/lib/ui-scale";
 import { useInfiniteFeed } from "@/lib/use-infinite-feed";
 import { colors, focus, fontSize, spacing } from "@/theme";
 
@@ -394,7 +394,7 @@ function RoundButton({
     >
       <Feather
         name={icon}
-        size={20}
+        size={s(20)}
         color={focused ? colors.focusForeground : colors.foreground}
       />
     </Pressable>
@@ -429,7 +429,7 @@ function WordRow({
       onPress={onPress}
       style={[styles.word, focused && styles.wordFocused]}
     >
-      <Feather name={recent ? "clock" : "search"} size={16} color={color} />
+      <Feather name={recent ? "clock" : "search"} size={s(16)} color={color} />
       <Text style={[styles.wordText, { color }]} numberOfLines={1}>
         {prefix}
         <Text style={styles.wordRest}>{word.slice(prefix.length)}</Text>
@@ -440,7 +440,7 @@ function WordRow({
 
 const BAR_HEIGHT = 44;
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   container: { flex: 1, gap: spacing.md, paddingTop: spacing.sm },
   bar: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   round: {

@@ -1,14 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import type { UnifiedVideo } from "@web/server/services/proxy.types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  FlatList,
-  Image,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { FlatList, Image, Pressable, Text, View } from "react-native";
 import { useCardMenu } from "@/components/CardMenu";
 import { CarouselFeed } from "@/components/CarouselFeed";
 import { MenuPanel } from "@/components/MenuPanel";
@@ -21,6 +14,7 @@ import { queryClient } from "@/lib/query-client";
 import { useActiveBackHandler } from "@/lib/screen-active";
 import { trpcClient } from "@/lib/trpc";
 import { trpc } from "@/lib/trpc-react";
+import { createStyles, s } from "@/lib/ui-scale";
 import { useInfiniteFeed } from "@/lib/use-infinite-feed";
 import { colors, focus, fontSize, radius, spacing } from "@/theme";
 
@@ -509,7 +503,7 @@ function ChannelRow({
     >
       {icon ? (
         <View style={[styles.avatar, styles.avatarFallback]}>
-          <Feather name={icon} size={16} color={tint} />
+          <Feather name={icon} size={s(16)} color={tint} />
         </View>
       ) : avatarUrl ? (
         <Image
@@ -526,13 +520,13 @@ function ChannelRow({
       </Text>
       {fresh ? <View style={styles.freshDot} /> : null}
       {trailingIcon ? (
-        <Feather name={trailingIcon} size={16} color={tint} />
+        <Feather name={trailingIcon} size={s(16)} color={tint} />
       ) : null}
     </Pressable>
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   screen: { flex: 1 },
   title: {
     color: colors.foreground,

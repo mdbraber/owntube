@@ -5,7 +5,6 @@ import {
   findNodeHandle,
   Pressable,
   ScrollView,
-  StyleSheet,
   Text,
   useTVEventHandler,
   View,
@@ -17,6 +16,7 @@ import {
   saveSidebarPrefs,
 } from "@/lib/sidebar-prefs";
 import type { TVView } from "@/lib/tv-focus";
+import { createStyles, s } from "@/lib/ui-scale";
 import { colors, focus, fontSize, radius, spacing } from "@/theme";
 
 const ROW_HEIGHT = 44;
@@ -210,7 +210,7 @@ function SidebarRow({
       ]}
     >
       <View style={styles.iconSlot}>
-        <Feather name={icon} size={20} color={tint} />
+        <Feather name={icon} size={s(20)} color={tint} />
       </View>
       <Text style={[styles.label, { color: tint }]} numberOfLines={1}>
         {label}
@@ -220,14 +220,14 @@ function SidebarRow({
       </Text>
       <View style={styles.grip}>
         {grabbed ? (
-          <Feather name="move" size={16} color={colors.brand} />
+          <Feather name="move" size={s(16)} color={colors.brand} />
         ) : null}
       </View>
     </Pressable>
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   title: {
     color: colors.foreground,
     fontSize: fontSize.xxl,
