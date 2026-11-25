@@ -1,17 +1,12 @@
-import { type ComponentRef, useRef, useState } from "react";
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TVFocusGuideView,
-  View,
-} from "react-native";
+import { useRef, useState } from "react";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import { type HomeBlock, HomeBlockRow } from "@/components/HomeBlockRow";
 import type { Nav } from "@/lib/navigation";
 import { useRowScroll } from "@/lib/row-scroll";
 import { useActiveBackHandler, useScreenActive } from "@/lib/screen-active";
 import { trpc } from "@/lib/trpc-react";
+import { type TVFocusGuide, TVFocusGuideView } from "@/lib/tv-focus";
+import { createStyles } from "@/lib/ui-scale";
 import { HistoryScreen } from "@/screens/HistoryScreen";
 import { PlaylistsScreen } from "@/screens/PlaylistsScreen";
 import { QueueScreen } from "@/screens/QueueScreen";
@@ -55,7 +50,7 @@ export function LibraryScreen({ nav }: { nav: Nav }) {
   // The overview stays mounted under an open page (hidden), so Back returns
   // to it as it was: rows loaded, scrolled where they were. Its tile guide
   // then hands focus back to the tile that opened the page.
-  const tilesRef = useRef<ComponentRef<typeof TVFocusGuideView>>(null);
+  const tilesRef = useRef<TVFocusGuide>(null);
   useActiveBackHandler(() => {
     if (!page) return false;
     setPage(null);
@@ -189,7 +184,7 @@ function LibraryTile({
 
 const TILE_HEIGHT = 84;
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   screen: { flex: 1 },
   // display:none also keeps the hidden overview out of D-pad focus search.
   hidden: { display: "none" },

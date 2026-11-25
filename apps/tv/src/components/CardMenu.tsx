@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { type MenuItem, MenuPanel } from "@/components/MenuPanel";
 import { loadHints, markLongPressUsed, takeLongPressHint } from "@/lib/hints";
 import type { Nav } from "@/lib/navigation";
@@ -17,6 +17,7 @@ import { usePlaylistMenu } from "@/lib/playlist-menu";
 import { queryClient } from "@/lib/query-client";
 import { trpcClient } from "@/lib/trpc";
 import { trpc } from "@/lib/trpc-react";
+import { createStyles } from "@/lib/ui-scale";
 import { colors, fontSize, radius, spacing } from "@/theme";
 
 /** Screen-specific actions (Move up, Remove from history…), listed first. */
@@ -279,7 +280,7 @@ function CardMenuPanel({
   return <MenuPanel buildPage={buildPage} onClose={onClose} />;
 }
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   toast: {
     position: "absolute",
     top: 36,

@@ -1,5 +1,5 @@
 import type { UnifiedVideo } from "@web/server/services/proxy.types";
-import { StyleSheet, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { type CardMenuExtras, useCardMenu } from "@/components/CardMenu";
 import { CarouselFeed } from "@/components/CarouselFeed";
 import { FocusButton } from "@/components/FocusButton";
@@ -8,6 +8,7 @@ import { playAllStart } from "@/lib/play-all";
 import { queryClient } from "@/lib/query-client";
 import { moveId } from "@/lib/reorder";
 import { trpcClient } from "@/lib/trpc";
+import { createStyles } from "@/lib/ui-scale";
 import { useInfiniteFeed } from "@/lib/use-infinite-feed";
 import { useProgressLookup } from "@/lib/watch-progress";
 import { colors, fontSize, spacing } from "@/theme";
@@ -99,7 +100,7 @@ export function QueueScreen({ nav }: { nav: Nav }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   header: { flexDirection: "row", alignItems: "center", gap: spacing.lg },
   heading: {
     color: colors.foreground,

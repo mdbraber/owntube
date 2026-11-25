@@ -1,7 +1,8 @@
-import { StyleSheet, Text } from "react-native";
+import { Text } from "react-native";
 import { CarouselFeed } from "@/components/CarouselFeed";
 import type { Nav } from "@/lib/navigation";
 import { trpcClient } from "@/lib/trpc";
+import { createStyles } from "@/lib/ui-scale";
 import { useInfiniteFeed } from "@/lib/use-infinite-feed";
 import { colors, fontSize } from "@/theme";
 
@@ -39,7 +40,7 @@ export function SavedScreen({ nav }: { nav: Nav }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   heading: {
     color: colors.foreground,
     fontSize: fontSize.xxl,

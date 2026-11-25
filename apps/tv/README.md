@@ -1,8 +1,8 @@
 # OwnTube TV (`apps/tv`)
 
 Android TV / Fire TV lean-back client for OwnTube. It is a **thin consumer** of the web app's
-`AppRouter` over tRPC and has no backend of its own. Built with Expo SDK 52 +
-`react-native-tvos` 0.76; playback is ExoPlayer through `expo-video`.
+`AppRouter` over tRPC and has no backend of its own. Built with Expo SDK 58 +
+`react-native-tvos` 0.88 (new architecture); playback is ExoPlayer through `expo-video`.
 
 Roadmap: [`docs/TV-PARITY-PLAN.md`](../../docs/TV-PARITY-PLAN.md).
 
@@ -58,8 +58,8 @@ EXPO_PUBLIC_OWNTUBE_URL=https://owntube.example.org NODE_ENV=production \
 - Gradle does not track `EXPO_PUBLIC_*`: after changing only the URL, delete
   `app/build/generated/{assets,res}/createBundleReleaseJsAndAssets` or the old URL stays in the
   bundle.
-- RN 0.76 needs NDK 26.1 (`ndk;26.1.10909125`) and SDK 35 (`platforms;android-35`,
-  `build-tools;35.0.0`).
+- RN 0.88 needs NDK 27.1 (`ndk;27.1.12297006`), SDK 37 (`platforms;android-37`) and
+  `build-tools;37.0.0`; Gradle installs any that are missing on the first build.
 - For development against Metro instead: `pnpm run android`.
 - `EXPO_PUBLIC_BUILD_ID=<git sha>` shows the build in Settings → About.
 

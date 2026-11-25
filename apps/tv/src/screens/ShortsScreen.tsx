@@ -15,6 +15,8 @@ import {
 import { getToken } from "@/lib/auth-token";
 import { baseUrl } from "@/lib/config";
 import { trpcClient } from "@/lib/trpc";
+import type { TVView } from "@/lib/tv-focus";
+import { createStyles } from "@/lib/ui-scale";
 import { colors, fontSize, radius, spacing } from "@/theme";
 
 /** A short counts as seen after this long on screen. */
@@ -109,7 +111,7 @@ export function ShortsScreen({ startVideo }: { startVideo?: UnifiedVideo }) {
   // they must still move through the sections. Android TV reports a plain
   // arrow press once, on key-up; a key-down copy (when enabled) is skipped.
   const [surfaceFocused, setSurfaceFocused] = useState(false);
-  const surfaceRef = useRef<View>(null);
+  const surfaceRef = useRef<TVView>(null);
   const [surfaceHandle, setSurfaceHandle] = useState<number | null>(null);
   const surfaceFocusedRef = useRef(false);
   surfaceFocusedRef.current = surfaceFocused;
@@ -156,7 +158,7 @@ export function ShortsScreen({ startVideo }: { startVideo?: UnifiedVideo }) {
         ref={surfaceRef}
         onLayout={() => {
           if (surfaceHandle === null) {
-            setSurfaceHandle(findNodeHandle(surfaceRef.current));
+            setSurfaceHandle(findNodeHandle(surfaceRef.current) ?? null);
           }
         }}
         // Up/Down change the short; pinning focus here stops Android also
@@ -189,7 +191,7 @@ export function ShortsScreen({ startVideo }: { startVideo?: UnifiedVideo }) {
 /** Portrait frame, the height of the screen area. */
 const FRAME_ASPECT = 9 / 16;
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   container: {
     flex: 1,
     flexDirection: "row",

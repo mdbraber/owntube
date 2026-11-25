@@ -1,12 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { type ReactNode, useState } from "react";
-import {
-  Pressable,
-  StyleSheet,
-  Text,
-  TVFocusGuideView,
-  View,
-} from "react-native";
+import { Pressable, Text, TVFocusGuideView, View } from "react-native";
+import { createStyles, s } from "@/lib/ui-scale";
 import { colors, fontSize, radius, spacing } from "@/theme";
 
 const LETTERS = [
@@ -131,7 +126,7 @@ function Key({
       style={[styles.key, focused && styles.focused]}
     >
       {icon ? (
-        <Feather name={icon} size={20} color={color} />
+        <Feather name={icon} size={s(20)} color={color} />
       ) : (
         <Text style={[styles.keyText, small && styles.keySmall, { color }]}>
           {label}
@@ -178,7 +173,7 @@ function Action({
 
 const KEY = 38;
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   keyboard: { gap: 2 },
   row: { flexDirection: "row", gap: 4 },
   key: {

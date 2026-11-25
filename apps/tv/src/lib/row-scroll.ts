@@ -1,5 +1,6 @@
 import { useCallback, useRef } from "react";
-import type { LayoutChangeEvent, ScrollView } from "react-native";
+import type { LayoutChangeEvent, ScrollViewInstance } from "react-native";
+import { s } from "@/lib/ui-scale";
 import { spacing } from "@/theme";
 
 /**
@@ -16,7 +17,7 @@ import { spacing } from "@/theme";
  * reports its height through `onHeaderLayout`, and rows land just under it.
  */
 export function useRowScroll() {
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
   const rowTops = useRef(new Map<string, number>());
   const headerHeight = useRef(0);
   const onRowLayout = useCallback((key: string, e: LayoutChangeEvent) => {
@@ -29,7 +30,7 @@ export function useRowScroll() {
     const top = rowTops.current.get(key);
     if (top === undefined) return;
     scrollRef.current?.scrollTo({
-      y: Math.max(0, top - headerHeight.current - spacing.lg),
+      y: Math.max(0, top - headerHeight.current - s(spacing.lg)),
       animated: true,
     });
   }, []);

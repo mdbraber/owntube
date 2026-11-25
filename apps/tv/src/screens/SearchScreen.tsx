@@ -1,12 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import type { UnifiedVideo } from "@web/server/services/proxy.types";
 import {
-  ExpoSpeechRecognitionModule,
-  isRecognitionAvailable,
-  useSpeechRecognitionEvent,
-} from "expo-speech-recognition";
-import {
-  type ComponentRef,
   forwardRef,
   useCallback,
   useEffect,
@@ -17,10 +11,9 @@ import {
 import {
   type FlatList,
   Pressable,
-  StyleSheet,
   Text,
-  TVFocusGuideView,
   View,
+  type ViewInstance,
 } from "react-native";
 import { CarouselFeed } from "@/components/CarouselFeed";
 import { type ChannelTileData, ChannelTiles } from "@/components/ChannelTiles";
@@ -29,8 +22,11 @@ import { VideoRow } from "@/components/VideoRow";
 import type { Nav } from "@/lib/navigation";
 import { loadRecentSearches, rememberSearch } from "@/lib/recent-searches";
 import { useActiveBackHandler } from "@/lib/screen-active";
+import { speechRecognition, useSpeechRecognitionEvent } from "@/lib/speech";
 import { trpcClient } from "@/lib/trpc";
 import { trpc } from "@/lib/trpc-react";
+import { type TVFocusGuide, TVFocusGuideView } from "@/lib/tv-focus";
+import { createStyles, s } from "@/lib/ui-scale";
 import { useInfiniteFeed } from "@/lib/use-infinite-feed";
 import { colors, focus, fontSize, spacing } from "@/theme";
 
@@ -61,7 +57,7 @@ export function SearchScreen({
   // hides rather than offering a control that can only fail.
   const [micAvailable] = useState(() => {
     try {
-      return isRecognitionAvailable();
+      return speechRecognition?.isRecognitionAvailable() ?? false;
     } catch {
       return false;
     }
@@ -82,16 +78,16 @@ export function SearchScreen({
   });
 
   const startListening = async () => {
+    if (!speechRecognition) return;
     setVoiceError(null);
-    const permission =
-      await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+    const permission = await speechRecognition.requestPermissionsAsync();
     if (!permission.granted) {
       setVoiceError("Microphone permission denied");
       return;
     }
     setText("");
     setListening(true);
-    ExpoSpeechRecognitionModule.start({
+    speechRecognition.start({
       lang: "en-US",
       interimResults: true,
       continuous: false,
@@ -100,7 +96,7 @@ export function SearchScreen({
 
   const toggleListening = () => {
     if (listening) {
-      ExpoSpeechRecognitionModule.stop();
+      speechRecognition?.stop();
       return;
     }
     void startListening();
@@ -213,8 +209,8 @@ export function SearchScreen({
 
   // Back from the results returns to the query (and its keyboard) first;
   // from there it leaves as before.
-  const barRef = useRef<ComponentRef<typeof TVFocusGuideView>>(null);
-  const [queryBox, setQueryBox] = useState<View | null>(null);
+  const barRef = useRef<TVFocusGuide>(null);
+  const [queryBox, setQueryBox] = useState<ViewInstance | null>(null);
   useActiveBackHandler(() => {
     if (keyboardOpen) return false;
     openKeyboard();
@@ -336,7 +332,7 @@ export function SearchScreen({
 
 /** The query as typed, in a pill; focusing it brings the keyboard back. */
 const QueryPill = forwardRef<
-  View,
+  ViewInstance,
   { text: string; onPress: () => void; onFocusChange: (f: boolean) => void }
 >(function QueryPill({ text, onPress, onFocusChange }, ref) {
   const [focused, setFocused] = useState(false);
@@ -398,7 +394,7 @@ function RoundButton({
     >
       <Feather
         name={icon}
-        size={20}
+        size={s(20)}
         color={focused ? colors.focusForeground : colors.foreground}
       />
     </Pressable>
@@ -433,7 +429,7 @@ function WordRow({
       onPress={onPress}
       style={[styles.word, focused && styles.wordFocused]}
     >
-      <Feather name={recent ? "clock" : "search"} size={16} color={color} />
+      <Feather name={recent ? "clock" : "search"} size={s(16)} color={color} />
       <Text style={[styles.wordText, { color }]} numberOfLines={1}>
         {prefix}
         <Text style={styles.wordRest}>{word.slice(prefix.length)}</Text>
@@ -444,7 +440,7 @@ function WordRow({
 
 const BAR_HEIGHT = 44;
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   container: { flex: 1, gap: spacing.md, paddingTop: spacing.sm },
   bar: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   round: {

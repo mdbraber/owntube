@@ -1,10 +1,11 @@
 import { useRef } from "react";
-import { StyleSheet, Text } from "react-native";
+import { Text } from "react-native";
 import { type CardMenuExtras, useCardMenu } from "@/components/CardMenu";
 import { CarouselFeed } from "@/components/CarouselFeed";
 import type { Nav } from "@/lib/navigation";
 import { queryClient } from "@/lib/query-client";
 import { trpcClient } from "@/lib/trpc";
+import { createStyles } from "@/lib/ui-scale";
 import { useInfiniteFeed } from "@/lib/use-infinite-feed";
 import { colors, fontSize } from "@/theme";
 
@@ -81,7 +82,7 @@ export function HistoryScreen({ nav }: { nav: Nav }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   heading: {
     color: colors.foreground,
     fontSize: fontSize.xl,

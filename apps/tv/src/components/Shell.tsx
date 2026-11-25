@@ -1,6 +1,5 @@
 import type { UnifiedVideo } from "@web/server/services/proxy.types";
 import {
-  type ComponentRef,
   type ReactNode,
   useCallback,
   useEffect,
@@ -13,9 +12,10 @@ import {
   AppState,
   BackHandler,
   Linking,
+  Platform,
   type StyleProp,
   StyleSheet,
-  TVFocusGuideView,
+  TVEventControl,
   View,
   type ViewStyle,
 } from "react-native";
@@ -34,7 +34,9 @@ import { SidebarFocusContext } from "@/lib/sidebar-focus";
 import { loadSidebarPrefs } from "@/lib/sidebar-prefs";
 import { trpcClient } from "@/lib/trpc";
 import { trpc } from "@/lib/trpc-react";
+import { type TVFocusGuide, TVFocusGuideView } from "@/lib/tv-focus";
 import { useTvRemoteReceiver } from "@/lib/tv-remote";
+import { createStyles, s } from "@/lib/ui-scale";
 import { useResumeLookup, useWatchProgressRefresh } from "@/lib/watch-progress";
 import { ChannelScreen } from "@/screens/ChannelScreen";
 import { HistoryScreen } from "@/screens/HistoryScreen";
@@ -176,7 +178,7 @@ export function Shell({
    * beside it — most visibly the Subscriptions channel list. Shift the content
    * by the same amount instead, so both stay fully visible.
    */
-  const contentInset = useRef(new Animated.Value(RAIL_WIDTH)).current;
+  const contentInset = useRef(new Animated.Value(s(RAIL_WIDTH))).current;
   const onSidebarExpanded = useCallback(
     (expanded: boolean) => {
       // One value drives both the rail's width and the content's inset, so
@@ -184,7 +186,7 @@ export function Shell({
       // a margin can't run on the native driver, and tweening it relaid out
       // the whole screen (every mounted shelf and card) on each frame, which
       // stalled the JS thread and made the D-pad feel sticky at the rail.
-      contentInset.setValue(expanded ? EXPANDED_WIDTH : RAIL_WIDTH);
+      contentInset.setValue(s(expanded ? EXPANDED_WIDTH : RAIL_WIDTH));
     },
     [contentInset],
   );
@@ -346,7 +348,8 @@ export function Shell({
   };
   // Once: the launch URL must not be handled again on a re-render.
   useEffect(() => {
-    const handle = (url: string | null) => handleLinkRef.current(url);
+    const handle = (url: string | null | undefined) =>
+      handleLinkRef.current(url ?? null);
     Linking.getInitialURL()
       .then(handle)
       .catch(() => {});
@@ -388,6 +391,17 @@ export function Shell({
     });
     return () => sub.remove();
   }, []);
+
+  // tvOS sends the remote's Menu button to the system (back to the Apple TV
+  // home screen) unless the app claims it, and an app may not quit itself.
+  // So claim it only while Back has somewhere to go inside the app, and hand
+  // it back at Home, where Menu should leave.
+  const canGoBack = stack.length > 0 || section !== "home";
+  useEffect(() => {
+    if (Platform.OS !== "ios") return;
+    if (canGoBack) TVEventControl.enableTVMenuKey();
+    else TVEventControl.disableTVMenuKey();
+  }, [canGoBack]);
 
   // Only the newest watch route keeps a player; an older one (under a channel
   // that opened another video) remounts when Back reaches it again.
@@ -568,7 +582,7 @@ function ScreenLayer({
   style?: StyleProp<ViewStyle>;
   children: ReactNode;
 }) {
-  const guideRef = useRef<ComponentRef<typeof TVFocusGuideView>>(null);
+  const guideRef = useRef<TVFocusGuide>(null);
 
   // Showing a layer again doesn't move Android's focus by itself. A tick
   // later, once the native display change has landed, the guide redirects to
@@ -596,14 +610,14 @@ function ScreenLayer({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   shell: { flex: 1, backgroundColor: colors.background },
   base: { flex: 1 },
   layer: { flex: 1 },
   hidden: { display: "none" },
   // The player covers the sidebar too, so it sits above the base.
   watchLayer: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 20,
     backgroundColor: "#000",
   },

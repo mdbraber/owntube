@@ -5,12 +5,14 @@ import {
   findNodeHandle,
   Pressable,
   ScrollView,
-  StyleSheet,
+  type ScrollViewInstance,
   Text,
   TVFocusGuideView,
   View,
+  type ViewInstance,
 } from "react-native";
 import { channelInitial } from "@/lib/format";
+import { createStyles, s } from "@/lib/ui-scale";
 import { colors, focus, fontSize, radius, spacing } from "@/theme";
 
 export type Section =
@@ -94,7 +96,7 @@ export function Sidebar({
   const [expanded, setExpanded] = useState(false);
   const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
   const [navHeight, setNavHeight] = useState(0);
   // Settings sits at the rail's foot, apart from the scrolling sections, as in
   // the YouTube app.
@@ -102,9 +104,9 @@ export function Sidebar({
   const listed = visible.filter((s) => s.key !== "settings");
   const activeIndex = listed.findIndex((s) => s.key === active);
   // State, not a ref: the guide's destinations must follow the active row.
-  const [activeRow, setActiveRow] = useState<View | null>(null);
+  const [activeRow, setActiveRow] = useState<ViewInstance | null>(null);
   useEffect(() => {
-    onActiveRowHandle?.(activeRow ? findNodeHandle(activeRow) : null);
+    onActiveRowHandle?.(activeRow ? (findNodeHandle(activeRow) ?? null) : null);
   }, [activeRow, onActiveRowHandle]);
 
   // Collapsing hands the rail back to the page, so put the active section back
@@ -113,7 +115,7 @@ export function Sidebar({
   // to the top whenever the active row already fits on the first screenful.
   useEffect(() => {
     if (expanded || navHeight === 0 || activeIndex < 0) return;
-    const y = Math.max(0, activeIndex * ROW_PITCH + ROW_HEIGHT - navHeight);
+    const y = Math.max(0, s(activeIndex * ROW_PITCH + ROW_HEIGHT) - navHeight);
     scrollRef.current?.scrollTo({ y, animated: false });
   }, [expanded, navHeight, activeIndex]);
 
@@ -140,7 +142,7 @@ export function Sidebar({
     <Animated.View
       style={[
         styles.sidebar,
-        { width: width ?? (expanded ? EXPANDED_WIDTH : RAIL_WIDTH) },
+        { width: width ?? s(expanded ? EXPANDED_WIDTH : RAIL_WIDTH) },
       ]}
     >
       {/* Entering the rail from the page lands on the section you're in, not
@@ -265,7 +267,7 @@ function ProfileRow({
 }
 
 const NavRow = forwardRef<
-  View,
+  ViewInstance,
   {
     icon: FeatherName;
     label: string;
@@ -301,7 +303,7 @@ const NavRow = forwardRef<
         focused && styles.rowFocused,
       ]}
     >
-      <Feather name={icon} size={24} color={tint} />
+      <Feather name={icon} size={s(24)} color={tint} />
       {expanded ? (
         <View style={styles.labelWrap}>
           <Text style={[styles.label, { color: tint }]} numberOfLines={1}>
@@ -313,7 +315,7 @@ const NavRow = forwardRef<
   );
 });
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   sidebar: {
     position: "absolute",
     left: 0,

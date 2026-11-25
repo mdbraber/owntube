@@ -6,7 +6,6 @@ import {
   findNodeHandle,
   Pressable,
   ScrollView,
-  StyleSheet,
   Text,
   useTVEventHandler,
   View,
@@ -16,6 +15,8 @@ import { errorMessage } from "@/lib/error-message";
 import { queryClient } from "@/lib/query-client";
 import { trpcClient } from "@/lib/trpc";
 import { trpc } from "@/lib/trpc-react";
+import type { TVView } from "@/lib/tv-focus";
+import { createStyles, s } from "@/lib/ui-scale";
 import { colors, focus, fontSize, radius, spacing } from "@/theme";
 
 const ROW_HEIGHT = 44;
@@ -259,13 +260,13 @@ function BlockRow({
   onPress: () => void;
 }) {
   const [focused, setFocused] = useState(false);
-  const rowRef = useRef<View>(null);
+  const rowRef = useRef<TVView>(null);
   const [handle, setHandle] = useState<number | null>(null);
   const tint = hidden ? colors.mutedForeground : colors.foreground;
 
   // Focus follows a held row through a reorder (see SidebarSettingsScreen).
   useEffect(() => {
-    if (grabbed && !focused) rowRef.current?.requestTVFocus();
+    if (grabbed && !focused) rowRef.current?.requestTVFocus?.();
   }, [grabbed, focused]);
 
   return (
@@ -273,7 +274,7 @@ function BlockRow({
       ref={rowRef}
       hasTVPreferredFocus={hasTVPreferredFocus}
       onLayout={() => {
-        if (handle === null) setHandle(findNodeHandle(rowRef.current));
+        if (handle === null) setHandle(findNodeHandle(rowRef.current) ?? null);
       }}
       nextFocusUp={grabbed ? (handle ?? undefined) : undefined}
       nextFocusDown={grabbed ? (handle ?? undefined) : undefined}
@@ -289,7 +290,7 @@ function BlockRow({
       ]}
     >
       <View style={styles.iconSlot}>
-        <Feather name={hidden ? "eye-off" : "eye"} size={20} color={tint} />
+        <Feather name={hidden ? "eye-off" : "eye"} size={s(20)} color={tint} />
       </View>
       <Text style={[styles.label, { color: tint }]} numberOfLines={1}>
         {label}
@@ -299,14 +300,14 @@ function BlockRow({
       </Text>
       <View style={styles.grip}>
         {grabbed ? (
-          <Feather name="move" size={16} color={colors.brand} />
+          <Feather name="move" size={s(16)} color={colors.brand} />
         ) : null}
       </View>
     </Pressable>
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   title: {
     color: colors.foreground,
     fontSize: fontSize.xxl,

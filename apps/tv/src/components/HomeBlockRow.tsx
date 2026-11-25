@@ -7,7 +7,7 @@ import {
 import type { UnifiedVideo } from "@web/server/services/proxy.types";
 import type { AppRouter } from "@web/server/trpc/root";
 import { useMemo } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { FocusButton } from "@/components/FocusButton";
 import { SkeletonRows } from "@/components/Skeleton";
 import { VideoRow } from "@/components/VideoRow";
@@ -21,6 +21,7 @@ import {
 } from "@/lib/screen-active";
 import { trpcClient } from "@/lib/trpc";
 import { trpc } from "@/lib/trpc-react";
+import { createStyles } from "@/lib/ui-scale";
 import { useProgressLookup } from "@/lib/watch-progress";
 import { colors, fontSize } from "@/theme";
 
@@ -329,7 +330,7 @@ export function HomeBlockRow({
 /** For a row type without a query of its own here. */
 const NOTHING_TO_REFETCH = { isStale: false, refetch: () => undefined };
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   failed: { gap: 10, alignItems: "flex-start" },
   failedTitle: {
     color: colors.cardTitle,

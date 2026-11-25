@@ -19,5 +19,5 @@ android {
 
 dependencies {
   // Provided at runtime by expo-video; keep in step with its media3 version.
-  compileOnly "androidx.media3:media3-ui:1.4.0"
+  compileOnly "androidx.media3:media3-ui:1.9.1"
 }

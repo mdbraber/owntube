@@ -28,8 +28,10 @@ import {
   Animated,
   AppState,
   BackHandler,
+  Dimensions,
   findNodeHandle,
   Image,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -82,6 +84,12 @@ import {
 } from "@/lib/sponsorblock-labels";
 import { trpcClient } from "@/lib/trpc";
 import { trpc } from "@/lib/trpc-react";
+import {
+  type TVFocusGuide,
+  TVFocusGuideView,
+  type TVView,
+} from "@/lib/tv-focus";
+import { createStyles, s, UI_SCALE } from "@/lib/ui-scale";
 import { colors, focus, fontSize, monoFont, radius, spacing } from "@/theme";
 import {
   getPlayingVideoFormat,
@@ -167,9 +175,22 @@ type Toast = {
 /** How long a toast stays up; a SponsorBlock undo is offered for this long. */
 const TOAST_MS = 5000;
 
+/**
+ * The player controls' container: a focus guide on tvOS, so focus comes back
+ * to the control that had it when hidden controls reappear; a plain View on
+ * Android TV, where focus never leaves the hidden controls.
+ */
+const ControlsLayer = Platform.OS === "ios" ? TVFocusGuideView : View;
+
+/** Whether the scrubber pins Left/Right to itself (see its nextFocus props). */
+const pinScrubberFocus = Platform.OS !== "ios";
+
 /** Seconds moved per D-pad press, and per tick while a direction is held. */
 const SCRUB_STEP_SECONDS = 10;
 const SCRUB_HOLD_TICK_MS = 120;
+
+/** The adaptive sources whose "Auto" label shows the rendition playing. */
+const AUTO_SOURCE_IDS = new Set(["dash-vp9", "hls-server"]);
 
 /** Fallback ceiling if settings can't be read. */
 const DEFAULT_HEIGHT = 1080;
@@ -339,31 +360,16 @@ export function WatchScreen({
   );
   const [statsOn, setStatsOn] = useState(false);
   /**
-   * Height of the rendition Auto is playing, read from ExoPlayer every 2 s so
+   * Height of the rendition Auto is playing, read from the player every 2 s so
    * the label can say what Auto picked. Only changes re-render the screen.
    */
   const [autoHeight, setAutoHeight] = useState<number | null>(null);
   const autoActive =
     state.status === "ready" &&
-    state.playbackOptions[state.selectedOptionIndex]?.id === "dash-vp9" &&
+    AUTO_SOURCE_IDS.has(
+      state.playbackOptions[state.selectedOptionIndex]?.id ?? "",
+    ) &&
     qualityCap === null;
-  useEffect(() => {
-    if (!autoActive) {
-      setAutoHeight(null);
-      return;
-    }
-    let cancelled = false;
-    const poll = () =>
-      getPlayingVideoFormat().then((format) => {
-        if (!cancelled) setAutoHeight(format?.height ?? null);
-      });
-    poll();
-    const timer = setInterval(poll, 2000);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [autoActive]);
   const [segments, setSegments] = useState<SponsorBlockSegment[]>([]);
   /** Segments the viewer chose to watch (undo), so they aren't skipped again. */
   const keptSegmentsRef = useRef(new Set<string>());
@@ -418,11 +424,14 @@ export function WatchScreen({
    * press would also jump focus into the control row. Trapping it means the bar
    * keeps focus and left/right can only scrub.
    */
-  const scrubberRef = useRef<View>(null);
+  const scrubberRef = useRef<TVView>(null);
+  const controlsGuideRef = useRef<TVFocusGuide>(null);
   const [scrubberHandle, setScrubberHandle] = useState<number | null>(null);
   // Animated between the cropped peek and the row's measured natural height.
-  const relatedHeight = useRef(new Animated.Value(RELATED_PEEK_HEIGHT)).current;
-  const relatedFullHeight = useRef(RELATED_PEEK_HEIGHT);
+  const relatedHeight = useRef(
+    new Animated.Value(s(RELATED_PEEK_HEIGHT)),
+  ).current;
+  const relatedFullHeight = useRef(s(RELATED_PEEK_HEIGHT));
   const [rating, setRating] = useState<"like" | "dislike" | null>(null);
   const [saved, setSaved] = useState(false);
   const [queued, setQueued] = useState(false);
@@ -535,6 +544,23 @@ export function WatchScreen({
     p.timeUpdateEventInterval = 1;
     p.audioMixingMode = "mixWithOthers";
   });
+  useEffect(() => {
+    if (!autoActive) {
+      setAutoHeight(null);
+      return;
+    }
+    let cancelled = false;
+    const poll = () =>
+      getPlayingVideoFormat(player).then((format) => {
+        if (!cancelled) setAutoHeight(format?.height ?? null);
+      });
+    poll();
+    const timer = setInterval(poll, 2000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [autoActive, player]);
 
   // Playback detail (blocking) + SponsorBlock/related (best-effort, parallel).
   // Re-runs on reloadKey too: Retry on the error screen.
@@ -584,7 +610,10 @@ export function WatchScreen({
         if (playbackOptions.length === 0) {
           setState({
             status: "error",
-            message: "This video has no playable stream available.",
+            message:
+              detail.isLive && Platform.OS === "ios"
+                ? "This live stream can't play on Apple TV."
+                : "This video has no playable stream available.",
             problem: detail.isUpcoming
               ? { kind: "upcoming" }
               : { kind: "other" },
@@ -637,7 +666,9 @@ export function WatchScreen({
 
   useEffect(() => {
     Animated.timing(relatedHeight, {
-      toValue: relatedFocused ? relatedFullHeight.current : RELATED_PEEK_HEIGHT,
+      toValue: relatedFocused
+        ? relatedFullHeight.current
+        : s(RELATED_PEEK_HEIGHT),
       duration: RELATED_REVEAL_MS,
       // Height can't run on the UI thread; the row is small enough to be smooth.
       useNativeDriver: false,
@@ -1095,6 +1126,22 @@ export function WatchScreen({
       if (isPlayingRef.current) setControlsVisible(false);
     }, 4000);
   }, []);
+
+  // tvOS's focus engine skips views at (near) zero opacity, so while the
+  // controls are hidden nothing in them can hold focus, and revealing them
+  // doesn't bring it back the way Android TV's focus does: the remote's Down
+  // then has nowhere to go. Focus the controls' guide when they appear, which
+  // hands it to the control that had it last (the scrubber the first time),
+  // unless one of them has it already.
+  useEffect(() => {
+    if (Platform.OS !== "ios" || !controlsVisible) return;
+    if (scrubberFocusedRef.current || focusedButtonsRef.current > 0) return;
+    const timer = setTimeout(
+      () => controlsGuideRef.current?.requestTVFocus?.(),
+      0,
+    );
+    return () => clearTimeout(timer);
+  }, [controlsVisible]);
 
   // Closing the settings panel remounts the controls; show them, with the
   // usual auto-hide, rather than leaving whatever state they were in.
@@ -1693,7 +1740,7 @@ export function WatchScreen({
               subtitleTracks,
               defaultCaptionTrack(subtitleTracks),
             ).map<MenuItem>((track) => ({
-              key: track.id,
+              key: track.id ?? subtitleLabel(track),
               label: subtitleLabel(track),
               selected: subtitleTrack?.id === track.id,
               onPress: () => chooseSubtitles(track),
@@ -1886,7 +1933,11 @@ export function WatchScreen({
         // Controls stay mounted (so a focused button always catches the next key
         // to re-reveal them); visibility is just opacity. The up-next card
         // replaces them, so focus can't wander into hidden buttons behind it.
-        <View
+        // On tvOS hidden controls can't hold focus at all; the guide remembers
+        // which one had it (see the effect after revealControls).
+        <ControlsLayer
+          ref={controlsGuideRef}
+          autoFocus={Platform.OS === "ios"}
           style={[
             StyleSheet.absoluteFill,
             { opacity: controlsVisible ? 1 : 0 },
@@ -1939,11 +1990,20 @@ export function WatchScreen({
                 ref={scrubberRef}
                 onLayout={() => {
                   if (scrubberHandle === null) {
-                    setScrubberHandle(findNodeHandle(scrubberRef.current));
+                    setScrubberHandle(
+                      findNodeHandle(scrubberRef.current) ?? null,
+                    );
                   }
                 }}
-                nextFocusLeft={scrubberHandle ?? undefined}
-                nextFocusRight={scrubberHandle ?? undefined}
+                // Android: keep Left/Right on the scrubber (they scrub, see the
+                // key handler). Not on tvOS, where react-native-tvos builds
+                // these from focus guides that also kept Down from leaving it.
+                nextFocusLeft={
+                  pinScrubberFocus ? (scrubberHandle ?? undefined) : undefined
+                }
+                nextFocusRight={
+                  pinScrubberFocus ? (scrubberHandle ?? undefined) : undefined
+                }
                 hasTVPreferredFocus
                 onFocus={() => setScrubberFocused(true)}
                 onBlur={() => setScrubberFocused(false)}
@@ -2172,7 +2232,7 @@ export function WatchScreen({
               </Animated.View>
             ) : null}
           </View>
-        </View>
+        </ControlsLayer>
       )}
     </View>
   );
@@ -2185,16 +2245,21 @@ const PREVIEW_WIDTH = 240;
 /**
  * Keeps the centred preview inside the bar. The overlay spans the screen minus
  * a `spacing.screen` margin each side, so half a preview is this share of the
- * bar's width at 960dp — clamping to it stops the frame overhanging either end.
+ * bar's width — clamping to it stops the frame overhanging either end.
  */
 function clampPreviewPct(pct: number): number {
-  const barWidth = TV_WIDTH_DP - spacing.screen * 2;
+  const barWidth = screenWidthDp() - spacing.screen * 2;
   const halfPct = (PREVIEW_WIDTH / 2 / barWidth) * 100;
   return Math.min(100 - halfPct, Math.max(halfPct, pct));
 }
 
-/** Layout width in dp of a 1080p TV panel (density 2). */
-const TV_WIDTH_DP = 960;
+/**
+ * The screen's width in the dp the layout is written in: 960 on a 1080p Android
+ * TV (density 2), and on tvOS the point width divided by the interface scale.
+ */
+function screenWidthDp(): number {
+  return Dimensions.get("window").width / UI_SCALE;
+}
 
 /** Seconds behind the live edge before "Go live" shows (the web's value). */
 const LIVE_EDGE_SECONDS = 15;
@@ -2271,10 +2336,10 @@ function ScrubPreview({
     storyboard,
     atSeconds,
   );
-  const scale = PREVIEW_WIDTH / storyboard.thumbWidth;
+  const scale = s(PREVIEW_WIDTH) / storyboard.thumbWidth;
   const height = storyboard.thumbHeight * scale;
   return (
-    <View style={[styles.preview, { width: PREVIEW_WIDTH, height }]}>
+    <View style={[styles.preview, { width: s(PREVIEW_WIDTH), height }]}>
       <Image
         // Signed i.ytimg.com sheets: through the instance, never from Google.
         source={{
@@ -2294,7 +2359,7 @@ function ScrubPreview({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   container: { flex: 1, backgroundColor: colors.videoBackground },
   topInfo: {
     position: "absolute",
@@ -2382,7 +2447,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   bufferingOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -2599,7 +2664,7 @@ function StatsOverlay({
   useEffect(() => {
     let cancelled = false;
     const poll = () =>
-      getPlayingVideoFormat().then((f) => {
+      getPlayingVideoFormat(player).then((f) => {
         if (!cancelled) setFormat(f);
       });
     poll();
@@ -2608,7 +2673,7 @@ function StatsOverlay({
       cancelled = true;
       clearInterval(timer);
     };
-  }, []);
+  }, [player]);
   const buffered = Math.max(0, player.bufferedPosition - player.currentTime);
   const host = (() => {
     try {
@@ -2664,12 +2729,23 @@ function buildPlaybackOptions(detail: VideoDetail): PlaybackOption[] {
   // is only a last resort. Mirrors apps/web/src/lib/pick-playback.ts's
   // `dash-live` branch.
   if (detail.isLive) {
-    addOption({
-      id: "live-dash",
-      label: "Live",
-      videoUrl: `${baseUrl()}/dash/${encodeURIComponent(detail.videoId)}/live.mpd`,
-      kind: "auto",
-    });
+    // AVPlayer (tvOS) can't play DASH: there the server's live HLS carries it
+    // (apps/web/src/server/services/hls/live.ts), built from the same manifest.
+    if (Platform.OS === "ios") {
+      addOption({
+        id: "live-hls-server",
+        label: "Live",
+        videoUrl: `${baseUrl()}/hls/${encodeURIComponent(detail.videoId)}/live.m3u8`,
+        kind: "auto",
+      });
+    } else {
+      addOption({
+        id: "live-dash",
+        label: "Live",
+        videoUrl: `${baseUrl()}/dash/${encodeURIComponent(detail.videoId)}/live.mpd`,
+        kind: "auto",
+      });
+    }
     if (detail.hlsUrl) {
       addOption({
         id: "live-hls",
@@ -2685,12 +2761,25 @@ function buildPlaybackOptions(detail: VideoDetail): PlaybackOption[] {
   // (VP9 unlocks the rungs above 1080p that the AVC-only HLS path cannot) and
   // the audio track, so ExoPlayer owns A/V sync instead of this screen nudging
   // two players into alignment. See apps/web/src/server/services/dash.
-  addOption({
-    id: "dash-vp9",
-    label: "Auto",
-    videoUrl: `${baseUrl()}/dash/${detail.videoId}/manifest.mpd?video=vp9`,
-    kind: "auto",
-  });
+  //
+  // AVPlayer (tvOS, iOS) plays neither DASH nor VP9. There the adaptive source
+  // is the server's VOD HLS instead (apps/web/src/server/services/hls): AVC +
+  // AAC, with every audio language and the captions in the master playlist.
+  if (Platform.OS === "ios") {
+    addOption({
+      id: "hls-server",
+      label: "Auto",
+      videoUrl: `${baseUrl()}/hls/${encodeURIComponent(detail.videoId)}/master.m3u8`,
+      kind: "auto",
+    });
+  } else {
+    addOption({
+      id: "dash-vp9",
+      label: "Auto",
+      videoUrl: `${baseUrl()}/dash/${detail.videoId}/manifest.mpd?video=vp9`,
+      kind: "auto",
+    });
+  }
 
   if (detail.hlsUrl) {
     addOption({

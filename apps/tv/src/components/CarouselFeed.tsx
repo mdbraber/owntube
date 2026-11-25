@@ -5,7 +5,6 @@ import {
   ActivityIndicator,
   FlatList,
   type ListRenderItem,
-  StyleSheet,
   Text,
   View,
 } from "react-native";
@@ -13,6 +12,7 @@ import type { CardMenuExtras } from "@/components/CardMenu";
 import { FocusButton } from "@/components/FocusButton";
 import { SkeletonRows } from "@/components/Skeleton";
 import { VideoRow } from "@/components/VideoRow";
+import { createStyles } from "@/lib/ui-scale";
 import type { InfiniteFeed } from "@/lib/use-infinite-feed";
 import { colors, fontSize, spacing } from "@/theme";
 
@@ -152,7 +152,7 @@ export function CarouselFeed({
       data={rows}
       keyExtractor={shelfKey}
       ListHeaderComponent={
-        header ? <View style={styles.header}>{header}</View> : null
+        header ? <View style={styles.header}>{header}</View> : undefined
       }
       renderItem={renderItem}
       ItemSeparatorComponent={Gap}
@@ -172,7 +172,7 @@ export function CarouselFeed({
             size="small"
             color={colors.brand}
           />
-        ) : null
+        ) : undefined
       }
     />
   );
@@ -202,7 +202,7 @@ function chunk(videos: UnifiedVideo[], size: number): UnifiedVideo[][] {
   return rows;
 }
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   list: { paddingBottom: spacing.screen },
   gap: { height: spacing.xl },
   header: { marginBottom: spacing.lg },

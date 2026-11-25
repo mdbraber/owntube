@@ -1,17 +1,11 @@
 import { useState } from "react";
-import {
-  FlatList,
-  Image,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { FlatList, Image, Pressable, Text, View } from "react-native";
 import {
   channelInitial,
   formatSubscribersLabel,
   sizedAvatarUrl,
 } from "@/lib/format";
+import { createStyles } from "@/lib/ui-scale";
 import { colors, focus, fontSize, spacing } from "@/theme";
 
 export type ChannelTileData = {
@@ -116,7 +110,7 @@ function ChannelTile({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   row: { gap: spacing.sm },
   heading: {
     color: colors.cardTitle,

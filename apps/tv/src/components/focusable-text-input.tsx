@@ -9,13 +9,15 @@ import {
 import {
   Pressable,
   type StyleProp,
-  StyleSheet,
   TextInput,
+  type TextInputInstance,
   type TextInputProps,
   type TextStyle,
   type View,
+  type ViewInstance,
   type ViewStyle,
 } from "react-native";
+import { createStyles } from "@/lib/ui-scale";
 import { colors, focus, fontSize, radius, spacing } from "@/theme";
 
 export type FocusableTextInputHandle = {
@@ -32,7 +34,7 @@ type Props = Omit<TextInputProps, "style"> & {
    */
   onFocusChange?: (focused: boolean) => void;
   /** The focusable surface, e.g. as a focus guide's destination. */
-  surfaceRef?: Ref<View>;
+  surfaceRef?: Ref<ViewInstance>;
   /** Native handle Left goes to from the surface. */
   nextFocusLeft?: number;
 };
@@ -54,7 +56,7 @@ export const FocusableTextInput = forwardRef<FocusableTextInputHandle, Props>(
     },
     ref,
   ) {
-    const inputRef = useRef<TextInput>(null);
+    const inputRef = useRef<TextInputInstance>(null);
     const [surfaceFocused, setSurfaceFocused] = useState(false);
     const [inputFocused, setInputFocused] = useState(false);
     const isFocused = surfaceFocused || inputFocused;
@@ -110,7 +112,7 @@ export const FocusableTextInput = forwardRef<FocusableTextInputHandle, Props>(
   },
 );
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   surface: {
     minHeight: 58,
     justifyContent: "center",

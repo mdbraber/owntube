@@ -1,5 +1,5 @@
 import { Fragment } from "react";
-import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Image, ScrollView, Text, View } from "react-native";
 import { LOGO_WORDMARK } from "@/assets";
 import { ContinueWatchingRow } from "@/components/ContinueWatchingRow";
 import { FocusButton } from "@/components/FocusButton";
@@ -12,6 +12,7 @@ import type { Nav } from "@/lib/navigation";
 import { useRowScroll } from "@/lib/row-scroll";
 import { useScreenActive } from "@/lib/screen-active";
 import { trpc } from "@/lib/trpc-react";
+import { createStyles } from "@/lib/ui-scale";
 import { colors, fontSize, spacing } from "@/theme";
 
 /**
@@ -158,7 +159,7 @@ export function HomeScreen({ nav }: { nav: Nav }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   content: {
     gap: spacing.xl,
     paddingTop: 8,

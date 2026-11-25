@@ -1,6 +1,6 @@
 import QRCode from "qrcode";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Image, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Image, Text, View } from "react-native";
 import { LOGO_WORDMARK } from "@/assets";
 import { FocusButton } from "@/components/FocusButton";
 import {
@@ -10,6 +10,7 @@ import {
 import { setToken } from "@/lib/auth-token";
 import { baseUrl } from "@/lib/config";
 import { trpcClient } from "@/lib/trpc";
+import { createStyles } from "@/lib/ui-scale";
 import { colors, fontSize, monoFont, radius, spacing } from "@/theme";
 
 type PairingState =
@@ -267,7 +268,7 @@ export function LoginScreen({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   serverButton: {
     position: "absolute",
     right: spacing.screen,

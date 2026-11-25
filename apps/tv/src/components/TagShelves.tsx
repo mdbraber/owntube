@@ -1,15 +1,10 @@
 import type { UnifiedVideo } from "@web/server/services/proxy.types";
 import { memo, useCallback } from "react";
-import {
-  FlatList,
-  type ListRenderItem,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { FlatList, type ListRenderItem, Text, View } from "react-native";
 import { SkeletonRows } from "@/components/Skeleton";
 import { VideoRow } from "@/components/VideoRow";
 import { trpc } from "@/lib/trpc-react";
+import { createStyles } from "@/lib/ui-scale";
 import { colors, fontSize, spacing } from "@/theme";
 
 /** Latest uploads per tag shelf; the tag's own page has the rest. */
@@ -51,7 +46,7 @@ export function TagShelves({ tags, onSelect, header }: Props) {
       data={tags}
       keyExtractor={(item) => item.tag}
       ListHeaderComponent={
-        header ? <View style={styles.header}>{header}</View> : null
+        header ? <View style={styles.header}>{header}</View> : undefined
       }
       renderItem={renderItem}
       contentContainerStyle={styles.list}
@@ -100,7 +95,7 @@ const TagShelf = memo(function TagShelf({
   );
 });
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   list: { paddingBottom: spacing.screen },
   header: { marginBottom: spacing.lg },
   shelf: { marginBottom: spacing.xl },

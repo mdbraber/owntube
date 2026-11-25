@@ -1,7 +1,8 @@
 import { Feather } from "@expo/vector-icons";
 import { useState } from "react";
-import { Pressable, StyleSheet, Text } from "react-native";
+import { Pressable, Text } from "react-native";
 import { ActionIcon, type ActionIconName } from "@/components/ActionIcon";
+import { createStyles, s } from "@/lib/ui-scale";
 import { colors, focus } from "@/theme";
 
 type Props = {
@@ -33,7 +34,7 @@ export function IconButton({
 }: Props) {
   const [focused, setFocused] = useState(false);
   const size = large ? 40 : 30;
-  const iconSize = large ? 20 : 16;
+  const iconSize = s(large ? 20 : 16);
   const activeFill = large || Boolean(active);
   const iconColor = focused
     ? colors.focusForeground
@@ -68,7 +69,7 @@ export function IconButton({
           style={[
             styles.text,
             {
-              fontSize: iconSize - 2,
+              fontSize: s(large ? 18 : 14),
               color: iconColor,
             },
           ]}
@@ -82,7 +83,7 @@ export function IconButton({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   text: { fontWeight: "800", letterSpacing: -0.5 },
   button: {
     alignItems: "center",

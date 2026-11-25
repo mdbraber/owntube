@@ -3,7 +3,6 @@ import { memo, useCallback, useRef } from "react";
 import {
   FlatList,
   type ListRenderItem,
-  StyleSheet,
   Text,
   TVFocusGuideView,
   View,
@@ -11,6 +10,7 @@ import {
 import { type CardMenuExtras, useCardMenu } from "@/components/CardMenu";
 import { VIDEO_CARD_WIDTH, VideoCard } from "@/components/VideoCard";
 import { setLongPressTarget, takeSuppressedPress } from "@/lib/long-press";
+import { createStyles, s } from "@/lib/ui-scale";
 import { colors, fontSize, spacing } from "@/theme";
 
 type Props = {
@@ -181,7 +181,7 @@ function keyExtractor(video: UnifiedVideo) {
 }
 
 function getItemLayout(_: unknown, index: number) {
-  return { length: ITEM_LENGTH, offset: ITEM_LENGTH * index, index };
+  return { length: s(ITEM_LENGTH), offset: s(ITEM_LENGTH) * index, index };
 }
 
 function ignore() {}
@@ -190,7 +190,7 @@ function Separator() {
   return <View style={styles.separator} />;
 }
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   row: { gap: spacing.sm, overflow: "visible" },
   listContent: {
     paddingVertical: 6,
