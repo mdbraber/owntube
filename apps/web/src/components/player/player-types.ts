@@ -74,6 +74,11 @@ export type ChromeProps = SponsorBlockChromeProps & {
   shortsMode?: boolean;
   miniStartPaused?: boolean;
   isLive?: boolean;
+  /**
+   * The on-screen element casts itself (live streams, native HLS on iPhone
+   * and iPad), so no separate cast element is needed.
+   */
+  castsItself?: boolean;
 };
 
 export type HlsBlockProps = SponsorBlockChromeProps & {

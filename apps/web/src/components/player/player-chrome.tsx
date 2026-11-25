@@ -99,16 +99,21 @@ export function PlayerChrome({
   shortsMode = false,
   miniStartPaused = false,
   isLive = false,
+  castsItself = false,
 }: ChromeProps) {
   // OwnTube TV apps are listed for a signed-in viewer on the full player only.
   const tvsEnabled = useActiveViewerIsAuthed() && !shortsMode && !miniMode;
-  // VOD casts through a hidden element with a URL a TV can play; while it is
-  // connected, every control below drives that element (see use-cast-handoff).
+  // VOD that plays through Media Source (hls.js, dash.js) casts through a
+  // hidden element with a URL a TV can play; while it is connected, every
+  // control below drives that element (see use-cast-handoff). An element that
+  // casts itself (live, native HLS on iPhone and iPad) needs none.
   const { adapter, castVideoProps } = useCastHandoff(
     localAdapter,
-    // Not for live, nor the Shorts feed or mini player (many at once, and
-    // nobody casts a preview).
-    isLive || shortsMode || miniMode ? null : castSourceUrl(videoId),
+    // Not for the Shorts feed or mini player either (many at once, and nobody
+    // casts a preview).
+    isLive || castsItself || shortsMode || miniMode
+      ? null
+      : castSourceUrl(videoId),
   );
   const [hydrated, setHydrated] = useState(false);
   const { active: fsActive, toggle: toggleFs } = useFullscreenShell(shellRef);

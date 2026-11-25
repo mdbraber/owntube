@@ -9,7 +9,9 @@ import {
   getClientAppOrigin,
   installSameOriginMediaFetchGuard,
 } from "@/lib/hls-same-origin";
+import { isIosLikeBrowser } from "@/lib/ios-playback";
 import { getMediaOrigin } from "@/lib/media-origin";
+import { nativeHlsSrc, prefersNativeHls } from "@/lib/native-hls";
 
 /**
  * Audio language renditions from the HLS master (one EXT-X-MEDIA per language
@@ -19,6 +21,15 @@ export type HlsVodAudioState = {
   items: { label: string }[];
   index: number;
   setIndex: (i: number) => void;
+};
+
+/** What the hook reports: the audio picker, and which engine is playing. */
+export type HlsVodPlaybackState = HlsVodAudioState & {
+  /**
+   * The browser plays the manifest itself (`video.src`), so the element holds a
+   * plain URL and can go to an AirPlay receiver as it is.
+   */
+  native: boolean;
 };
 
 /** WebKit's non-standard `HTMLMediaElement.audioTracks` (native HLS only). */
@@ -45,14 +56,16 @@ function nativeAudioTracksOf(
 /**
  * Play our server-generated VOD HLS on a plain `<video>`.
  *
- * On Safari/iOS we set `video.src` directly so playback is **native** —
- * hardware-decoded, no MSE. This is the whole point: MSE engines (dash.js,
- * hls.js-on-ManagedMediaSource) stall the video track on iOS while audio keeps
- * playing. Everywhere else we use hls.js. Segments are already same-origin
- * (`/invidious/videoplayback`), so no cross-origin proxying is needed.
+ * On iPhone and iPad we set `video.src` directly so playback is **native** —
+ * hardware-decoded, no MSE, and castable over AirPlay (see `prefersNativeHls`).
+ * MSE engines (dash.js, hls.js-on-ManagedMediaSource) also stall the video
+ * track on iOS while audio keeps playing. Everywhere else we use hls.js.
+ * Segments are already same-origin (`/invidious/videoplayback`), so no
+ * cross-origin proxying is needed.
  *
  * Returns the audio-language state for the in-player picker, sourced from
- * hls.js's audio-track API or, on the native path, WebKit's `audioTracks`.
+ * hls.js's audio-track API or, on the native path, WebKit's `audioTracks`,
+ * and whether the native path is the one playing.
  */
 export function useHlsVodPlayback(
   videoRef: React.RefObject<HTMLVideoElement | null>,
@@ -61,7 +74,7 @@ export function useHlsVodPlayback(
   startAtSeconds?: number,
   autoPlay = false,
   onFatalError?: () => void,
-): HlsVodAudioState {
+): HlsVodPlaybackState {
   const hlsRef = useRef<Hls | null>(null);
   const onFatalErrorRef = useRef(onFatalError);
   onFatalErrorRef.current = onFatalError;
@@ -71,6 +84,7 @@ export function useHlsVodPlayback(
   autoPlayRef.current = autoPlay;
   const [audioItems, setAudioItems] = useState<{ label: string }[]>([]);
   const [audioIndex, setAudioIndex] = useState(0);
+  const [native, setNative] = useState(false);
   const setAudioImplRef = useRef<(i: number) => void>(() => {});
   const setAudioIndexImperative = useCallback((i: number) => {
     setAudioImplRef.current(i);
@@ -139,22 +153,22 @@ export function useHlsVodPlayback(
       if (autoPlayRef.current) void video.play().catch(() => {});
     };
 
-    // Native HLS (Safari/iOS) is normally the robust, hardware-decoded path —
-    // BUT the macOS media stack (a real Mac, or an iPad in "Request Desktop
-    // Website" mode — both report a real, unmanaged `window.MediaSource`)
-    // rejects our byte-range fMP4 VOD manifest natively with
-    // MEDIA_ERR_SRC_NOT_SUPPORTED. hls.js parses the manifest itself and plays
-    // it over real MSE there. So we only take the native path when the browser
-    // has NO real MediaSource — i.e. iPhone/iPad-class WebKit that exposes only
-    // ManagedMediaSource (where hls.js would fall back to MMS and stall the
-    // video track, and where native HLS works). See use-dash-playback for the
-    // sibling MMS/MSE notes.
-    const hasRealMediaSource =
-      typeof window !== "undefined" && "MediaSource" in window;
-    const canNative =
-      video.canPlayType("application/vnd.apple.mpegurl") !== "" ||
-      video.canPlayType("application/x-mpegURL") !== "";
-    if (canNative && !hasRealMediaSource) {
+    // Native on iPhone and iPad (also in desktop mode), hls.js elsewhere; see
+    // `prefersNativeHls`. A real Mac keeps hls.js: its media stack rejects our
+    // byte-range fMP4 manifest natively (MEDIA_ERR_SRC_NOT_SUPPORTED), and it
+    // casts through the separate element (use-cast-handoff). See
+    // use-dash-playback for the sibling MMS/MSE notes.
+    const useNative = prefersNativeHls({
+      canPlayNativeHls:
+        video.canPlayType("application/vnd.apple.mpegurl") !== "" ||
+        video.canPlayType("application/x-mpegURL") !== "",
+      hasRealMediaSource:
+        typeof window !== "undefined" && "MediaSource" in window,
+      iosLike: isIosLikeBrowser(),
+    });
+    if (useNative) {
+      const nativeSrc = nativeHlsSrc(src);
+      setNative(true);
       // Language renditions surface on WebKit's AudioTrackList. The manifest
       // marks the original DEFAULT=YES (see hls/generate.ts), but iOS's player
       // still starts on a dub matching the system language (an English iPhone
@@ -216,11 +230,11 @@ export function useHlsVodPlayback(
       const onError = () => onFatalErrorRef.current?.();
       video.addEventListener("loadedmetadata", onLoaded, { once: true });
       video.addEventListener("error", onError);
-      video.src = src;
+      video.src = nativeSrc;
       video.load();
       const unregisterStats = registerStatsSource(video, () => ({
         engine: "Native HLS",
-        src,
+        src: nativeSrc,
       }));
       return () => {
         unregisterStats();
@@ -239,6 +253,7 @@ export function useHlsVodPlayback(
     // desktop-mode iPad) where native HLS rejects the manifest. Same-origin
     // config is a harmless no-op for our already-same-origin segments and still
     // proxies any stray CDN URL.
+    setNative(false);
     let cancelled = false;
     let hls: Hls | null = null;
     let unregisterStats = () => {};
@@ -326,5 +341,6 @@ export function useHlsVodPlayback(
     items: audioItems,
     index: audioIndex,
     setIndex: setAudioIndexImperative,
+    native,
   };
 }

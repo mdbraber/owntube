@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { isIosLikeBrowser } from "@/lib/ios-playback";
 
 /** WebKit's pre-standard AirPlay API, for browsers without `remote`. */
 type WebKitAirPlayVideo = HTMLVideoElement & {
@@ -15,6 +16,15 @@ export type RemotePlaybackState = {
   receiverAvailable: boolean;
   /** The element is playing on a receiver right now. */
   active: boolean;
+  /**
+   * The picker opens whatever the availability says: iPhone and iPad, where
+   * AirPlay is a route for the whole device. Their availability report can't
+   * be trusted there: an element created after the page's first ones (the
+   * next video, without a page load) is told "not available" for good, while
+   * a cast from it works (seen on an iPad; `remote.prompt()` then rejects
+   * with NotSupportedError, WebKit's own picker opens and casts).
+   */
+  pickerAlwaysOpens: boolean;
   /**
    * Opens the browser's device picker. Call straight from a click. Resolves
    * `"picked"` when a device was chosen, `"dismissed"` when the picker was
@@ -36,10 +46,20 @@ export function useRemotePlayback(
 ): RemotePlaybackState {
   const [receiverAvailable, setReceiverAvailable] = useState(false);
   const [active, setActive] = useState(false);
+  const [pickerAlwaysOpens, setPickerAlwaysOpens] = useState(false);
+  // Read by `prompt`, which runs from a click.
+  const availableRef = useRef(false);
+  availableRef.current = receiverAvailable;
 
   useEffect(() => {
     setReceiverAvailable(false);
     setActive(false);
+    setPickerAlwaysOpens(
+      Boolean(video) &&
+        typeof (video as WebKitAirPlayVideo).webkitShowPlaybackTargetPicker ===
+          "function" &&
+        isIosLikeBrowser(),
+    );
     if (!video) return;
     if ("remote" in video && video.remote) {
       return watchRemote(video, video.remote, setReceiverAvailable, setActive);
@@ -49,7 +69,15 @@ export function useRemotePlayback(
 
   const prompt = useCallback(async () => {
     if (!video) return "dismissed" as const;
-    if ("remote" in video && video.remote) {
+    const webkitPicker = (video as WebKitAirPlayVideo)
+      .webkitShowPlaybackTargetPicker;
+    // The standard picker refuses an element told "not available" (see
+    // `pickerAlwaysOpens`); WebKit's own opens anyway.
+    const standard =
+      "remote" in video &&
+      video.remote &&
+      (availableRef.current || typeof webkitPicker !== "function");
+    if (standard && video.remote) {
       // Rejects when the viewer dismisses the picker, or the source can't go.
       return video.remote.prompt().then(
         () => "picked" as const,
@@ -60,7 +88,7 @@ export function useRemotePlayback(
     return "unknown" as const;
   }, [video]);
 
-  return { receiverAvailable, active, prompt };
+  return { receiverAvailable, active, pickerAlwaysOpens, prompt };
 }
 
 function watchRemote(

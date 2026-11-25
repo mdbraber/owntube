@@ -19,9 +19,10 @@ export function useNativeAdapter(opts: {
   /** Initial mute state (shorts seed this from the shared audio pref). */
   initialMuted?: boolean;
   /**
-   * Cast this element itself. Only for live streams: VOD casts through a
-   * separate element with a URL a TV can play (see use-cast-handoff.ts), so
-   * the on-screen one never needs to.
+   * Cast this element itself: live streams, and native HLS on iPhone and iPad
+   * (a plain URL the receiver fetches). Media Source VOD casts through a
+   * separate element with a URL a TV can play instead (see
+   * use-cast-handoff.ts).
    */
   castSelf?: boolean;
 }): PlayerAdapter {
@@ -35,29 +36,39 @@ export function useNativeAdapter(opts: {
 
   const castSelf = opts.castSelf ?? false;
   const remotePlayback = useRemotePlayback(castSelf ? videoRef.current : null);
+  const currentSrc = videoRef.current?.currentSrc ?? "";
   const castButton = castButtonState({
-    receiverAvailable: castSelf && remotePlayback.receiverAvailable,
+    // On iPhone and iPad the picker opens (and casts) even when Safari says no
+    // receiver is around (see `pickerAlwaysOpens`), so a castable source always
+    // gets the button there, as in Apple's own apps. A Media Source one
+    // (`blob:`, live through dash.js) only when a receiver is known, so it
+    // doesn't show a disabled button to everyone.
+    receiverAvailable:
+      castSelf &&
+      (remotePlayback.receiverAvailable ||
+        (remotePlayback.pickerAlwaysOpens && !currentSrc.startsWith("blob:"))),
     disableRemotePlayback: videoRef.current?.disableRemotePlayback ?? false,
-    currentSrc: videoRef.current?.currentSrc ?? "",
+    currentSrc,
   });
   // Read by ensureLimiter, which runs from event handlers.
-  const castableRef = useRef(false);
-  castableRef.current = castButton === "castable";
+  const castSelfRef = useRef(castSelf);
+  castSelfRef.current = castSelf;
 
   // The audible element is the companion <audio> when present (the <video> is
   // muted in split mode), otherwise the muxed <video> itself. Attach the peak
   // limiter to it once the user has activated playback.
   //
-  // Except on a <video> that could be cast: Web Audio output never follows the
+  // Except on a <video> that casts itself: Web Audio output never follows the
   // element to an AirPlay receiver, and once wired an element can't be
-  // unwired, so the receiver would get picture without sound. The volume
+  // unwired, so the receiver would get picture without sound. That holds even
+  // while no receiver is known yet (one can show up later). The volume
   // attenuation fallback covers fast speeds instead. (The companion <audio>
   // of split playback doesn't cast either way, so it keeps the limiter.)
   const ensureLimiter = useCallback(() => {
     if (!activatedRef.current) return;
     if (!limiterActiveRef.current) {
       const a = audioRef.current;
-      if (!a && castableRef.current) return;
+      if (!a && castSelfRef.current) return;
       limiterActiveRef.current = attachPeakLimiter(a ?? videoRef.current);
     }
     if (limiterActiveRef.current) resumePeakLimiter();
