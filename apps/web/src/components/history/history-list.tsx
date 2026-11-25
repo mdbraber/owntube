@@ -1,10 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  SectionOptionsMenu,
-  useSectionPagePrefs,
-} from "@/components/library/section-options-menu";
+import { useSectionPagePrefs } from "@/components/library/section-options-menu";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { VideoRow } from "@/components/videos/video-row";
@@ -128,7 +125,6 @@ export function HistoryList({ initialItems }: HistoryListProps) {
             className="sm:w-80"
             aria-label="Search history"
           />
-          <SectionOptionsMenu section="history" />
         </div>
       </div>
 

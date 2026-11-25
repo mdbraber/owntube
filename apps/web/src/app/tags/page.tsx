@@ -39,9 +39,8 @@ export default async function TagsPage({
             ? "Subscribed channels carrying all of these tags."
             : "Subscribed channels carrying any of these tags."
         }
-      >
-        <SectionOptionsMenu section="tags" />
-      </PageHeader>
+        menu={<SectionOptionsMenu section="tags" />}
+      />
       <TaggedChannelsView
         filter={{ includeTags, excludeTags, tagMatch }}
         section="tags"

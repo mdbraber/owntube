@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { PageActions } from "@/components/layout/page-actions";
 import {
   type FeedPagePrefs,
   type FeedSection,
@@ -33,6 +34,8 @@ type SubscriptionVideosInfiniteProps = {
   favorites?: boolean;
   /** Whose ⋯ options (layout, size, rows, filters) apply. */
   section?: FeedSection;
+  /** Put the Refresh button in the page header (off on tabs it doesn't serve). */
+  showRefresh?: boolean;
 };
 
 export function SubscriptionVideosInfinite({
@@ -41,6 +44,7 @@ export function SubscriptionVideosInfinite({
   tagMatch,
   favorites,
   section = "subscriptions",
+  showRefresh = true,
 }: SubscriptionVideosInfiniteProps) {
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const { sessionIgnored } = useIgnoredVideos();
@@ -145,6 +149,17 @@ export function SubscriptionVideosInfinite({
     return () => obs.disconnect();
   }, [query.hasNextPage]);
 
+  // Top right in the page header, left of the ⋯ menu.
+  const refreshButton = showRefresh ? (
+    <PageActions>
+      <RefreshControl
+        isRefreshing={isRefreshing}
+        onRefresh={doRefresh}
+        refreshedAt={refreshedAt}
+      />
+    </PageActions>
+  ) : null;
+
   if (query.isPending) {
     return (
       <p className="text-sm text-[hsl(var(--muted-foreground))]">
@@ -156,13 +171,7 @@ export function SubscriptionVideosInfinite({
   if (query.isError) {
     return (
       <div className="space-y-4">
-        <div className="flex justify-end">
-          <RefreshControl
-            isRefreshing={isRefreshing}
-            onRefresh={doRefresh}
-            refreshedAt={refreshedAt}
-          />
-        </div>
+        {refreshButton}
         <p className="rounded-[var(--radius-card)] border border-[hsl(var(--border))] bg-[hsl(var(--muted)_/_0.35)] py-8 text-center text-sm text-[hsl(var(--muted-foreground))]">
           Could not load subscription videos. Try again later.
         </p>
@@ -205,13 +214,7 @@ export function SubscriptionVideosInfinite({
         ) : null}
       </div>
 
-      <div className="flex justify-end">
-        <RefreshControl
-          isRefreshing={isRefreshing}
-          onRefresh={doRefresh}
-          refreshedAt={refreshedAt}
-        />
-      </div>
+      {refreshButton}
 
       {videos.length === 0 && (filterActive || hideCompleted) ? (
         <p className="rounded-[var(--radius-card)] border border-dashed border-[hsl(var(--border))] bg-[hsl(var(--muted)_/_0.35)] py-10 text-center text-sm text-[hsl(var(--muted-foreground))]">

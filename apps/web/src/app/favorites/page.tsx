@@ -18,9 +18,8 @@ export default async function FavoritesPage() {
       <PageHeader
         title="Favorites"
         subtitle={`Channels you starred (tagged #${favoriteTag}) and their latest uploads.`}
-      >
-        <SectionOptionsMenu section="favorites" />
-      </PageHeader>
+        menu={<SectionOptionsMenu section="favorites" />}
+      />
       <TaggedChannelsView
         filter={{ favorites: true }}
         section="favorites"

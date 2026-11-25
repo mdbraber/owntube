@@ -83,12 +83,8 @@ export function PlaylistDetailClient({ playlistId }: { playlistId: number }) {
             <h1 className="m-0 max-w-2xl text-2xl font-extrabold leading-tight tracking-tight sm:text-3xl">
               {detail.name}
             </h1>
-            <div className="flex shrink-0 gap-2">
-              <CopyRssUrlButton
-                kind="playlist"
-                refId={String(playlistId)}
-                buttonClassName="rounded-full border border-white/25 bg-black/20 px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-black/35"
-              />
+            {/* Edit, then the ⋯ menu last (top right, as on every page). */}
+            <div className="flex shrink-0 items-center gap-2">
               <button
                 type="button"
                 onClick={() => setEditOpen(true)}
@@ -96,6 +92,12 @@ export function PlaylistDetailClient({ playlistId }: { playlistId: number }) {
               >
                 Edit
               </button>
+              <CopyRssUrlButton
+                kind="playlist"
+                refId={String(playlistId)}
+                trigger="more"
+                buttonClassName="flex h-9 w-9 items-center justify-center rounded-full text-white/85 transition hover:bg-white/15 hover:text-white"
+              />
             </div>
           </div>
           {detail.description ? (

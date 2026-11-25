@@ -90,16 +90,17 @@ export default async function ChannelPage({ params }: ChannelPageProps) {
                   <ChannelTags channelId={page.channelId} isAuthed={isAuthed} />
                 </div>
               </div>
-              <div className="flex shrink-0 gap-2">
-                <ChannelRssButton
-                  channelId={page.channelId}
-                  isAuthed={isAuthed}
-                />
+              {/* Buttons, then the ⋯ menu last (top right, as on every page). */}
+              <div className="flex shrink-0 items-center gap-2">
                 <ChannelFavoriteButton
                   channelId={page.channelId}
                   isAuthed={isAuthed}
                 />
                 <ChannelSubscribeButton
+                  channelId={page.channelId}
+                  isAuthed={isAuthed}
+                />
+                <ChannelRssButton
                   channelId={page.channelId}
                   isAuthed={isAuthed}
                 />

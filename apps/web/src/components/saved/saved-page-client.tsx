@@ -1,9 +1,6 @@
 "use client";
 
-import {
-  SectionOptionsMenu,
-  useSectionPagePrefs,
-} from "@/components/library/section-options-menu";
+import { useSectionPagePrefs } from "@/components/library/section-options-menu";
 import { useWatchProgressMap } from "@/components/videos/video-membership-context";
 import { VideoRow } from "@/components/videos/video-row";
 import { trpc } from "@/trpc/react";
@@ -52,9 +49,6 @@ export function SavedPageClient() {
 
   return (
     <div className="space-y-3">
-      <div className="flex justify-end">
-        <SectionOptionsMenu section="saved" />
-      </div>
       <ul className="space-y-1">
         {items.map((item) => (
           <li key={item.videoId}>
