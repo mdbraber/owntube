@@ -6,7 +6,6 @@ import { headers } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import superjson from "superjson";
-import { ChannelFavoriteButton } from "@/components/channel/channel-favorite-button";
 import { ChannelSubscribeButton } from "@/components/channel/channel-subscribe-button";
 import { InteractionButtons } from "@/components/player/interaction-buttons";
 import { WatchChannelTags } from "@/components/player/watch-channel-tags";
@@ -518,10 +517,7 @@ export default async function WatchPage({ searchParams }: WatchPageProps) {
                     </div>
                     {detail?.channelId ? (
                       <div className="ml-auto flex shrink-0 gap-2">
-                        <ChannelFavoriteButton
-                          channelId={detail.channelId}
-                          isAuthed={isAuthed}
-                        />
+                        {/* Favorite lives on the channel page only. */}
                         <ChannelSubscribeButton
                           channelId={detail.channelId}
                           isAuthed={isAuthed}
