@@ -115,6 +115,11 @@ export function PlayerChrome({
   const [hydrated, setHydrated] = useState(false);
   const { active: fsActive, toggle: toggleFs } = useFullscreenShell(shellRef);
   const { visible, ping, hide } = useIdleVisible(adapter.paused, settingsOpen);
+  // A mouse pointer over the player keeps the controls up (a click there
+  // plays and pauses, so hovering is how the controls are reached). Not in
+  // fullscreen, where the pointer is always over it: there they fade after a
+  // moment without movement, as on touch.
+  const [mouseOver, setMouseOver] = useState(false);
   const coarse = useCoarsePointer();
   const { seekIndicator, showSeek, clearSeek } = useSeekIndicator();
   // A held seek key scrubs this position (the progress bar and clock show
@@ -222,13 +227,23 @@ export function PlayerChrome({
     const onLeave = () => {
       if (!adapter.paused && !settingsOpen) hide();
     };
+    const onPointerEnter = (e: PointerEvent) => {
+      if (e.pointerType === "mouse") setMouseOver(true);
+    };
+    const onPointerLeave = (e: PointerEvent) => {
+      if (e.pointerType === "mouse") setMouseOver(false);
+    };
     el.addEventListener("mousemove", onMove);
     el.addEventListener("mouseleave", onLeave);
     el.addEventListener("touchstart", onMove, { passive: true });
+    el.addEventListener("pointerenter", onPointerEnter);
+    el.addEventListener("pointerleave", onPointerLeave);
     return () => {
       el.removeEventListener("mousemove", onMove);
       el.removeEventListener("mouseleave", onLeave);
       el.removeEventListener("touchstart", onMove);
+      el.removeEventListener("pointerenter", onPointerEnter);
+      el.removeEventListener("pointerleave", onPointerLeave);
     };
   }, [shellRef, ping, hide, adapter.paused, settingsOpen]);
 
@@ -368,7 +383,8 @@ export function PlayerChrome({
   const liveWithDvr =
     isLive && Number.isFinite(duration) && duration > LIVE_EDGE_SECONDS;
   const behindLiveEdge = liveWithDvr && seekPos < duration - LIVE_EDGE_SECONDS;
-  const chromeShown = (shortsMode || visible) && !hold2xUi;
+  const chromeShown =
+    (shortsMode || visible || (mouseOver && !fsActive)) && !hold2xUi;
   const captionText = captions.kind === "tracks" ? captions.activeText : null;
   const currentChapterTitle =
     chapters.length > 1
