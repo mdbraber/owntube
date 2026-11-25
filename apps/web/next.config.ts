@@ -20,6 +20,9 @@ const nextConfig: NextConfig = {
             key: "Content-Security-Policy-Report-Only",
             value: reportOnlyCsp(MEDIA_ORIGIN),
           },
+          // Links out (to YouTube, channels' sites) and cross-origin loads
+          // don't say which OwnTube page they came from.
+          { key: "Referrer-Policy", value: "same-origin" },
         ],
       },
     ];

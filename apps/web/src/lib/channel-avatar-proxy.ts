@@ -140,6 +140,9 @@ function browserReadyUpstreamImageUrl(
   invidiousOrigins?: readonly string[],
 ): string | undefined {
   if (resolved.length > MAX_UPSTREAM_IMAGE_URL_LEN) return undefined;
+  // Already on this instance (the server moved it there, see
+  // stripGoogleImageUrls): nothing to do.
+  if (resolved.startsWith("/") && !resolved.startsWith("//")) return resolved;
 
   let parsed: URL;
   try {
