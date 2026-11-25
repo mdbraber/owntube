@@ -11,6 +11,7 @@ import {
 } from "react";
 import {
   CastAudioNotice,
+  CastingScreen,
   TvButton,
   TvMenuItems,
   useHasTvTargets,
@@ -409,6 +410,7 @@ export function PlayerChrome({
         <span>Playing in Picture in Picture</span>
       </div>
 
+      <CastingScreen adapter={adapter} />
       <CastAudioNotice adapter={adapter} />
       {/* After hydration: its URL is on the browser's own origin. */}
       {hydrated && castVideoProps ? <video {...castVideoProps} /> : null}
