@@ -70,7 +70,8 @@ export function ChannelFavoriteButton({
   const label = favorite ? "Remove from favorites" : "Add to favorites";
 
   // Same shape as the Subscribe button next to it, with a label: the bare
-  // outlined star was easy to miss.
+  // outlined star was easy to miss. Active stays the same white button;
+  // only the star fills in.
   return (
     <Button
       type="button"
@@ -79,10 +80,7 @@ export function ChannelFavoriteButton({
       aria-pressed={favorite}
       title={`${label} (#${status.data.tag})`}
       disabled={set.isPending}
-      className={cn(
-        favorite && "bg-amber-400/15 hover:bg-amber-400/25",
-        className,
-      )}
+      className={className}
       onClick={() => set.mutate({ channelId, favorite: !favorite })}
     >
       <span className={cn("inline-flex", favorite ? "text-amber-500" : "")}>
