@@ -2,7 +2,6 @@ import { HydrationBoundary } from "@tanstack/react-query";
 import { createServerSideHelpers } from "@trpc/react-query/server";
 import { redirect } from "next/navigation";
 import superjson from "superjson";
-import { CopyRssUrlButton } from "@/components/feeds/copy-rss-url";
 import { PageHeader } from "@/components/layout/page-header";
 import { SubscriptionsTabs } from "@/components/subscriptions/subscriptions-tabs";
 import { auth } from "@/server/auth";
@@ -50,9 +49,7 @@ export default async function SubscriptionsPage() {
       <PageHeader
         title="Subscriptions"
         subtitle="Uploads and channels you follow."
-      >
-        <CopyRssUrlButton kind="subscriptions" refId="subscriptions" />
-      </PageHeader>
+      />
 
       {list.length === 0 ? (
         <p className="rounded-[var(--radius-card)] border border-dashed border-[hsl(var(--border))] bg-[hsl(var(--muted)_/_0.35)] py-10 text-center text-sm text-[hsl(var(--muted-foreground))]">

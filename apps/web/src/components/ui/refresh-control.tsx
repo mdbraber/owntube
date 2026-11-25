@@ -56,7 +56,7 @@ export function RefreshControl({
   return (
     <div className={cn("flex items-center gap-2.5", className)}>
       {ago ? (
-        <span className="text-xs tabular-nums text-[hsl(var(--muted-foreground))]">
+        <span className="text-xs tabular-nums text-[hsl(var(--muted-foreground))] max-sm:hidden">
           Updated {ago}
         </span>
       ) : null}

@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/layout/page-header";
+import { SectionOptionsMenu } from "@/components/library/section-options-menu";
 import { QueuePageClient } from "@/components/queue/queue-page-client";
 import { auth } from "@/server/auth";
 
@@ -14,6 +15,7 @@ export default async function QueuePage() {
       <PageHeader
         title="Queue"
         subtitle="Your up-next list, saved to your account. Drag to reorder, remove with ✕."
+        menu={<SectionOptionsMenu section="queue" />}
       />
       <QueuePageClient />
     </main>

@@ -1,10 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  SectionOptionsMenu,
-  useSectionPagePrefs,
-} from "@/components/library/section-options-menu";
+import { PageActions } from "@/components/layout/page-actions";
+import { useSectionPagePrefs } from "@/components/library/section-options-menu";
+import { Button } from "@/components/ui/button";
 import {
   type DraggableRowItem,
   DraggableVideoRows,
@@ -51,21 +50,21 @@ export function QueuePageClient() {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-end gap-2">
-        {items.length > 1 ? (
-          <button
+      {items.length > 1 ? (
+        <PageActions>
+          <Button
             type="button"
-            className="text-xs text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
+            size="sm"
+            variant="outline"
             onClick={() => {
               setItems([]);
               clear.mutate();
             }}
           >
             Clear queue
-          </button>
-        ) : null}
-        <SectionOptionsMenu section="queue" />
-      </div>
+          </Button>
+        </PageActions>
+      ) : null}
       <DraggableVideoRows
         items={visibleItems}
         surface="queue"

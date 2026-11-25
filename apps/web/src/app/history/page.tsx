@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { HistoryList } from "@/components/history/history-list";
 import { PageHeader } from "@/components/layout/page-header";
+import { SectionOptionsMenu } from "@/components/library/section-options-menu";
 import { auth } from "@/server/auth";
 import { createCaller } from "@/server/trpc/caller";
 
@@ -17,6 +18,7 @@ export default async function HistoryPage() {
       <PageHeader
         title="History"
         subtitle="Search and manage videos you watched on this instance."
+        menu={<SectionOptionsMenu section="history" />}
       />
       <HistoryList initialItems={items} />
     </main>

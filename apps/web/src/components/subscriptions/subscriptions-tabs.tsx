@@ -2,6 +2,7 @@
 
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { PageActions } from "@/components/layout/page-actions";
 import { SectionOptionsMenu } from "@/components/library/section-options-menu";
 import { SubscriptionChannelsList } from "@/components/subscriptions/subscription-channels-list";
 import {
@@ -173,12 +174,12 @@ export function SubscriptionsTabs() {
           })}
         </div>
         {/* Size and filters on every tab; By tag keeps its own shelf layout. */}
-        <div className="pb-1.5">
+        <PageActions slot="menu">
           <SectionOptionsMenu
             section="subscriptions"
             showLayout={tab !== "byTag"}
           />
-        </div>
+        </PageActions>
       </div>
 
       {tab !== "byTag" ? (
@@ -195,6 +196,7 @@ export function SubscriptionsTabs() {
         <SubscriptionVideosInfinite
           includeTags={includeTags}
           excludeTags={excludeTags}
+          showRefresh={tab !== "channels"}
         />
       </div>
       {byTagShown ? (

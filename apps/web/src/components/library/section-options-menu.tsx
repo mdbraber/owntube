@@ -255,9 +255,11 @@ export function SectionOptionsMenu({
               )}
             </>
           ) : null}
-          {/* History has no companion feed; Queue and Saved publish as fixed
-              slugs (Subscriptions has its own Copy RSS URL button). */}
-          {section === "queue" || section === "saved"
+          {/* History, Favorites and tag pages have no page feed; Queue, Saved
+              and Subscriptions publish as fixed slugs. */}
+          {section === "queue" ||
+          section === "saved" ||
+          section === "subscriptions"
             ? (["audio", "video"] as const).map((variant) => (
                 <button
                   key={variant}

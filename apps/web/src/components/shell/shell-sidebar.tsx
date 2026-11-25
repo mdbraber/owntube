@@ -123,16 +123,6 @@ export function ShellSidebar({ open, onClose, isLoggedIn }: ShellSidebarProps) {
               );
             })}
           </nav>
-
-          <div className="mt-auto border-t border-[hsl(var(--border))] px-3 pb-2 pt-4 text-xs text-[hsl(var(--muted-foreground))]">
-            <div className="flex items-center gap-2">
-              <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]" />
-              <span>Feed from your instance</span>
-            </div>
-            <div className="ot-mono-data mt-1.5 text-[11px] text-[hsl(var(--muted-foreground))]">
-              owntube
-            </div>
-          </div>
         </div>
       </div>
     </aside>
