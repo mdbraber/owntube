@@ -53,6 +53,7 @@ function useOwnTubeTvs(
   adapter: PlayerAdapter,
   videoId: string,
   enabled: boolean,
+  onSent?: (tvName: string) => void,
 ) {
   const devices = trpc.tvRemote.devices.useQuery(undefined, {
     enabled,
@@ -78,6 +79,7 @@ function useOwnTubeTvs(
           }
           adapter.pause();
           showToast(`Playing on ${tv.name}`);
+          onSent?.(tv.name);
         },
         onError: () => showToast("Couldn't reach the TV"),
       },
@@ -91,6 +93,8 @@ type TvTargetsProps = {
   videoId: string;
   /** Signed in: only then are there OwnTube TVs to list. */
   isAuthed: boolean;
+  /** A video was sent to the OwnTube TV of this name (see SentToTvScreen). */
+  onSentToTv?: (tvName: string) => void;
 };
 
 /**
@@ -99,8 +103,18 @@ type TvTargetsProps = {
  * neither. With OwnTube TVs it opens a menu (so a stray tap doesn't start the
  * video on a TV); with only AirPlay / Cast it opens the system picker at once.
  */
-export function TvButton({ adapter, videoId, isAuthed }: TvTargetsProps) {
-  const { tvs, playOn, pending } = useOwnTubeTvs(adapter, videoId, isAuthed);
+export function TvButton({
+  adapter,
+  videoId,
+  isAuthed,
+  onSentToTv,
+}: TvTargetsProps) {
+  const { tvs, playOn, pending } = useOwnTubeTvs(
+    adapter,
+    videoId,
+    isAuthed,
+    onSentToTv,
+  );
   const [open, setOpen] = useState(false);
   const cast = adapter.castButton;
   if (tvs.length === 0 && cast === "hidden") return null;
@@ -190,8 +204,8 @@ export function TvMenuItems({
   onClose,
   ...props
 }: TvTargetsProps & { onClose: () => void }) {
-  const { adapter, videoId, isAuthed } = props;
-  const { tvs, playOn } = useOwnTubeTvs(adapter, videoId, isAuthed);
+  const { adapter, videoId, isAuthed, onSentToTv } = props;
+  const { tvs, playOn } = useOwnTubeTvs(adapter, videoId, isAuthed, onSentToTv);
   if (tvs.length === 0 && adapter.castButton === "hidden") return null;
   return (
     <TvTargetRows
@@ -368,45 +382,28 @@ function TvOutline({ className }: { className?: string }) {
 }
 
 /**
- * `?castdebug=1`: the cast element's live state in a corner of the player, so
- * a cast that misbehaves on a device can be read off the screen instead of
- * guessed at. Renders nothing without the flag.
+ * After the video was sent to one of the viewer's OwnTube TVs: over the paused
+ * player, the TV's name (known, unlike an AirPlay receiver's) and a way to
+ * carry on here instead. Under the controls; gone once playback resumes here.
  */
-export function CastDebug({ adapter }: { adapter: PlayerAdapter }) {
-  const [enabled, setEnabled] = useState(false);
-  const [, tick] = useState(0);
-  useEffect(() => {
-    setEnabled(new URLSearchParams(window.location.search).has("castdebug"));
-  }, []);
-  useEffect(() => {
-    if (!enabled) return;
-    const t = setInterval(() => tick((x) => x + 1), 1000);
-    return () => clearInterval(t);
-  }, [enabled]);
-  if (!enabled) return null;
-  const el = document.querySelector<
-    HTMLVideoElement & { webkitCurrentPlaybackTargetIsWireless?: boolean }
-  >("video[data-ot-cast]");
-  const rows: [string, string][] = [
-    ["button", adapter.castButton],
-    ["castActive", String(adapter.castActive)],
-    ["flavor", castFlavor()],
-    ["remote.state", el?.remote?.state ?? "n/a"],
-    ["wireless", String(el?.webkitCurrentPlaybackTargetIsWireless ?? "n/a")],
-    ["paused", String(el?.paused ?? "n/a")],
-    ["muted", String(el?.muted ?? "n/a")],
-    ["readyState", String(el?.readyState ?? "n/a")],
-    ["time", el ? el.currentTime.toFixed(1) : "n/a"],
-    ["preload", el?.preload ?? "n/a"],
-    ["error", el?.error ? String(el.error.code) : "none"],
-  ];
+export function SentToTvScreen({
+  tvName,
+  onPlayHere,
+}: {
+  tvName: string;
+  onPlayHere: () => void;
+}) {
   return (
-    <div className="pointer-events-none absolute left-2 top-2 z-50 rounded bg-black/80 px-2 py-1 font-mono text-[10px] leading-tight text-lime-300">
-      {rows.map(([k, v]) => (
-        <div key={k}>
-          {k}: {v}
-        </div>
-      ))}
+    <div className="pointer-events-none absolute inset-0 z-[5] grid place-content-center justify-items-center gap-3 bg-black text-center text-sm text-white/70">
+      <TvIcon className="h-12 w-12 text-white/80" />
+      <output>Playing on {tvName}</output>
+      <button
+        type="button"
+        onClick={onPlayHere}
+        className="pointer-events-auto relative z-20 mt-1 rounded-full bg-white/15 px-4 py-1.5 text-white transition hover:bg-white/25"
+      >
+        Play here
+      </button>
     </div>
   );
 }
