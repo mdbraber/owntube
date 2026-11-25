@@ -37,7 +37,8 @@
       "./plugins/with-widget",
       "expo-web-browser",
       "expo-secure-store",
-      "expo-image"
+      "expo-image",
+      "expo-quick-actions"
     ]
   }
 }

@@ -4,7 +4,11 @@ import { router, Stack } from "expo-router";
 import type { SFSymbol } from "sf-symbols-typescript";
 import { ACCENT } from "@/lib/theme";
 
-type Row = { title: string; path: string; icon: SFSymbol };
+/** A web page (`path`), or a native screen of this tab (`route`). */
+type Row = { title: string; icon: SFSymbol } & (
+  | { path: string; route?: never }
+  | { route: "/library/settings"; path?: never }
+);
 
 /**
  * The web app's account destinations (its sidebar and account menu), as a
@@ -34,7 +38,7 @@ const SECTIONS: { title?: string; rows: Row[] }[] = [
   },
   {
     rows: [
-      { title: "Settings", path: "/settings", icon: "gearshape" },
+      { title: "Settings", route: "/library/settings", icon: "gearshape" },
       { title: "Algorithm", path: "/dashboard", icon: "slider.horizontal.3" },
     ],
   },
@@ -50,17 +54,19 @@ export default function LibraryScreen() {
             <Section key={section.title ?? index} title={section.title}>
               {section.rows.map((row) => (
                 <Button
-                  key={row.path}
+                  key={row.title}
                   // Settings-style rows: label text in the primary colour,
                   // only the icon in the accent.
                   modifiers={[
                     foregroundStyle({ type: "hierarchical", style: "primary" }),
                   ]}
                   onPress={() =>
-                    router.push({
-                      pathname: "/library/page",
-                      params: { path: row.path, title: row.title },
-                    })
+                    row.route
+                      ? router.push(row.route)
+                      : router.push({
+                          pathname: "/library/page",
+                          params: { path: row.path, title: row.title },
+                        })
                   }
                 >
                   <Label

@@ -39,6 +39,16 @@ async function write(value: Stored | null) {
   else await SecureStore.deleteItemAsync(KEY).catch(() => {});
 }
 
+/** Drops the app's session (the server changed). */
+export async function forgetSession(): Promise<void> {
+  await write(null);
+}
+
+/** The signed-in account's id, when the app has a session. */
+export async function sessionUserId(): Promise<number | null> {
+  return (await read())?.userId ?? null;
+}
+
 export async function getToken(): Promise<string | null> {
   return (await read())?.token ?? null;
 }

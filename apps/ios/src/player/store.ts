@@ -5,6 +5,7 @@ import { router } from "expo-router";
 import { createVideoPlayer, type VideoPlayer } from "expo-video";
 import { useSyncExternalStore } from "react";
 import { SERVER_URL } from "@/lib/config";
+import { setResumeAction } from "@/lib/home-screen-actions";
 import { getToken } from "@/lib/session";
 import { trpc } from "@/lib/trpc";
 
@@ -17,6 +18,23 @@ export type NowPlaying = {
   video: NativePlayRequest;
   /** What failed to play, once every source has. */
   error?: string;
+  /**
+   * What plays next, in order: the queue, then related videos. At the end of
+   * a video the queue plays on, and related videos do with `autoplayNext`.
+   */
+  upNext: UpNextItem[];
+  /** The account's "Autoplay next": related videos play on at the end. */
+  autoplayNext: boolean;
+};
+
+export type UpNextItem = {
+  videoId: string;
+  title: string;
+  channelName?: string;
+  thumbnailUrl?: string;
+  durationSeconds?: number;
+  /** From the queue: playing it takes it off the queue, as on the web. */
+  fromQueue: boolean;
 };
 
 let state: NowPlaying | null = null;
@@ -53,6 +71,14 @@ export function getPlayer(): VideoPlayer {
   });
   created.addListener("playingChange", ({ isPlaying }) => {
     progress.playing = isPlaying;
+  });
+  created.addListener("playToEnd", () => {
+    void saveProgress();
+    // The queue always plays on; related videos only with Autoplay next on.
+    const next = state?.upNext[0];
+    if (next && (next.fromQueue || state?.autoplayNext)) {
+      playNext(next, { present: false });
+    }
   });
   player = created;
   return created;
@@ -135,16 +161,20 @@ async function tryNextSource(message?: string) {
  * Starts with the server's HLS, which AVPlayer plays natively, and keeps the
  * detail-based sources as fallbacks.
  */
-export function playVideo(video: NativePlayRequest) {
+export function playVideo(
+  video: NativePlayRequest,
+  { present = true }: { present?: boolean } = {},
+) {
   const current = getPlayer();
   if (state?.video.videoId === video.videoId && !state.error) {
     if (video.autoplay) current.play();
-    router.navigate("/player");
+    if (present) router.navigate("/player");
     return;
   }
 
   void saveProgress();
-  setState({ video });
+  setState({ video, upNext: [], autoplayNext: false });
+  setResumeAction(video);
   loadingId = video.videoId;
   seekTo = video.startSeconds && !video.isLive ? video.startSeconds : undefined;
   autoplay = video.autoplay;
@@ -157,6 +187,7 @@ export function playVideo(video: NativePlayRequest) {
       if (loadingId !== video.videoId) return null;
       progress.detail = value;
       pending.push(...fallbackSources(value));
+      void loadUpNext(video.videoId);
       return value;
     })
     .catch(() => null);
@@ -169,7 +200,79 @@ export function playVideo(video: NativePlayRequest) {
   } else {
     load(`${SERVER_URL}/hls/${encodeURIComponent(video.videoId)}/master.m3u8`);
   }
-  router.navigate("/player");
+  if (present) router.navigate("/player");
+}
+
+/** Plays an Up next item (tapped, or at the end of the current video). */
+export function playNext(
+  item: UpNextItem,
+  options: { present?: boolean } = {},
+) {
+  if (item.fromQueue) {
+    void trpc.queue.remove.mutate({ videoId: item.videoId }).catch(() => {});
+  }
+  playVideo(
+    {
+      videoId: item.videoId,
+      title: item.title,
+      channelName: item.channelName,
+      poster: item.thumbnailUrl,
+      durationSeconds: item.durationSeconds,
+      autoplay: true,
+    },
+    options,
+  );
+}
+
+/**
+ * Fills in Up next: the queue (signed in), then related videos. "Autoplay
+ * next" comes from the account's settings (signed out: on, the web default).
+ */
+async function loadUpNext(videoId: string) {
+  const signedIn = Boolean(await getToken());
+  const [queue, settings, related] = await Promise.all([
+    signedIn
+      ? trpc.queue.listDetailed.query().catch(() => [])
+      : Promise.resolve([]),
+    signedIn
+      ? trpc.settings.get.query().catch(() => null)
+      : Promise.resolve(null),
+    trpc.video.related.query({ videoId }).catch(() => null),
+  ]);
+  const current = state;
+  if (current?.video.videoId !== videoId) return;
+  const seen = new Set([videoId]);
+  const upNext: UpNextItem[] = [];
+  const add = (item: UpNextItem) => {
+    if (seen.has(item.videoId)) return;
+    seen.add(item.videoId);
+    upNext.push(item);
+  };
+  for (const item of queue) {
+    add({
+      videoId: item.videoId,
+      title: item.videoTitle,
+      channelName: item.channelName ?? undefined,
+      thumbnailUrl: item.thumbnailUrl && absolute(item.thumbnailUrl),
+      durationSeconds: item.durationSeconds,
+      fromQueue: true,
+    });
+  }
+  for (const video of related?.videos ?? []) {
+    add({
+      videoId: video.videoId,
+      title: video.title,
+      channelName: video.channelName,
+      thumbnailUrl: video.thumbnailUrl && absolute(video.thumbnailUrl),
+      durationSeconds: video.durationSeconds,
+      fromQueue: false,
+    });
+  }
+  setState({
+    ...current,
+    upNext,
+    autoplayNext: settings?.autoplayNext ?? true,
+  });
 }
 
 /** Stops playback and leaves the mini player. */

@@ -10,7 +10,8 @@ let pending: PendingLink | null = null;
 let serial = 0;
 const listeners = new Set<() => void>();
 
-function openInHome(path: string) {
+/** Opens a web page in the Home tab (deep links, quick actions). */
+export function openInHome(path: string) {
   serial += 1;
   pending = { path, serial };
   for (const listener of listeners) listener();

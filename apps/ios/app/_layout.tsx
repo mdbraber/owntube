@@ -1,6 +1,7 @@
 import { Stack } from "expo-router";
 import { useEffect } from "react";
 import { AppState } from "react-native";
+import { useQuickActions } from "@/lib/home-screen-actions";
 import { useIncomingLinks } from "@/lib/use-incoming-links";
 import { flushProgress } from "@/player/store";
 
@@ -10,6 +11,7 @@ import { flushProgress } from "@/player/store";
  */
 export default function RootLayout() {
   useIncomingLinks();
+  useQuickActions();
 
   useEffect(() => {
     // iOS may end the app any time after it leaves the foreground.

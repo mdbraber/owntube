@@ -52,6 +52,20 @@ toolchain and patterns with `apps/tv`.
 
   Progress goes to history every 20 s and when the app leaves the
   foreground, as the TV app does. The resume position comes from the page.
+
+  **Up next**, below the video, lists the queue first, then related videos.
+  At the end of a video the queue always plays on, and related videos play on
+  when the account's "Autoplay next" is on. Playing a queued video removes it
+  from the queue, as on the web.
+- **Settings** (`app/(tabs)/library/settings.tsx`): a native form (SwiftUI)
+  with these parts:
+  - the server, which you can change at runtime: it's checked, stored on the
+    device and the app reloads on it;
+  - Autoplay next, the account setting shared with web and TV;
+  - the signed-in account;
+  - a link to the full web settings.
+- **Quick actions** (`src/lib/home-screen-actions.ts`): long-pressing the
+  icon gives Resume (the last video played), Search, Subscriptions and Queue.
 - **App session** (`src/lib/session.ts`): native API calls use a device token,
   as the TV app does. A page reports who is signed in (`session` message). If
   the app has no token for that account, it starts a device pairing and the
@@ -71,7 +85,8 @@ root `pnpm-workspace.yaml`). Its own `pnpm-workspace.yaml` makes the
 ```sh
 cd apps/ios
 pnpm install
-cp .env.example .env    # set EXPO_PUBLIC_OWNTUBE_URL
+cp .env.example .env    # set EXPO_PUBLIC_OWNTUBE_URL (the default server;
+                        # Settings can change it on the device)
 pnpm prebuild           # generates ios/ (gitignored) from app.json + plugins
 pnpm ios                # build, install and run on a simulator or device
 ```
@@ -94,6 +109,5 @@ pnpm --filter web export:icons   # from the repo root
 
 ## Next steps
 
-1. Up next in the player: queue, playlist and autoplay next, as the TV has.
-2. Home-screen quick actions (`expo-quick-actions`), native settings.
-3. Push notifications for new uploads (needs a sender on the server).
+1. Push notifications for new uploads (needs a sender on the server).
+2. Playlist context in Up next (playing on through a playlist), as the TV has.
