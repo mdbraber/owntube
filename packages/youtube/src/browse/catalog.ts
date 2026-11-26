@@ -12,7 +12,7 @@ import type {
 } from "@owntube/contracts/model";
 import { type Innertube, YT, YTNodes } from "youtubei.js";
 import type { Unplayable } from "../playability.ts";
-import type { RawPlayerResponse } from "../player.ts";
+import type { RawFormat, RawPlayerResponse } from "../player.ts";
 import { toImages } from "./images.ts";
 import { collaboratorsFrom, collectItems, findContinuation } from "./items.ts";
 import { parseCount } from "./text.ts";
@@ -98,10 +98,10 @@ export class Catalog {
     const startsAt = start ? new Date(start).getTime() : undefined;
     const unplayable = player.unplayable;
     const related = collectItems(info.watch_next_feed ?? []).videos;
-    // Dubbed videos name their tracks; the original one is the default.
-    const originalLanguage = player.raw.streamingData?.adaptiveFormats
-      ?.find((f) => f.audioTrack?.audioIsDefault)
-      ?.audioTrack?.id.split(".")[0];
+    const formats = player.raw.streamingData?.adaptiveFormats ?? [];
+    const audioLanguages = audioLanguagesOf(formats);
+    const originalLanguage = audioLanguages.find((a) => a.isOriginal)?.language;
+    const qualities = qualitiesOf(formats);
     const captions = (
       (info.captions as YTNodes.PlayerCaptionsTracklist | undefined)
         ?.caption_tracks ?? []
@@ -145,6 +145,8 @@ export class Catalog {
         : {}),
       captions,
       ...(originalLanguage ? { originalLanguage } : {}),
+      audioLanguages,
+      qualities,
       ...storyboardOf(info.storyboards),
       chapters: chaptersOf(info.player_overlays),
       related,
@@ -507,4 +509,43 @@ function collectComments(root: unknown): Comment[] {
     }
   }
   return out;
+}
+
+/**
+ * A dubbed video's audio languages, original first (YouTube names each track;
+ * the original is the default one). Empty for a single-audio video.
+ */
+function audioLanguagesOf(
+  formats: readonly RawFormat[],
+): VideoDetail["audioLanguages"] {
+  const byLanguage = new Map<
+    string,
+    { language: string; label: string; isOriginal: boolean }
+  >();
+  for (const f of formats) {
+    const track = f.audioTrack;
+    if (!track) continue;
+    const language = track.id.split(".")[0] ?? track.id;
+    const known = byLanguage.get(language);
+    if (known) known.isOriginal ||= track.audioIsDefault;
+    else
+      byLanguage.set(language, {
+        language,
+        label: track.displayName,
+        isOriginal: track.audioIsDefault,
+      });
+  }
+  const list = [...byLanguage.values()];
+  if (list.length < 2) return [];
+  return list.sort((a, b) => Number(b.isOriginal) - Number(a.isOriginal));
+}
+
+/** The picture heights the video comes in, by YouTube's labels ("1080p60"), tallest first. */
+function qualitiesOf(formats: readonly RawFormat[]): number[] {
+  const heights = new Set<number>();
+  for (const f of formats) {
+    const h = Number(f.qualityLabel?.match(/^(\d{3,4})p/)?.[1]);
+    if (h >= 144) heights.add(h);
+  }
+  return [...heights].sort((a, b) => b - a);
 }

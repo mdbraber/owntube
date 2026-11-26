@@ -148,6 +148,18 @@ export const videoDetailSchema = videoSummarySchema.extend({
   captions: z.array(captionTrackSchema),
   /** The original audio's language, for videos with dubbed tracks. */
   originalLanguage: z.string().optional(),
+  /** A dubbed video's audio languages, original first; empty for one audio track. */
+  audioLanguages: z
+    .array(
+      z.object({
+        language: z.string(),
+        label: z.string(),
+        isOriginal: z.boolean(),
+      }),
+    )
+    .default([]),
+  /** The picture heights it comes in (YouTube's labels), tallest first. */
+  qualities: z.array(z.number().int().positive()).default([]),
   storyboard: storyboardSchema.optional(),
   chapters: z.array(chapterSchema),
   related: z.array(videoSummarySchema),

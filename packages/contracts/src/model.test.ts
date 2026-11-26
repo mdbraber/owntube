@@ -34,6 +34,11 @@ describe("model", () => {
       related: [],
       unplayable: null,
     };
-    expect(videoDetailSchema.parse(detail)).toEqual(detail);
+    // Fields added later default, so answers cached before them still parse.
+    expect(videoDetailSchema.parse(detail)).toEqual({
+      ...detail,
+      audioLanguages: [],
+      qualities: [],
+    });
   });
 });

@@ -36,8 +36,15 @@ function sessionUrls(sid: string): PresentationUrls {
   };
 }
 
-/** What the client asked for: codec families it can decode and the tallest picture it wants. */
+/**
+ * What the client asked for: codec families it can decode, the tallest
+ * picture it wants, and (`lang`) one audio language instead of all of them.
+ */
 function selectTracks(presentation: Presentation, c: Context): Presentation {
+  const lang = c.req.query("lang");
+  const inLanguage = lang
+    ? presentation.audio.filter((a) => a.language === lang)
+    : [];
   const families = (c.req.query("family") ?? "avc,vp9,av01")
     .split(",")
     .filter((f): f is VideoFamily => FAMILIES.has(f as VideoFamily));
@@ -48,6 +55,8 @@ function selectTracks(presentation: Presentation, c: Context): Presentation {
     video: presentation.video.filter(
       (v) => families.includes(v.family) && v.height <= maxHeight,
     ),
+    // An unknown language keeps every track rather than none.
+    audio: inLanguage.length > 0 ? inLanguage : presentation.audio,
   };
 }
 
