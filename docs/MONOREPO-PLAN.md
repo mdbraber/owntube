@@ -1,6 +1,6 @@
 # OwnTube monorepo: one codebase from browser to YouTube
 
-Status: **phases 0–1 done**, 2026-11-26. Written against GitHub `main` `a2bd519` (OwnTube),
+Status: **phases 0–2 done**, 2026-11-26. Written against GitHub `main` `a2bd519` (OwnTube),
 the production companion tree `/usr/local/src/invidious-companion-sabr` `12afa50`
 (upstream `07ae73c` + 54 commits) and the Invidious fork `nedworks/integration`
 `39f4a9ff`. Supersedes the "do not replace Invidious" non-goal in
@@ -346,7 +346,7 @@ Not built, on purpose: IPv6 address rotation (production runs on IPv4 because
 YouTube rejects the /56 as a whole; `AddressPolicy` is the seam if the block
 becomes usable).
 
-**Phase 2 — gateway media plane. — IN PROGRESS**
+**Phase 2 — gateway media plane. — DONE (2026-11-26)**
 
 Done (2026-11-26):
 
@@ -380,7 +380,7 @@ Done (2026-11-26):
 Open:
 
 - Android TV (Media3): moves to phase 5, when the TV app uses the gateway.
-- A podcast app test of the enclosures (and a rebuild of the dev gateway).
+- ~~A podcast app test of the enclosures~~: `video.mp4` (3.5 and 25 min, 720p/1080p) and `audio.m4a` play and seek in Safari (AVFoundation, the player iOS podcast apps use), checked by the owner through the rebuilt dev gateway. A subscription test in a real podcast app follows in phase 4, when the feeds come from the gateway.
 - The Debian `chromium` package with Playwright in the image is untested (no Docker here).
 
 **Phase 3 — gateway metadata API.**
