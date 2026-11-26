@@ -2,6 +2,10 @@ import {
   ORIGINAL_CAPTION_LANGUAGE,
   pickDefaultCaptionIndex,
 } from "@web/lib/caption-default";
+import {
+  LIVE_IDLE_CHECK_MS,
+  shouldStopIdleLive,
+} from "@web/lib/live-idle-stop";
 import type {
   SponsorBlockCategory,
   SponsorBlockSegment,
@@ -396,6 +400,15 @@ export function WatchScreen({
   onBackRef.current = onBack;
   /** Bumped by Retry on the error screen to load the video again. */
   const [reloadKey, setReloadKey] = useState(0);
+  /**
+   * "Still watching?": a live stream left hours without a remote press has
+   * its source released (see live-idle-stop.ts), so nothing keeps polling
+   * the live manifest. Continue loads it again at the live edge.
+   */
+  const [idleStopped, setIdleStopped] = useState(false);
+  const idleStoppedRef = useRef(false);
+  idleStoppedRef.current = idleStopped;
+  const lastInteractionAtRef = useRef(Date.now());
   /** Description and comments beside the picture. */
   const [detailsOpen, setDetailsOpen] = useState(false);
   const detailsOpenRef = useRef(false);
@@ -568,6 +581,7 @@ export function WatchScreen({
   useEffect(() => {
     let cancelled = false;
     setState({ status: "loading" });
+    setIdleStopped(false);
     setAudioLangIndex(0);
     detailRef.current = null;
     currentTimeRef.current = 0;
@@ -772,6 +786,16 @@ export function WatchScreen({
   // Load the stream and resume from the saved offset.
   useEffect(() => {
     if (state.status !== "ready") return;
+    if (idleStopped) {
+      // Release the source, not just pause: a paused live player keeps
+      // refreshing its manifest.
+      player.pause();
+      audioPlayer.pause();
+      player.replace(null);
+      audioPlayer.replace(null);
+      setIsPlaying(false);
+      return;
+    }
     const selectedOption = state.playbackOptions[state.selectedOptionIndex];
     if (!selectedOption) return;
 
@@ -822,8 +846,10 @@ export function WatchScreen({
     const resumeUsable =
       resumeSeconds !== undefined &&
       !(total > 0 && resumeSeconds > total - RESUME_END_GUARD_SECONDS);
-    const startSeconds =
-      pendingSeek ?? (resumeUsable ? resumeSeconds : undefined);
+    // A live stream (also after "Still watching?") joins at the live edge.
+    const startSeconds = state.detail.isLive
+      ? pendingSeek
+      : (pendingSeek ?? (resumeUsable ? resumeSeconds : undefined));
     if (startSeconds && startSeconds > 5) {
       player.currentTime = startSeconds;
       if (selectedOption.kind === "split")
@@ -849,7 +875,24 @@ export function WatchScreen({
     authHeader,
     audioLangIndex,
     qualityCap,
+    idleStopped,
   ]);
+
+  // Any remote key, D-pad move or focus change counts as someone watching.
+  useTVEventHandler(() => {
+    lastInteractionAtRef.current = Date.now();
+  });
+  const playingLive = state.status === "ready" && state.detail.isLive === true;
+  useEffect(() => {
+    if (!playingLive || idleStopped) return;
+    lastInteractionAtRef.current = Date.now();
+    const timer = setInterval(() => {
+      if (shouldStopIdleLive(lastInteractionAtRef.current, Date.now(), true)) {
+        setIdleStopped(true);
+      }
+    }, LIVE_IDLE_CHECK_MS);
+    return () => clearInterval(timer);
+  }, [playingLive, idleStopped]);
 
   const showToastRef = useRef(showToast);
   showToastRef.current = showToast;
@@ -968,7 +1011,11 @@ export function WatchScreen({
       if (!activeRef.current) return false;
       // A finished video, with or without the card over it, is left in one
       // press; Cancel on the card is the way to stay on it.
-      if (showUpNextRef.current || finishedRef.current) {
+      if (
+        showUpNextRef.current ||
+        finishedRef.current ||
+        idleStoppedRef.current
+      ) {
         onBackRef.current();
         return true;
       }
@@ -1652,6 +1699,26 @@ export function WatchScreen({
             onPress={onBack}
             hasTVPreferredFocus={problem.kind === "unavailable"}
           />
+        </View>
+      </View>
+    );
+  }
+
+  if (idleStopped) {
+    return (
+      <View style={styles.centered}>
+        <Text style={styles.errorTitle}>Still watching?</Text>
+        <Text style={[styles.muted, styles.errorBody]}>
+          The live stream was stopped after 3 hours without activity.
+        </Text>
+        <View style={styles.errorButtons}>
+          <FocusButton
+            label="Continue watching"
+            variant="primary"
+            onPress={() => setIdleStopped(false)}
+            hasTVPreferredFocus
+          />
+          <FocusButton label="Back" onPress={onBack} />
         </View>
       </View>
     );

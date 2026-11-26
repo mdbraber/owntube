@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Player: a "Play on a TV" button (AirPlay, and Cast where the browser offers it) through the standard Remote Playback API. It only appears when a receiver is reachable. Every VOD stream can be cast, whatever plays it locally (hls.js, split audio, the peak limiter): the TV gets its own SABR HLS URL (`/hls/<id>/master.m3u8?for=cast`) through a hidden cast element, and the player's controls drive it while connected. Live streams cast their own element.
 
+- Live streams (web, TV, iOS): "Still watching?" after 3 hours without interaction. The player unloads the stream, so it stops polling the live manifest (each poll is a request to YouTube), and a button loads it again at the live edge. VOD is unchanged.
+
 ### Fixed
 
 - AirPlay: the stall watchdog no longer seeks every ~12 s while the video plays on an Apple TV, which made the receiver rebuffer.

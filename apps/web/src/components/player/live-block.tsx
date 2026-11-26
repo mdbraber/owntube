@@ -8,11 +8,37 @@ import { useReportVideoIntrinsics } from "@/components/player/player-media-hooks
 import { dashQualityModel } from "@/components/player/player-quality";
 import type { HlsBlockProps } from "@/components/player/player-types";
 import { useDashPlayback } from "@/hooks/use-dash-playback";
+import { useLiveIdleStop } from "@/hooks/use-live-idle-stop";
 import {
   readPlayerMediaPrefs,
   writePlayerVolumeOnly,
 } from "@/lib/player-media-prefs";
 import { cn } from "@/lib/utils";
+
+/**
+ * Over a live player stopped for idleness (see live-idle-stop.ts): asks
+ * whether anyone is still watching, and reloads the broadcast at the live
+ * edge when they are. Above the controls, which have no source to drive.
+ */
+function StillWatchingScreen({ onResume }: { onResume: () => void }) {
+  return (
+    <div className="absolute inset-0 z-50 grid place-content-center justify-items-center gap-3 bg-black/80 text-center text-sm text-white/70">
+      <output className="text-[clamp(1rem,3.2vmin,1.5rem)] leading-tight text-white">
+        Still watching?
+      </output>
+      <span className="px-4">
+        The live stream was stopped after 3 hours without activity.
+      </span>
+      <button
+        type="button"
+        onClick={onResume}
+        className="mt-1 rounded-full bg-white/15 px-4 py-1.5 text-white transition hover:bg-white/25"
+      >
+        Continue watching
+      </button>
+    </div>
+  );
+}
 
 /**
  * A live broadcast: OwnTube's live DASH manifest (`/dash/<id>/live.mpd`, see
@@ -57,14 +83,37 @@ export function LiveBlock({
     window.setTimeout(() => onPlaybackError(), 0);
   }, [onPlaybackError]);
 
-  // Autoplay is the effect below; no start time, so dash.js joins at the live
-  // edge.
+  // "Still watching?": after hours without interaction the dash.js instance
+  // is destroyed and the source detached, so nothing polls the live manifest
+  // (dash.js keeps refreshing it even while paused). Resuming builds a fresh
+  // instance under a new key, which joins at the live edge and autoplays.
+  const [idleStopped, setIdleStopped] = useState(false);
+  const [resumeCount, setResumeCount] = useState(0);
+  const sourceKey = `${reactKey}#${resumeCount}`;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new broadcast starts out playing, not stopped.
+  useEffect(() => {
+    setIdleStopped(false);
+  }, [reactKey]);
+  useLiveIdleStop(!idleStopped, () => {
+    const video = videoRef.current;
+    if (video && document.pictureInPictureElement === video) {
+      void document.exitPictureInPicture().catch(() => {});
+    }
+    setIdleStopped(true);
+  });
+  const resumeAfterIdle = useCallback(() => {
+    setResumeCount((n) => n + 1);
+    setIdleStopped(false);
+  }, []);
+
+  // Autoplay is the effect below (and dash.js itself after an idle resume);
+  // no start time, so dash.js joins at the live edge.
   const dash = useDashPlayback(
     videoRef,
-    src,
-    reactKey,
+    idleStopped ? "" : src,
+    sourceKey,
     undefined,
-    false,
+    resumeCount > 0,
     emitPlaybackError,
     defaultQualityHeightCap,
   );
@@ -100,17 +149,17 @@ export function LiveBlock({
   // Autoplay the broadcast once per source; the guard keeps the effect from
   // re-playing after a deliberate user pause.
   const liveAutoplayTriedRef = useRef(false);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reactKey resets live autoplay once per broadcast source.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: sourceKey resets live autoplay once per broadcast source (and idle resume).
   useEffect(() => {
     liveAutoplayTriedRef.current = false;
-  }, [reactKey]);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reactKey retries live autoplay after a source remount.
+  }, [sourceKey]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: sourceKey retries live autoplay after a source remount.
   useEffect(() => {
-    if (liveAutoplayTriedRef.current) return;
+    if (idleStopped || liveAutoplayTriedRef.current) return;
     if (!adapter.canPlay || !adapter.paused) return;
     liveAutoplayTriedRef.current = true;
     adapter.play();
-  }, [adapter.canPlay, adapter.paused, adapter.play, reactKey]);
+  }, [adapter.canPlay, adapter.paused, adapter.play, idleStopped, sourceKey]);
 
   return (
     <div
@@ -172,6 +221,7 @@ export function LiveBlock({
         onPlayNext={onPlayNext}
         isLive
       />
+      {idleStopped ? <StillWatchingScreen onResume={resumeAfterIdle} /> : null}
     </div>
   );
 }
