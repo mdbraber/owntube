@@ -93,14 +93,12 @@ so the trigger stays; what changes is how the server side behaves:
 - **Fewer, smaller media requests.** Session segments replace the 2 MB chunk
   loops and redirect chains, so there is less to reset and less to congest.
 
-This is verified, not assumed. **It can be tested now, before any gateway
-work:** turn the second host off on `owntube-dev` (unset
-`NEXT_PUBLIC_MEDIA_BASE_URL`) and repeat the original scenario there. If it is
-clean, the answer is settled and the second host goes. If not, the
-gateway's abort handling is retested in phase 2. Phase 2's exit includes the original scenario
-(seek-heavy playback in Safari on macOS and iOS while the app makes API calls,
-zero failed API calls). If one host still fails that test, the fix belongs in
-the protocol or server setup, not in a second hostname.
+**Tested 2026-11-26 on `owntube-dev`** with the second host switched off
+(compose backup `docker-compose.dev.yml.bak-20261126-single-host`): seek-heavy
+playback in Safari on macOS and iOS while using the app, with nothing failing
+or hanging. The only difference noticed was speed, expected from `next dev`.
+The second host therefore goes; production confirms it at cutover (phase 6),
+when the gateway serves `/media/*` on the app host.
 
 ### Repository layout
 
@@ -354,9 +352,7 @@ audio), byte-range transport, live and DVR, captions, whole-file route, images.
 `packages/playback` track model and HLS/DASH serializers. `packages/googlevideo`
 rebased onto 5.x.
 *Exit*: dash.js, hls.js, AVPlayer (iOS/tvOS) and Media3 (Android TV) play every
-corpus video including seek-to-end and live, with no 403 reaching the client;
-and on one host, seek-heavy Safari playback (macOS and iOS) causes zero failed
-API calls.
+corpus video including seek-to-end and live, with no 403 reaching the client.
 *Decision here*: measure SABR vs byte-range (startup, seek latency, failures over
 a day of real use) and make one the VOD default.
 
@@ -406,8 +402,8 @@ Made 2026-11-26:
 3. **googlevideo: upstream the patches**, and keep `packages/googlevideo` as our
    fork for as long as any patch is not released upstream. Delete the package
    when the last one lands.
-4. **One host.** `/media/*` routed to the gateway, with HTTP/3; the Safari
-   reset test is part of phase 2's exit (see Target architecture).
+4. **One host**, confirmed by the Safari test on `owntube-dev` (2026-11-26).
+   `/media/*` is routed to the gateway.
 5. **Hono** on `@hono/node-server`.
 
 Open:
