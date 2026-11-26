@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { CHANNEL_TAG_MAX_LEN, normalizeChannelTag } from "@/lib/channel-tag";
-import { fetchVideoDetail } from "@/server/catalog";
+import { fetchVideoSummaries } from "@/server/catalog";
 import type { AppDb } from "@/server/db/client";
 import { playlistItems, playlists, playlistTags } from "@/server/db/schema";
 import { protectedProcedure, router } from "@/server/trpc/init";
@@ -278,34 +278,22 @@ export const playlistsRouter = router({
         .where(eq(playlistItems.playlistId, input.playlistId))
         .orderBy(asc(playlistItems.position), asc(playlistItems.addedAt))
         .all();
-      return Promise.all(
-        rows.map(async (row) => {
-          try {
-            const detail = await fetchVideoDetail({
-              videoId: row.videoId,
-            });
-            return {
-              videoId: row.videoId,
-              videoTitle: detail.title ?? row.videoId,
-              thumbnailUrl: detail.thumbnailUrl,
-              durationSeconds: detail.durationSeconds,
-              channelId: row.channelId,
-              channelName: detail.channelName ?? row.channelId,
-              channelAvatarUrl: detail.channelAvatarUrl,
-            };
-          } catch {
-            return {
-              videoId: row.videoId,
-              videoTitle: row.videoId,
-              thumbnailUrl: undefined as string | undefined,
-              durationSeconds: undefined as number | undefined,
-              channelId: row.channelId,
-              channelName: row.channelId,
-              channelAvatarUrl: undefined as string | undefined,
-            };
-          }
-        }),
+      // One batch call; a video YouTube no longer describes keeps its id.
+      const byId = await fetchVideoSummaries(rows.map((r) => r.videoId)).catch(
+        () => new Map(),
       );
+      return rows.map((row) => {
+        const v = byId.get(row.videoId);
+        return {
+          videoId: row.videoId,
+          videoTitle: v?.title ?? row.videoId,
+          thumbnailUrl: v?.thumbnailUrl as string | undefined,
+          durationSeconds: v?.durationSeconds as number | undefined,
+          channelId: row.channelId,
+          channelName: v?.channelName ?? row.channelId,
+          channelAvatarUrl: v?.channelAvatarUrl as string | undefined,
+        };
+      });
     }),
 
   /** Persist a drag reorder: positions follow the given video id order. */

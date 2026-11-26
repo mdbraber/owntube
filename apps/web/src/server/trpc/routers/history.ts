@@ -1,6 +1,6 @@
 import { and, desc, eq, like, or } from "drizzle-orm";
 import { z } from "zod";
-import { fetchVideoDetail } from "@/server/catalog";
+import { fetchVideoSummaries } from "@/server/catalog";
 import { readChannelMetaByIds } from "@/server/channel-meta/store";
 import { watchHistory } from "@/server/db/schema";
 import { fireHooks } from "@/server/hooks/run-hooks";
@@ -240,47 +240,36 @@ export const historyRouter = router({
       const metaById = readChannelMetaByIds(ctx.db, [
         ...new Set(rows.map((r) => r.channelId)),
       ]);
-      const enriched = await Promise.all(
-        rows.map(async (row) => {
-          const meta = metaById.get(row.channelId);
-          const channelAvatarUrl = meta?.avatarUrl ?? undefined;
-          // A row without a denormalized name (older rows, and plays the DASH
-          // route recorded before it sent one) borrows the cached channel
-          // name. Never the channel id: clients print this under the title.
-          const cachedChannelName = row.channelName ?? meta?.channelName;
-          // Rows written since titles were denormalized need no upstream call;
-          // the client derives the thumbnail from videoId.
-          if (row.videoTitle) {
-            return {
-              ...row,
-              videoTitle: row.videoTitle,
-              thumbnailUrl: undefined as string | undefined,
-              channelName: cachedChannelName,
-              channelAvatarUrl,
-            };
-          }
-          try {
-            const detail = await fetchVideoDetail({
-              videoId: row.videoId,
-            });
-            return {
-              ...row,
-              videoTitle: detail.title,
-              thumbnailUrl: detail.thumbnailUrl,
-              channelName: detail.channelName ?? cachedChannelName,
-              channelAvatarUrl: detail.channelAvatarUrl ?? channelAvatarUrl,
-            };
-          } catch {
-            return {
-              ...row,
-              videoTitle: row.videoId,
-              thumbnailUrl: undefined,
-              channelName: cachedChannelName,
-              channelAvatarUrl,
-            };
-          }
-        }),
-      );
+      // Rows from before titles were stored: one batch call for all of them.
+      const byId = await fetchVideoSummaries(
+        rows.filter((r) => !r.videoTitle).map((r) => r.videoId),
+      ).catch(() => new Map());
+      const enriched = rows.map((row) => {
+        const meta = metaById.get(row.channelId);
+        const channelAvatarUrl = meta?.avatarUrl ?? undefined;
+        // A row without a denormalized name (older rows) borrows the cached
+        // channel name. Never the channel id: clients print this under the title.
+        const cachedChannelName = row.channelName ?? meta?.channelName;
+        // Rows written since titles were denormalized need no upstream call;
+        // the client derives the thumbnail from videoId.
+        if (row.videoTitle) {
+          return {
+            ...row,
+            videoTitle: row.videoTitle,
+            thumbnailUrl: undefined as string | undefined,
+            channelName: cachedChannelName,
+            channelAvatarUrl,
+          };
+        }
+        const v = byId.get(row.videoId);
+        return {
+          ...row,
+          videoTitle: v?.title ?? row.videoId,
+          thumbnailUrl: v?.thumbnailUrl as string | undefined,
+          channelName: v?.channelName ?? cachedChannelName,
+          channelAvatarUrl: v?.channelAvatarUrl ?? channelAvatarUrl,
+        };
+      });
       return enriched;
     }),
   /**

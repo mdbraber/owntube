@@ -1,7 +1,7 @@
 import { and, asc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { watchHref } from "@/lib/yt-routes";
-import { fetchVideoDetail } from "@/server/catalog";
+import { fetchVideoSummaries } from "@/server/catalog";
 import { watchQueue } from "@/server/db/schema";
 import { protectedProcedure, router } from "@/server/trpc/init";
 
@@ -47,36 +47,23 @@ export const queueRouter = router({
       .where(eq(watchQueue.userId, ctx.userId))
       .orderBy(asc(watchQueue.position))
       .all();
-    return Promise.all(
-      items.map(async (row) => {
-        try {
-          const detail = await fetchVideoDetail({
-            videoId: row.videoId,
-          });
-          return {
-            videoId: row.videoId,
-            position: row.position,
-            videoTitle: detail.title ?? row.title,
-            thumbnailUrl: detail.thumbnailUrl,
-            durationSeconds: detail.durationSeconds,
-            channelId: row.channelId,
-            channelName: detail.channelName ?? row.channelId,
-            channelAvatarUrl: detail.channelAvatarUrl,
-          };
-        } catch {
-          return {
-            videoId: row.videoId,
-            position: row.position,
-            videoTitle: row.title,
-            thumbnailUrl: undefined as string | undefined,
-            durationSeconds: undefined as number | undefined,
-            channelId: row.channelId,
-            channelName: row.channelId,
-            channelAvatarUrl: undefined as string | undefined,
-          };
-        }
-      }),
+    // One batch call; a video YouTube no longer describes keeps what we stored.
+    const byId = await fetchVideoSummaries(items.map((i) => i.videoId)).catch(
+      () => new Map(),
     );
+    return items.map((row) => {
+      const v = byId.get(row.videoId);
+      return {
+        videoId: row.videoId,
+        position: row.position,
+        videoTitle: v?.title ?? row.title,
+        thumbnailUrl: v?.thumbnailUrl as string | undefined,
+        durationSeconds: v?.durationSeconds as number | undefined,
+        channelId: row.channelId,
+        channelName: v?.channelName ?? row.channelId,
+        channelAvatarUrl: v?.channelAvatarUrl as string | undefined,
+      };
+    });
   }),
 
   add: protectedProcedure

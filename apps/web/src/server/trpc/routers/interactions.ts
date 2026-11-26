@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { watchHref } from "@/lib/yt-routes";
-import { fetchVideoDetail } from "@/server/catalog";
+import { fetchVideoSummaries } from "@/server/catalog";
 import { interactions } from "@/server/db/schema";
 import { clearRecommendationCachesForUser } from "@/server/recommendation/engine";
 import { getUserSettings, upsertUserSettings } from "@/server/settings/profile";
@@ -98,34 +98,23 @@ export const interactionsRouter = router({
       )
       .orderBy(desc(interactions.createdAt))
       .all();
-    return Promise.all(
-      rows.map(async (r) => {
-        try {
-          const detail = await fetchVideoDetail({ videoId: r.videoId });
-          return {
-            videoId: r.videoId,
-            videoTitle: detail.title ?? r.title ?? r.videoId,
-            thumbnailUrl: detail.thumbnailUrl,
-            durationSeconds: detail.durationSeconds,
-            channelId: r.channelId,
-            channelName: detail.channelName ?? r.channelId,
-            channelAvatarUrl: detail.channelAvatarUrl,
-            href: watchHref(r.videoId),
-          };
-        } catch {
-          return {
-            videoId: r.videoId,
-            videoTitle: r.title ?? r.videoId,
-            thumbnailUrl: undefined as string | undefined,
-            durationSeconds: undefined as number | undefined,
-            channelId: r.channelId,
-            channelName: r.channelId,
-            channelAvatarUrl: undefined as string | undefined,
-            href: watchHref(r.videoId),
-          };
-        }
-      }),
+    // One batch call; a video YouTube no longer describes keeps what we stored.
+    const byId = await fetchVideoSummaries(rows.map((r) => r.videoId)).catch(
+      () => new Map(),
     );
+    return rows.map((r) => {
+      const v = byId.get(r.videoId);
+      return {
+        videoId: r.videoId,
+        videoTitle: v?.title ?? r.title ?? r.videoId,
+        thumbnailUrl: v?.thumbnailUrl as string | undefined,
+        durationSeconds: v?.durationSeconds as number | undefined,
+        channelId: r.channelId,
+        channelName: v?.channelName ?? r.channelId,
+        channelAvatarUrl: v?.channelAvatarUrl as string | undefined,
+        href: watchHref(r.videoId),
+      };
+    });
   }),
   /** Lightweight id-only list of saved videos for membership pills (no detail fetch). */
   savedIds: protectedProcedure.query(({ ctx }) => {
