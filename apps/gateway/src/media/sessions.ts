@@ -13,6 +13,7 @@ import { parseSidx, type Segment } from "@owntube/playback/sidx";
 import type { AudioTrack, VideoTrack } from "@owntube/playback/tracks";
 import { parseCues, parseWebmInit } from "@owntube/playback/webm";
 import type { Unplayable } from "@owntube/youtube/playability";
+import type { PoTokenProvider } from "@owntube/youtube/potoken";
 import {
   type PresentationSources,
   toPresentation,
@@ -79,6 +80,10 @@ export interface ProgressiveStore {
 
 export interface PlaybackSessionsOptions {
   youtube: YouTube;
+  /** Answers SABR attestation demands; without it a rejection gets a fresh identity. */
+  poTokens?: PoTokenProvider;
+  /** Operational events (attestation demands and their outcome). */
+  log?: (line: string) => void;
   /** Start sessions on SABR instead of byte ranges. */
   preferSabr?: boolean;
   progressiveStore?: ProgressiveStore;
@@ -94,6 +99,8 @@ export class PlaybackSessions {
   readonly #youtube: YouTube;
   readonly #store: ProgressiveStore | undefined;
   readonly #preferSabr: boolean;
+  readonly #poTokens: PoTokenProvider | undefined;
+  readonly #log: (line: string) => void;
   readonly #maxAgeMs: number;
   readonly #idleMs: number;
   readonly #max: number;
@@ -106,6 +113,8 @@ export class PlaybackSessions {
     this.#youtube = options.youtube;
     this.#store = options.progressiveStore;
     this.#preferSabr = options.preferSabr ?? false;
+    this.#poTokens = options.poTokens;
+    this.#log = options.log ?? (() => {});
     this.#maxAgeMs = options.maxAgeMs ?? 5 * 60 * 60_000;
     this.#idleMs = options.idleMs ?? 60 * 60_000;
     this.#max = options.max ?? 500;
@@ -349,6 +358,9 @@ export class PlaybackSessions {
       bytes = await track.read(piece);
     } catch (error) {
       if (!(error instanceof AttestationRequired) || retried) throw error;
+      this.#log(
+        `sabr ${session.videoId}: attestation rejected; retrying with a fresh identity`,
+      );
       // YouTube no longer trusts this identity: start over with a fresh one, once.
       this.#youtube.retire(session.youtube);
       for (const t of session.sabrTracks.values()) await t.close();
@@ -379,6 +391,20 @@ export class PlaybackSessions {
       result.identity,
       result.session.fetch,
     );
+    if (sabr) {
+      const visitorData = result.session.visitorData;
+      const poTokens = this.#poTokens;
+      sabr.onProtectionStatus = (status) => {
+        if (status !== 1)
+          this.#log(
+            `sabr ${videoId}: stream protection status ${status}${poTokens ? " (minting a PO token)" : ""}`,
+          );
+      };
+      // A GVS token for a signed-out visitor is bound to the visitor data.
+      if (poTokens)
+        sabr.mintPoToken = async () =>
+          base64urlBytes(await poTokens.mint(visitorData));
+    }
     if (sabr) {
       // The SABR server can demand a new player response mid-stream.
       sabr.reload = async (token) => {
@@ -558,4 +584,10 @@ export function findTrack(
 ): VideoTrack | AudioTrack | undefined {
   const { video, audio } = session.sources.presentation;
   return video.find((t) => t.id === id) ?? audio.find((t) => t.id === id);
+}
+
+function base64urlBytes(token: string): Uint8Array {
+  return new Uint8Array(
+    Buffer.from(token.replace(/-/g, "+").replace(/_/g, "/"), "base64"),
+  );
 }

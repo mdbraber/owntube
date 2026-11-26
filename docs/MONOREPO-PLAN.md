@@ -366,13 +366,22 @@ Done (2026-11-26):
   - headless Chromium: dash.js (VP9, AV1, H.264 with dubbed audio), hls.js (VOD, live, 4-hour DVR) and plain `<video>` (`video.mp4`) all play and seek to the end;
   - Safari on macOS and iOS: ordinary, 4K, 27 audio languages with subtitles, a vertical Short, live and DVR all work (tested by the owner through the dev gateway on `owntube-dev…/media/*`).
 
+- **VP9/WebM over SABR**: `packages/playback/webm.ts` reads the Cues into one segment per cluster (checked on real files, 4K60 included), and SabrTrack recognises clusters by Timecode. All formats work on both transports.
+- **SABR reload token** echoed in the next player request.
+- **Attestation**: seen once on 2026-11-26, after many SABR pulls on one visitor identity (fresh sessions then worked for every format and position). A rejection now ends the pull at once and the gateway retries with a fresh identity (`SessionPool.retire`).
+- **PO tokens (third step)**, built and switched off:
+  - `BrowserPoTokenMinter` runs BotGuard through bgutils-js (MIT) in a Chromium started on demand and closed after 10 idle minutes, with every request from the page blocked.
+  - The first token takes 0.9–1.2 s including the browser start, later ones 2–6 ms.
+  - `GATEWAY_PO_BROWSER` turns it on; the image gets Chromium only with `--build-arg WITH_PO_BROWSER=true`.
+  - Not validated: on 2026-11-26 YouTube answered player requests identically with no token, a forged one and a minted one, and WEB SABR delivered a whole file without one. The only place a token would count today is a SABR attestation demand, which cannot be produced on demand.
+  - Every attestation demand is logged, so the first real validation shows up in the logs when YouTube starts asking. `probe:potoken` repeats the check.
+  - The companion's minter was not copied (AGPL-3.0, from an upstream PR; OwnTube is MIT).
+
 Open:
 
 - Android TV (Media3): moves to phase 5, when the TV app uses the gateway.
-- WebM (VP9) over SABR: needs Cues/cluster mapping; until then SABR sessions offer MP4 tracks only (H.264, AV1, AAC).
-- Building `video.mp4` over SABR reads whole fragments (16 s for a 3.5-minute video); built layouts are kept on disk, and the feed publisher should warm enclosures at publish time (phase 4).
-- The SABR reload request is answered with a fresh player response, but the reload token is not yet echoed in it (the companion found that necessary for some HDR videos).
-- A podcast app test of the enclosures.
+- A podcast app test of the enclosures (and a rebuild of the dev gateway).
+- The Debian `chromium` package with Playwright in the image is untested (no Docker here).
 
 **Phase 3 — gateway metadata API.**
 All browse endpoints mapped into `packages/contracts`. One-off verification:

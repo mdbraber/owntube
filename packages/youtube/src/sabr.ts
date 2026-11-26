@@ -29,6 +29,8 @@ export interface SabrEndpoint {
   fetch: typeof globalThis.fetch;
   /** Mints a PO token when the SABR server asks for attestation; without one, a rejection ends the pull. */
   mintPoToken?: () => Promise<Uint8Array>;
+  /** Hears every stream-protection status (1 OK, 2 attestation pending, 3 rejected). */
+  onProtectionStatus?: (status: number) => void;
   /** Asked when the SABR server demands a new player response mid-stream; `token` must be echoed. */
   reload?: (
     token: string | undefined,
@@ -160,6 +162,7 @@ export function sabrOpener(
     stream.on("error", (error) => out.fail(error));
     // Without a token to offer, a rejection is final: stop now instead of after googlevideo's retries.
     stream.on("streamProtectionStatusUpdate", (status) => {
+      if (status.status !== undefined) e.onProtectionStatus?.(status.status);
       if (status.status === 3 && !e.mintPoToken) {
         out.fail(new AttestationRequired());
         void stream.abort().catch(() => {});

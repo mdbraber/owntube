@@ -1,5 +1,7 @@
 import { serve } from "@hono/node-server";
+import { WEB } from "@owntube/youtube/clients";
 import { createEgress } from "@owntube/youtube/egress";
+import { BrowserPoTokenMinter } from "@owntube/youtube/potoken";
 import { SessionPool } from "@owntube/youtube/session";
 import { YouTube } from "@owntube/youtube/youtube";
 import { createApp } from "./app.ts";
@@ -12,7 +14,16 @@ const config = loadConfig();
 const egress = createEgress({
   ...(config.proxyUrl ? { proxyUrl: config.proxyUrl } : {}),
 });
+const poTokens = config.poBrowser
+  ? new BrowserPoTokenMinter({
+      executablePath: config.poBrowser,
+      fetch: egress.fetch(),
+      userAgent: WEB.userAgent,
+    })
+  : undefined;
 const sessions = new PlaybackSessions({
+  ...(poTokens ? { poTokens } : {}),
+  log: (line) => process.stderr.write(`${new Date().toISOString()} ${line}\n`),
   preferSabr: config.transport === "sabr",
   progressiveStore: diskProgressiveStore(`${config.cacheDir}/progressive`),
   youtube: new YouTube(new SessionPool({ egress })),
@@ -40,7 +51,9 @@ function shutdown(signal: NodeJS.Signals): void {
   const force = setTimeout(() => process.exit(1), config.shutdownGraceMs);
   force.unref();
   server.close(() => {
-    void egress.close().finally(() => process.exit(0));
+    void Promise.all([egress.close(), poTokens?.close()]).finally(() =>
+      process.exit(0),
+    );
   });
 }
 

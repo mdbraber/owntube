@@ -15,6 +15,12 @@ RUN pnpm install --frozen-lockfile --prod --filter gateway...
 FROM node:24-bookworm-slim
 WORKDIR /app
 ENV NODE_ENV=production
+# The PO-token browser (third transport step) is left out unless asked for:
+# docker build --build-arg WITH_PO_BROWSER=true … and set GATEWAY_PO_BROWSER=/usr/bin/chromium.
+ARG WITH_PO_BROWSER=false
+RUN if [ "$WITH_PO_BROWSER" = "true" ]; then \
+      apt-get update && apt-get install -y --no-install-recommends chromium && rm -rf /var/lib/apt/lists/*; \
+    fi
 COPY --from=deps /app /app
 COPY tsconfig.node.json ./
 COPY packages/youtube/src packages/youtube/src

@@ -12,11 +12,14 @@
     "test": "vitest run",
     "record:corpus": "node scripts/record-corpus.ts",
     "probe:clients": "node scripts/probe-clients.ts",
-    "probe:sustained": "node scripts/probe-sustained.ts"
+    "probe:sustained": "node scripts/probe-sustained.ts",
+    "probe:potoken": "node scripts/probe-potoken.ts"
   },
   "dependencies": {
     "@owntube/playback": "workspace:*",
+    "bgutils-js": "^4.0.3",
     "googlevideo": "^5.0.1",
+    "playwright-core": "1.59.1",
     "undici": "^7.30.0",
     "youtubei.js": "^18.3.0"
   },
@@ -33,6 +36,7 @@
     "./presentation": "./src/presentation.ts",
     "./session": "./src/session.ts",
     "./youtube": "./src/youtube.ts",
-    "./sabr": "./src/sabr.ts"
+    "./sabr": "./src/sabr.ts",
+    "./potoken": "./src/potoken.ts"
   }
 }

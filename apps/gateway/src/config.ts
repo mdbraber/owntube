@@ -17,6 +17,12 @@ const configSchema = z.object({
    * `sabr`: SABR from the start (for when YouTube has closed byte ranges).
    */
   transport: z.enum(["auto", "sabr"]).default("auto"),
+  /**
+   * A Chromium for minting PO tokens when YouTube demands SABR attestation
+   * (the third transport step). Unset: no tokens; a rejection gets a fresh
+   * identity instead.
+   */
+  poBrowser: z.string().optional(),
   /** Where the image cache lives. */
   cacheDir: z.string().default("data/cache"),
   /** Image cache size kept by the hourly prune. */
@@ -38,6 +44,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     shutdownGraceMs: env.GATEWAY_SHUTDOWN_GRACE_MS,
     signingKey: env.GATEWAY_SIGNING_KEY,
     transport: env.GATEWAY_TRANSPORT || undefined,
+    poBrowser: env.GATEWAY_PO_BROWSER || undefined,
     cacheDir: env.GATEWAY_CACHE_DIR || undefined,
     imageCacheMaxBytes: env.GATEWAY_IMAGE_CACHE_MAX_BYTES || undefined,
     proxyUrl: env.GATEWAY_PROXY_URL || undefined,
