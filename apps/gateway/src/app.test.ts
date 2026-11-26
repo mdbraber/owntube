@@ -18,7 +18,11 @@ const noSessions = new PlaybackSessions({
 });
 
 describe("gateway app", () => {
-  const app = createApp({ sessions: noSessions, signingKey: KEY });
+  const app = createApp({
+    sessions: noSessions,
+    signingKey: KEY,
+    images: { cacheDir: "/nonexistent", fetch: offline },
+  });
 
   it("answers the liveness probe", async () => {
     const res = await app.request("/healthz");

@@ -10,6 +10,8 @@ describe("loadConfig", () => {
       port: 8080,
       shutdownGraceMs: 10_000,
       signingKey: "k".repeat(32),
+      cacheDir: "data/cache",
+      imageCacheMaxBytes: 1024 * 1024 * 1024,
     });
   });
 

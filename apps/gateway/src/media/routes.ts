@@ -5,9 +5,11 @@ import {
   buildSubtitlePlaylist,
 } from "@owntube/playback/hls";
 import type {
+  AudioTrack,
   Presentation,
   PresentationUrls,
   VideoFamily,
+  VideoTrack,
 } from "@owntube/playback/tracks";
 import { type Context, Hono } from "hono";
 import {
@@ -56,6 +58,14 @@ const STATUS_FOR: Record<Unavailable["unplayable"]["kind"], 403 | 404 | 409> = {
   unavailable: 404,
   unplayable: 403,
 };
+
+function findTrack(
+  session: PlaybackSession,
+  id: string,
+): VideoTrack | AudioTrack | undefined {
+  const { video, audio } = session.sources.presentation;
+  return video.find((t) => t.id === id) ?? audio.find((t) => t.id === id);
+}
 
 function liveSegmentType(session: PlaybackSession, itag: string): string {
   return session.live?.renditions.get(itag)?.initUrl
@@ -128,16 +138,12 @@ export function mediaRoutes(
   );
 
   // Everything below is reached only through a session id from a manifest.
-  app.on(["GET", "HEAD"], "/media/s/:sid/t/:track", async (c) => {
-    const session = sessions.get(c.req.param("sid"));
-    const trackId = c.req.param("track");
-    const track =
-      session &&
-      [
-        ...session.sources.presentation.video,
-        ...session.sources.presentation.audio,
-      ].find((t) => t.id === trackId);
-    if (!session || !track) return c.text("not found", 404);
+  /** Bytes of one track of a session, honouring a single `Range`. */
+  function serveTrack(
+    c: Context,
+    session: PlaybackSession,
+    track: VideoTrack | AudioTrack,
+  ) {
     const span = parseRange(c.req.header("range"), track.contentLength);
     const headers: Record<string, string> = {
       "accept-ranges": "bytes",
@@ -157,22 +163,65 @@ export function mediaRoutes(
     if (c.req.method === "HEAD")
       return c.body(null, partial ? 206 : 200, headers);
     const body = streamSpan(
-      sessions.source(session, trackId),
+      sessions.source(session, track.id),
       span,
       c.req.raw.signal,
     );
     return c.body(body, partial ? 206 : 200, headers);
+  }
+
+  // Everything below is reached only through a session id from a manifest.
+  app.on(["GET", "HEAD"], "/media/s/:sid/t/:track", (c) => {
+    const session = sessions.get(c.req.param("sid"));
+    const trackId = c.req.param("track");
+    const track = session && findTrack(session, trackId);
+    if (!session || !track) return c.text("not found", 404);
+    return serveTrack(c, session, track);
+  });
+
+  /**
+   * A video's audio as one file, for RSS enclosures: the original language's
+   * best AAC track (or `?lang=`). Repeated requests share one session.
+   */
+  app.on(["GET", "HEAD"], "/media/v/:videoId/audio.m4a", async (c) => {
+    const videoId = c.req.param("videoId");
+    if (!VIDEO_ID.test(videoId)) return c.text("bad video id", 400);
+    if (
+      !verifyPlayback(
+        signingKey,
+        videoId,
+        c.req.query("exp"),
+        c.req.query("sig"),
+      )
+    )
+      return c.text("bad signature", 403);
+    let session: PlaybackSession;
+    try {
+      session = await sessions.shared(videoId);
+    } catch (error) {
+      if (error instanceof Unavailable)
+        return c.json(
+          { error: error.unplayable.kind },
+          STATUS_FOR[error.unplayable.kind],
+        );
+      throw error;
+    }
+    const lang = c.req.query("lang");
+    const track = session.sources.presentation.audio
+      .filter(
+        (a) =>
+          a.mimeType === "audio/mp4" &&
+          (lang ? a.language === lang : a.isOriginal),
+      )
+      .sort((a, b) => b.bitrate - a.bitrate)[0];
+    if (!track) return c.text("no audio", 404);
+    return serveTrack(c, session, track);
   });
 
   app.get("/media/s/:sid/p/:file", async (c) => {
     const session = sessions.get(c.req.param("sid"));
     const trackId = c.req.param("file").replace(/\.m3u8$/, "");
-    const track =
-      session &&
-      [
-        ...session.sources.presentation.video,
-        ...session.sources.presentation.audio,
-      ].find((t) => t.id === trackId);
+    const track = session && findTrack(session, trackId);
     if (!session || !track || track.mimeType.endsWith("webm"))
       return c.text("not found", 404);
     const segments = await sessions.segments(session, trackId);

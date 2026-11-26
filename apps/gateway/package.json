@@ -15,12 +15,14 @@
   },
   "dependencies": {
     "@hono/node-server": "^2.1.11",
-    "hono": "^4.13.22",
-    "zod": "^4.1.12",
+    "@owntube/playback": "workspace:*",
     "@owntube/youtube": "workspace:*",
-    "@owntube/playback": "workspace:*"
+    "cacache": "^20.0.0",
+    "hono": "^4.13.22",
+    "zod": "^4.1.12"
   },
   "devDependencies": {
+    "@types/cacache": "^20.0.0",
     "@types/node": "^24",
     "typescript": "^5",
     "vitest": "^4.0.3"

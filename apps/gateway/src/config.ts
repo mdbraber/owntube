@@ -12,6 +12,14 @@ const configSchema = z.object({
   signingKey: z
     .string()
     .min(32, "GATEWAY_SIGNING_KEY must be at least 32 characters"),
+  /** Where the image cache lives. */
+  cacheDir: z.string().default("data/cache"),
+  /** Image cache size kept by the hourly prune. */
+  imageCacheMaxBytes: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(1024 * 1024 * 1024),
   /** Optional outbound proxy for all YouTube traffic. */
   proxyUrl: z.string().url().optional(),
 });
@@ -24,6 +32,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     port: env.GATEWAY_PORT,
     shutdownGraceMs: env.GATEWAY_SHUTDOWN_GRACE_MS,
     signingKey: env.GATEWAY_SIGNING_KEY,
+    cacheDir: env.GATEWAY_CACHE_DIR || undefined,
+    imageCacheMaxBytes: env.GATEWAY_IMAGE_CACHE_MAX_BYTES || undefined,
     proxyUrl: env.GATEWAY_PROXY_URL || undefined,
   });
   if (!parsed.success) {

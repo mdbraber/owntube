@@ -60,6 +60,8 @@ export class PlaybackSessions {
   readonly #max: number;
   readonly #now: () => number;
   readonly #sessions = new Map<string, PlaybackSession>();
+  /** videoId → the session shared by whole-file requests (podcast apps ask again and again). */
+  readonly #shared = new Map<string, Promise<PlaybackSession>>();
 
   constructor(options: PlaybackSessionsOptions) {
     this.#youtube = options.youtube;
@@ -88,6 +90,20 @@ export class PlaybackSessions {
     };
     this.#sessions.set(session.id, session);
     return session;
+  }
+
+  /** A session for whole-file requests, reused while it lives so repeated ranges do not ask YouTube again. */
+  async shared(videoId: string): Promise<PlaybackSession> {
+    const existing = this.#shared.get(videoId);
+    if (existing) {
+      const session = await existing.catch(() => undefined);
+      if (session && this.get(session.id)) return session;
+      this.#shared.delete(videoId);
+    }
+    const created = this.create(videoId);
+    this.#shared.set(videoId, created);
+    created.catch(() => this.#shared.delete(videoId));
+    return created;
   }
 
   get(id: string): PlaybackSession | undefined {
