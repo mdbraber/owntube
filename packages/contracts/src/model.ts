@@ -146,6 +146,8 @@ export const videoDetailSchema = videoSummarySchema.extend({
   category: z.string().optional(),
   likes: countSchema.optional(),
   captions: z.array(captionTrackSchema),
+  /** The original audio's language, for videos with dubbed tracks. */
+  originalLanguage: z.string().optional(),
   storyboard: storyboardSchema.optional(),
   chapters: z.array(chapterSchema),
   related: z.array(videoSummarySchema),

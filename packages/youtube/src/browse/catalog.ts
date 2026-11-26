@@ -98,6 +98,10 @@ export class Catalog {
     const startsAt = start ? new Date(start).getTime() : undefined;
     const unplayable = player.unplayable;
     const related = collectItems(info.watch_next_feed ?? []).videos;
+    // Dubbed videos name their tracks; the original one is the default.
+    const originalLanguage = player.raw.streamingData?.adaptiveFormats
+      ?.find((f) => f.audioTrack?.audioIsDefault)
+      ?.audioTrack?.id.split(".")[0];
     const captions = (
       (info.captions as YTNodes.PlayerCaptionsTracklist | undefined)
         ?.caption_tracks ?? []
@@ -140,6 +144,7 @@ export class Catalog {
         ? { likes: { value: b.like_count, approximate: false } }
         : {}),
       captions,
+      ...(originalLanguage ? { originalLanguage } : {}),
       ...storyboardOf(info.storyboards),
       chapters: chaptersOf(info.player_overlays),
       related,
