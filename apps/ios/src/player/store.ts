@@ -3,7 +3,6 @@ import {
   shouldStopIdleLive,
 } from "@web/lib/live-idle-stop";
 import type { NativePlayRequest } from "@web/lib/native-app";
-import { buildWatchPlayback } from "@web/lib/pick-playback";
 import type { VideoDetail } from "@web/server/catalog/types";
 import { router } from "expo-router";
 import { createVideoPlayer, type VideoPlayer } from "expo-video";
@@ -108,7 +107,7 @@ export function getPlayer(): VideoPlayer {
 
 /** The sources still to try for the current video, best first. */
 let pending: string[] = [];
-/** The current video's detail while it loads (it brings the fallbacks). */
+/** The current video's detail while it loads (it brings the sources). */
 let detailLoading: Promise<unknown> | null = null;
 
 /** The video id `pending` belongs to; a newer play request replaces it. */
@@ -119,21 +118,12 @@ let autoplay = true;
 const absolute = (url: string) => new URL(url, SERVER_URL).toString();
 
 /**
- * Fallbacks after the server's HLS, from the video's detail: the same choice
- * the web app makes for Safari on iPhone (HLS, then muxed progressive MP4),
- * since AVPlayer, like it, plays neither DASH nor split audio and video.
+ * A video's source: the gateway's signed HLS playlist, which AVPlayer plays
+ * natively (VOD, live and post-live DVR alike); the gateway picks the
+ * transport behind it.
  */
-function fallbackSources(detail: VideoDetail): string[] {
-  if (detail.isLive) return detail.hlsUrl ? [absolute(detail.hlsUrl)] : [];
-  const playback = buildWatchPlayback(detail, { avoidSplitAudioVideo: true });
-  if (playback.kind === "hls") return [absolute(playback.url)];
-  if (playback.kind === "progressive") {
-    return playback.variants
-      .flatMap((variant) => (variant.t === "muxed" ? [variant.url] : []))
-      .slice(0, 2)
-      .map(absolute);
-  }
-  return [];
+function sourcesOf(detail: VideoDetail): string[] {
+  return detail.playback ? [absolute(detail.playback.hls)] : [];
 }
 
 /**
@@ -186,8 +176,7 @@ function onReady() {
 
 async function tryNextSource(message?: string) {
   const videoId = loadingId;
-  // The fallbacks come with the video's detail; if the first source failed
-  // before it arrived, wait for it rather than give up.
+  // The sources come with the video's detail; wait for it rather than give up.
   if (!pending.length && detailLoading) await detailLoading;
   if (videoId !== loadingId) return;
   const next = pending.shift();
@@ -224,17 +213,13 @@ export type OpenVideo = {
  */
 let resumeSettled = false;
 
-/** How long to hold the first load for the video's title and artwork. */
-const METADATA_WAIT_MS = 1500;
-
 /**
  * Opens a video in the player panel, YouTube-style: the panel slides up over
  * whatever you were browsing (nothing is added to Back), and swiping it down
  * leaves the video playing in the mini player. The same video opens the panel
  * again; another one replaces what's playing.
  *
- * Starts with the server's HLS, which AVPlayer plays natively, and keeps the
- * detail-based sources as fallbacks.
+ * Plays the video's signed HLS from its detail, which AVPlayer plays natively.
  */
 export function openVideo(
   video: OpenVideo,
@@ -283,7 +268,7 @@ export function openVideo(
         durationSeconds: value.durationSeconds,
         isLive: value.isLive,
       });
-      pending.push(...fallbackSources(value));
+      pending.push(...sourcesOf(value));
       void loadUpNext(video.videoId);
       return value;
     })
@@ -292,21 +277,10 @@ export function openVideo(
     if (loadingId === video.videoId) detailLoading = null;
   });
 
-  // Hold the first load briefly for the detail: Now Playing (lock screen,
-  // Control Center) takes its title and artwork from the source.
-  const metadata = new Promise((resolve) =>
-    setTimeout(resolve, METADATA_WAIT_MS),
-  );
-  void Promise.race([detail, metadata]).then(() => {
-    if (loadingId !== video.videoId) return;
-    if (state?.video.isLive) {
-      // Live has no server HLS; its stream comes from the detail.
-      void detail.then(() => {
-        if (loadingId === video.videoId) void tryNextSource();
-      });
-      return;
-    }
-    load(`${SERVER_URL}/hls/${encodeURIComponent(video.videoId)}/master.m3u8`);
+  // The signed playlist comes with the video's detail (which also gives Now
+  // Playing its title and artwork).
+  void detail.then(() => {
+    if (loadingId === video.videoId) void tryNextSource();
   });
   if (state) setResumeAction(state.video);
 }

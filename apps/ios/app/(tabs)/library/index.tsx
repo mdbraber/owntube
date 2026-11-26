@@ -33,7 +33,7 @@ const SECTIONS: { title?: string; rows: Row[] }[] = [
     title: "Explore",
     rows: [
       { title: "Recommended", path: "/recommended", icon: "sparkles" },
-      { title: "Trending", path: "/trending", icon: "flame" },
+      { title: "Live", path: "/live", icon: "dot.radiowaves.left.and.right" },
       { title: "Shorts", path: "/shorts", icon: "play.rectangle.on.rectangle" },
     ],
   },
