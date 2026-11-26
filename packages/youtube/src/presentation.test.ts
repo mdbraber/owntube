@@ -64,6 +64,14 @@ describe("toPresentation", () => {
       expect(presentation.video.map((v) => v.id)).not.toContain(id);
   });
 
+  it("keeps tracks without URLs, for SABR", async () => {
+    const result = await visionos("video-h264-captions");
+    const { presentation, media } = toPresentation({ ...result, formats: [] });
+    expect(presentation.video.length).toBeGreaterThan(0);
+    for (const t of presentation.video)
+      expect(media.get(t.id)?.url).toBeUndefined();
+  });
+
   it("knows where every track and caption comes from", async () => {
     const { presentation, media, captions } = toPresentation(
       await visionos("video-h264-captions"),

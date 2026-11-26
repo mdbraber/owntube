@@ -12,6 +12,11 @@ const configSchema = z.object({
   signingKey: z
     .string()
     .min(32, "GATEWAY_SIGNING_KEY must be at least 32 characters"),
+  /**
+   * `auto`: byte ranges, stepping down to SABR when YouTube refuses them;
+   * `sabr`: SABR from the start (for when YouTube has closed byte ranges).
+   */
+  transport: z.enum(["auto", "sabr"]).default("auto"),
   /** Where the image cache lives. */
   cacheDir: z.string().default("data/cache"),
   /** Image cache size kept by the hourly prune. */
@@ -32,6 +37,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     port: env.GATEWAY_PORT,
     shutdownGraceMs: env.GATEWAY_SHUTDOWN_GRACE_MS,
     signingKey: env.GATEWAY_SIGNING_KEY,
+    transport: env.GATEWAY_TRANSPORT || undefined,
     cacheDir: env.GATEWAY_CACHE_DIR || undefined,
     imageCacheMaxBytes: env.GATEWAY_IMAGE_CACHE_MAX_BYTES || undefined,
     proxyUrl: env.GATEWAY_PROXY_URL || undefined,

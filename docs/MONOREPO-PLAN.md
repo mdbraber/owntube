@@ -360,6 +360,7 @@ Done (2026-11-26):
   - `audio.m4a` serves the original language's AAC.
   - `video.mp4` is a fast-start MP4 assembled from the H.264 and AAC tracks without copying media (`packages/playback/mp4`). Its layout is stored on disk once per video. A 25-minute video takes 6 s on first build.
   - Fragment headers are read one at a time: YouTube revokes a URL after about 100 quick requests in a burst.
+- **VISIONOS SABR, the second transport**, on unpatched googlevideo 5.0.1 (the companion's 4.1.1 patches are no longer needed). SABR delivers the file's own bytes (init, index and fragments identical to byte-range reads, checked), so it sits behind the same byte-range interface and manifests do not change with the transport: a range maps onto fragments from the index, a pull continues while reads are sequential and restarts on a jump, and `mfhd` sequence numbers confirm the position. A session steps down to SABR when a fresh URL set is still refused, or starts on it when there are no URLs or `GATEWAY_TRANSPORT=sabr`. Checked in Chromium over SABR: dash.js H.264, dubbed H.264+AAC, AV1, hls.js H.264, and `video.mp4`.
 - **Images**: `/media/img/...`, limited to YouTube's image hosts, with a disk cache that serves stale entries while refreshing them and is pruned to a size cap.
 - **Verified**:
   - headless Chromium: dash.js (VP9, AV1, H.264 with dubbed audio), hls.js (VOD, live, 4-hour DVR) and plain `<video>` (`video.mp4`) all play and seek to the end;
@@ -368,7 +369,9 @@ Done (2026-11-26):
 Open:
 
 - Android TV (Media3): moves to phase 5, when the TV app uses the gateway.
-- **VISIONOS SABR** as the second transport (ported from the companion), and the step-down between transports.
+- WebM (VP9) over SABR: needs Cues/cluster mapping; until then SABR sessions offer MP4 tracks only (H.264, AV1, AAC).
+- Building `video.mp4` over SABR reads whole fragments (16 s for a 3.5-minute video); built layouts are kept on disk, and the feed publisher should warm enclosures at publish time (phase 4).
+- The SABR reload request is answered with a fresh player response, but the reload token is not yet echoed in it (the companion found that necessary for some HDR videos).
 - A podcast app test of the enclosures.
 
 **Phase 3 — gateway metadata API.**

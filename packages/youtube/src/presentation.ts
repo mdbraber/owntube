@@ -11,7 +11,16 @@ import type { PlayerResult, RawFormat } from "./player.ts";
 export interface PresentationSources {
   presentation: Presentation;
   /** Track id → stream URL (and its size, for answering ranges). */
-  media: Map<string, { url: string; contentLength: number; itag: number }>;
+  /** `url` is absent for SABR-only formats, which are read over SABR. */
+  media: Map<
+    string,
+    {
+      url: string | undefined;
+      contentLength: number;
+      itag: number;
+      audioTrackId: string | undefined;
+    }
+  >;
   /** Caption id → timedtext URL. */
   captions: Map<string, string>;
 }
@@ -30,7 +39,15 @@ export function toPresentation(result: PlayerResult): PresentationSources {
   const media: PresentationSources["media"] = new Map();
   const video: VideoTrack[] = [];
   const audio: AudioTrack[] = [];
-  for (const format of result.formats) {
+  // Every adaptive format, with its resolved URL when it has one (SABR-only responses have none).
+  const resolved = new Map(
+    result.formats.map((f) => [`${f.itag}|${f.audioTrack?.id ?? ""}`, f.url]),
+  );
+  for (const raw of result.raw.streamingData?.adaptiveFormats ?? []) {
+    const format = {
+      ...raw,
+      url: resolved.get(`${raw.itag}|${raw.audioTrack?.id ?? ""}`),
+    };
     const parsed = parseMime(format.mimeType);
     const contentLength = Number(format.contentLength);
     if (
@@ -68,7 +85,12 @@ export function toPresentation(result: PlayerResult): PresentationSources {
         height: format.height,
         fps: format.fps ?? 30,
       });
-      media.set(id, { url: format.url, contentLength, itag: format.itag });
+      media.set(id, {
+        url: format.url,
+        contentLength,
+        itag: format.itag,
+        audioTrackId: format.audioTrack?.id,
+      });
     } else {
       if (format.isDrc) continue;
       const id = audioId(format);
@@ -86,7 +108,12 @@ export function toPresentation(result: PlayerResult): PresentationSources {
         label: format.audioTrack?.displayName ?? "Audio",
         isOriginal: format.audioTrack ? format.audioTrack.audioIsDefault : true,
       });
-      media.set(id, { url: format.url, contentLength, itag: format.itag });
+      media.set(id, {
+        url: format.url,
+        contentLength,
+        itag: format.itag,
+        audioTrackId: format.audioTrack?.id,
+      });
     }
   }
   const captions: PresentationSources["captions"] = new Map();
@@ -111,7 +138,8 @@ export function toPresentation(result: PlayerResult): PresentationSources {
     );
   }
   const durationMs = Number(
-    result.formats.find((f) => f.approxDurationMs)?.approxDurationMs,
+    result.raw.streamingData?.adaptiveFormats?.find((f) => f.approxDurationMs)
+      ?.approxDurationMs,
   );
   const durationSec =
     durationMs > 0

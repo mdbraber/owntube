@@ -13,6 +13,7 @@ const egress = createEgress({
   ...(config.proxyUrl ? { proxyUrl: config.proxyUrl } : {}),
 });
 const sessions = new PlaybackSessions({
+  preferSabr: config.transport === "sabr",
   progressiveStore: diskProgressiveStore(`${config.cacheDir}/progressive`),
   youtube: new YouTube(new SessionPool({ egress })),
 });

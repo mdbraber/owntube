@@ -15,9 +15,10 @@
     "probe:sustained": "node scripts/probe-sustained.ts"
   },
   "dependencies": {
+    "@owntube/playback": "workspace:*",
+    "googlevideo": "^5.0.1",
     "undici": "^7.30.0",
-    "youtubei.js": "^18.3.0",
-    "@owntube/playback": "workspace:*"
+    "youtubei.js": "^18.3.0"
   },
   "devDependencies": {
     "@types/node": "^24",
@@ -31,6 +32,7 @@
     "./playability": "./src/playability.ts",
     "./presentation": "./src/presentation.ts",
     "./session": "./src/session.ts",
-    "./youtube": "./src/youtube.ts"
+    "./youtube": "./src/youtube.ts",
+    "./sabr": "./src/sabr.ts"
   }
 }

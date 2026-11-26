@@ -28,6 +28,11 @@ export interface RawFormat {
   audioTrack?: { id: string; displayName: string; audioIsDefault: boolean };
   isDrc?: boolean;
   xtags?: string;
+  /** Identifies the encoding; SABR requests name formats by itag and this. */
+  lastModified?: string;
+  averageBitrate?: number;
+  audioQuality?: string;
+  quality?: string;
 }
 
 export interface RawCaptionTrack {

@@ -16,6 +16,12 @@ import {
   type PresentationSources,
   toPresentation,
 } from "@owntube/youtube/presentation";
+import {
+  type SabrEndpoint,
+  SabrTrack,
+  sabrEndpoint,
+  sabrOpener,
+} from "@owntube/youtube/sabr";
 import type { YouTubeSession } from "@owntube/youtube/session";
 import type { YouTube } from "@owntube/youtube/youtube";
 import {
@@ -45,6 +51,13 @@ export interface PlaybackSession {
   youtube: YouTubeSession;
   userAgent: string;
   sources: PresentationSources;
+  /**
+   * How track bytes are read: byte ranges of the stream URLs, or SABR when
+   * there are none or YouTube refuses a fresh URL set (see `source`).
+   */
+  transport: "byte-range" | "sabr";
+  sabr: SabrEndpoint | undefined;
+  sabrTracks: Map<string, SabrTrack>;
   /** Set for live streams and post-live DVR, which are served from YouTube's own HLS. */
   live: LiveState | undefined;
   createdAt: number;
@@ -64,6 +77,8 @@ export interface ProgressiveStore {
 
 export interface PlaybackSessionsOptions {
   youtube: YouTube;
+  /** Start sessions on SABR instead of byte ranges. */
+  preferSabr?: boolean;
   progressiveStore?: ProgressiveStore;
   /** Sessions end this long after creation (YouTube's stream URLs last ~6 h). */
   maxAgeMs?: number;
@@ -76,6 +91,7 @@ export interface PlaybackSessionsOptions {
 export class PlaybackSessions {
   readonly #youtube: YouTube;
   readonly #store: ProgressiveStore | undefined;
+  readonly #preferSabr: boolean;
   readonly #maxAgeMs: number;
   readonly #idleMs: number;
   readonly #max: number;
@@ -87,6 +103,7 @@ export class PlaybackSessions {
   constructor(options: PlaybackSessionsOptions) {
     this.#youtube = options.youtube;
     this.#store = options.progressiveStore;
+    this.#preferSabr = options.preferSabr ?? false;
     this.#maxAgeMs = options.maxAgeMs ?? 5 * 60 * 60_000;
     this.#idleMs = options.idleMs ?? 60 * 60_000;
     this.#max = options.max ?? 500;
@@ -94,7 +111,7 @@ export class PlaybackSessions {
   }
 
   async create(videoId: string): Promise<PlaybackSession> {
-    const { youtube, userAgent, sources, masterUrl } =
+    const { youtube, userAgent, sources, masterUrl, sabr } =
       await this.#resolve(videoId);
     this.#sweep();
     const now = this.#now();
@@ -105,6 +122,14 @@ export class PlaybackSessions {
       userAgent,
       sources,
       live: masterUrl ? { masterUrl, renditions: new Map() } : undefined,
+      // SABR when asked to, or when the response has no stream URLs at all.
+      transport:
+        sabr &&
+        (this.#preferSabr || ![...sources.media.values()].some((m) => m.url))
+          ? "sabr"
+          : "byte-range",
+      sabr,
+      sabrTracks: new Map(),
       createdAt: now,
       lastUsed: now,
       segments: new Map(),
@@ -137,7 +162,7 @@ export class PlaybackSessions {
       now - session.createdAt >= this.#maxAgeMs ||
       now - session.lastUsed >= this.#idleMs
     ) {
-      this.#sessions.delete(id);
+      this.#end(session);
       return undefined;
     }
     session.lastUsed = now;
@@ -241,12 +266,23 @@ export class PlaybackSessions {
   source(session: PlaybackSession, trackId: string): UpstreamSource {
     return {
       fetchPiece: async (piece, signal) => {
+        if (session.transport === "sabr")
+          return this.#sabrPiece(session, trackId, piece);
         let response = await this.#fetchRange(session, trackId, piece, signal);
         // 403 or 401: YouTube has revoked this URL set; get a new one once.
         if (response.status === 403 || response.status === 401) {
           await response.body?.cancel();
           await this.#refresh(session);
           response = await this.#fetchRange(session, trackId, piece, signal);
+          // Refused again: YouTube has closed byte ranges for this client; step down to SABR.
+          if (
+            (response.status === 403 || response.status === 401) &&
+            this.#canUseSabr(session, trackId)
+          ) {
+            await response.body?.cancel();
+            session.transport = "sabr";
+            return this.#sabrPiece(session, trackId, piece);
+          }
         }
         const expected = piece.end - piece.start + 1;
         if (
@@ -265,6 +301,51 @@ export class PlaybackSessions {
     };
   }
 
+  /** SABR serves fMP4 tracks (WebM over SABR is not built). */
+  #canUseSabr(session: PlaybackSession, trackId: string): boolean {
+    return (
+      Boolean(session.sabr) &&
+      Boolean(findTrack(session, trackId)?.mimeType.endsWith("mp4"))
+    );
+  }
+
+  async #sabrPiece(
+    session: PlaybackSession,
+    trackId: string,
+    piece: ByteSpan,
+  ): Promise<ReadableStream<Uint8Array>> {
+    if (!this.#canUseSabr(session, trackId))
+      throw new Error(`no SABR for ${trackId}`);
+    let track = session.sabrTracks.get(trackId);
+    if (!track) {
+      const t = findTrack(session, trackId);
+      const media = session.sources.media.get(trackId);
+      const original = session.sources.presentation.audio
+        .filter((a) => a.isOriginal && a.mimeType === "audio/mp4")
+        .sort((a, b) => b.bitrate - a.bitrate)[0];
+      const companion = original
+        ? session.sources.media.get(original.id)
+        : undefined;
+      if (!t || !media || !companion)
+        throw new Error(`no SABR source for ${trackId}`);
+      const options = {
+        kind: t.kind,
+        itag: media.itag,
+        ...(media.audioTrackId ? { audioTrackId: media.audioTrackId } : {}),
+        companionAudioItag: companion.itag,
+        segments: () => this.segments(session, trackId),
+        indexEnd: t.index.end,
+      };
+      track = new SabrTrack(
+        options,
+        sabrOpener(() => session.sabr as SabrEndpoint, options),
+      );
+      session.sabrTracks.set(trackId, track);
+    }
+    const bytes = await track.read(piece);
+    return new Response(bytes).body as ReadableStream<Uint8Array>;
+  }
+
   async #resolve(videoId: string) {
     const result = await this.#youtube.player(videoId);
     if (result.unplayable) throw new Unavailable(result.unplayable);
@@ -275,11 +356,29 @@ export class PlaybackSessions {
       : undefined;
     if (isLive && !masterUrl)
       throw new Error(`${videoId}: live without an HLS manifest`);
+    const sabr = sabrEndpoint(
+      videoId,
+      result.raw,
+      result.identity,
+      result.session.fetch,
+    );
+    if (sabr) {
+      // The SABR server can demand a new player response mid-stream.
+      sabr.reload = async () => {
+        const fresh = await this.#resolve(videoId);
+        if (!fresh.sabr) throw new Error(`${videoId}: no SABR after reload`);
+        return {
+          streamingUrl: fresh.sabr.streamingUrl,
+          ustreamerConfig: fresh.sabr.ustreamerConfig,
+        };
+      };
+    }
     return {
       youtube: result.session,
       userAgent: result.identity.userAgent,
       sources: toPresentation(result),
       masterUrl,
+      sabr,
     };
   }
 
@@ -387,8 +486,9 @@ export class PlaybackSessions {
   /** New stream URLs for the same video; track ids stay stable across player responses. */
   #refresh(session: PlaybackSession): Promise<void> {
     session.refreshing ??= this.#resolve(session.videoId)
-      .then(({ youtube, sources, masterUrl }) => {
+      .then(({ youtube, sources, masterUrl, sabr }) => {
         session.youtube = youtube;
+        if (sabr) session.sabr = sabr;
         if (session.live && masterUrl) session.live.masterUrl = masterUrl;
         session.sources = {
           ...session.sources,
@@ -404,12 +504,12 @@ export class PlaybackSessions {
 
   #sweep(): void {
     const now = this.#now();
-    for (const [id, s] of this.#sessions) {
+    for (const s of this.#sessions.values()) {
       if (
         now - s.createdAt >= this.#maxAgeMs ||
         now - s.lastUsed >= this.#idleMs
       )
-        this.#sessions.delete(id);
+        this.#end(s);
     }
     // Over capacity: drop the least recently used.
     const excess = this.#sessions.size - this.#max + 1;
@@ -417,8 +517,14 @@ export class PlaybackSessions {
       const oldest = [...this.#sessions.values()]
         .sort((a, b) => a.lastUsed - b.lastUsed)
         .slice(0, excess);
-      for (const s of oldest) this.#sessions.delete(s.id);
+      for (const s of oldest) this.#end(s);
     }
+  }
+
+  /** Forgets a session and stops its SABR pulls. */
+  #end(session: PlaybackSession): void {
+    this.#sessions.delete(session.id);
+    for (const track of session.sabrTracks.values()) void track.close();
   }
 }
 
