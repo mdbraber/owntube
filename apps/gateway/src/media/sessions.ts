@@ -1,5 +1,16 @@
 import { randomBytes } from "node:crypto";
+import {
+  buildProgressive,
+  type ProgressiveFile,
+  type ProgressiveSource,
+} from "@owntube/playback/mp4";
+import {
+  moofSize,
+  parseFragment,
+  parseInit,
+} from "@owntube/playback/mp4/fragmented";
 import { parseSidx, type Segment } from "@owntube/playback/sidx";
+import type { AudioTrack, VideoTrack } from "@owntube/playback/tracks";
 import type { Unplayable } from "@owntube/youtube/playability";
 import {
   type PresentationSources,
@@ -40,11 +51,20 @@ export interface PlaybackSession {
   lastUsed: number;
   /** Track id → its segments, read once from the track's index. */
   segments: Map<string, Promise<Segment[]>>;
+  /** "videoTrack+audioTrack" → the progressive MP4 built from them. */
+  progressive: Map<string, Promise<ProgressiveFile>>;
   refreshing: Promise<void> | undefined;
+}
+
+/** Keeps built progressive MP4 layouts; they depend on the file, not on its URLs. */
+export interface ProgressiveStore {
+  get(key: string): Promise<ProgressiveFile | undefined>;
+  put(key: string, file: ProgressiveFile): Promise<void>;
 }
 
 export interface PlaybackSessionsOptions {
   youtube: YouTube;
+  progressiveStore?: ProgressiveStore;
   /** Sessions end this long after creation (YouTube's stream URLs last ~6 h). */
   maxAgeMs?: number;
   /** …or after this long unused. */
@@ -55,6 +75,7 @@ export interface PlaybackSessionsOptions {
 
 export class PlaybackSessions {
   readonly #youtube: YouTube;
+  readonly #store: ProgressiveStore | undefined;
   readonly #maxAgeMs: number;
   readonly #idleMs: number;
   readonly #max: number;
@@ -65,6 +86,7 @@ export class PlaybackSessions {
 
   constructor(options: PlaybackSessionsOptions) {
     this.#youtube = options.youtube;
+    this.#store = options.progressiveStore;
     this.#maxAgeMs = options.maxAgeMs ?? 5 * 60 * 60_000;
     this.#idleMs = options.idleMs ?? 60 * 60_000;
     this.#max = options.max ?? 500;
@@ -86,6 +108,7 @@ export class PlaybackSessions {
       createdAt: now,
       lastUsed: now,
       segments: new Map(),
+      progressive: new Map(),
       refreshing: undefined,
     };
     this.#sessions.set(session.id, session);
@@ -136,12 +159,91 @@ export class PlaybackSessions {
     return segments;
   }
 
+  /** A regular MP4 of one video and one audio track; built once per session. */
+  progressiveFile(
+    session: PlaybackSession,
+    videoId: string,
+    audioId: string,
+  ): Promise<ProgressiveFile> {
+    const key = `${videoId}+${audioId}`;
+    let file = session.progressive.get(key);
+    if (!file) {
+      file = this.#loadProgressive(session, videoId, audioId);
+      session.progressive.set(key, file);
+      file.catch(() => session.progressive.delete(key));
+    }
+    return file;
+  }
+
+  async #loadProgressive(
+    session: PlaybackSession,
+    videoId: string,
+    audioId: string,
+  ): Promise<ProgressiveFile> {
+    const sizes = [videoId, audioId]
+      .map((id) => findTrack(session, id)?.contentLength ?? 0)
+      .join("+");
+    const storeKey = `${session.videoId}/${videoId}+${audioId}/${sizes}`;
+    const stored = await this.#store?.get(storeKey).catch(() => undefined);
+    if (stored) return stored;
+    const file = buildProgressive([
+      await this.#progressiveSource(session, videoId),
+      await this.#progressiveSource(session, audioId),
+    ]);
+    await this.#store?.put(storeKey, file).catch(() => {});
+    return file;
+  }
+
+  /** A track's init and every fragment's samples, read from the fragments' moof boxes. */
+  async #progressiveSource(
+    session: PlaybackSession,
+    trackId: string,
+  ): Promise<ProgressiveSource> {
+    const track = findTrack(session, trackId);
+    if (!track || !track.mimeType.endsWith("mp4"))
+      throw new Error(`no MP4 track ${trackId}`);
+    const init = parseInit(await this.#bytes(session, trackId, track.init));
+    const segments = await this.segments(session, trackId);
+    // One at a time: YouTube revokes a URL after ~100 requests in a quick burst
+    // (measured 2026-11-26: 288 sequential reads pass, 8 or 3 in parallel die at 100).
+    const fragments = [];
+    for (const segment of segments) {
+      // A moof is small; read a little more than most need, and again if it is bigger.
+      const head = {
+        start: segment.range.start,
+        end: Math.min(segment.range.end, segment.range.start + 16_383),
+      };
+      let bytes = await this.#bytes(session, trackId, head);
+      const size = moofSize(bytes);
+      if (size > bytes.byteLength)
+        bytes = await this.#bytes(session, trackId, {
+          start: head.start,
+          end: head.start + size - 1,
+        });
+      fragments.push(parseFragment(bytes, segment.range.start, init));
+    }
+    return { source: trackId, init, fragments };
+  }
+
+  async #bytes(
+    session: PlaybackSession,
+    trackId: string,
+    range: ByteSpan,
+  ): Promise<Uint8Array> {
+    const stream = await this.source(session, trackId).fetchPiece(
+      range,
+      AbortSignal.timeout(15_000),
+    );
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  }
+
   /** Reads bytes of a track, replacing the session's stream URLs once if YouTube has revoked them. */
   source(session: PlaybackSession, trackId: string): UpstreamSource {
     return {
       fetchPiece: async (piece, signal) => {
         let response = await this.#fetchRange(session, trackId, piece, signal);
-        if (response.status === 403) {
+        // 403 or 401: YouTube has revoked this URL set; get a new one once.
+        if (response.status === 403 || response.status === 401) {
           await response.body?.cancel();
           await this.#refresh(session);
           response = await this.#fetchRange(session, trackId, piece, signal);
@@ -274,17 +376,12 @@ export class PlaybackSessions {
     session: PlaybackSession,
     trackId: string,
   ): Promise<Segment[]> {
-    const track = [
-      ...session.sources.presentation.video,
-      ...session.sources.presentation.audio,
-    ].find((t) => t.id === trackId);
+    const track = findTrack(session, trackId);
     if (!track) throw new Error(`no track ${trackId}`);
-    const stream = await this.source(session, trackId).fetchPiece(
-      track.index,
-      AbortSignal.timeout(15_000),
+    return parseSidx(
+      await this.#bytes(session, trackId, track.index),
+      track.index.start,
     );
-    const bytes = new Uint8Array(await new Response(stream).arrayBuffer());
-    return parseSidx(bytes, track.index.start);
   }
 
   /** New stream URLs for the same video; track ids stay stable across player responses. */
@@ -328,4 +425,12 @@ export class PlaybackSessions {
 function requireLive(session: PlaybackSession): LiveState {
   if (!session.live) throw new Error(`${session.videoId} is not live`);
   return session.live;
+}
+
+export function findTrack(
+  session: PlaybackSession,
+  id: string,
+): VideoTrack | AudioTrack | undefined {
+  const { video, audio } = session.sources.presentation;
+  return video.find((t) => t.id === id) ?? audio.find((t) => t.id === id);
 }

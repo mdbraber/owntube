@@ -17,6 +17,8 @@
     "./tracks": "./src/tracks.ts",
     "./dash": "./src/dash.ts",
     "./hls": "./src/hls.ts",
-    "./sidx": "./src/sidx.ts"
+    "./sidx": "./src/sidx.ts",
+    "./mp4": "./src/mp4/progressive.ts",
+    "./mp4/fragmented": "./src/mp4/fragmented.ts"
   }
 }

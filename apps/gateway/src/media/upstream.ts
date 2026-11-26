@@ -81,3 +81,44 @@ export function streamSpan(
     },
   });
 }
+
+/** A piece of a response: bytes we have, or a span of an upstream source. */
+export type ResponsePart =
+  | { bytes: Uint8Array }
+  | { source: UpstreamSource; span: ByteSpan };
+
+/** The parts one after another, upstream ones fetched piece by piece as the client reads. */
+export function streamParts(
+  parts: readonly ResponsePart[],
+  signal: AbortSignal,
+): ReadableStream<Uint8Array> {
+  const queue = [...parts];
+  let current: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      for (;;) {
+        if (!current) {
+          const part = queue.shift();
+          if (!part) {
+            controller.close();
+            return;
+          }
+          if ("bytes" in part) {
+            controller.enqueue(part.bytes);
+            return;
+          }
+          current = streamSpan(part.source, part.span, signal).getReader();
+        }
+        const { done, value } = await current.read();
+        if (!done) {
+          controller.enqueue(value);
+          return;
+        }
+        current = undefined;
+      }
+    },
+    async cancel() {
+      await current?.cancel();
+    },
+  });
+}

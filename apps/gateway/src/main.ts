@@ -5,6 +5,7 @@ import { YouTube } from "@owntube/youtube/youtube";
 import { createApp } from "./app.ts";
 import { loadConfig } from "./config.ts";
 import { pruneImages } from "./media/images.ts";
+import { diskProgressiveStore } from "./media/progressive-store.ts";
 import { PlaybackSessions } from "./media/sessions.ts";
 
 const config = loadConfig();
@@ -12,6 +13,7 @@ const egress = createEgress({
   ...(config.proxyUrl ? { proxyUrl: config.proxyUrl } : {}),
 });
 const sessions = new PlaybackSessions({
+  progressiveStore: diskProgressiveStore(`${config.cacheDir}/progressive`),
   youtube: new YouTube(new SessionPool({ egress })),
 });
 const imageCacheDir = `${config.cacheDir}/images`;

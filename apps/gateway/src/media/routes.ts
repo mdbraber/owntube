@@ -4,6 +4,7 @@ import {
   buildMediaPlaylist,
   buildSubtitlePlaylist,
 } from "@owntube/playback/hls";
+import { partsOf } from "@owntube/playback/mp4";
 import type {
   AudioTrack,
   Presentation,
@@ -13,12 +14,13 @@ import type {
 } from "@owntube/playback/tracks";
 import { type Context, Hono } from "hono";
 import {
+  findTrack,
   type PlaybackSession,
   type PlaybackSessions,
   Unavailable,
 } from "./sessions.ts";
 import { verifyPlayback } from "./signing.ts";
-import { parseRange, streamSpan } from "./upstream.ts";
+import { parseRange, streamParts, streamSpan } from "./upstream.ts";
 
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 const HLS = "application/vnd.apple.mpegurl";
@@ -58,14 +60,6 @@ const STATUS_FOR: Record<Unavailable["unplayable"]["kind"], 403 | 404 | 409> = {
   unavailable: 404,
   unplayable: 403,
 };
-
-function findTrack(
-  session: PlaybackSession,
-  id: string,
-): VideoTrack | AudioTrack | undefined {
-  const { video, audio } = session.sources.presentation;
-  return video.find((t) => t.id === id) ?? audio.find((t) => t.id === id);
-}
 
 function liveSegmentType(session: PlaybackSession, itag: string): string {
   return session.live?.renditions.get(itag)?.initUrl
@@ -216,6 +210,78 @@ export function mediaRoutes(
       .sort((a, b) => b.bitrate - a.bitrate)[0];
     if (!track) return c.text("no audio", 404);
     return serveTrack(c, session, track);
+  });
+
+  /**
+   * A video as one regular MP4 (H.264 up to `?height=`, default 720, with the
+   * original language's AAC), for RSS enclosures: built from the byte-range
+   * tracks without copying media, and seekable in every player.
+   */
+  app.on(["GET", "HEAD"], "/media/v/:videoId/video.mp4", async (c) => {
+    const videoId = c.req.param("videoId");
+    if (!VIDEO_ID.test(videoId)) return c.text("bad video id", 400);
+    if (
+      !verifyPlayback(
+        signingKey,
+        videoId,
+        c.req.query("exp"),
+        c.req.query("sig"),
+      )
+    )
+      return c.text("bad signature", 403);
+    let session: PlaybackSession;
+    try {
+      session = await sessions.shared(videoId);
+    } catch (error) {
+      if (error instanceof Unavailable)
+        return c.json(
+          { error: error.unplayable.kind },
+          STATUS_FOR[error.unplayable.kind],
+        );
+      throw error;
+    }
+    const maxHeight = Number(c.req.query("height")) || 720;
+    const { video, audio } = session.sources.presentation;
+    const picture = video
+      .filter(
+        (t) =>
+          t.family === "avc" &&
+          t.mimeType === "video/mp4" &&
+          t.height <= maxHeight,
+      )
+      .sort((a, b) => b.height - a.height || b.bitrate - a.bitrate)[0];
+    const sound = audio
+      .filter((t) => t.mimeType === "audio/mp4" && t.isOriginal)
+      .sort((a, b) => b.bitrate - a.bitrate)[0];
+    if (!picture || !sound) return c.text("no H.264 and AAC tracks", 404);
+    const file = await sessions.progressiveFile(session, picture.id, sound.id);
+    const span = parseRange(c.req.header("range"), file.size);
+    const headers: Record<string, string> = {
+      "accept-ranges": "bytes",
+      "content-type": "video/mp4",
+      "cache-control": "private, max-age=3600",
+    };
+    if (!span)
+      return c.body(null, 416, {
+        ...headers,
+        "content-range": `bytes */${file.size}`,
+      });
+    const partial = c.req.header("range") !== undefined;
+    headers["content-length"] = String(span.end - span.start + 1);
+    if (partial)
+      headers["content-range"] = `bytes ${span.start}-${span.end}/${file.size}`;
+    if (c.req.method === "HEAD")
+      return c.body(null, partial ? 206 : 200, headers);
+    const parts = partsOf(file, span).map((p) =>
+      "bytes" in p
+        ? p
+        : { source: sessions.source(session, p.source), span: p.range },
+    );
+    return c.body(
+      streamParts(parts, c.req.raw.signal),
+      partial ? 206 : 200,
+      headers,
+    );
   });
 
   app.get("/media/s/:sid/p/:file", async (c) => {
