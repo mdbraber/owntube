@@ -90,6 +90,17 @@ function readWatchSearch(
   return readWatchParams(params);
 }
 
+/**
+ * How old a cached video detail the watch page may use. It used to fetch fresh
+ * on every render, so each open or reload of a watch page (the iOS app renders
+ * one per video) cost Invidious a YouTube round trip, ~3,500 a day, for
+ * nothing: the companion caches YouTube's player response for an hour, so a
+ * fresh fetch hands back the same signed URLs, and playback goes through the
+ * /hls and /dash routes, which fetch their own. Live and upcoming videos
+ * always come fresh (see `maxAgeSec`).
+ */
+const WATCH_DETAIL_MAX_AGE_SEC = 10 * 60;
+
 export async function generateMetadata({
   searchParams,
 }: WatchPageProps): Promise<Metadata> {
@@ -152,7 +163,7 @@ export default async function WatchPage({ searchParams }: WatchPageProps) {
     // the page source names none (see stripGoogleImageUrls).
     detail = stripGoogleImageUrls(
       await fetchVideoDetail(db, input, {
-        bypassDetailCache: true,
+        maxAgeSec: WATCH_DETAIL_MAX_AGE_SEC,
       }),
     );
   } catch (error) {
