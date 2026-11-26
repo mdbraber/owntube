@@ -446,7 +446,8 @@ signed whole-file URLs (stable per 30 days, valid a year). Lists enrich in one
 batch call; related channels lead with featured channels; the warmer is a web
 job; Trending is Live (`/trending` redirects); instance settings are gone;
 compose runs web + gateway, `/media/*` forwarded by the app when no proxy
-routes it. Verified: web typecheck, 584 unit tests, `next build`, and e2e 8/8
+routes it. Verified: web typecheck, 578 web unit tests (gateway 40, youtube 103,
+playback 25, contracts 7), `next build`, and e2e 8/8
 against a local gateway (DASH playback with every request on the site).
 *Left for deployment:* the e2e on dev; Safari (native HLS) by hand; the TV and
 iOS apps (phase 5) still read the removed playback fields.
