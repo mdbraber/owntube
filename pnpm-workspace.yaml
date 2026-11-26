@@ -1,5 +1,6 @@
 packages:
   - apps/web
+  - apps/gateway
   - packages/*
   # The Expo apps (apps/tv, apps/ios) are intentionally NOT part of the shared
   # install: React Native and Metro want a flat, hoisted node_modules and their

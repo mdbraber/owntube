@@ -1,0 +1,23 @@
+{
+  "name": "@owntube/youtube",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "OwnTube's InnerTube layer (youtubei.js): egress, sessions, PO tokens, player and browse, mapped to OwnTube's domain model. Also holds the recorded YouTube fixture corpus.",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "record:corpus": "node scripts/record-corpus.ts"
+  },
+  "dependencies": {
+    "youtubei.js": "^18.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "typescript": "^5",
+    "vitest": "^4.0.3"
+  }
+}

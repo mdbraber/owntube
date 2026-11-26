@@ -2,7 +2,7 @@
   "name": "owntube-monorepo",
   "version": "0.1.0",
   "private": true,
-  "description": "OwnTube monorepo — privacy-first YouTube frontend (apps/web) and TV client (apps/tv).",
+  "description": "OwnTube monorepo \u2014 privacy-first YouTube frontend (apps/web), its YouTube gateway (apps/gateway) and TV/iOS clients.",
   "license": "MIT",
   "homepage": "https://github.com/spookiss/owntube#readme",
   "repository": {
@@ -23,7 +23,7 @@
     "lint": "biome check",
     "format": "biome format --write",
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm --filter web test",
+    "test": "pnpm -r --if-present test",
     "test:watch": "pnpm --filter web test:watch",
     "test:e2e": "pnpm --filter web test:e2e",
     "db:migrate": "pnpm --filter web db:migrate",
@@ -31,7 +31,8 @@
     "db:studio": "pnpm --filter web db:studio",
     "warm:cache": "pnpm --filter web warm:cache",
     "check:upstream": "pnpm --filter web check:upstream",
-    "export:icons": "pnpm --filter web export:icons"
+    "export:icons": "pnpm --filter web export:icons",
+    "dev:gateway": "pnpm --filter gateway dev"
   },
   "devDependencies": {
     "@biomejs/biome": "2.2.0"
