@@ -100,7 +100,7 @@ export function HomeBlockRow({
     { page: 1, pageSize: ROW_VIDEOS, region },
     { enabled: type === "recommended", ...kept },
   );
-  const explore = trpc.trending.list.useQuery(
+  const explore = trpc.live.list.useQuery(
     { region, limit: ROW_VIDEOS },
     { enabled: type === "explore", ...kept },
   );

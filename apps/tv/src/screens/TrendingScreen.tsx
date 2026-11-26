@@ -13,11 +13,11 @@ export function TrendingScreen({ nav }: { nav: Nav }) {
   const region = settings.data?.trendingRegion ?? "US";
   const feed = useInfiniteFeed<never>(
     () =>
-      trpcClient.trending.list
+      trpcClient.live.list
         .query({ region, limit: 60 })
         .then((result) => ({ items: result.videos, next: undefined })),
     [region],
-    "trending.list",
+    "live.list",
   );
 
   return (
