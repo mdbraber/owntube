@@ -165,3 +165,5 @@ PRs and issues are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) befor
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+OwnTube started as a fork of [JasonBeucher/owntube](https://github.com/JasonBeucher/owntube) (MIT, © 2026 spookiss); that copyright notice is kept in [LICENSE](LICENSE) alongside the one for the work since.

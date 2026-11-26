@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Self-hosting questions
-    url: https://github.com/spookiss/owntube/blob/main/docs/SELF-HOSTING.md
+    url: https://github.com/mdbraber/owntube/blob/main/docs/SELF-HOSTING.md
     about: Most setup problems (Piped/Invidious instances, Docker, backups) are answered here.
   - name: Security report
-    url: https://github.com/spookiss/owntube/security/advisories/new
+    url: https://github.com/mdbraber/owntube/security/advisories/new
     about: Please use private vulnerability reporting instead of opening a public issue.
