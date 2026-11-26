@@ -16,6 +16,7 @@ import {
   writeCache,
 } from "@/server/services/proxy/cache";
 import type { UnifiedVideo } from "@/server/services/proxy.types";
+import { isWebSubCovered } from "@/server/websub/health";
 
 /**
  * SQLite-backed cache for youtube.com RSS reads (channel uploads feed and the
@@ -53,6 +54,99 @@ const longFormPayloadSchema = z.object({
 });
 
 export type RssEntry = z.infer<typeof rssEntrySchema> & UnifiedVideo;
+
+/** Polling freshness: a channel whose uploads don't arrive by push. */
+const RSS_POLL_FRESH_SEC = 15 * 60;
+/**
+ * Freshness while WebSub is healthy and the channel is subscribed: its uploads
+ * arrive by push and refresh the feed at once, so polling is only the safety
+ * net for a dropped notification (see `server/websub/health.ts`).
+ */
+const RSS_PUSHED_FRESH_SEC = Number(
+  process.env.OWNTUBE_RSS_PUSHED_FRESH_SEC ?? 6 * 3600,
+);
+/**
+ * A long-form window can only be outdated by an upload newer than its fetch,
+ * which the channel RSS lists: while the RSS shows none it stays usable, up
+ * to this age.
+ */
+const LONG_FORM_MAX_AGE_SEC = 24 * 3600;
+/** Rows live long enough for the longest freshness above; reads decide. */
+const RSS_ROW_TTL_SEC = Math.max(RSS_PUSHED_FRESH_SEC, LONG_FORM_MAX_AGE_SEC);
+
+function nowSec(): number {
+  return Math.floor(Date.now() / 1000);
+}
+
+function rssFreshSec(db: AppDb, channelId: string): number {
+  return isWebSubCovered(db, channelId)
+    ? RSS_PUSHED_FRESH_SEC
+    : RSS_POLL_FRESH_SEC;
+}
+
+type CacheRow = NonNullable<ReturnType<typeof readFreshCacheRow>>;
+
+/** The channel's uploads RSS row, if fresh by the rule above. */
+function readFreshRssRow(db: AppDb, channelId: string): CacheRow | undefined {
+  const row = readFreshCacheRow(db, rssCacheKey(channelId));
+  if (!row) return undefined;
+  return nowSec() - row.fetchedAt < rssFreshSec(db, channelId)
+    ? row
+    : undefined;
+}
+
+/**
+ * The long-form window row, if fresh: young enough to count on its own, or
+ * younger than a day while the channel's (fresh) RSS lists no upload
+ * published after it was fetched.
+ */
+function readFreshLongFormRow(
+  db: AppDb,
+  channelId: string,
+): CacheRow | undefined {
+  const row = readFreshCacheRow(db, longFormCacheKey(channelId));
+  if (!row) return undefined;
+  const age = nowSec() - row.fetchedAt;
+  if (age < rssFreshSec(db, channelId)) return row;
+  if (age >= LONG_FORM_MAX_AGE_SEC) return undefined;
+  const rss = readFreshRssRow(db, channelId);
+  const entries = rss && parseRssRow(rss.payloadJson);
+  if (!entries) return undefined;
+  const newer = entries.some(
+    (e) => typeof e.publishedAt === "number" && e.publishedAt > row.fetchedAt,
+  );
+  return newer ? undefined : row;
+}
+
+/** Whether the channel's uploads RSS is fresh (the warmer skips it then). */
+export function isChannelRssFresh(db: AppDb, channelId: string): boolean {
+  return readFreshRssRow(db, channelId) !== undefined;
+}
+
+/** Whether the channel's long-form window is fresh (see above). */
+export function isLongFormWindowFresh(db: AppDb, channelId: string): boolean {
+  return readFreshLongFormRow(db, channelId) !== undefined;
+}
+
+/**
+ * Newest `publishedAt` among the channel's fresh RSS entries, or null when the
+ * RSS isn't fresh: callers use it to decide whether something newer exists.
+ */
+export function freshRssNewestPublishedAt(
+  db: AppDb,
+  channelId: string,
+): number | null {
+  const row = readFreshRssRow(db, channelId);
+  const entries = row && parseRssRow(row.payloadJson);
+  if (!entries) return null;
+  let newest = 0;
+  for (const e of entries) {
+    if (typeof e.publishedAt === "number" && e.publishedAt > newest) {
+      newest = e.publishedAt;
+    }
+  }
+  return newest;
+}
 
 function rssCacheKey(channelId: string): string {
   return `rss:v1:${channelId}`;
@@ -220,7 +314,9 @@ export async function refreshChannelRss(
     const live = await fetchChannelRssLive(channelId);
     if (live !== null) {
       const entries = mergeWebSubPushes(db, channelId, live, true);
-      writeCache(db, key, "youtube", { entries }, "rss");
+      writeCache(db, key, "youtube", { entries }, "rss", {
+        ttlSec: RSS_ROW_TTL_SEC,
+      });
       return entries;
     }
     logger.warn("rss_cache.refresh_failed", { channelId });
@@ -228,7 +324,11 @@ export async function refreshChannelRss(
     const stale = (row && parseRssRow(row.payloadJson)) ?? [];
     const entries = mergeWebSubPushes(db, channelId, stale, false);
     // Keep the stale row's age (so it still revalidates) unless a push changed it.
-    if (entries !== stale) writeCache(db, key, "youtube", { entries }, "rss");
+    if (entries !== stale) {
+      writeCache(db, key, "youtube", { entries }, "rss", {
+        ttlSec: RSS_ROW_TTL_SEC,
+      });
+    }
     return entries;
   })();
   registerInFlight(inFlightRss, key, task);
@@ -246,7 +346,7 @@ export async function getChannelRssEntries(
   channelId: string,
 ): Promise<RssEntry[]> {
   const key = rssCacheKey(channelId);
-  const fresh = readFreshCacheRow(db, key);
+  const fresh = readFreshRssRow(db, channelId);
   if (fresh) {
     const entries = parseRssRow(fresh.payloadJson);
     if (entries) return entries;
@@ -316,6 +416,7 @@ export async function refreshLongFormWindow(
             missing: true,
           },
       "rss",
+      { ttlSec: RSS_ROW_TTL_SEC },
     );
     return live;
   })();
@@ -329,7 +430,7 @@ export async function getLongFormWindow(
   channelId: string,
 ): Promise<LongFormWindow | null> {
   const key = longFormCacheKey(channelId);
-  const fresh = readFreshCacheRow(db, key);
+  const fresh = readFreshLongFormRow(db, channelId);
   if (fresh) return parseLongFormRow(fresh.payloadJson);
   const stale = readRecentCacheRow(db, key);
   const task = refreshLongFormWindow(db, channelId);

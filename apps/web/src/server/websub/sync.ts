@@ -9,6 +9,7 @@ import {
 } from "@/server/rss/cache";
 import { nowUnix } from "@/server/services/proxy/cache";
 import { warmVideo } from "@/server/warm-cache/warm-video";
+import { recordWebSubHealth } from "@/server/websub/health";
 
 /**
  * Home half of WebSub push. The public feeds server (`feeds/server`, the only
@@ -253,6 +254,7 @@ export async function syncWebSub(
       `websub: ${events} event(s) on ${refreshed.size} channel(s), warmed ${warmed}/${uploads.size} upload(s), rechecked ${recheck.length}`,
     );
   }
+  if (stats) recordWebSubHealth(db, stats);
   return {
     enabled: true,
     events,

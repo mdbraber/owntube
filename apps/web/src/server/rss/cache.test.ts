@@ -1,11 +1,19 @@
+import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { videoCache } from "@/server/db/schema";
+import { subscriptions, users, videoCache } from "@/server/db/schema";
 import {
   clearRssInFlight,
   getChannelRssEntries,
   getLongFormWindow,
+  isChannelRssFresh,
+  isLongFormWindowFresh,
   refreshChannelRss,
+  refreshLongFormWindow,
 } from "@/server/rss/cache";
+import {
+  clearWebSubHealthMemo,
+  recordWebSubHealth,
+} from "@/server/websub/health";
 import { createTestDb } from "@/test/db";
 
 const CHANNEL = "UCabcdefghijklmnopqrstuv";
@@ -134,6 +142,110 @@ describe("rss cache", () => {
     expect(a).toEqual(b);
     expect(b).toEqual(c);
     expect(fetchFn).toHaveBeenCalledTimes(1);
+    sqlite.close();
+  });
+});
+
+describe("rss freshness", () => {
+  beforeEach(() => {
+    clearRssInFlight();
+    clearWebSubHealthMemo();
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function age(db: ReturnType<typeof createTestDb>["db"], seconds: number) {
+    const now = Math.floor(Date.now() / 1000);
+    db.update(videoCache)
+      .set({ fetchedAt: now - seconds })
+      .run();
+    clearWebSubHealthMemo();
+  }
+
+  function subscribe(db: ReturnType<typeof createTestDb>["db"]) {
+    const t = Math.floor(Date.now() / 1000);
+    const user = db
+      .insert(users)
+      .values({ email: "a@b.c", passwordHash: "x", createdAt: t, updatedAt: t })
+      .returning()
+      .get();
+    db.insert(subscriptions)
+      .values({ userId: user.id, channelId: CHANNEL, subscribedAt: t })
+      .run();
+  }
+
+  it("polls an unsubscribed channel every 15 minutes", async () => {
+    const { db, sqlite } = createTestDb();
+    stubFetchXml([rssXml("vid00000001", "2026-07-01T00:00:00Z")]);
+    await refreshChannelRss(db, CHANNEL);
+    age(db, 10 * 60);
+    expect(isChannelRssFresh(db, CHANNEL)).toBe(true);
+    age(db, 20 * 60);
+    expect(isChannelRssFresh(db, CHANNEL)).toBe(false);
+    sqlite.close();
+  });
+
+  it("keeps a subscribed channel fresh for hours while WebSub is healthy", async () => {
+    const { db, sqlite } = createTestDb();
+    subscribe(db);
+    stubFetchXml([rssXml("vid00000001", "2026-07-01T00:00:00Z")]);
+    await refreshChannelRss(db, CHANNEL);
+    recordWebSubHealth(db, { wanted: 1, active: 1, failing: 0 });
+
+    age(db, 2 * 3600);
+    expect(isChannelRssFresh(db, CHANNEL)).toBe(true);
+    const fetchFn = stubFetchXml([
+      rssXml("vid00000002", "2026-07-02T00:00:00Z"),
+    ]);
+    const entries = await getChannelRssEntries(db, CHANNEL);
+    expect(entries[0]?.videoId).toBe("vid00000001");
+    expect(fetchFn).not.toHaveBeenCalled();
+
+    age(db, 7 * 3600);
+    expect(isChannelRssFresh(db, CHANNEL)).toBe(false);
+    sqlite.close();
+  });
+
+  it("falls back to polling when WebSub stops syncing", async () => {
+    const { db, sqlite } = createTestDb();
+    subscribe(db);
+    stubFetchXml([rssXml("vid00000001", "2026-07-01T00:00:00Z")]);
+    await refreshChannelRss(db, CHANNEL);
+    const longAgo = Math.floor(Date.now() / 1000) - 3600;
+    recordWebSubHealth(db, { wanted: 1, active: 1, failing: 0 }, longAgo);
+    age(db, 2 * 3600);
+    expect(isChannelRssFresh(db, CHANNEL)).toBe(false);
+    sqlite.close();
+  });
+
+  it("keeps a long-form window until the RSS lists a newer upload", async () => {
+    const { db, sqlite } = createTestDb();
+    const now = Math.floor(Date.now() / 1000);
+    const older = new Date((now - 3 * 3600) * 1000).toISOString();
+    stubFetchXml([rssXml("vid00000001", older)]);
+    await refreshLongFormWindow(db, CHANNEL);
+    await refreshChannelRss(db, CHANNEL);
+    // Window 2 h old, RSS just fetched and listing nothing newer than it.
+    const window = db
+      .select()
+      .from(videoCache)
+      .all()
+      .find((r) => r.cacheKey.includes("uulf"));
+    if (!window) throw new Error("no long-form window row");
+    db.update(videoCache)
+      .set({ fetchedAt: now - 2 * 3600 })
+      .where(eq(videoCache.cacheKey, window.cacheKey))
+      .run();
+    expect(isLongFormWindowFresh(db, CHANNEL)).toBe(true);
+
+    // The RSS now lists an upload from an hour ago: newer than the window.
+    clearRssInFlight();
+    stubFetchXml([
+      rssXml("vid00000002", new Date((now - 3600) * 1000).toISOString()),
+    ]);
+    await refreshChannelRss(db, CHANNEL);
+    expect(isLongFormWindowFresh(db, CHANNEL)).toBe(false);
     sqlite.close();
   });
 });
