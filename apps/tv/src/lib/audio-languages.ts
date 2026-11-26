@@ -1,34 +1,16 @@
+import type { VideoDetail } from "@web/server/catalog/types";
+
 /**
- * Audio-language detection for multi-audio (auto-dubbed) videos.
- *
- * The upstream marks language tracks only inside the stream URL's `xtags`
- * parameter (`acont=original:lang=nl-NL`, `acont=dubbed-auto:lang=en-US`), so
- * languages are recovered from `detail.audioSources[].url`. Regex-based on
- * purpose: Hermes ships no full WHATWG URL implementation.
+ * Audio languages of a multi-audio (dubbed) video, as the gateway lists them
+ * on the video page: original first, which is also the manifest's default.
  */
 
 export type AudioLanguageOption = {
-  /** BCP-47-ish tag as the server's /dash `lang` filter expects it. */
+  /** The tag the gateway's manifest `lang=` filter takes. */
   lang: string;
   label: string;
   isOriginal: boolean;
 };
-
-function xtagsOf(url: string): { lang: string | null; acont: string | null } {
-  const m = url.match(/[?&]xtags=([^&#]+)/i);
-  if (!m?.[1]) return { lang: null, acont: null };
-  let decoded = m[1];
-  try {
-    decoded = decodeURIComponent(decoded);
-  } catch {
-    // keep raw; the patterns below tolerate either form
-  }
-  const lang = decoded.match(
-    /(?:^|:)lang=([A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})?)/,
-  )?.[1];
-  const acont = decoded.match(/(?:^|:)acont=([A-Za-z-]+)/)?.[1];
-  return { lang: lang ?? null, acont: acont ?? null };
-}
 
 /** Hermes has no Intl.DisplayNames; cover the common dub languages, then guard-try. */
 const LANGUAGE_NAMES: Record<string, string> = {
@@ -78,35 +60,20 @@ export function languageName(lang: string): string {
 }
 
 /**
- * Distinct audio languages of a video, ORIGINAL FIRST (matching the server
- * manifest's default track). Empty unless there are at least two, so callers
- * can use the length directly to decide whether to offer a chooser.
+ * Distinct audio languages of a video, ORIGINAL FIRST. Empty unless there are
+ * at least two, so callers can use the length to decide whether to offer a
+ * chooser.
  */
 export function audioLanguageOptions(
-  audioSources: ReadonlyArray<{ url?: string | null }>,
+  detail: Pick<VideoDetail, "audioLanguages">,
 ): AudioLanguageOption[] {
-  const byLang = new Map<string, { lang: string; isOriginal: boolean }>();
-  for (const source of audioSources) {
-    if (!source.url) continue;
-    const { lang, acont } = xtagsOf(source.url);
-    if (!lang) continue;
-    const key = lang.toLowerCase();
-    const isOriginal = acont === "original";
-    const prev = byLang.get(key);
-    if (!prev) byLang.set(key, { lang, isOriginal });
-    else if (isOriginal) prev.isOriginal = true;
-  }
-  const list = Array.from(byLang.values());
+  const list = detail.audioLanguages ?? [];
   if (list.length < 2) return [];
-  list.sort((a, b) => (a.isOriginal ? 0 : 1) - (b.isOriginal ? 0 : 1));
-  return list.map(({ lang, isOriginal }) => ({
-    lang,
+  return list.map(({ language, isOriginal }) => ({
+    lang: language,
     isOriginal,
-    label: isOriginal ? `${languageName(lang)} (Original)` : languageName(lang),
+    label: isOriginal
+      ? `${languageName(language)} (Original)`
+      : languageName(language),
   }));
-}
-
-/** Bonus for {@link audioLanguageOptions}-aware pickers: is this URL the original track? */
-export function urlLooksLikeOriginalAudio(url: string): boolean {
-  return xtagsOf(url).acont === "original";
 }

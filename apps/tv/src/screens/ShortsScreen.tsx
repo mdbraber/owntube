@@ -13,7 +13,8 @@ import {
   View,
 } from "react-native";
 import { getToken } from "@/lib/auth-token";
-import { baseUrl } from "@/lib/config";
+import { manifestUrl } from "@/lib/playback-url";
+import { queryClient } from "@/lib/query-client";
 import { trpcClient } from "@/lib/trpc";
 import type { TVView } from "@/lib/tv-focus";
 import { createStyles } from "@/lib/ui-scale";
@@ -74,24 +75,40 @@ export function ShortsScreen({ startVideo }: { startVideo?: UnifiedVideo }) {
     p.loop = true;
   });
 
-  // Load each short as it comes up; the server DASH manifest carries both
-  // tracks, so ExoPlayer handles sync (see WatchScreen).
+  // Load each short as it comes up: its video page carries the signed
+  // gateway manifests (see playback-url.ts).
   useEffect(() => {
     if (!current || !authHeader) return;
-    player.replace({
-      uri: `${baseUrl()}/dash/${encodeURIComponent(current.videoId)}/manifest.mpd?video=vp9&maxHeight=1080`,
-      headers: authHeader,
-      metadata: { title: current.title, artist: current.channelName },
-    });
-    player.play();
-    setPaused(false);
+    let cancelled = false;
+    queryClient
+      .fetchQuery({
+        queryKey: [["video", "detail"], { videoId: current.videoId }],
+        queryFn: () =>
+          trpcClient.video.detail.query({ videoId: current.videoId }),
+        staleTime: 60_000,
+      })
+      .then((detail) => {
+        const uri = manifestUrl(detail, { maxHeight: 1080 });
+        if (cancelled || !uri) return;
+        player.replace({
+          uri,
+          headers: authHeader,
+          metadata: { title: current.title, artist: current.channelName },
+        });
+        player.play();
+        setPaused(false);
+      })
+      .catch(() => {});
     const timer = setTimeout(() => {
       if (!current.channelId) return;
       trpcClient.shorts.markSeen
         .mutate({ videoId: current.videoId, channelId: current.channelId })
         .catch(() => {});
     }, SEEN_AFTER_MS);
-    return () => clearTimeout(timer);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [current, authHeader, player]);
 
   // Keep a few shorts ahead.

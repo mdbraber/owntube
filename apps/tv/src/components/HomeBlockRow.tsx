@@ -37,7 +37,7 @@ export const HOME_BLOCK_TITLES: Record<HomeBlock["type"], string> = {
   favorites: "Favorites",
   tag: "Tag",
   recommended: "Recommended",
-  explore: "Trending",
+  explore: "Live",
   history: "History",
   queue: "Queue",
   saved: "Saved",
@@ -101,7 +101,7 @@ export function HomeBlockRow({
     { enabled: type === "recommended", ...kept },
   );
   const explore = trpc.live.list.useQuery(
-    { region, limit: ROW_VIDEOS },
+    { limit: ROW_VIDEOS },
     { enabled: type === "explore", ...kept },
   );
   const history = trpc.history.list.useQuery(

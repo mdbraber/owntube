@@ -18,7 +18,6 @@ import {
   storyboardSheetUrl,
   storyboardThumbAtTime,
 } from "@web/lib/video-scrub-frames";
-import { youtubeImageViaInstance } from "@web/lib/youtube-image-via-instance";
 import type {
   UnifiedVideo,
   VideoDetail,
@@ -52,11 +51,7 @@ import {
 } from "@/components/MenuPanel";
 import { UpNext } from "@/components/UpNext";
 import { VideoRow } from "@/components/VideoRow";
-import {
-  audioLanguageOptions,
-  languageName,
-  urlLooksLikeOriginalAudio,
-} from "@/lib/audio-languages";
+import { audioLanguageOptions, languageName } from "@/lib/audio-languages";
 import { getToken } from "@/lib/auth-token";
 import { baseUrl } from "@/lib/config";
 import { errorMessage } from "@/lib/error-message";
@@ -154,16 +149,13 @@ type LoadState =
       selectedOptionIndex: number;
     };
 
+/** A signed gateway manifest; the player adapts within it. */
 type PlaybackOption = {
   id: string;
   label: string;
   videoUrl: string;
-  /** Vertical resolution, when known. Absent for HLS "Auto". */
-  height?: number;
-} & (
-  | { kind: "auto" | "muxed"; audioUrl?: never }
-  | { kind: "split"; audioUrl: string }
-);
+  kind: "auto";
+};
 
 /** expo-video 2.0 doesn't export the track type by name. */
 type SubtitleTrack = NonNullable<VideoPlayer["subtitleTrack"]>;
@@ -193,71 +185,11 @@ const pinScrubberFocus = Platform.OS !== "ios";
 const SCRUB_STEP_SECONDS = 10;
 const SCRUB_HOLD_TICK_MS = 120;
 
+/** The DASH source, the one the audio-language and quality choices narrow. */
+const DASH_OPTION = "dash";
+
 /** The adaptive sources whose "Auto" label shows the rendition playing. */
-const AUTO_SOURCE_IDS = new Set(["dash-vp9", "hls-server"]);
-
-/** Fallback ceiling if settings can't be read. */
-const DEFAULT_HEIGHT = 1080;
-
-/** Maps the shared `defaultPlaybackQuality` setting to a pixel ceiling. */
-function heightForQuality(quality: string | undefined): number {
-  switch (quality) {
-    case "best":
-      return Number.POSITIVE_INFINITY;
-    case "1080p":
-      return 1080;
-    case "720p":
-      return 720;
-    case "480p":
-      return 480;
-    case "360p":
-    case "360p-muxed":
-      return 360;
-    default:
-      return DEFAULT_HEIGHT;
-  }
-}
-
-/**
- * Picks the stream to start with.
- *
- * The adaptive "Auto" source (server DASH, listed first) wins whenever the
- * server offers it: it is a single media source that adapts across renditions,
- * so ExoPlayer keeps audio and video in sync itself.
- *
- * Everything else is a compromise. YouTube's muxed (video+audio) progressive
- * streams stop at 360p; every higher rendition is adaptive and arrives as a
- * separate video-only + audio pair, which this screen plays as two ExoPlayer
- * instances nudged into alignment. Two players drift, and correcting drift by
- * seeking the audio player is audible — sound drops out and returns out of
- * step. So without Auto we take the best muxed stream and accept 360p rather
- * than ship broken audio; split sources are a last resort when nothing muxed
- * exists.
- */
-function pickDefaultOptionIndex(
-  options: PlaybackOption[],
-  maxHeight: number,
-): number {
-  const auto = options.findIndex((option) => option.kind === "auto");
-  if (auto >= 0) return auto;
-
-  const bestOf = (kind: PlaybackOption["kind"]) => {
-    const graded = options
-      .map((option, index) => ({ option, index }))
-      .filter((e) => e.option.kind === kind && e.option.height !== undefined);
-    if (graded.length === 0) return -1;
-    const atOrBelow = graded.filter((e) => (e.option.height ?? 0) <= maxHeight);
-    const pool = atOrBelow.length > 0 ? atOrBelow : graded;
-    return pool.reduce((a, b) =>
-      (b.option.height ?? 0) > (a.option.height ?? 0) ? b : a,
-    ).index;
-  };
-
-  const muxed = bestOf("muxed");
-  if (muxed >= 0) return muxed;
-  const split = bestOf("split");
-  return split >= 0 ? split : 0;
-}
+const AUTO_SOURCE_IDS = new Set([DASH_OPTION, "hls"]);
 
 /**
  * Full watch screen: plays the stream via ExoPlayer, resumes from a saved
@@ -462,7 +394,6 @@ export function WatchScreen({
   }, []);
   // Shared with the web app rather than hardcoded here.
   const settingsRef = useRef<{
-    maxHeight: number;
     sponsorBlockEnabled: boolean;
     sponsorBlockAutoSkip: boolean;
     sponsorBlockCategories: SponsorBlockCategory[];
@@ -470,7 +401,6 @@ export function WatchScreen({
     /** Account setting: "original" or a language tag. */
     captionLanguage: string;
   }>({
-    maxHeight: DEFAULT_HEIGHT,
     sponsorBlockEnabled: true,
     sponsorBlockAutoSkip: true,
     sponsorBlockCategories: DEFAULT_SKIP_CATEGORIES,
@@ -542,17 +472,9 @@ export function WatchScreen({
   const shouldPlayAfterReplaceRef = useRef(true);
   const selectedOptionRef = useRef<PlaybackOption | null>(null);
 
-  // Adaptive HD plays as two players (muted video + separate audio). expo-video
-  // applies an audio mode per app, taking the highest-priority one across all
-  // players, and the default interrupts other output "even when muted" — which
-  // silences the audio player and leaves HD rows playing with no sound. Both
-  // players must opt into mixing for the pair to be audible.
+  // expo-video applies one audio mode per app; mixing keeps background
+  // previews elsewhere in the app from interrupting this player's sound.
   const player = useVideoPlayer(null, (p) => {
-    p.loop = false;
-    p.timeUpdateEventInterval = 1;
-    p.audioMixingMode = "mixWithOthers";
-  });
-  const audioPlayer = useVideoPlayer(null, (p) => {
     p.loop = false;
     p.timeUpdateEventInterval = 1;
     p.audioMixingMode = "mixWithOthers";
@@ -599,7 +521,6 @@ export function WatchScreen({
       })
       .then((st) => {
         settingsRef.current = {
-          maxHeight: heightForQuality(st.defaultPlaybackQuality),
           sponsorBlockEnabled: st.sponsorBlockEnabled,
           sponsorBlockAutoSkip: st.sponsorBlockAutoSkip,
           sponsorBlockCategories: st.sponsorBlockCategories,
@@ -620,14 +541,10 @@ export function WatchScreen({
         detailRef.current = detail;
         setChannelId(detail.channelId ?? null);
         const playbackOptions = buildPlaybackOptions(detail);
-        const maxHeight = settingsRef.current.maxHeight;
         if (playbackOptions.length === 0) {
           setState({
             status: "error",
-            message:
-              detail.isLive && Platform.OS === "ios"
-                ? "This live stream can't play on Apple TV."
-                : "This video has no playable stream available.",
+            message: "This video has no playable stream available.",
             problem: detail.isUpcoming
               ? { kind: "upcoming" }
               : { kind: "other" },
@@ -638,10 +555,8 @@ export function WatchScreen({
           status: "ready",
           detail,
           playbackOptions,
-          selectedOptionIndex: pickDefaultOptionIndex(
-            playbackOptions,
-            maxHeight,
-          ),
+          // The first source: DASH on Android TV, HLS on tvOS.
+          selectedOptionIndex: 0,
         });
 
         const { sponsorBlockEnabled, sponsorBlockCategories: categories } =
@@ -790,9 +705,7 @@ export function WatchScreen({
       // Release the source, not just pause: a paused live player keeps
       // refreshing its manifest.
       player.pause();
-      audioPlayer.pause();
       player.replace(null);
-      audioPlayer.replace(null);
       setIsPlaying(false);
       return;
     }
@@ -808,35 +721,22 @@ export function WatchScreen({
         ? viaInstance(state.detail.thumbnailUrl)
         : undefined,
     };
-    if (selectedOption.kind === "split") {
-      player.muted = true;
-      player.replace({
-        uri: selectedOption.videoUrl,
-        headers: authHeader,
-        metadata,
-      });
-      audioPlayer.replace(selectedOption.audioUrl);
-    } else {
-      // A non-default audio language narrows the server DASH manifest to that
-      // language (index 0 is the original — already the manifest default).
-      let uri = selectedOption.videoUrl;
-      if (selectedOption.id === "dash-vp9") {
-        if (audioLangIndex > 0) {
-          const langs = audioLanguageOptions(state.detail.audioSources ?? []);
-          const picked = langs[audioLangIndex];
-          if (picked) uri = `${uri}&lang=${encodeURIComponent(picked.lang)}`;
-        }
-        // Only an explicit panel choice caps the ladder. Auto leaves it whole:
-        // ExoPlayer's track selector already stops at the display's resolution,
-        // so the shared defaultPlaybackQuality (a web/bandwidth preference,
-        // often 720p) must not cap a TV that can show more.
-        if (qualityCap !== null) uri = `${uri}&maxHeight=${qualityCap}`;
+    // A non-default audio language narrows the DASH manifest to that
+    // language (index 0 is the original — already the manifest default).
+    let uri = selectedOption.videoUrl;
+    if (selectedOption.id === DASH_OPTION) {
+      if (audioLangIndex > 0) {
+        const picked = audioLanguageOptions(state.detail)[audioLangIndex];
+        if (picked) uri = `${uri}&lang=${encodeURIComponent(picked.lang)}`;
       }
-      player.muted = false;
-      player.replace({ uri, headers: authHeader, metadata });
-      audioPlayer.pause();
-      audioPlayer.replace(null);
+      // Only an explicit panel choice caps the ladder. Auto leaves it whole:
+      // ExoPlayer's track selector already stops at the display's resolution,
+      // so the shared defaultPlaybackQuality (a web/bandwidth preference,
+      // often 720p) must not cap a TV that can show more.
+      if (qualityCap !== null) uri = `${uri}&maxHeight=${qualityCap}`;
     }
+    player.muted = false;
+    player.replace({ uri, headers: authHeader, metadata });
     const pendingSeek = pendingSeekRef.current;
     pendingSeekRef.current = null;
     // A saved position in the last seconds would end the video on arrival —
@@ -850,27 +750,16 @@ export function WatchScreen({
     const startSeconds = state.detail.isLive
       ? pendingSeek
       : (pendingSeek ?? (resumeUsable ? resumeSeconds : undefined));
-    if (startSeconds && startSeconds > 5) {
-      player.currentTime = startSeconds;
-      if (selectedOption.kind === "split")
-        audioPlayer.currentTime = startSeconds;
-    }
+    if (startSeconds && startSeconds > 5) player.currentTime = startSeconds;
     player.playbackRate = playbackRateRef.current;
-    audioPlayer.playbackRate = playbackRateRef.current;
     const shouldPlay = shouldPlayAfterReplaceRef.current;
     shouldPlayAfterReplaceRef.current = true;
-    if (shouldPlay) {
-      player.play();
-      if (selectedOption.kind === "split") audioPlayer.play();
-    } else {
-      player.pause();
-      audioPlayer.pause();
-    }
+    if (shouldPlay) player.play();
+    else player.pause();
     setIsPlaying(shouldPlay);
   }, [
     state,
     player,
-    audioPlayer,
     resumeSeconds,
     authHeader,
     audioLangIndex,
@@ -918,9 +807,9 @@ export function WatchScreen({
   const defaultCaptionTrack = (
     tracks: SubtitleTrack[],
   ): SubtitleTrack | undefined => {
-    const original = audioLanguageOptions(
-      detailRef.current?.audioSources ?? [],
-    ).find((lang) => lang.isOriginal)?.lang;
+    const original = audioLanguageOptions(detailRef.current ?? {}).find(
+      (lang) => lang.isOriginal,
+    )?.lang;
     const index = pickDefaultCaptionIndex(
       tracks.map((t) => ({
         label: t.label ?? "",
@@ -941,9 +830,8 @@ export function WatchScreen({
       if (prefs.playbackRate === playbackRateRef.current) return;
       setPlaybackRate(prefs.playbackRate);
       player.playbackRate = prefs.playbackRate;
-      audioPlayer.playbackRate = prefs.playbackRate;
     });
-  }, [player, audioPlayer]);
+  }, [player]);
 
   // SponsorBlock auto-skip: on each tick, jump past any segment we're inside.
   useEffect(() => {
@@ -962,12 +850,8 @@ export function WatchScreen({
           currentTime < s.endSeconds - 0.5 &&
           !keptSegmentsRef.current.has(s.uuid),
       );
-      const selectedOption = selectedOptionRef.current;
       if (hit && settingsRef.current.sponsorBlockAutoSkip) {
         player.currentTime = hit.endSeconds;
-        if (selectedOption?.kind === "split") {
-          audioPlayer.currentTime = hit.endSeconds;
-        }
         showToastRef.current({
           text: `Skipped ${SPONSORBLOCK_LABELS[hit.category] ?? "segment"}`,
           hint: "OK to undo",
@@ -991,14 +875,9 @@ export function WatchScreen({
       } else if (!hit && offered) {
         setToast(null);
       }
-      if (selectedOption?.kind === "split") {
-        const audioDelta = Math.abs(audioPlayer.currentTime - currentTime);
-        if (audioDelta > 0.75) audioPlayer.currentTime = currentTime;
-        if (isPlayingRef.current && !audioPlayer.playing) audioPlayer.play();
-      }
     });
     return () => sub.remove();
-  }, [player, audioPlayer]);
+  }, [player]);
 
   /**
    * Back dismisses the controls before it leaves the video, so the first press
@@ -1100,13 +979,9 @@ export function WatchScreen({
 
   const fallbackToStablePlayback = useCallback(() => {
     if (state.status !== "ready") return;
-    // Step to the next single-player source. DASH can 502 if the upstream
-    // formats are missing, in which case HLS or a muxed rendition still plays.
-    const fallbackIndex = state.playbackOptions.findIndex(
-      (option, index) =>
-        index > state.selectedOptionIndex &&
-        (option.kind === "auto" || option.kind === "muxed"),
-    );
+    // Step to the next source: if the DASH manifest fails, the HLS one.
+    const fallbackIndex = state.selectedOptionIndex + 1;
+    if (fallbackIndex >= state.playbackOptions.length) return;
     if (fallbackIndex < 0 || fallbackIndex === state.selectedOptionIndex)
       return;
     pendingSeekRef.current = currentTimeRef.current;
@@ -1131,13 +1006,6 @@ export function WatchScreen({
     });
     return () => sub.remove();
   }, [player, fallbackToStablePlayback]);
-
-  useEffect(() => {
-    const sub = audioPlayer.addListener("statusChange", ({ status }) => {
-      if (status === "error") fallbackToStablePlayback();
-    });
-    return () => sub.remove();
-  }, [audioPlayer, fallbackToStablePlayback]);
 
   /**
    * DASH text tracks surface asynchronously while the manifest is parsed, so
@@ -1215,7 +1083,6 @@ export function WatchScreen({
         // player sits behind a channel page; don't let it resume there.
         if (playing && !activeRef.current) {
           player.pause();
-          audioPlayer.pause();
           return;
         }
         setIsPlaying(playing);
@@ -1223,7 +1090,7 @@ export function WatchScreen({
       },
     );
     return () => sub.remove();
-  }, [player, audioPlayer, revealControls]);
+  }, [player, revealControls]);
 
   // Back from another app, or from standby: expo-video paused the player on
   // the way out, and the activity came back with a new video surface. A
@@ -1249,11 +1116,10 @@ export function WatchScreen({
   useEffect(() => {
     if (active) return;
     player.pause();
-    audioPlayer.pause();
     setIsPlaying(false);
     setMenuOpen(false);
     setDetailsOpen(false);
-  }, [active, player, audioPlayer]);
+  }, [active, player]);
 
   // Any remote key re-shows the controls (fires regardless of focus target).
   // While paused the overlay stays pinned; while playing it auto-hides.
@@ -1280,7 +1146,6 @@ export function WatchScreen({
   const togglePlayback = () => {
     if (isPlaying) {
       player.pause();
-      audioPlayer.pause();
       setIsPlaying(false);
     } else {
       // Play at the very end replays from the start. Playing on from there
@@ -1288,12 +1153,8 @@ export function WatchScreen({
       const total = detailRef.current?.durationSeconds || player.duration || 0;
       if (total > 0 && currentTimeRef.current >= total - 1) {
         player.currentTime = 0;
-        if (selectedOptionRef.current?.kind === "split") {
-          audioPlayer.currentTime = 0;
-        }
       }
       player.play();
-      if (selectedOptionRef.current?.kind === "split") audioPlayer.play();
       setIsPlaying(true);
     }
   };
@@ -1358,13 +1219,9 @@ export function WatchScreen({
       return;
     }
     player.currentTime = target;
-    if (selectedOptionRef.current?.kind === "split") {
-      audioPlayer.currentTime = target;
-    }
     scrubRef.current = null;
     setScrubSeconds(null);
     player.play();
-    if (selectedOptionRef.current?.kind === "split") audioPlayer.play();
     setIsPlaying(true);
   };
 
@@ -1420,9 +1277,6 @@ export function WatchScreen({
   const playPrevious = () => {
     if (currentTimeRef.current > RESTART_THRESHOLD_SECONDS || !previousVideo) {
       player.currentTime = 0;
-      if (selectedOptionRef.current?.kind === "split") {
-        audioPlayer.currentTime = 0;
-      }
       return;
     }
     onReplaceVideo(previousVideo.videoId, { context });
@@ -1430,9 +1284,6 @@ export function WatchScreen({
 
   const seekBy = (seconds: number) => {
     player.seekBy(seconds);
-    if (selectedOptionRef.current?.kind === "split") {
-      audioPlayer.seekBy(seconds);
-    }
   };
 
   /**
@@ -1542,7 +1393,7 @@ export function WatchScreen({
 
   const chooseAudioLanguage = (index: number) => {
     if (state.status !== "ready" || index === audioLangIndex) return;
-    const langs = audioLanguageOptions(state.detail.audioSources ?? []);
+    const langs = audioLanguageOptions(state.detail);
     keepPositionAcrossSwap();
     setAudioLangIndex(index);
     showToast({ text: `Audio: ${langs[index]?.label ?? ""}` });
@@ -1552,7 +1403,7 @@ export function WatchScreen({
   const chooseQuality = (cap: number | null) => {
     if (state.status !== "ready") return;
     const dashIndex = state.playbackOptions.findIndex(
-      (o) => o.id === "dash-vp9",
+      (o) => o.id === DASH_OPTION,
     );
     if (dashIndex < 0) return;
     if (cap === qualityCap && dashIndex === state.selectedOptionIndex) return;
@@ -1578,15 +1429,11 @@ export function WatchScreen({
   const chooseRate = (rate: number) => {
     setPlaybackRate(rate);
     player.playbackRate = rate;
-    audioPlayer.playbackRate = rate;
     savePlayerPrefs({ playbackRate: rate });
   };
 
   const seekTo = (seconds: number) => {
     player.currentTime = seconds;
-    if (selectedOptionRef.current?.kind === "split") {
-      audioPlayer.currentTime = seconds;
-    }
   };
 
   /** OK on a SponsorBlock toast: undo the skip, or take the offered one. */
@@ -1616,7 +1463,6 @@ export function WatchScreen({
     if (!detail) return;
     markedWatchedRef.current = true;
     player.pause();
-    audioPlayer.pause();
     setIsPlaying(false);
     const done = recordCompleted(
       videoId,
@@ -1726,12 +1572,12 @@ export function WatchScreen({
 
   const { detail } = state;
 
-  const audioLangs = audioLanguageOptions(detail.audioSources ?? []);
+  const audioLangs = audioLanguageOptions(detail);
   // The manifest-swap chooser only works on the server DASH source; the other
   // options (HLS/muxed/split fallbacks) carry a single fixed audio track.
   const canChooseAudioLanguage =
     audioLangs.length >= 2 &&
-    state.playbackOptions[state.selectedOptionIndex]?.id === "dash-vp9";
+    state.playbackOptions[state.selectedOptionIndex]?.id === DASH_OPTION;
 
   const totalSeconds = duration || detail.durationSeconds || 0;
   const scrubTarget = scrubSeconds ?? currentTime;
@@ -1746,7 +1592,7 @@ export function WatchScreen({
   const chapterTitle = chapterIndex >= 0 ? chapters[chapterIndex]?.title : null;
 
   const selectedOption = state.playbackOptions[state.selectedOptionIndex];
-  const onDash = selectedOption?.id === "dash-vp9";
+  const onDash = selectedOption?.id === DASH_OPTION;
   const qualityLabelNow = !onDash
     ? (selectedOption?.label ?? "")
     : qualityCap === null
@@ -1783,7 +1629,7 @@ export function WatchScreen({
             // The fallback sources, for when DASH misbehaves on a device.
             ...state.playbackOptions
               .map((option, index) => ({ option, index }))
-              .filter(({ option }) => option.id !== "dash-vp9")
+              .filter(({ option }) => option.id !== DASH_OPTION)
               .map<MenuItem>(({ option, index }) => ({
                 key: option.id,
                 label: sourceMenuLabel(option),
@@ -2408,11 +2254,10 @@ function ScrubPreview({
   return (
     <View style={[styles.preview, { width: s(PREVIEW_WIDTH), height }]}>
       <Image
-        // Signed i.ytimg.com sheets: through the instance, never from Google.
+        // Signed sheets through the gateway's image route, never from Google.
         source={{
-          uri: youtubeImageViaInstance(
+          uri: viaInstance(
             storyboardSheetUrl(storyboard.templateUrl, sheetIndex),
-            baseUrl(),
           ),
         }}
         style={{
@@ -2670,25 +2515,12 @@ const styles = createStyles({
   muted: { color: colors.mutedForeground, fontSize: fontSize.md },
 });
 
-/**
- * The quality rungs the video offers, tallest first — what the panel lists as
- * ceilings for the DASH source. By YouTube's label ("1080p"), which the
- * server's `maxHeight` also goes by; the frame height of a cinemascope
- * rendition (804, 608…) would list odd rungs.
- */
+/** The quality rungs the video offers, tallest first: ceilings for the DASH source. */
 function qualityHeights(detail: VideoDetail): number[] {
-  const heights = new Set<number>();
-  for (const source of detail.videoSources) {
-    const labelled = source.quality?.match(/(\d{3,4})p/)?.[1];
-    const height = labelled ? Number.parseInt(labelled, 10) : source.height;
-    if (typeof height === "number" && height >= 144) heights.add(height);
-  }
-  return [...heights].sort((a, b) => b - a);
+  return detail.qualities ?? [];
 }
 
 function sourceMenuLabel(option: PlaybackOption): string {
-  if (option.kind === "split") return `${option.label} (separate audio)`;
-  if (option.kind === "muxed") return `${option.label} (MP4)`;
   return option.label;
 }
 
@@ -2775,250 +2607,30 @@ function StatsOverlay({
   );
 }
 
+/**
+ * The gateway's signed manifests for this video. The gateway picks the
+ * transport; the TV only picks the format. ExoPlayer (Android TV) plays DASH
+ * (VP9 unlocks the rungs above 1080p; AVC where a video has no VP9), with the
+ * HLS as a fallback; AVPlayer (tvOS) plays HLS. Live and post-live DVR exist
+ * only as HLS.
+ */
 function buildPlaybackOptions(detail: VideoDetail): PlaybackOption[] {
-  const options: PlaybackOption[] = [];
-  const seen = new Set<string>();
-
-  const addOption = (option: PlaybackOption) => {
-    const key =
-      option.kind === "split"
-        ? `${option.label}|${option.videoUrl}|${option.audioUrl}`
-        : `${option.label}|${option.videoUrl}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    options.push(option);
-  };
-
-  // Live streams have no fixed-duration adaptiveFormats to build a VOD DASH/HLS
-  // manifest from (no init/index byte ranges) — /dash/…/manifest.mpd and /hls
-  // 502. OwnTube serves YouTube's own live DASH, via invidious-companion, at
-  // /dash/<id>/live.mpd; the raw upstream live HLS URL's segments 403, so it
-  // is only a last resort. Mirrors apps/web/src/lib/pick-playback.ts's
-  // `dash-live` branch.
-  if (detail.isLive) {
-    // AVPlayer (tvOS) can't play DASH: there the server's live HLS carries it
-    // (apps/web/src/server/services/hls/live.ts), built from the same manifest.
-    if (Platform.OS === "ios") {
-      addOption({
-        id: "live-hls-server",
-        label: "Live",
-        videoUrl: `${baseUrl()}/hls/${encodeURIComponent(detail.videoId)}/live.m3u8`,
-        kind: "auto",
-      });
-    } else {
-      addOption({
-        id: "live-dash",
-        label: "Live",
-        videoUrl: `${baseUrl()}/dash/${encodeURIComponent(detail.videoId)}/live.mpd`,
-        kind: "auto",
-      });
-    }
-    if (detail.hlsUrl) {
-      addOption({
-        id: "live-hls",
-        label: "Live (HLS)",
-        videoUrl: detail.hlsUrl,
-        kind: "auto",
-      });
-    }
-    return options;
-  }
-
-  // Server-generated DASH first: one manifest carrying both the video ladder
-  // (VP9 unlocks the rungs above 1080p that the AVC-only HLS path cannot) and
-  // the audio track, so ExoPlayer owns A/V sync instead of this screen nudging
-  // two players into alignment. See apps/web/src/server/services/dash.
-  //
-  // AVPlayer (tvOS, iOS) plays neither DASH nor VP9. There the adaptive source
-  // is the server's VOD HLS instead (apps/web/src/server/services/hls): AVC +
-  // AAC, with every audio language and the captions in the master playlist.
-  if (Platform.OS === "ios") {
-    addOption({
-      id: "hls-server",
+  const playback = detail.playback;
+  if (!playback) return [];
+  const hls = `${baseUrl()}${playback.hls}`;
+  if (detail.isLive || detail.isPostLiveDvr)
+    return [{ id: "live-hls", label: "Live", videoUrl: hls, kind: "auto" }];
+  if (Platform.OS === "ios")
+    return [{ id: "hls", label: "Auto", videoUrl: hls, kind: "auto" }];
+  return [
+    {
+      id: DASH_OPTION,
       label: "Auto",
-      videoUrl: `${baseUrl()}/hls/${encodeURIComponent(detail.videoId)}/master.m3u8`,
+      videoUrl: `${baseUrl()}${playback.dash}&family=vp9,avc`,
       kind: "auto",
-    });
-  } else {
-    addOption({
-      id: "dash-vp9",
-      label: "Auto",
-      videoUrl: `${baseUrl()}/dash/${detail.videoId}/manifest.mpd?video=vp9`,
-      kind: "auto",
-    });
-  }
-
-  if (detail.hlsUrl) {
-    addOption({
-      id: "auto-hls",
-      label: "Auto (HLS)",
-      videoUrl: detail.hlsUrl,
-      kind: "auto",
-    });
-  }
-
-  detail.videoSources
-    .filter((source) => sourceLooksMuxed(source))
-    .map((source, index) => ({ source, index }))
-    .sort(
-      (a, b) =>
-        qualityScore(b.source.quality, b.source.height, b.index, b.source.fps) -
-        qualityScore(a.source.quality, a.source.height, a.index, a.source.fps),
-    )
-    .forEach(({ source, index }) => {
-      addOption({
-        id: `muxed-${index}`,
-        label: qualityLabel(source.quality, source.height),
-        videoUrl: source.url,
-        height: source.height,
-        kind: "muxed",
-      });
-    });
-
-  const audioSource = selectAudioSource(detail.audioSources);
-  if (audioSource) {
-    const usedSplitLabels = new Set<string>();
-    detail.videoSources
-      .filter((source) => sourceLooksSplitVideo(source))
-      .map((source, index) => ({ source, index }))
-      .sort((a, b) => {
-        const byQuality =
-          qualityScore(
-            b.source.quality,
-            b.source.height,
-            b.index,
-            b.source.fps,
-          ) -
-          qualityScore(
-            a.source.quality,
-            a.source.height,
-            a.index,
-            a.source.fps,
-          );
-        if (byQuality !== 0) return byQuality;
-        const byCodec = codecScore(b.source) - codecScore(a.source);
-        if (byCodec !== 0) return byCodec;
-        return (b.source.bitrate ?? 0) - (a.source.bitrate ?? 0);
-      })
-      .forEach(({ source, index }) => {
-        const label = qualityLabel(source.quality, source.height);
-        if (usedSplitLabels.has(label)) return;
-        usedSplitLabels.add(label);
-        addOption({
-          id: `split-${index}`,
-          label,
-          videoUrl: source.url,
-          audioUrl: audioSource.url,
-          height: source.height,
-          kind: "split",
-        });
-      });
-  }
-
-  return options;
-}
-
-function qualityLabel(quality: string | undefined, height: number | undefined) {
-  const cleanQuality = quality?.trim();
-  if (cleanQuality) return cleanQuality;
-  if (typeof height === "number" && height > 0) return `${height}p`;
-  return "MP4";
-}
-
-function qualityScore(
-  quality: string | undefined,
-  height: number | undefined,
-  index: number,
-  fps?: number,
-) {
-  const qualityHeight = quality?.match(/(\d{2,4})\s*p/i)?.[1];
-  const fpsBonus = typeof fps === "number" && Number.isFinite(fps) ? fps : 0;
-  if (qualityHeight)
-    return Number.parseInt(qualityHeight, 10) * 1000 + fpsBonus;
-  if (typeof height === "number" && height > 0) return height * 1000 + fpsBonus;
-  return 1 - index / 1000;
-}
-
-function sourceLooksMuxed(source: VideoDetail["videoSources"][number]) {
-  if (source.videoOnly === true) return false;
-  if (isManifestPath(source.url)) return false;
-  const mimeType = source.mimeType?.toLowerCase() ?? "";
-  if (mimeType.startsWith("audio/")) return false;
-  if (mimeVideoTypeWithoutAudioCodecs(source.mimeType)) return false;
-  return true;
-}
-
-function sourceLooksSplitVideo(source: VideoDetail["videoSources"][number]) {
-  if (source.videoOnly !== true) return false;
-  if (isManifestPath(source.url)) return false;
-  const mimeType = source.mimeType?.toLowerCase() ?? "";
-  if (mimeType.startsWith("audio/")) return false;
-  if (mimeVideoTypeButAudioOnlyCodecs(source.mimeType)) return false;
-  return true;
-}
-
-function selectAudioSource(audioSources: VideoDetail["audioSources"]) {
-  return audioSources
-    .filter((source) => source.url && !source.videoOnly)
-    .sort((a, b) => audioScore(b) - audioScore(a))[0];
-}
-
-function audioScore(source: VideoDetail["audioSources"][number]) {
-  const blob = `${source.mimeType ?? ""} ${source.url}`.toLowerCase();
-  const codecScore = /mp4a|audio\/mp4/.test(blob)
-    ? 100
-    : /opus|audio\/webm/.test(blob)
-      ? 70
-      : 40;
-  // Multi-audio videos list auto-dubs alongside (sometimes before) the
-  // original; the split fallback carries exactly one audio URL, so make sure
-  // it is the original and not whatever language happened to sort first.
-  const originalBonus = urlLooksLikeOriginalAudio(source.url) ? 1000 : 0;
-  return originalBonus + codecScore + (source.bitrate ?? 0) / 1_000_000;
-}
-
-function codecScore(source: VideoDetail["videoSources"][number]) {
-  const blob = `${source.mimeType ?? ""} ${source.url}`.toLowerCase();
-  if (/avc1|avc3|h264/.test(blob)) return 100;
-  if (/video\/mp4/.test(blob) && !/av01|av1|vp9|webm/.test(blob)) return 80;
-  if (/vp9|video\/webm/.test(blob)) return 50;
-  if (/av01|av1/.test(blob)) return 10;
-  return 40;
-}
-
-function isManifestPath(url: string) {
-  const normalized = url.toLowerCase();
-  return (
-    normalized.includes(".m3u8") ||
-    normalized.includes(".mpd") ||
-    normalized.includes("/manifest/hls/") ||
-    normalized.includes("/manifest/dash/")
-  );
-}
-
-function mimeVideoTypeButAudioOnlyCodecs(mimeType: string | undefined) {
-  if (!mimeType?.trim()) return false;
-  if (!mimeType.toLowerCase().startsWith("video/")) return false;
-  const match = mimeType.match(/codecs\s*=\s*"([^"]+)"/i);
-  if (!match?.[1]) return false;
-  const codecs = match[1].toLowerCase().replace(/\s/g, "");
-  if (/avc1|avc3|av01|vp8|vp9|vp09|hev1|hvc1|dvh1|theora/.test(codecs)) {
-    return false;
-  }
-  return /mp4a|opus|vorbis|flac/.test(codecs);
-}
-
-function mimeVideoTypeWithoutAudioCodecs(mimeType: string | undefined) {
-  if (!mimeType?.trim()) return false;
-  if (!mimeType.toLowerCase().startsWith("video/")) return false;
-  const match = mimeType.match(/codecs\s*=\s*"([^"]+)"/i);
-  if (!match?.[1]) return false;
-  const codecs = match[1].toLowerCase().replace(/\s/g, "");
-  const hasVideo = /avc1|avc3|av01|vp8|vp9|vp09|hev1|hvc1|dvh1|theora/.test(
-    codecs,
-  );
-  const hasAudio = /mp4a|opus|vorbis|flac|ac-3|ec-3/.test(codecs);
-  return hasVideo && !hasAudio;
+    },
+    { id: "hls", label: "Auto (HLS)", videoUrl: hls, kind: "auto" },
+  ];
 }
 
 /** `tracks` with `first` (the account's default) moved to the front. */

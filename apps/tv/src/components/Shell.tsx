@@ -50,7 +50,7 @@ import { SearchScreen } from "@/screens/SearchScreen";
 import { SettingsScreen } from "@/screens/SettingsScreen";
 import { ShortsScreen } from "@/screens/ShortsScreen";
 import { SubscriptionsScreen } from "@/screens/SubscriptionsScreen";
-import { TrendingScreen } from "@/screens/TrendingScreen";
+import { LiveScreen } from "@/screens/LiveScreen";
 import { WatchScreen } from "@/screens/WatchScreen";
 import { colors, spacing } from "@/theme";
 
@@ -436,7 +436,7 @@ export function Shell({
       case "saved":
         return <SavedScreen nav={nav} />;
       case "trending":
-        return <TrendingScreen nav={nav} />;
+        return <LiveScreen nav={nav} />;
       case "shorts":
         return (
           <ShortsScreen

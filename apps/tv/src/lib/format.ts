@@ -1,4 +1,5 @@
 import { PixelRatio } from "react-native";
+import { youtubeImageViaInstance } from "@web/lib/youtube-image-via-instance";
 import { baseUrl } from "@/lib/config";
 
 /** mm:ss / h:mm:ss for durations and playback time. */
@@ -125,61 +126,38 @@ export function channelInitial(name: string | undefined): string {
 }
 
 /**
- * A video still by id, from this instance's `/image` proxy. The TV never asks
- * YouTube for an image itself: that would tell Google what is on screen,
- * straight from the living room — the one thing a self-hosted front end exists
- * to avoid. The proxy caches every still on disk, and when the asked-for still
- * is missing it answers with the next one down (see `VI_THUMB_FALLBACKS` in
- * the web app's upstream-proxy.ts), so callers needn't keep a fallback chain.
+ * A video still by id, from the gateway's image route on this instance. The
+ * TV never asks YouTube for an image itself: that would tell Google what is
+ * on screen, straight from the living room — the one thing a self-hosted
+ * front end exists to avoid. The gateway keeps every still on disk.
  */
 export function stillUrl(videoId: string, name: string): string {
-  return `${baseUrl()}/image/vi/${encodeURIComponent(videoId)}/${name}`;
+  return `${baseUrl()}/media/img/yti/vi/${encodeURIComponent(videoId)}/${name}`;
 }
 
 /**
- * A still on YouTube's CDN (any `*.ytimg.com` host, `/vi/` or `/vi_webp/`),
- * with its query: video id, still name. A regex, not `URL`, so it doesn't
- * depend on how much of `URL` the React Native runtime implements.
- */
-const YTIMG_STILL_RE =
-  /^https?:\/\/(?:[\w-]+\.)*ytimg\.com\/vi(?:_webp)?\/([\w-]+)\/([\w-]+)\.(?:jpe?g|webp)(?:[?#].*)?$/i;
-
-/**
- * A still URL from API data, moved onto this instance when it points at
- * YouTube (see `stillUrl`). YouTube's own query (`sqp=…`) is dropped — the
- * proxy needs no signature — and `vi_webp` stills are asked for as JPEG, the
- * name the proxy's fallback chain knows. Anything else (instance URLs, signed
- * or not) passes through unchanged.
+ * An image URL from API data, absolute on this instance: the gateway's paths
+ * (`/media/img/…`) get the server's origin, and a Google-hosted URL goes
+ * through the gateway's image route. Anything else passes through.
  */
 export function viaInstance(url: string): string {
-  const m = YTIMG_STILL_RE.exec(url);
-  return m ? stillUrl(m[1], `${m[2]}.jpg`) : url;
+  if (url.startsWith("/")) return `${baseUrl()}${url}`;
+  return youtubeImageViaInstance(url, baseUrl());
 }
 
-/** An unsigned `/vi/<id>/<still>` path on YouTube's CDN or an Invidious instance. */
+/** The gateway's path for a large still: `/media/img/<host>/vi/<id>/<large>.jpg`. */
 const LARGE_STILL_RE =
-  /^(\/vi\/[^/]+\/)(?:maxres|maxresdefault|hq720)\.jpe?g$/i;
+  /^(\/media\/img\/yti\d?\/vi(?:_webp)?\/[^/]+\/)(?:maxres|maxresdefault|hq720|sddefault)\.(?:jpe?g|webp)(?:\?.*)?$/i;
 
 /**
- * Feed rows arrive with the 1280x720 `maxres` still, chosen for the web's
- * large cards. A TV card is 264x148 dp, and an Invidious instance takes one
- * to two seconds to answer `maxres.jpg` every time (it fetches and re-encodes
- * it per request), against ~30 ms for `hqdefault.jpg` — which is why a fresh
- * row sat grey for a beat. So cards ask for `hqdefault` instead; its 4:3
- * letterbox bars fall outside the card's 16:9 "cover" crop. Signed instance
- * URLs (`?host=…&rs=…`) pair the tier with the signature and stay as they are.
+ * Rows arrive with the largest still YouTube lists (often 1280x720), chosen
+ * for the web's large cards. A TV card is 264x148 dp and decodes every texture
+ * it shows, so cards ask for `hqdefault` instead (480x360, exists for every
+ * video); its 4:3 letterbox bars fall outside the card's 16:9 "cover" crop.
  */
 function cardTier(url: string): string {
-  try {
-    const u = new URL(url);
-    if (u.search) return url;
-    const m = LARGE_STILL_RE.exec(u.pathname);
-    if (!m) return url;
-    u.pathname = `${m[1]}hqdefault.jpg`;
-    return u.toString();
-  } catch {
-    return url;
-  }
+  const m = LARGE_STILL_RE.exec(url);
+  return m ? `${m[1]}hqdefault.jpg` : url;
 }
 
 /**
@@ -246,21 +224,16 @@ export function htmlToPlainText(html: string): string {
  * serves any `=sN`, so ask for the drawn size in pixels.
  *
  * Through the instance: like video stills (see `stillUrl`), the TV never asks
- * Google for an avatar itself. The server's `/channel-avatar` fetches it and
- * keeps it in its disk cache. Other URLs (instance-hosted) pass through.
+ * Google for an avatar itself; the gateway's image route fetches and keeps it.
  */
 export function sizedAvatarUrl(url: string, sizeDp: number): string {
   const px = Math.ceil(sizeDp * PixelRatio.get());
   const absolute = url.startsWith("//") ? `https:${url}` : url;
+  // Google's avatar URLs end in `=s<size>…`, on its own hosts or as the
+  // gateway's paths for them (/media/img/yt3…/<id>=s88-c-k).
   const sized = absolute.replace(
-    /^(https:\/\/(?:yt\d\.)?(?:googleusercontent|ggpht)\.com\/[^=?#]+)=s\d+/,
+    /^((?:https:\/\/(?:yt\d\.)?(?:googleusercontent|ggpht)\.com|\/media\/img\/yt3(?:gu)?)\/[^=?#]+)=s\d+/,
     `$1=s${px}`,
   );
-  return GOOGLE_AVATAR_RE.test(sized)
-    ? `${baseUrl()}/channel-avatar?url=${encodeURIComponent(sized)}`
-    : sized;
+  return viaInstance(sized);
 }
-
-/** An avatar on Google's image hosts (what `/channel-avatar` accepts). */
-const GOOGLE_AVATAR_RE =
-  /^https:\/\/(?:[\w-]+\.)*(?:googleusercontent|ggpht)\.com\//i;

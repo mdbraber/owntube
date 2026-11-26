@@ -69,7 +69,7 @@ export function HomeScreen({ nav }: { nav: Nav }) {
     topVideos.length > 0 ? (
       <View onLayout={(e) => onRowLayout("top", e)}>
         <VideoRow
-          title={personalized ? "Top picks for you" : "Trending now"}
+          title={personalized ? "Top picks for you" : "Live now"}
           videos={topVideos}
           preferFirstFocus={preferFirstFocus}
           onSelect={(videoId) =>

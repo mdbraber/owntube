@@ -49,7 +49,7 @@ export const SECTIONS: { key: Section; label: string; icon: FeatherName }[] = [
   { key: "favorites", label: "Favorites", icon: "heart" },
   { key: "library", label: "Library", icon: "layers" },
   { key: "recommended", label: "Recommended", icon: "star" },
-  { key: "trending", label: "Trending", icon: "trending-up" },
+  { key: "trending", label: "Live", icon: "radio" },
   { key: "queue", label: "Queue", icon: "list" },
   { key: "saved", label: "Saved", icon: "bookmark" },
   { key: "playlists", label: "Playlists", icon: "folder" },
