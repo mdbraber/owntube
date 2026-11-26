@@ -20,7 +20,7 @@ const SOURCE_LABELS: Record<string, string> = {
   subscription: "Subscriptions",
   keyword_search: "Your keywords",
   related: "Related to what you watched",
-  trending: "Trending",
+  trending: "Live",
   other: "Other",
 };
 
