@@ -434,6 +434,23 @@ serves (`/dash`, `/hls`, `/dvr`, `/stream`, `/yt-hls`, `/invidious`,
 *Exit*: web e2e suite green on dev against the gateway; Invidious unreachable
 from dev.
 
+*Done on the branch (2026-11-26), not deployed:* `server/catalog` (gateway client
+plus one mapper) replaces `services/proxy*`; the Invidious layer, the media
+routes and the progressive/split player paths are deleted (≈23k lines). The
+cache lives in the gateway, which gained `?cache=only|refresh`, a batch
+`/api/videos?ids=`, search's upload-date filter, signed `captions.vtt` and a
+video's original audio language; `video_cache` keeps only the app's own data.
+The player plays the signed DASH manifest where MSE does better and HLS
+elsewhere (live and DVR: HLS); casting sends the signed HLS. Enclosures are
+signed whole-file URLs (stable per 30 days, valid a year). Lists enrich in one
+batch call; related channels lead with featured channels; the warmer is a web
+job; Trending is Live (`/trending` redirects); instance settings are gone;
+compose runs web + gateway, `/media/*` forwarded by the app when no proxy
+routes it. Verified: web typecheck, 584 unit tests, `next build`, and e2e 8/8
+against a local gateway (DASH playback with every request on the site).
+*Left for deployment:* the e2e on dev; Safari (native HLS) by hand; the TV and
+iOS apps (phase 5) still read the removed playback fields.
+
 **Phase 5 — clients.**
 TV and iOS take `detail.playback` URLs, the shared policy and the Live rename; their own
 selection copies and raw-URL fallbacks are removed. Release TV via gloob and
