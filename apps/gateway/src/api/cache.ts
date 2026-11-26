@@ -1,6 +1,20 @@
 import type { CacheStore } from "./store.ts";
 
 /**
+ * How a request may use the cache: `normal` serves a fresh entry or loads;
+ * `only` never reaches YouTube (any entry young enough to stand in, else
+ * `NotCached`), for pages that must not wait on it; `refresh` loads even over
+ * a fresh entry, for an explicit refresh.
+ */
+export type CacheMode = "normal" | "only" | "refresh";
+
+export class NotCached extends Error {
+  constructor(key: string) {
+    super(`not cached: ${key}`);
+  }
+}
+
+/**
  * A cache for catalogue answers: fresh entries are served, concurrent misses
  * share one upstream request, and when YouTube fails a stale entry (up to
  * `staleMs` old) is served instead of the error. Hot entries live in memory;
@@ -22,15 +36,24 @@ export class TtlCache {
     this.#store = options.store;
   }
 
+  /** `ttlMs` may depend on the answer (a live video goes stale sooner). */
   async get<T>(
     key: string,
-    ttlMs: number,
+    ttlMs: number | ((value: T) => number),
     staleMs: number,
     load: () => Promise<T>,
+    mode: CacheMode = "normal",
   ): Promise<T> {
     const entry = this.#entries.get(key) ?? this.#fromStore(key);
     const age = entry ? this.#now() - entry.at : Number.POSITIVE_INFINITY;
-    if (entry && age < ttlMs) return entry.value as T;
+    if (mode === "only") {
+      if (entry && age < staleMs) return entry.value as T;
+      throw new NotCached(key);
+    }
+    const ttl =
+      entry && typeof ttlMs === "function" ? ttlMs(entry.value as T) : ttlMs;
+    if (entry && mode === "normal" && age < (ttl as number))
+      return entry.value as T;
     let pending = this.#inFlight.get(key) as Promise<T> | undefined;
     if (!pending) {
       pending = load()

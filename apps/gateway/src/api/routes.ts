@@ -10,7 +10,7 @@ import {
 import type { Catalog } from "@owntube/youtube/catalog";
 import { type Context, Hono } from "hono";
 import { z } from "zod";
-import { TtlCache } from "./cache.ts";
+import { type CacheMode, NotCached, TtlCache } from "./cache.ts";
 import type { CacheStore } from "./store.ts";
 
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
@@ -49,7 +49,11 @@ async function mapLimited<T, R>(
 
 /** How long answers stay fresh, and how long a stale one may stand in when YouTube fails. */
 const POLICY = {
-  video: { ttl: 30 * MINUTE, stale: 24 * HOUR },
+  // A live or upcoming video changes state (goes live, ends), so it is asked again soon.
+  video: {
+    ttl: (v: VideoDetail) => (v.live === "none" ? 30 * MINUTE : MINUTE),
+    stale: 24 * HOUR,
+  },
   channel: { ttl: 30 * MINUTE, stale: 24 * HOUR },
   search: { ttl: 6 * HOUR, stale: 24 * HOUR },
   suggestions: { ttl: 24 * HOUR, stale: 7 * 24 * HOUR },
@@ -57,7 +61,7 @@ const POLICY = {
   playlist: { ttl: 30 * MINUTE, stale: 24 * HOUR },
   live: { ttl: 5 * MINUTE, stale: HOUR },
   resolve: { ttl: 7 * 24 * HOUR, stale: 30 * 24 * HOUR },
-} as const;
+};
 
 /**
  * The catalogue API the web app reads (`/api/*`, JSON in the shape of
@@ -80,16 +84,30 @@ export function apiRoutes(
     await next();
   });
 
+  // `?cache=only` answers from the cache or not at all; `?cache=refresh` asks YouTube again.
   const cached = <T>(
+    c: Context,
     kind: keyof typeof POLICY,
     key: string,
     load: () => Promise<T>,
-  ) => cache.get(`${kind}:${key}`, POLICY[kind].ttl, POLICY[kind].stale, load);
+  ) => {
+    const asked = c.req.query("cache");
+    const mode: CacheMode =
+      asked === "only" || asked === "refresh" ? asked : "normal";
+    // Each kind's loader answers the type its policy reads.
+    const policy = POLICY[kind] as {
+      ttl: number | ((v: T) => number);
+      stale: number;
+    };
+    return cache.get(`${kind}:${key}`, policy.ttl, policy.stale, load, mode);
+  };
 
   const answer = async (c: Context, work: () => Promise<unknown>) => {
     try {
       return c.json(await work());
     } catch (error) {
+      if (error instanceof NotCached)
+        return c.json({ error: "not cached" }, 404);
       return c.json(
         {
           error: "upstream",
@@ -110,7 +128,7 @@ export function apiRoutes(
   app.get("/api/video/:id", (c) => {
     const id = c.req.param("id");
     if (!VIDEO_ID.test(id)) return c.json({ error: "bad video id" }, 400);
-    return answer(c, () => cached("video", id, () => catalog.video(id)));
+    return answer(c, () => cached(c, "video", id, () => catalog.video(id)));
   });
 
   // Summaries for a list of ids (queue, history, saved, playlists), out of the
@@ -127,7 +145,7 @@ export function apiRoutes(
     )
       return c.json({ error: `1 to ${BATCH_MAX} video ids` }, 400);
     const videos = await mapLimited(ids, BATCH_CONCURRENCY, (id) =>
-      cached("video", id, () => catalog.video(id)).then(
+      cached(c, "video", id, () => catalog.video(id)).then(
         (detail) => summaryOf(detail),
         () => undefined,
       ),
@@ -141,7 +159,7 @@ export function apiRoutes(
     if (!VIDEO_ID.test(id)) return c.json({ error: "bad video id" }, 400);
     const next = continuation(c);
     return answer(c, () =>
-      cached("comments", `${id}:${sort}:${next ?? ""}`, () =>
+      cached(c, "comments", `${id}:${sort}:${next ?? ""}`, () =>
         catalog.comments(id, sort, next),
       ),
     );
@@ -154,7 +172,7 @@ export function apiRoutes(
       return c.json({ error: "bad channel id or tab" }, 400);
     const next = continuation(c);
     return answer(c, () =>
-      cached("channel", `${id}:${tab.data}:${next ?? ""}`, () =>
+      cached(c, "channel", `${id}:${tab.data}:${next ?? ""}`, () =>
         catalog.channel(id, tab.data, next),
       ),
     );
@@ -168,7 +186,7 @@ export function apiRoutes(
     const next = continuation(c);
     const uploadDate = date.data;
     return answer(c, () =>
-      cached("search", `${q.data}:${uploadDate ?? ""}:${next ?? ""}`, () =>
+      cached(c, "search", `${q.data}:${uploadDate ?? ""}:${next ?? ""}`, () =>
         catalog.search(q.data, {
           ...(uploadDate ? { uploadDate } : {}),
           ...(next ? { continuation: next } : {}),
@@ -181,7 +199,7 @@ export function apiRoutes(
     const q = z.string().trim().min(1).max(200).safeParse(c.req.query("q"));
     if (!q.success) return c.json({ error: "bad query" }, 400);
     return answer(c, () =>
-      cached("suggestions", q.data, () => catalog.suggestions(q.data)),
+      cached(c, "suggestions", q.data, () => catalog.suggestions(q.data)),
     );
   });
 
@@ -190,14 +208,14 @@ export function apiRoutes(
     if (!PLAYLIST_ID.test(id)) return c.json({ error: "bad playlist id" }, 400);
     const next = continuation(c);
     return answer(c, () =>
-      cached("playlist", `${id}:${next ?? ""}`, () =>
+      cached(c, "playlist", `${id}:${next ?? ""}`, () =>
         catalog.playlist(id, next),
       ),
     );
   });
 
   app.get("/api/live", (c) =>
-    answer(c, () => cached("live", "", () => catalog.live())),
+    answer(c, () => cached(c, "live", "", () => catalog.live())),
   );
 
   app.get("/api/resolve", (c) => {
@@ -209,7 +227,7 @@ export function apiRoutes(
       .safeParse(c.req.query("url"));
     if (!target.success) return c.json({ error: "bad url" }, 400);
     return answer(c, () =>
-      cached("resolve", target.data, async () => ({
+      cached(c, "resolve", target.data, async () => ({
         channelId: (await catalog.resolveChannel(target.data)) ?? null,
       })),
     );

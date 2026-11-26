@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createGatewayClient, GatewayError } from "./client.ts";
+import { createGatewayClient, GatewayError, isNotCached } from "./client.ts";
 
 const summary = {
   videoId: "dQw4w9WgXcQ",
@@ -72,5 +72,23 @@ describe("createGatewayClient", () => {
     expect(error).toBeInstanceOf(GatewayError);
     expect(error.status).toBe(502);
     expect(error.message).toMatch(/YouTube said no/);
+  });
+
+  it("asks for cache-only answers and recognises a miss", async () => {
+    const { fetch, seen } = stub(() => ({
+      status: 404,
+      body: { error: "not cached" },
+    }));
+    const error = await createGatewayClient({
+      baseUrl: "http://gw",
+      apiKey: "K",
+      fetch,
+    })
+      .channel("UCuAXFkgsw1L7xaCfnd5JJOw", { tab: "shorts", cache: "only" })
+      .catch((e) => e);
+    expect(seen[0]?.url).toBe(
+      "http://gw/api/channel/UCuAXFkgsw1L7xaCfnd5JJOw?tab=shorts&cache=only",
+    );
+    expect(isNotCached(error)).toBe(true);
   });
 });

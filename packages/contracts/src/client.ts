@@ -68,52 +68,54 @@ export function createGatewayClient(options: GatewayClientOptions) {
 
   const id = encodeURIComponent;
   return {
-    video: (videoId: string) =>
-      get(`/api/video/${id(videoId)}`, videoDetailSchema),
+    video: (videoId: string, o: CacheOption = {}) =>
+      get(`/api/video/${id(videoId)}`, videoDetailSchema, { cache: o.cache }),
     /** List-row summaries for these ids (at most 100); ids YouTube will not describe are absent. */
-    videos: async (videoIds: readonly string[]) =>
+    videos: async (videoIds: readonly string[], o: CacheOption = {}) =>
       (
         await get(
           "/api/videos",
           z.object({ videos: z.array(videoSummarySchema) }),
-          { ids: videoIds.join(",") },
+          { ids: videoIds.join(","), cache: o.cache },
         )
       ).videos,
     comments: (
       videoId: string,
-      sort: "top" | "new" = "top",
-      continuation?: string,
+      o: { sort?: "top" | "new"; continuation?: string } & CacheOption = {},
     ) =>
       get(`/api/video/${id(videoId)}/comments`, commentPageSchema, {
-        sort,
-        continuation,
+        sort: o.sort ?? "top",
+        continuation: o.continuation,
+        cache: o.cache,
       }),
     channel: (
       channelId: string,
-      tab: ChannelTab = "videos",
-      continuation?: string,
+      o: { tab?: ChannelTab; continuation?: string } & CacheOption = {},
     ) =>
       get(`/api/channel/${id(channelId)}`, channelPageSchema, {
-        tab,
-        continuation,
+        tab: o.tab ?? "videos",
+        continuation: o.continuation,
+        cache: o.cache,
       }),
     search: (
       q: string,
-      options: { uploadDate?: UploadDate; continuation?: string } = {},
+      o: { uploadDate?: UploadDate; continuation?: string } = {},
     ) =>
       get("/api/search", searchResultSchema, {
         q,
-        date: options.uploadDate,
-        continuation: options.continuation,
+        date: o.uploadDate,
+        continuation: o.continuation,
       }),
     suggestions: (q: string) =>
       get("/api/suggestions", z.array(z.string()), { q }),
-    playlist: (playlistId: string, continuation?: string) =>
+    playlist: (playlistId: string, o: { continuation?: string } = {}) =>
       get(`/api/playlist/${id(playlistId)}`, playlistPageSchema, {
-        continuation,
+        continuation: o.continuation,
       }),
-    live: () =>
-      get("/api/live", z.object({ videos: z.array(videoSummarySchema) })),
+    live: (o: CacheOption = {}) =>
+      get("/api/live", z.object({ videos: z.array(videoSummarySchema) }), {
+        cache: o.cache,
+      }),
     resolveChannel: async (urlOrHandle: string) =>
       (
         await get(
@@ -123,6 +125,18 @@ export function createGatewayClient(options: GatewayClientOptions) {
         )
       ).channelId,
   };
+}
+
+/**
+ * `only`: answer from the gateway's cache (fresh or stale) or fail with
+ * `isNotCached`, never waiting on YouTube; `refresh`: ask YouTube even over a
+ * fresh entry.
+ */
+export type CacheOption = { cache?: "only" | "refresh" };
+
+/** The gateway had nothing cached for a `cache: "only"` request. */
+export function isNotCached(error: unknown): boolean {
+  return error instanceof GatewayError && error.status === 404;
 }
 
 export type GatewayClient = ReturnType<typeof createGatewayClient>;

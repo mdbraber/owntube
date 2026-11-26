@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { TtlCache } from "./cache.ts";
+import { NotCached, TtlCache } from "./cache.ts";
 import { sqliteCacheStore } from "./store.ts";
 
 let dir: string;
@@ -11,7 +11,7 @@ beforeEach(async () => {
 });
 afterEach(() => rm(dir, { recursive: true, force: true }));
 
-function counter(answer: () => unknown) {
+function counter<T>(answer: () => T) {
   let calls = 0;
   return {
     load: async () => {
@@ -54,6 +54,34 @@ describe("TtlCache", () => {
         Promise.reject(new Error("YouTube down")),
       ),
     ).rejects.toThrow("YouTube down");
+  });
+
+  it("answers cache-only from any young-enough entry, and refreshes on request", async () => {
+    let clock = 0;
+    const cache = new TtlCache({ now: () => clock });
+    const c = counter(() => clock);
+    await expect(cache.get("k", 1000, 5000, c.load, "only")).rejects.toThrow(
+      NotCached,
+    );
+    await cache.get("k", 1000, 5000, c.load);
+    clock = 3000;
+    expect(await cache.get("k", 1000, 5000, c.load, "only")).toBe(0);
+    expect(await cache.get("k", 1000, 5000, c.load, "refresh")).toBe(3000);
+    expect(await cache.get("k", 1000, 5000, c.load, "refresh")).toBe(3000);
+    expect(c.calls()).toBe(3);
+  });
+
+  it("takes the freshness from the answer", async () => {
+    let clock = 0;
+    const cache = new TtlCache({ now: () => clock });
+    const c = counter(() => ({ live: clock === 0 }));
+    const ttl = (v: { live: boolean }) => (v.live ? 100 : 1000);
+    await cache.get("k", ttl, 5000, c.load);
+    clock = 500;
+    expect(await cache.get("k", ttl, 5000, c.load)).toEqual({ live: false });
+    clock = 900;
+    await cache.get("k", ttl, 5000, c.load);
+    expect(c.calls()).toBe(2);
   });
 
   it("keeps answers on disk across instances", async () => {
