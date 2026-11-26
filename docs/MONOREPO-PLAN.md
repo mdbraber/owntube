@@ -458,6 +458,19 @@ selection copies and raw-URL fallbacks are removed. Release TV via gloob and
 iOS together with phase 6.
 *Exit*: both apps play the corpus against dev.
 
+*Done on the branch (2026-11-26), not deployed:* the TV plays the video page's
+signed manifests — DASH (`family=vp9,avc`, HLS as its fallback) on Android
+TV, HLS on tvOS, HLS for live and DVR — with one player; the muxed/split
+sources and the second audio player are gone. Its audio-language choice and
+quality ceilings come from the video page's new `audioLanguages` and
+`qualities` and narrow the DASH manifest (`lang=`, `maxHeight=`, added to the
+gateway). Images go through `/media/img` (cards: `hqdefault` under a cover
+crop). iOS plays the signed HLS once the detail arrives. Both rename Trending
+to Live. Both typecheck (dependencies installed with `--ignore-scripts`, for
+the check only); every URL the TV builds answers 200 from a local gateway.
+*Left:* deploy web + gateway to dev, build the TV on gloob and iOS, and play
+the corpus on the devices.
+
 **Phase 6 — cutover.**
 Deploy `web` + `gateway` on naggon, Caddy `/media/*` route (with HTTP/3), remove the `owntube-media` host, migrate (no user data
 moves; web drops `video_cache`). Remove the Invidious, Postgres, companion and
