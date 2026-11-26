@@ -54,13 +54,18 @@ export class Catalog {
 
   async video(videoId: string): Promise<VideoDetail> {
     const yt = await this.#yt();
-    const [player, next] = await Promise.all([
+    const [player, next, web] = await Promise.all([
       this.#player(videoId),
       yt.actions.execute("/next", {
         videoId,
         racyCheckOk: true,
         contentCheckOk: true,
       }),
+      // Only for the microformat: WEB's player response carries the exact publish
+      // time (and a stream's start) even when it will not play without a token.
+      yt
+        .getBasicInfo(videoId, { client: "WEB" })
+        .catch(() => undefined),
     ]);
     // youtubei.js's own page model, over our player response and its page data.
     const info = new YT.VideoInfo(
@@ -85,12 +90,11 @@ export class Catalog {
           ? "post-live"
           : "none";
     const published = publishedOf(
-      b.publish_date,
+      web?.basic_info.publish_date ?? b.publish_date,
       primary?.published?.toString(),
     );
-    const startsAt = b.start_timestamp
-      ? new Date(b.start_timestamp).getTime()
-      : undefined;
+    const start = web?.basic_info.start_timestamp ?? b.start_timestamp;
+    const startsAt = start ? new Date(start).getTime() : undefined;
     const unplayable = player.unplayable;
     const related = collectItems(info.watch_next_feed ?? []).videos;
     const captions = (
@@ -156,17 +160,30 @@ export class Catalog {
         channel: undefined,
       };
     const ch = await yt.getChannel(channelId);
+    // A channel need not have every tab (a music or Shorts-only channel has no Videos tab):
+    // a missing one is an empty page, not an error.
+    const tabName = {
+      videos: "Videos",
+      shorts: "Shorts",
+      streams: "Live",
+      playlists: "Playlists",
+    }[tab];
+    const has = ch.tabs.includes(tabName);
     const [tabbed, about] = await Promise.all([
-      tab === "videos"
-        ? ch.getVideos()
-        : tab === "shorts"
-          ? ch.getShorts()
-          : tab === "streams"
-            ? ch.getLiveStreams()
-            : ch.getPlaylists(),
+      !has
+        ? undefined
+        : tab === "videos"
+          ? ch.getVideos()
+          : tab === "shorts"
+            ? ch.getShorts()
+            : tab === "streams"
+              ? ch.getLiveStreams()
+              : ch.getPlaylists(),
       ch.getAbout().catch(() => undefined),
     ]);
-    const page = listPage(tabbed.current_tab);
+    const page = tabbed
+      ? listPage(tabbed.current_tab)
+      : { videos: [], playlists: [] };
     const channel = channelDetail(
       ch,
       collectItems(ch.current_tab).channels,
@@ -330,8 +347,11 @@ function channelDetail(
     avatars: toImages(ch.metadata.avatar),
     ...(handle ? { handle } : {}),
     ...(subscribers ? { subscribers } : {}),
-    ...(ch.metadata.description
-      ? { description: ch.metadata.description }
+    // The header's description is cut at 160 characters; the About panel has all of it.
+    ...((meta?.description?.toString() ?? ch.metadata.description)
+      ? {
+          description: meta?.description?.toString() ?? ch.metadata.description,
+        }
       : {}),
     banners: toImages(banners),
     ...(videoCount ? { videoCount } : {}),

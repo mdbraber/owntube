@@ -69,11 +69,11 @@ describe("Catalog on recorded YouTube responses", () => {
     });
     expect(v.channel?.subscribers?.approximate).toBe(true);
     expect(v.views?.approximate).toBe(false);
-    // VISIONOS has no microformat, so the page's own date stands, at day precision.
+    // The exact instant, from WEB's microformat.
     expect(v.published).toMatchObject({
+      at: Date.parse("2009-10-24T23:57:33-07:00"),
+      precision: "exact",
       text: "Oct 25, 2009",
-      precision: "day",
-      at: Date.parse("2009-10-25T00:00:00Z"),
     });
     expect(v.durationSec).toBe(213);
     expect(v.captions.length).toBeGreaterThan(0);
@@ -81,7 +81,10 @@ describe("Catalog on recorded YouTube responses", () => {
       /^\/media\/img\/yti\/sb\/dQw4w9WgXcQ\/.*\$M/,
     );
     expect(v.related.length).toBeGreaterThan(10);
-    expect(v.related.every((r) => r.channel?.channelId.startsWith("UC"))).toBe(
+    // Regular videos credit their channel; YouTube's Shorts rows do not.
+    const regular = v.related.filter((r) => !r.isShort);
+    expect(regular.length).toBeGreaterThan(10);
+    expect(regular.every((r) => r.channel?.channelId.startsWith("UC"))).toBe(
       true,
     );
     expect(v.unplayable).toBeNull();
@@ -109,6 +112,8 @@ describe("Catalog on recorded YouTube responses", () => {
       handle: "@LinusTechTips",
     });
     expect(first.channel?.videoCount?.approximate).toBe(false);
+    // The whole description, from the About panel (the header's stops at 160 characters).
+    expect(first.channel?.description?.length).toBeGreaterThan(160);
     expect(
       first.channel?.links.some((l) =>
         /^https:\/\/(www\.)?lttstore\.com/.test(l.url),
@@ -182,6 +187,15 @@ describe("Catalog on recorded YouTube responses", () => {
       await catalog.playlist("UULFX6OQ3DkcsbYNE6H8uQQuVA", first.continuation),
     );
     expect(second.videos[0]?.videoId).not.toBe(first.videos[0]?.videoId);
+  });
+
+  it("answers a missing tab with an empty page and says which tabs exist", async () => {
+    const page = await (await replayed("catalog-no-videos-tab")).channel(
+      "UCOP4C_j2HOPFvick2ioJ4EQ",
+      "videos",
+    );
+    expect(page.videos).toEqual([]);
+    expect(page.channel?.tabs).toEqual(["shorts", "playlists"]);
   });
 
   it("reads chapters from the player bar", async () => {

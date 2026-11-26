@@ -254,6 +254,17 @@ export const CATALOG_CORPUS: readonly CorpusEntry[] = [
     },
   ),
   catalogEntry(
+    "catalog-no-videos-tab",
+    "Catalog.channel: a channel without a Videos tab",
+    async (c) => {
+      const page = await c.channel("UCOP4C_j2HOPFvick2ioJ4EQ", "videos");
+      return {
+        videos: String(page.videos.length),
+        tabs: page.channel?.tabs.join(",") ?? "",
+      };
+    },
+  ),
+  catalogEntry(
     "catalog-live",
     "Catalog.live: YouTube's Live page",
     async (c) => ({ videos: String((await c.live()).videos.length) }),

@@ -19,7 +19,7 @@ describe("createReplayFetch", () => {
   ]);
   const ask = (
     videoId: string,
-    clientName = "ANDROID_VR",
+    clientName = "WEB",
   ): Promise<{ videoDetails: { title: string } }> =>
     replay(
       "https://www.youtube.com/youtubei/v1/player?key=abc&prettyPrint=false",
@@ -30,7 +30,28 @@ describe("createReplayFetch", () => {
       },
     ).then((r) => r.json() as Promise<{ videoDetails: { title: string } }>);
 
-  it("matches on the request, ignoring context and volatile params", async () => {
+  it("tells the same request from two clients apart", async () => {
+    const web = createReplayFetch([player("aaaaaaaaaaa", "as WEB")]);
+    const request = (clientName: string) =>
+      web("https://www.youtube.com/youtubei/v1/player?prettyPrint=false", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          videoId: "aaaaaaaaaaa",
+          context: { client: { clientName } },
+        }),
+      });
+    await expect(request("VISIONOS")).rejects.toThrow(/no recorded exchange/);
+    expect(
+      (
+        (await (await request("WEB")).json()) as {
+          videoDetails: { title: string };
+        }
+      ).videoDetails.title,
+    ).toBe("as WEB");
+  });
+
+  it("matches on the request, ignoring the rest of the context and volatile params", async () => {
     expect(await ask("bbbbbbbbbbb")).toEqual({
       videoDetails: { title: "other" },
     });

@@ -1,5 +1,5 @@
 import { Innertube } from "youtubei.js";
-import { type ClientIdentity, VISIONOS } from "./clients.ts";
+import { type ClientIdentity, VISIONOS, WEB } from "./clients.ts";
 import { type PlayerResult, requestPlayer } from "./player.ts";
 import type { SessionPool, YouTubeSession } from "./session.ts";
 
@@ -42,6 +42,28 @@ export class YouTube {
     this.#pool.report(session, result.unplayable);
     // Stream URLs are bound to the session's address: fetch them with `session.fetch`.
     return { ...result, session };
+  }
+
+  /**
+   * A video's player response from the first client that will play it:
+   * VISIONOS, then WEB. VISIONOS (like ANDROID_VR) refuses some videos
+   * outright, "made for kids" ones among them ("This video is not available",
+   * seen 2026-11-26), which WEB plays; its VOD formats are SABR-only, so a
+   * session on WEB streams over SABR. Members-only, age and bot answers are
+   * the same for every client and end the search.
+   */
+  async playable(
+    videoId: string,
+    options: { reloadToken?: string } = {},
+  ): Promise<PlayerResult & { session: YouTubeSession }> {
+    const first = await this.player(videoId, VISIONOS, options);
+    if (
+      first.unplayable?.kind !== "unplayable" &&
+      first.unplayable?.kind !== "unavailable"
+    )
+      return first;
+    const fallback = await this.player(videoId, WEB, options);
+    return fallback.unplayable ? first : fallback;
   }
 
   /**

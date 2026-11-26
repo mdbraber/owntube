@@ -372,9 +372,9 @@ export class PlaybackSessions {
   }
 
   async #resolve(videoId: string, reloadToken?: string) {
-    const result = await this.#youtube.player(
+    // VISIONOS, or WEB for what VISIONOS refuses (WEB's VOD formats are SABR-only: the session streams over SABR).
+    const result = await this.#youtube.playable(
       videoId,
-      undefined,
       reloadToken ? { reloadToken } : {},
     );
     if (result.unplayable) throw new Unavailable(result.unplayable);

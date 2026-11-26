@@ -181,6 +181,16 @@ export async function requestPlayer(
     const url = await resolveUrl(format, identity, req.player, nsigCache);
     if (url) formats.push({ ...format, url });
   }
+  // A deciphering client's SABR URL carries the same n challenge as its stream URLs.
+  const sabrUrl = raw.streamingData?.serverAbrStreamingUrl;
+  if (sabrUrl && identity.deciphers && req.player && raw.streamingData) {
+    raw.streamingData.serverAbrStreamingUrl = await req.player.decipher(
+      sabrUrl,
+      undefined,
+      undefined,
+      nsigCache,
+    );
+  }
   return { identity, raw, unplayable, formats };
 }
 

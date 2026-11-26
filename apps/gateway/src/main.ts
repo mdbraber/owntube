@@ -27,8 +27,8 @@ const youtube = new YouTube(
 );
 const catalog = new Catalog({
   yt: () => youtube.innertube(),
-  // Our own VISIONOS identity; a bot check here counts against the session like any other.
-  player: (videoId) => youtube.player(videoId),
+  // Our own identities (VISIONOS, WEB for what it refuses); a bot check counts against the session.
+  player: (videoId) => youtube.playable(videoId),
 });
 const poTokens = config.poBrowser
   ? new BrowserPoTokenMinter({

@@ -42,8 +42,8 @@ export function encodeBody(body: unknown): string {
 
 /**
  * The identity of a request for replay: method, path and query (without the
- * volatile `key`/`prettyPrint`/`alt`/`t` params) and the request body without
- * its `context`, which carries client versions and visitor data.
+ * volatile `key`/`prettyPrint`/`alt`/`t` params), the client name, and the
+ * request body without the rest of its `context` (client versions, visitor data).
  */
 export function exchangeKey(
   method: string,
@@ -55,11 +55,16 @@ export function exchangeKey(
     u.searchParams.delete(volatile);
   u.searchParams.sort();
   let body = requestBody;
+  let client = "";
   if (body && typeof body === "object" && !Array.isArray(body)) {
-    const { context: _context, ...rest } = body as Record<string, unknown>;
+    const { context, ...rest } = body as Record<string, unknown>;
     body = rest;
+    // The client stays part of the key: the same request as VISIONOS and as WEB gets different answers.
+    client =
+      (context as { client?: { clientName?: string } } | undefined)?.client
+        ?.clientName ?? "";
   }
-  return `${method.toUpperCase()} ${u.host}${u.pathname}${u.search} ${stableStringify(body)}`;
+  return `${method.toUpperCase()} ${u.host}${u.pathname}${u.search} ${client} ${stableStringify(body)}`;
 }
 
 export function stableStringify(value: unknown): string {

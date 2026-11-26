@@ -109,7 +109,6 @@ apps/tv, apps/ios clients (existing)
 packages/contracts   domain model (zod) + typed gateway client + URL signing
 packages/youtube     InnerTube layer: egress, sessions, PO tokens, player, browse
 packages/playback    track model, HLS + DASH builders, client playback policy
-packages/googlevideo our SABR patches on LuanRT/googlevideo 5.x, as source (until upstreamed)
 packages/brand-icon  (existing)
 feeds/               public WebSub/RSS stack (unchanged, out of scope)
 ```
@@ -383,11 +382,41 @@ Open:
 - ~~A podcast app test of the enclosures~~: `video.mp4` (3.5 and 25 min, 720p/1080p) and `audio.m4a` play and seek in Safari (AVFoundation, the player iOS podcast apps use), checked by the owner through the rebuilt dev gateway. A subscription test in a real podcast app follows in phase 4, when the feeds come from the gateway.
 - The Debian `chromium` package with Playwright in the image is untested (no Docker here).
 
-**Phase 3 — gateway metadata API.**
-All browse endpoints mapped into `packages/contracts`. One-off verification:
-a script that diffs gateway output against Invidious for ~200 real ids, channels
-and queries; fix gaps; delete the script.
-*Exit*: diff shows no missing fields other than ones deliberately dropped.
+**Phase 3 — gateway metadata API. — DONE except for two small items (2026-11-26)**
+
+- `packages/contracts` (zod): the domain model. Counts YouTube gives only as
+  text are marked approximate; dates say whether they are exact or a day;
+  images point at the gateway.
+- `packages/youtube/browse`: mappers for Video, LockupView, ShortsLockupView,
+  GridChannel/Channel and CommentView wherever YouTube wraps them;
+  collaborations from YouTube's "Collaborators" dialog (in lists too);
+  continuations of both kinds. `Catalog`: video pages (own player response
+  through `YouTube.playable` + youtubei.js's page model over `/next` + WEB's
+  microformat for the exact date), chapters, channel tabs with About (full
+  description, links, exact video count), search and suggestions, comments,
+  playlists, the Live page, handle resolution; later pages stateless.
+- `YouTube.playable`: VISIONOS, then WEB for what VISIONOS refuses ("made for
+  kids" videos among them); WEB's VOD formats are SABR-only, so such a session
+  streams over SABR.
+- Gateway `/api/*` behind the shared key, with a per-kind TTL cache that
+  serves stale answers when YouTube fails.
+- **Compared with Invidious** (173 videos, 42 channels, 10 searches, throttled,
+  over IPv4): identical titles, channel ids and names, likes, live/upcoming
+  flags, captions, keywords, subscribers, channel names/subscribers/avatars/
+  banners, list durations and Shorts flags. Fixed from it: channel
+  descriptions (cut at 160 characters), channels without a Videos tab (an
+  error), exact dates for live streams and premieres, made-for-kids videos.
+  Differences that are not gaps: durations (Invidious reports one second more
+  than YouTube's own `lengthSeconds`), list views of members-only rows (absent
+  vs Invidious's 0), live view counts (total vs Invidious's concurrent),
+  related videos and search results (personalised per visitor), channel pages
+  of 30 vs 60 (one page vs two).
+- Found on the way: naggon's IPv6 /64 draws bot checks that IPv4 does not;
+  `GATEWAY_EGRESS_FAMILY` (deploy with `ipv4`); the egress connect family now
+  follows the source address.
+
+Open: storyboards for live streams (YouTube's live storyboard spec is not
+mapped); the cache is in memory (decide whether it should survive restarts).
 
 **Phase 4 — web on the new contracts.**
 Replace `server/services/proxy*` with the gateway client; Trending becomes Live
@@ -426,9 +455,9 @@ Made 2026-11-26:
 2. **VOD transport: measure.** SABR vs byte-range over real use in phase 2
    (startup, seek latency, failures, PO-token dependency); one becomes the
    default and the other stays only if a content kind needs it.
-3. **googlevideo: upstream the patches**, and keep `packages/googlevideo` as our
-   fork for as long as any patch is not released upstream. Delete the package
-   when the last one lands.
+3. **googlevideo**: the plan was to upstream the companion's 4.1.1 patches and
+   keep a fork meanwhile. Not needed: googlevideo 5.0.1 (unpatched, from npm)
+   does what they did, and SABR reads through it are byte-identical to the file.
 4. **One host**, confirmed by the Safari test on `owntube-dev` (2026-11-26).
    `/media/*` is routed to the gateway.
 5. **Hono** on `@hono/node-server`.
