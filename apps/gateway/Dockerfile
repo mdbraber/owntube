@@ -29,7 +29,9 @@ COPY packages/playback/src packages/playback/src
 COPY packages/contracts/src packages/contracts/src
 COPY apps/gateway/src apps/gateway/src
 # Caches (metadata, images, progressive layouts) live here; a named volume
-# mounted on it takes this ownership.
+# mounted on it takes this ownership. A bind mount keeps the host's: make it
+# the node user's (uid 1000; under userns-remap the host uid it maps to, e.g.
+# 101000 on naggon), or the gateway exits with EACCES on /data/cache.
 RUN mkdir -p /data && chown node:node /data
 USER node
 WORKDIR /app/apps/gateway

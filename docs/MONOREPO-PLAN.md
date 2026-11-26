@@ -483,6 +483,15 @@ warmer containers; archive `mdbraber/invidious` and the companion tree; delete
 previous images + compose file, kept for two weeks. Order: back up prod's
 database; build the web and gateway images; swap; the owner plays the corpus
 on TV, iPhone and Safari; roll back within minutes if something breaks.
+
+*Cut over 2026-11-26* (prod `main` = 7e10a41, compose web + gateway, warmer
+sidecar and `owntube-media` host gone). Prod was down ~10 minutes: Docker
+created the gateway's bind-mounted `/var/data/owntube-gateway` as the remapped
+container root (host uid 1000), and the gateway's `node` user (host uid 101000
+under `userns-remap: docker`) could not create `/data/cache`; `chown
+101000:101000` fixed it. Verified on prod: e2e 8/8 (DASH playback, nothing
+off-site), `/trending` → `/live`, warmer and publisher running. Invidious,
+companion and Postgres still run for the two-week rollback window.
 *Exit*: a week of normal use with no fallbacks needed.
 
 ## Decisions
