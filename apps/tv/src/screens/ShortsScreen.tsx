@@ -1,5 +1,5 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
-import type { UnifiedVideo } from "@web/server/services/proxy.types";
+import type { UnifiedVideo } from "@web/server/catalog/types";
 import { useKeepAwake } from "expo-keep-awake";
 import { useVideoPlayer, VideoView } from "expo-video";
 import { useEffect, useMemo, useRef, useState } from "react";

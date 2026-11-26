@@ -1,4 +1,4 @@
-import type { UnifiedVideo } from "@web/server/services/proxy.types";
+import type { UnifiedVideo } from "@web/server/catalog/types";
 import type { ReactNode } from "react";
 import {
   createContext,

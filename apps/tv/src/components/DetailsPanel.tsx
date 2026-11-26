@@ -1,4 +1,4 @@
-import type { VideoDetail } from "@web/server/services/proxy.types";
+import type { VideoDetail } from "@web/server/catalog/types";
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,

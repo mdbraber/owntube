@@ -4,7 +4,7 @@ import {
   homeBlockTitle,
   isSubscriptionFeedBlock,
 } from "@web/lib/home-blocks";
-import type { UnifiedVideo } from "@web/server/services/proxy.types";
+import type { UnifiedVideo } from "@web/server/catalog/types";
 import type { AppRouter } from "@web/server/trpc/root";
 import { useMemo } from "react";
 import { Text, View } from "react-native";

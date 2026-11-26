@@ -1,4 +1,4 @@
-import type { VideoDetail } from "@web/server/services/proxy.types";
+import type { VideoDetail } from "@web/server/catalog/types";
 import { type MutableRefObject, useEffect } from "react";
 import { trpcClient } from "@/lib/trpc";
 

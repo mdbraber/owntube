@@ -1,5 +1,5 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
-import type { UnifiedVideo } from "@web/server/services/proxy.types";
+import type { UnifiedVideo } from "@web/server/catalog/types";
 import { useMemo } from "react";
 import { errorMessage } from "@/lib/error-message";
 import {

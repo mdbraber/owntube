@@ -1,4 +1,4 @@
-import type { UnifiedVideo } from "@web/server/services/proxy.types";
+import type { UnifiedVideo } from "@web/server/catalog/types";
 
 /**
  * Where a video was started from, so the player knows what comes next: the

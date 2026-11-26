@@ -4,7 +4,7 @@ import {
 } from "@web/lib/live-idle-stop";
 import type { NativePlayRequest } from "@web/lib/native-app";
 import { buildWatchPlayback } from "@web/lib/pick-playback";
-import type { VideoDetail } from "@web/server/services/proxy.types";
+import type { VideoDetail } from "@web/server/catalog/types";
 import { router } from "expo-router";
 import { createVideoPlayer, type VideoPlayer } from "expo-video";
 import { useSyncExternalStore } from "react";

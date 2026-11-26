@@ -1,4 +1,4 @@
-import type { UnifiedVideo } from "@web/server/services/proxy.types";
+import type { UnifiedVideo } from "@web/server/catalog/types";
 import { Text, View } from "react-native";
 import { type CardMenuExtras, useCardMenu } from "@/components/CardMenu";
 import { CarouselFeed } from "@/components/CarouselFeed";

@@ -1,4 +1,4 @@
-import type { UnifiedVideo } from "@web/server/services/proxy.types";
+import type { UnifiedVideo } from "@web/server/catalog/types";
 import { memo, useCallback } from "react";
 import { FlatList, type ListRenderItem, Text, View } from "react-native";
 import { SkeletonRows } from "@/components/Skeleton";

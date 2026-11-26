@@ -1,4 +1,4 @@
-import type { UnifiedVideo } from "@web/server/services/proxy.types";
+import type { UnifiedVideo } from "@web/server/catalog/types";
 import { useMemo } from "react";
 import { type CardMenuExtras, useCardMenu } from "@/components/CardMenu";
 import { VideoRow } from "@/components/VideoRow";

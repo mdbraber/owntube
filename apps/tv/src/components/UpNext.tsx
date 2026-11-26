@@ -1,4 +1,4 @@
-import type { UnifiedVideo } from "@web/server/services/proxy.types";
+import type { UnifiedVideo } from "@web/server/catalog/types";
 import { useEffect, useState } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 import { FocusButton } from "@/components/FocusButton";

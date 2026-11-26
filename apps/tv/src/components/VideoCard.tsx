@@ -1,4 +1,4 @@
-import type { UnifiedVideo } from "@web/server/services/proxy.types";
+import type { UnifiedVideo } from "@web/server/catalog/types";
 import { memo, useState } from "react";
 import { Image, Pressable, Text, View } from "react-native";
 import {

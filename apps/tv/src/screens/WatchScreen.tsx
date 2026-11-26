@@ -23,7 +23,7 @@ import type {
   UnifiedVideo,
   VideoDetail,
   VideoStoryboard,
-} from "@web/server/services/proxy.types";
+} from "@web/server/catalog/types";
 import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import { useVideoPlayer, type VideoPlayer, VideoView } from "expo-video";
 import { useCallback, useEffect, useRef, useState } from "react";

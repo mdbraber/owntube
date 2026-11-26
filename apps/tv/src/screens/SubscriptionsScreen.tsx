@@ -1,5 +1,5 @@
 import { Feather } from "@expo/vector-icons";
-import type { UnifiedVideo } from "@web/server/services/proxy.types";
+import type { UnifiedVideo } from "@web/server/catalog/types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FlatList, Image, Pressable, Text, View } from "react-native";
 import { useCardMenu } from "@/components/CardMenu";
