@@ -8,20 +8,32 @@ type InnerTubeClient = Types.InnerTubeClient;
  * the same calls against the recording, offline.
  *
  * `run` returns what the entry resolved to (discovered ids, per-client
- * playability) so a replay can check it reproduces the recording. An entry
- * whose subject cannot be found automatically takes its id from the
- * environment (`CORPUS_ID_<ENTRY>`, e.g. `CORPUS_ID_VIDEO_POST_LIVE_DVR`) and
- * is skipped when none is given.
+ * playability) so a replay can check it reproduces the recording. Entries
+ * whose subject comes and goes (live, upcoming, post-live DVR, …) `discover`
+ * one; `CORPUS_ID_<ENTRY>` (e.g. `CORPUS_ID_VIDEO_POST_LIVE_DVR`) overrides it.
  */
+export interface CorpusContext {
+  yt: Innertube;
+  /** The discovered id, the override from the environment, or the recorded id on replay. */
+  subjectId: string | undefined;
+  /**
+   * Runs `fn` and returns the raw response bodies it caused. Discovery reads
+   * these because the signals it needs (badge styles, byline dialogs, raw
+   * ids) do not survive youtubei.js's parsing.
+   */
+  raw: (fn: () => Promise<unknown>) => Promise<unknown[]>;
+}
+
 export interface CorpusEntry {
   id: string;
   description: string;
-  /** Environment override for the subject id, for subjects found by hand. */
-  manualId?: true;
-  run: (
-    yt: Innertube,
-    subjectId: string | undefined,
-  ) => Promise<Record<string, string>>;
+  /**
+   * Finds a subject for entries whose subject comes and goes. It runs before
+   * the recording, in a context of its own, so its traffic is not stored and
+   * a replay never repeats it.
+   */
+  discover?: (ctx: CorpusContext) => Promise<string>;
+  run: (ctx: CorpusContext) => Promise<Record<string, string>>;
 }
 
 /** Player clients recorded for every video, beyond the WEB `getInfo`. */
@@ -53,6 +65,11 @@ async function recordVideo(
     }
   }
   return resolved;
+}
+
+/** `run` for an entry whose subject is a discovered video. */
+function subjectVideo(entry: string): CorpusEntry["run"] {
+  return ({ yt, subjectId }) => recordVideo(yt, requireId(entry, subjectId));
 }
 
 function requireId(entry: string, subjectId: string | undefined): string {
@@ -99,7 +116,7 @@ export const CORPUS: readonly CorpusEntry[] = [
   {
     id: "video-h264-captions",
     description: "Ordinary VOD with H.264, VP9 and captions; also its comments",
-    run: async (yt) => {
+    run: async ({ yt }) => {
       const resolved = await recordVideo(yt, "dQw4w9WgXcQ");
       const comments = await yt.getComments("dQw4w9WgXcQ");
       resolved.comments = String(comments.contents.length);
@@ -109,91 +126,96 @@ export const CORPUS: readonly CorpusEntry[] = [
   {
     id: "video-2160p-vp9-av1",
     description: "VP9 and AV1 ladders up to 2160p, 60 fps",
-    run: (yt) => recordVideo(yt, "aqz-KE-bpKQ"),
+    run: ({ yt }) => recordVideo(yt, "aqz-KE-bpKQ"),
   },
   {
     id: "video-hdr",
     description: "HDR upload (VP9.2 / 10-bit AV1 next to SDR)",
-    run: (yt) => recordVideo(yt, "mjsMqasGhKU"),
+    run: ({ yt }) => recordVideo(yt, "mjsMqasGhKU"),
   },
   {
     id: "video-multi-audio",
     description: "Dubbed audio tracks next to the original",
-    run: (yt) => recordVideo(yt, "0e3GPea1Tyg"),
+    run: ({ yt }) => recordVideo(yt, "0e3GPea1Tyg"),
   },
   {
     id: "video-age-restricted",
     description: "Age-restricted video",
-    run: (yt) => recordVideo(yt, "HtVdAasjOgU"),
+    run: ({ yt }) => recordVideo(yt, "HtVdAasjOgU"),
   },
   {
     id: "video-short",
-    description: "A Short, discovered from a channel's Shorts tab",
-    run: async (yt) => {
+    description: "A Short, from a channel's Shorts tab",
+    discover: async ({ yt }) => {
       const shorts = await (await yt.getChannel(MRBEAST)).getShorts();
-      const videoId = findVideoId(shorts, () => true) ?? findShortId(shorts);
-      const resolved = await recordVideo(yt, requireId("video-short", videoId));
+      return requireId(
+        "video-short",
+        findVideoId(shorts, () => true) ?? findShortId(shorts),
+      );
+    },
+    run: async ({ yt, subjectId }) => {
+      const resolved = await recordVideo(
+        yt,
+        requireId("video-short", subjectId),
+      );
       await yt.getShortsVideoInfo(resolved.videoId as string);
       return resolved;
     },
   },
   {
     id: "video-live",
-    description: "A live stream, discovered by a live-only search",
-    run: async (yt) => {
+    description: "A live stream, from a live-only search",
+    discover: async ({ yt }) => {
       const search = await yt.search("live", {
         type: "video",
         features: ["live"],
       });
-      return recordVideo(
-        yt,
-        requireId(
-          "video-live",
-          findVideoId(search.results, (v) => v.is_live === true),
-        ),
+      return requireId(
+        "video-live",
+        findVideoId(search.results, (v) => v.is_live === true),
       );
     },
+    run: subjectVideo("video-live"),
   },
   {
     id: "video-upcoming",
-    description:
-      "An upcoming stream or premiere, discovered on YouTube's Live page",
-    run: async (yt) => {
-      const live = await yt.getChannel(YOUTUBE_LIVE);
-      return recordVideo(
-        yt,
-        requireId(
-          "video-upcoming",
-          findVideoId(live, (v) => v.is_upcoming === true),
+    description: "An upcoming stream or premiere, from YouTube's Live page",
+    discover: async ({ yt }) =>
+      requireId(
+        "video-upcoming",
+        findVideoId(
+          await yt.getChannel(YOUTUBE_LIVE),
+          (v) => v.is_upcoming === true,
         ),
-      );
-    },
+      ),
+    run: subjectVideo("video-upcoming"),
   },
   {
     id: "video-post-live-dvr",
     description:
-      "A live stream that ended and is still served as DVR (rare; find by hand)",
-    manualId: true,
-    run: (yt, id) => recordVideo(yt, requireId("video-post-live-dvr", id)),
+      "A stream that just ended and is still served as DVR, from today's stream uploads and live channels' Streams tabs",
+    discover: ({ yt, raw }) => discoverPostLiveDvr(yt, raw),
+    run: subjectVideo("video-post-live-dvr"),
   },
   {
     id: "video-members-only",
-    description: "Members-only video (find by hand)",
-    manualId: true,
-    run: (yt, id) => recordVideo(yt, requireId("video-members-only", id)),
+    description:
+      "A members-only video, from the Videos tabs of popular channels",
+    discover: ({ yt, raw }) => discoverMembersOnly(yt, raw),
+    run: subjectVideo("video-members-only"),
   },
   {
     id: "video-collaboration",
     description:
-      "Collaboration video with several channels credited (find by hand)",
-    manualId: true,
-    run: (yt, id) => recordVideo(yt, requireId("video-collaboration", id)),
+      "A video credited to several channels (byline 'A and N more'), from search",
+    discover: ({ yt, raw }) => discoverCollaboration(yt, raw),
+    run: subjectVideo("video-collaboration"),
   },
   {
     id: "channel-tabs",
     description:
       "A channel with every tab: home, videos, shorts, streams, playlists, about",
-    run: async (yt) => {
+    run: async ({ yt }) => {
       const channel = await yt.getChannel(LINUS_TECH_TIPS);
       const resolved: Record<string, string> = {
         channelId: LINUS_TECH_TIPS,
@@ -223,7 +245,7 @@ export const CORPUS: readonly CorpusEntry[] = [
   {
     id: "channel-handle",
     description: "Resolving an @handle to a channel id",
-    run: async (yt) => {
+    run: async ({ yt }) => {
       const endpoint = await yt.resolveURL(
         "https://www.youtube.com/@LinusTechTips",
       );
@@ -242,7 +264,7 @@ export const CORPUS: readonly CorpusEntry[] = [
     id: "live-page",
     description:
       "YouTube's Live page (OwnTube's Live section; Invidious's 'trending')",
-    run: async (yt) => {
+    run: async ({ yt }) => {
       const live = await yt.getChannel(YOUTUBE_LIVE);
       return {
         channelId: YOUTUBE_LIVE,
@@ -253,7 +275,7 @@ export const CORPUS: readonly CorpusEntry[] = [
   {
     id: "search",
     description: "Search results and suggestions",
-    run: async (yt) => {
+    run: async ({ yt }) => {
       const search = await yt.search("lofi hip hop");
       const suggestions = await yt.getSearchSuggestions("never gonna");
       return {
@@ -265,7 +287,7 @@ export const CORPUS: readonly CorpusEntry[] = [
   {
     id: "playlist-uploads",
     description: "A channel's long-form uploads playlist (UULF…)",
-    run: async (yt) => {
+    run: async ({ yt }) => {
       const playlist = await yt.getPlaylist(`UULF${MRBEAST.slice(2)}`);
       return {
         playlistId: `UULF${MRBEAST.slice(2)}`,
@@ -281,6 +303,140 @@ function findShortId(root: unknown): string | undefined {
     /"(?:videoId|video_id)":"([A-Za-z0-9_-]{11})"/,
   );
   return match?.[1];
+}
+
+/** Visits every object in a raw or parsed response. */
+function visit(
+  root: unknown,
+  fn: (node: Record<string, unknown>) => void,
+): void {
+  const stack: unknown[] = [root];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (!node || typeof node !== "object") continue;
+    if (!Array.isArray(node)) fn(node as Record<string, unknown>);
+    stack.push(...Object.values(node));
+  }
+}
+
+function channelIds(root: unknown): string[] {
+  return [
+    ...new Set(
+      [
+        ...JSON.stringify(root).matchAll(/"browseId":"(UC[A-Za-z0-9_-]{22})"/g),
+      ].map((m) => m[1] as string),
+    ),
+  ];
+}
+
+function videoIds(root: unknown): string[] {
+  return [
+    ...new Set(
+      [
+        ...JSON.stringify(root).matchAll(/"videoId":"([A-Za-z0-9_-]{11})"/g),
+      ].map((m) => m[1] as string),
+    ),
+  ];
+}
+
+type Raw = CorpusContext["raw"];
+
+/**
+ * Post-live DVR lasts only until YouTube finishes processing an ended stream,
+ * so look where fresh streams are: today's uploads for stream-flavoured
+ * queries, then the Streams tabs of channels that are live right now. On
+ * 2026-11-26 the first hit came after 23 candidates.
+ */
+async function discoverPostLiveDvr(yt: Innertube, raw: Raw): Promise<string> {
+  const candidates = new Set<string>();
+  for (const query of [
+    "stream",
+    "live stream",
+    "livestream",
+    "just chatting",
+  ]) {
+    const today = await raw(() =>
+      yt.search(query, { upload_date: "today", type: "video" }),
+    );
+    for (const id of videoIds(today)) candidates.add(id);
+  }
+  const live = await raw(() =>
+    yt.search("live", { type: "video", features: ["live"] }),
+  );
+  for (const channelId of channelIds(live).slice(0, 15)) {
+    try {
+      const streams = await raw(async () =>
+        (await yt.getChannel(channelId)).getLiveStreams(),
+      );
+      for (const id of videoIds(streams).slice(0, 6)) candidates.add(id);
+    } catch {
+      // a channel without a Streams tab
+    }
+  }
+  for (const videoId of [...candidates].slice(0, 200)) {
+    const info = await yt.getBasicInfo(videoId, { client: "ANDROID_VR" });
+    if (info.basic_info.is_post_live_dvr) return videoId;
+  }
+  throw new Error(
+    `video-post-live-dvr: none among ${Math.min(candidates.size, 200)} candidates`,
+  );
+}
+
+/** Members-only uploads are listed in a channel's Videos tab with a members badge. */
+async function discoverMembersOnly(yt: Innertube, raw: Raw): Promise<string> {
+  const popular = await raw(() =>
+    yt.search("vtuber", { type: "video", prioritize: "popularity" }),
+  );
+  for (const channelId of channelIds(popular).slice(0, 40)) {
+    let videos: unknown[];
+    try {
+      videos = await raw(async () =>
+        (await yt.getChannel(channelId)).getVideos(),
+      );
+    } catch {
+      continue;
+    }
+    const found = firstVideo(videos, (node) =>
+      /MEMBERS_ONLY|"Members only"/.test(JSON.stringify(node)),
+    );
+    if (found) return found;
+  }
+  throw new Error("video-members-only: none found");
+}
+
+/** A collaboration's byline opens a dialog listing its channels ("A and 7 more"). */
+async function discoverCollaboration(yt: Innertube, raw: Raw): Promise<string> {
+  for (const query of ["collab", "big collab", "ft.", "feat"]) {
+    const search = await raw(() =>
+      yt.search(query, { upload_date: "month", type: "video" }),
+    );
+    const found = firstVideo(search, (node) =>
+      JSON.stringify(node.longBylineText ?? {}).includes("showDialogCommand"),
+    );
+    if (found) return found;
+  }
+  throw new Error("video-collaboration: none found");
+}
+
+/** The first raw video (`videoRenderer`, `gridVideoRenderer` or `lockupViewModel`) matching `predicate`. */
+function firstVideo(
+  responses: unknown[],
+  predicate: (node: Record<string, unknown>) => boolean,
+): string | undefined {
+  let found: string | undefined;
+  visit(responses, (node) => {
+    if (found) return;
+    const renderer = (node.videoRenderer ?? node.gridVideoRenderer) as
+      | (Record<string, unknown> & { videoId?: string })
+      | undefined;
+    const lockup = node.lockupViewModel as
+      | (Record<string, unknown> & { contentId?: string })
+      | undefined;
+    const video = renderer ?? lockup;
+    const id = renderer?.videoId ?? lockup?.contentId;
+    if (video && id && predicate(video)) found = id;
+  });
+  return found;
 }
 
 export function manualIdEnvName(entryId: string): string {

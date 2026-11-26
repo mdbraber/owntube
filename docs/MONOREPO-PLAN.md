@@ -265,7 +265,7 @@ on a branch and run on `owntube-dev` side by side. Each phase has an exit check.
   graceful SIGTERM, Dockerfile (`node:24-bookworm-slim`). Root `pnpm test` now
   runs every workspace package.
 - `packages/youtube` with the fixture corpus (`fixtures/corpus/*.json.gz`,
-  13 recordings, 3.1 MB):
+  16 recordings, 3.1 MB):
   - `src/fixtures/corpus.ts` lists the cases as the calls that exercise them.
   - `pnpm --filter @owntube/youtube record:corpus [ids]` records them.
   - `corpus.test.ts` replays every recording offline through youtubei.js and
@@ -275,8 +275,14 @@ on a branch and run on `owntube-dev` side by side. Each phase has an exit check.
     and our visitor data with placeholders, then proves nothing survived. It
     refuses to write otherwise. A separate check against freshly fetched
     addresses found no leaks.
-  - Post-live DVR, members-only and collaboration videos need ids found by
-    hand (`CORPUS_ID_<ENTRY>`).
+  - Subjects that come and go are discovered at record time, in a context
+    whose traffic is not stored (`CORPUS_ID_<ENTRY>` overrides):
+    - live and upcoming videos: from a live search and YouTube's Live page;
+    - post-live DVR: from today's stream uploads and the Streams tabs of
+      channels that are live now (`isPostLiveDvr` from ANDROID_VR);
+    - members-only: from the Videos tabs of popular channels (members badge);
+    - collaborations: from search (a byline that opens a channel dialog,
+      "A and 7 more").
 - *Moved out of phase 0:* the Trending → Live rename. The server side of it is
   rewritten in phase 4 anyway, and the TV app would ship twice. It lands in
   phases 4–5 with the gateway's `browse.live()`.
@@ -287,7 +293,8 @@ WEB and TV):
 
 | case | WEB | MWEB | TV_SIMPLY | ANDROID_VR | VISIONOS |
 |---|---|---|---|---|---|
-| ordinary, 2160p, HDR, dubbed, Short, live | UNPLAYABLE | UNPLAYABLE | UNPLAYABLE | OK | OK |
+| ordinary, 2160p, HDR, dubbed, Short, live, post-live DVR, collaboration | UNPLAYABLE | UNPLAYABLE | UNPLAYABLE | OK | OK |
+| members-only | UNPLAYABLE | UNPLAYABLE | UNPLAYABLE | UNPLAYABLE | UNPLAYABLE |
 | age-restricted | LOGIN_REQUIRED | LOGIN_REQUIRED | UNPLAYABLE | LOGIN_REQUIRED | LOGIN_REQUIRED |
 | upcoming | LIVE_STREAM_OFFLINE | LIVE_STREAM_OFFLINE | UNPLAYABLE | LIVE_STREAM_OFFLINE | LIVE_STREAM_OFFLINE |
 
