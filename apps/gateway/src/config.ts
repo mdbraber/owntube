@@ -8,6 +8,12 @@ const configSchema = z.object({
   host: z.string().default("0.0.0.0"),
   port: z.coerce.number().int().min(1).max(65535).default(8080),
   shutdownGraceMs: z.coerce.number().int().min(0).default(10_000),
+  /** HMAC key shared with whoever signs playback URLs (the web app). */
+  signingKey: z
+    .string()
+    .min(32, "GATEWAY_SIGNING_KEY must be at least 32 characters"),
+  /** Optional outbound proxy for all YouTube traffic. */
+  proxyUrl: z.string().url().optional(),
 });
 
 export type Config = z.infer<typeof configSchema>;
@@ -17,6 +23,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     host: env.GATEWAY_HOST,
     port: env.GATEWAY_PORT,
     shutdownGraceMs: env.GATEWAY_SHUTDOWN_GRACE_MS,
+    signingKey: env.GATEWAY_SIGNING_KEY,
+    proxyUrl: env.GATEWAY_PROXY_URL || undefined,
   });
   if (!parsed.success) {
     throw new Error(

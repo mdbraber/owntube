@@ -1,6 +1,6 @@
 import { type ClientIdentity, VISIONOS } from "./clients.ts";
 import { type PlayerResult, requestPlayer } from "./player.ts";
-import type { SessionPool } from "./session.ts";
+import type { SessionPool, YouTubeSession } from "./session.ts";
 
 /**
  * OwnTube's entry point to YouTube's player API. Requests go out on the pool's
@@ -23,7 +23,7 @@ export class YouTube {
   async player(
     videoId: string,
     identity: ClientIdentity = VISIONOS,
-  ): Promise<PlayerResult> {
+  ): Promise<PlayerResult & { session: YouTubeSession }> {
     const session = await this.#pool.session();
     const player = identity.deciphers ? await this.#pool.player() : undefined;
     const result = await requestPlayer(
@@ -31,6 +31,7 @@ export class YouTube {
       session.fetch,
     );
     this.#pool.report(session, result.unplayable);
-    return result;
+    // Stream URLs are bound to the session's address: fetch them with `session.fetch`.
+    return { ...result, session };
   }
 }

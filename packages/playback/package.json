@@ -1,0 +1,22 @@
+{
+  "name": "@owntube/playback",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Playback without YouTube or Node: the track model, DASH and HLS writers and the fMP4 sidx parser. Shared by the gateway and, later, the clients.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "typescript": "^5",
+    "vitest": "^4.0.3"
+  },
+  "exports": {
+    "./tracks": "./src/tracks.ts",
+    "./dash": "./src/dash.ts",
+    "./hls": "./src/hls.ts",
+    "./sidx": "./src/sidx.ts"
+  }
+}

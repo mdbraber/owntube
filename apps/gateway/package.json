@@ -16,7 +16,9 @@
   "dependencies": {
     "@hono/node-server": "^2.1.11",
     "hono": "^4.13.22",
-    "zod": "^4.1.12"
+    "zod": "^4.1.12",
+    "@owntube/youtube": "workspace:*",
+    "@owntube/playback": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^24",

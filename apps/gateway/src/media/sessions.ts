@@ -1,0 +1,219 @@
+import { randomBytes } from "node:crypto";
+import { parseSidx, type Segment } from "@owntube/playback/sidx";
+import type { Unplayable } from "@owntube/youtube/playability";
+import {
+  type PresentationSources,
+  toPresentation,
+} from "@owntube/youtube/presentation";
+import type { YouTubeSession } from "@owntube/youtube/session";
+import type { YouTube } from "@owntube/youtube/youtube";
+import type { ByteSpan, UpstreamSource } from "./upstream.ts";
+
+export class Unavailable extends Error {
+  readonly unplayable: Unplayable;
+  constructor(unplayable: Unplayable) {
+    super(unplayable.reason);
+    this.unplayable = unplayable;
+  }
+}
+
+/**
+ * One viewer's playback of one video: the YouTube session (and so the address)
+ * the stream URLs are bound to, and the tracks they map to. Every URL in a
+ * manifest is relative to it, so segments never need to be looked up by video.
+ */
+export interface PlaybackSession {
+  id: string;
+  videoId: string;
+  youtube: YouTubeSession;
+  userAgent: string;
+  sources: PresentationSources;
+  createdAt: number;
+  lastUsed: number;
+  /** Track id → its segments, read once from the track's index. */
+  segments: Map<string, Promise<Segment[]>>;
+  refreshing: Promise<void> | undefined;
+}
+
+export interface PlaybackSessionsOptions {
+  youtube: YouTube;
+  /** Sessions end this long after creation (YouTube's stream URLs last ~6 h). */
+  maxAgeMs?: number;
+  /** …or after this long unused. */
+  idleMs?: number;
+  max?: number;
+  now?: () => number;
+}
+
+export class PlaybackSessions {
+  readonly #youtube: YouTube;
+  readonly #maxAgeMs: number;
+  readonly #idleMs: number;
+  readonly #max: number;
+  readonly #now: () => number;
+  readonly #sessions = new Map<string, PlaybackSession>();
+
+  constructor(options: PlaybackSessionsOptions) {
+    this.#youtube = options.youtube;
+    this.#maxAgeMs = options.maxAgeMs ?? 5 * 60 * 60_000;
+    this.#idleMs = options.idleMs ?? 60 * 60_000;
+    this.#max = options.max ?? 500;
+    this.#now = options.now ?? Date.now;
+  }
+
+  async create(videoId: string): Promise<PlaybackSession> {
+    const { youtube, userAgent, sources } = await this.#resolve(videoId);
+    this.#sweep();
+    const now = this.#now();
+    const session: PlaybackSession = {
+      id: randomBytes(16).toString("base64url"),
+      videoId,
+      youtube,
+      userAgent,
+      sources,
+      createdAt: now,
+      lastUsed: now,
+      segments: new Map(),
+      refreshing: undefined,
+    };
+    this.#sessions.set(session.id, session);
+    return session;
+  }
+
+  get(id: string): PlaybackSession | undefined {
+    const session = this.#sessions.get(id);
+    if (!session) return undefined;
+    const now = this.#now();
+    if (
+      now - session.createdAt >= this.#maxAgeMs ||
+      now - session.lastUsed >= this.#idleMs
+    ) {
+      this.#sessions.delete(id);
+      return undefined;
+    }
+    session.lastUsed = now;
+    return session;
+  }
+
+  get size(): number {
+    return this.#sessions.size;
+  }
+
+  /** A track's segments, from its sidx (fMP4 only; WebM players read Cues themselves). */
+  segments(session: PlaybackSession, trackId: string): Promise<Segment[]> {
+    let segments = session.segments.get(trackId);
+    if (!segments) {
+      segments = this.#readSegments(session, trackId);
+      session.segments.set(trackId, segments);
+      segments.catch(() => session.segments.delete(trackId));
+    }
+    return segments;
+  }
+
+  /** Reads bytes of a track, replacing the session's stream URLs once if YouTube has revoked them. */
+  source(session: PlaybackSession, trackId: string): UpstreamSource {
+    return {
+      fetchPiece: async (piece, signal) => {
+        let response = await this.#fetchRange(session, trackId, piece, signal);
+        if (response.status === 403) {
+          await response.body?.cancel();
+          await this.#refresh(session);
+          response = await this.#fetchRange(session, trackId, piece, signal);
+        }
+        const expected = piece.end - piece.start + 1;
+        if (
+          !response.ok ||
+          !response.body ||
+          Number(response.headers.get("content-length") ?? expected) !==
+            expected
+        ) {
+          await response.body?.cancel();
+          throw new Error(
+            `upstream ${response.status} for ${trackId} ${piece.start}-${piece.end}`,
+          );
+        }
+        return response.body;
+      },
+    };
+  }
+
+  async #resolve(videoId: string) {
+    const result = await this.#youtube.player(videoId);
+    if (result.unplayable) throw new Unavailable(result.unplayable);
+    return {
+      youtube: result.session,
+      userAgent: result.identity.userAgent,
+      sources: toPresentation(result),
+    };
+  }
+
+  #fetchRange(
+    session: PlaybackSession,
+    trackId: string,
+    piece: ByteSpan,
+    signal: AbortSignal,
+  ): Promise<Response> {
+    const media = session.sources.media.get(trackId);
+    if (!media) throw new Error(`no track ${trackId}`);
+    return session.youtube.fetch(
+      `${media.url}&range=${piece.start}-${piece.end}`,
+      {
+        headers: { "user-agent": session.userAgent },
+        signal,
+      },
+    );
+  }
+
+  async #readSegments(
+    session: PlaybackSession,
+    trackId: string,
+  ): Promise<Segment[]> {
+    const track = [
+      ...session.sources.presentation.video,
+      ...session.sources.presentation.audio,
+    ].find((t) => t.id === trackId);
+    if (!track) throw new Error(`no track ${trackId}`);
+    const stream = await this.source(session, trackId).fetchPiece(
+      track.index,
+      AbortSignal.timeout(15_000),
+    );
+    const bytes = new Uint8Array(await new Response(stream).arrayBuffer());
+    return parseSidx(bytes, track.index.start);
+  }
+
+  /** New stream URLs for the same video; track ids stay stable across player responses. */
+  #refresh(session: PlaybackSession): Promise<void> {
+    session.refreshing ??= this.#resolve(session.videoId)
+      .then(({ youtube, sources }) => {
+        session.youtube = youtube;
+        session.sources = {
+          ...session.sources,
+          media: sources.media,
+          captions: sources.captions,
+        };
+      })
+      .finally(() => {
+        session.refreshing = undefined;
+      });
+    return session.refreshing;
+  }
+
+  #sweep(): void {
+    const now = this.#now();
+    for (const [id, s] of this.#sessions) {
+      if (
+        now - s.createdAt >= this.#maxAgeMs ||
+        now - s.lastUsed >= this.#idleMs
+      )
+        this.#sessions.delete(id);
+    }
+    // Over capacity: drop the least recently used.
+    const excess = this.#sessions.size - this.#max + 1;
+    if (excess > 0) {
+      const oldest = [...this.#sessions.values()]
+        .sort((a, b) => a.lastUsed - b.lastUsed)
+        .slice(0, excess);
+      for (const s of oldest) this.#sessions.delete(s.id);
+    }
+  }
+}

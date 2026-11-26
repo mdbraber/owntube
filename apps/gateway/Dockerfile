@@ -8,6 +8,8 @@ ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY apps/gateway/package.json apps/gateway/package.json
+COPY packages/youtube/package.json packages/youtube/package.json
+COPY packages/playback/package.json packages/playback/package.json
 RUN pnpm install --frozen-lockfile --prod --filter gateway...
 
 FROM node:24-bookworm-slim
@@ -15,6 +17,8 @@ WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=deps /app /app
 COPY tsconfig.node.json ./
+COPY packages/youtube/src packages/youtube/src
+COPY packages/playback/src packages/playback/src
 COPY apps/gateway/src apps/gateway/src
 USER node
 WORKDIR /app/apps/gateway

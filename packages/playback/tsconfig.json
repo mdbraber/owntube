@@ -1,0 +1,6 @@
+{
+  "extends": "../../tsconfig.node.json",
+  "//": "No Node APIs in src: the clients (React Native, browsers) import this package too.",
+  "compilerOptions": { "types": [] },
+  "include": ["src/**/*.ts"]
+}
