@@ -91,17 +91,32 @@ export const captionTrackSchema = z.object({
 });
 export type CaptionTrack = z.infer<typeof captionTrackSchema>;
 
-/** Seek-preview sprite sheets. `templateUrl` contains `$M` for the sheet number. */
-export const storyboardSchema = z.object({
-  templateUrl: z.string(),
-  thumbWidth: z.number().int().positive(),
-  thumbHeight: z.number().int().positive(),
-  thumbCount: z.number().int().positive(),
-  intervalMs: z.number().int().positive(),
-  columns: z.number().int().positive(),
-  rows: z.number().int().positive(),
-  sheetCount: z.number().int().positive(),
-});
+/**
+ * Seek-preview sprite sheets. `templateUrl` contains `$M` for the sheet number.
+ * A VOD storyboard is a fixed set of sheets; a live one keeps growing (each
+ * sheet number a later stretch of the stream), so it has no count or interval.
+ */
+export const storyboardSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("vod"),
+    templateUrl: z.string(),
+    thumbWidth: z.number().int().positive(),
+    thumbHeight: z.number().int().positive(),
+    thumbCount: z.number().int().positive(),
+    intervalMs: z.number().int().positive(),
+    columns: z.number().int().positive(),
+    rows: z.number().int().positive(),
+    sheetCount: z.number().int().positive(),
+  }),
+  z.object({
+    kind: z.literal("live"),
+    templateUrl: z.string(),
+    thumbWidth: z.number().int().positive(),
+    thumbHeight: z.number().int().positive(),
+    columns: z.number().int().positive(),
+    rows: z.number().int().positive(),
+  }),
+]);
 export type Storyboard = z.infer<typeof storyboardSchema>;
 
 export const chapterSchema = z.object({

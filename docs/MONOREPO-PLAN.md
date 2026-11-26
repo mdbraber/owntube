@@ -382,7 +382,7 @@ Open:
 - ~~A podcast app test of the enclosures~~: `video.mp4` (3.5 and 25 min, 720p/1080p) and `audio.m4a` play and seek in Safari (AVFoundation, the player iOS podcast apps use), checked by the owner through the rebuilt dev gateway. A subscription test in a real podcast app follows in phase 4, when the feeds come from the gateway.
 - The Debian `chromium` package with Playwright in the image is untested (no Docker here).
 
-**Phase 3 — gateway metadata API. — DONE except for two small items (2026-11-26)**
+**Phase 3 — gateway metadata API. — DONE (2026-11-26)**
 
 - `packages/contracts` (zod): the domain model. Counts YouTube gives only as
   text are marked approximate; dates say whether they are exact or a day;
@@ -415,8 +415,12 @@ Open:
   `GATEWAY_EGRESS_FAMILY` (deploy with `ipv4`); the egress connect family now
   follows the source address.
 
-Open: storyboards for live streams (YouTube's live storyboard spec is not
-mapped); the cache is in memory (decide whether it should survive restarts).
+- Storyboards come in two kinds: `vod` (a fixed set of sheets) and `live` (a
+  template whose sheet number keeps growing).
+- The catalogue cache keeps answers on disk too (`GATEWAY_CACHE_DIR/metadata.sqlite`,
+  Node's built-in `node:sqlite`): a restart serves from it (10 ms instead of a
+  YouTube round trip), rows expire when too old even to stand in, and an hourly
+  prune keeps it under 100,000 rows.
 
 **Phase 4 — web on the new contracts.**
 Replace `server/services/proxy*` with the gateway client; Trending becomes Live

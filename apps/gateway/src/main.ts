@@ -5,6 +5,7 @@ import { createEgress } from "@owntube/youtube/egress";
 import { BrowserPoTokenMinter } from "@owntube/youtube/potoken";
 import { SessionPool } from "@owntube/youtube/session";
 import { YouTube } from "@owntube/youtube/youtube";
+import { sqliteCacheStore } from "./api/store.ts";
 import { createApp } from "./app.ts";
 import { loadConfig } from "./config.ts";
 import { pruneImages } from "./media/images.ts";
@@ -45,13 +46,16 @@ const sessions = new PlaybackSessions({
   youtube,
 });
 const imageCacheDir = `${config.cacheDir}/images`;
+const metadataStore = sqliteCacheStore(`${config.cacheDir}/metadata.sqlite`);
 const app = createApp({
   sessions,
   catalog,
+  metadataStore,
   signingKey: config.signingKey,
   images: { cacheDir: imageCacheDir, fetch: egress.fetch(sourceAddress) },
 });
 setInterval(() => {
+  metadataStore.prune(Date.now(), 100_000);
   pruneImages(imageCacheDir, config.imageCacheMaxBytes).catch((error: Error) =>
     process.stderr.write(`image cache prune failed: ${error.message}\n`),
   );
@@ -68,9 +72,10 @@ function shutdown(signal: NodeJS.Signals): void {
   const force = setTimeout(() => process.exit(1), config.shutdownGraceMs);
   force.unref();
   server.close(() => {
-    void Promise.all([egress.close(), poTokens?.close()]).finally(() =>
-      process.exit(0),
-    );
+    void Promise.all([egress.close(), poTokens?.close()]).finally(() => {
+      metadataStore.close();
+      process.exit(0);
+    });
   });
 }
 

@@ -4,6 +4,7 @@ import type { Catalog } from "@owntube/youtube/catalog";
 import { type Context, Hono } from "hono";
 import { z } from "zod";
 import { TtlCache } from "./cache.ts";
+import type { CacheStore } from "./store.ts";
 
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 const CHANNEL_ID = /^UC[A-Za-z0-9_-]{22}$/;
@@ -28,9 +29,13 @@ const POLICY = {
  * `@owntube/contracts`). Not public: requests carry the shared key as a
  * bearer token, and only `/media/*` is routed to the gateway from outside.
  */
-export function apiRoutes(catalog: Catalog, apiKey: string): Hono {
+export function apiRoutes(
+  catalog: Catalog,
+  apiKey: string,
+  store?: CacheStore,
+): Hono {
   const app = new Hono();
-  const cache = new TtlCache();
+  const cache = new TtlCache(store ? { store } : {});
   const expected = Buffer.from(`Bearer ${apiKey}`);
 
   app.use("/api/*", async (c, next) => {

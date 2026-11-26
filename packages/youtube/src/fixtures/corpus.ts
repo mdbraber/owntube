@@ -264,6 +264,31 @@ export const CATALOG_CORPUS: readonly CorpusEntry[] = [
       };
     },
   ),
+  {
+    id: "catalog-live-video",
+    description: "Catalog.video: a stream that is live now (live storyboard)",
+    discover: async ({ yt }) => {
+      const search = await yt.search("live", {
+        type: "video",
+        features: ["live"],
+      });
+      return requireId(
+        "catalog-live-video",
+        findVideoId(search.results, (v) => v.is_live === true),
+      );
+    },
+    run: async ({ yt, subjectId }) => {
+      const v = await new Catalog({
+        yt: async () => yt,
+        player: recordedPlayer(yt),
+      }).video(requireId("catalog-live-video", subjectId));
+      return {
+        videoId: v.videoId,
+        live: v.live,
+        storyboard: v.storyboard?.kind ?? "none",
+      };
+    },
+  },
   catalogEntry(
     "catalog-live",
     "Catalog.live: YouTube's Live page",

@@ -198,6 +198,27 @@ describe("Catalog on recorded YouTube responses", () => {
     expect(page.channel?.tabs).toEqual(["shorts", "playlists"]);
   });
 
+  it("gives a live stream a live storyboard", async () => {
+    const fixture = await readFixture("catalog-live-video");
+    const v = videoDetailSchema.parse(
+      await (await replayed("catalog-live-video")).video(
+        fixture.resolved.videoId as string,
+      ),
+    );
+    expect(v.live).toBe("live");
+    expect(v.storyboard).toMatchObject({ kind: "live" });
+    expect(v.storyboard?.templateUrl).toMatch(/^\/media\/img\/yti\/sb\/.*\$M/);
+    expect(v.durationSec).toBeUndefined();
+  });
+
+  it("gives a VOD a fixed set of storyboard sheets", async () => {
+    const v = await (await replayed("catalog-video")).video("dQw4w9WgXcQ");
+    expect(v.storyboard).toMatchObject({ kind: "vod" });
+    expect(
+      v.storyboard?.kind === "vod" && v.storyboard.sheetCount,
+    ).toBeGreaterThan(0);
+  });
+
   it("reads chapters from the player bar", async () => {
     const v = await (await replayed("catalog-chapters")).video("cm94WV0ReKg");
     expect(v.chapters).toHaveLength(6);

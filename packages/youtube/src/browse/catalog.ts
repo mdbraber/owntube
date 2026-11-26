@@ -417,12 +417,29 @@ function linkOf(
 }
 
 function storyboardOf(storyboards: unknown): { storyboard?: Storyboard } {
+  if (storyboards instanceof YTNodes.PlayerLiveStoryboardSpec) {
+    const board = storyboards.board;
+    const templateUrl = toImages([{ url: board.template_url }])[0]?.url;
+    if (!templateUrl) return {};
+    return {
+      storyboard: {
+        kind: "live",
+        templateUrl,
+        thumbWidth: board.thumbnail_width,
+        thumbHeight: board.thumbnail_height,
+        columns: board.columns,
+        rows: board.rows,
+      },
+    };
+  }
   if (!(storyboards instanceof YTNodes.PlayerStoryboardSpec)) return {};
+  // The last board has the largest thumbnails.
   const board = storyboards.boards[storyboards.boards.length - 1];
   const templateUrl = board && toImages([{ url: board.template_url }])[0]?.url;
   if (!board || !templateUrl) return {};
   return {
     storyboard: {
+      kind: "vod",
       templateUrl,
       thumbWidth: board.thumbnail_width,
       thumbHeight: board.thumbnail_height,
