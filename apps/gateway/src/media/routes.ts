@@ -19,6 +19,7 @@ import { verifyPlayback } from "./signing.ts";
 import { parseRange, streamSpan } from "./upstream.ts";
 
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
+const HLS = "application/vnd.apple.mpegurl";
 const FAMILIES = new Set<VideoFamily>(["avc", "vp9", "av01"]);
 
 function sessionUrls(sid: string): PresentationUrls {
@@ -56,6 +57,12 @@ const STATUS_FOR: Record<Unavailable["unplayable"]["kind"], 403 | 404 | 409> = {
   unplayable: 403,
 };
 
+function liveSegmentType(session: PlaybackSession, itag: string): string {
+  return session.live?.renditions.get(itag)?.initUrl
+    ? "video/mp4"
+    : "video/mp2t";
+}
+
 export function mediaRoutes(
   sessions: PlaybackSessions,
   signingKey: string,
@@ -90,6 +97,15 @@ export function mediaRoutes(
         );
       }
       throw error;
+    }
+    if (session.live) {
+      // Live and DVR exist only as YouTube's HLS.
+      if (type !== HLS) return c.json({ error: "live-is-hls" }, 406);
+      return c.body(
+        await sessions.liveMaster(session, `/media/s/${session.id}`),
+        200,
+        { "content-type": HLS, "cache-control": "no-store" },
+      );
     }
     const presentation = selectTracks(session.sources.presentation, c);
     if (presentation.video.length === 0 || presentation.audio.length === 0)
@@ -168,6 +184,49 @@ export function mediaRoutes(
         "cache-control": "private, max-age=3600",
       },
     );
+  });
+
+  app.get("/media/s/:sid/l/:file", async (c) => {
+    const session = sessions.get(c.req.param("sid"));
+    const itag = c.req.param("file").replace(/\.m3u8$/, "");
+    if (!session?.live) return c.text("not found", 404);
+    const playlist = await sessions.liveMedia(
+      session,
+      itag,
+      `/media/s/${session.id}`,
+    );
+    if (playlist === null) return c.text("not found", 404);
+    return c.body(playlist, 200, {
+      "content-type": HLS,
+      "cache-control": "no-store",
+    });
+  });
+
+  app.get("/media/s/:sid/l/:itag/:segment", async (c) => {
+    const session = sessions.get(c.req.param("sid"));
+    if (!session?.live) return c.text("not found", 404);
+    const upstream = await sessions.liveSegment(
+      session,
+      c.req.param("itag"),
+      c.req.param("segment"),
+      c.req.raw.signal,
+    );
+    if (!upstream) return c.text("not found", 404);
+    if (!upstream.ok || !upstream.body) {
+      await upstream.body?.cancel();
+      return c.text("segment unavailable", 502);
+    }
+    const headers: Record<string, string> = {
+      // YouTube labels TS segments application/octet-stream; Apple players expect video/mp2t.
+      "content-type":
+        c.req.param("segment") === "init"
+          ? "video/mp4"
+          : liveSegmentType(session, c.req.param("itag")),
+      "cache-control": "private, max-age=3600",
+    };
+    const length = upstream.headers.get("content-length");
+    if (length) headers["content-length"] = length;
+    return c.body(upstream.body, 200, headers);
   });
 
   app.get("/media/s/:sid/c/:file", async (c) => {

@@ -7,6 +7,12 @@ import {
 } from "@owntube/youtube/presentation";
 import type { YouTubeSession } from "@owntube/youtube/session";
 import type { YouTube } from "@owntube/youtube/youtube";
+import {
+  type LiveState,
+  PLAYLIST_TTL_MS,
+  rewriteMaster,
+  rewriteMedia,
+} from "./live.ts";
 import type { ByteSpan, UpstreamSource } from "./upstream.ts";
 
 export class Unavailable extends Error {
@@ -28,6 +34,8 @@ export interface PlaybackSession {
   youtube: YouTubeSession;
   userAgent: string;
   sources: PresentationSources;
+  /** Set for live streams and post-live DVR, which are served from YouTube's own HLS. */
+  live: LiveState | undefined;
   createdAt: number;
   lastUsed: number;
   /** Track id → its segments, read once from the track's index. */
@@ -62,7 +70,8 @@ export class PlaybackSessions {
   }
 
   async create(videoId: string): Promise<PlaybackSession> {
-    const { youtube, userAgent, sources } = await this.#resolve(videoId);
+    const { youtube, userAgent, sources, masterUrl } =
+      await this.#resolve(videoId);
     this.#sweep();
     const now = this.#now();
     const session: PlaybackSession = {
@@ -71,6 +80,7 @@ export class PlaybackSessions {
       youtube,
       userAgent,
       sources,
+      live: masterUrl ? { masterUrl, renditions: new Map() } : undefined,
       createdAt: now,
       lastUsed: now,
       segments: new Map(),
@@ -140,11 +150,91 @@ export class PlaybackSessions {
   async #resolve(videoId: string) {
     const result = await this.#youtube.player(videoId);
     if (result.unplayable) throw new Unavailable(result.unplayable);
+    const details = result.raw.videoDetails;
+    const isLive = Boolean(details?.isLive || details?.isPostLiveDvr);
+    const masterUrl = isLive
+      ? result.raw.streamingData?.hlsManifestUrl
+      : undefined;
+    if (isLive && !masterUrl)
+      throw new Error(`${videoId}: live without an HLS manifest`);
     return {
       youtube: result.session,
       userAgent: result.identity.userAgent,
       sources: toPresentation(result),
+      masterUrl,
     };
+  }
+
+  /** The live master playlist, every rendition pointing into the session. */
+  async liveMaster(session: PlaybackSession, base: string): Promise<string> {
+    const live = requireLive(session);
+    const text = await this.#fetchText(session, () => live.masterUrl);
+    return rewriteMaster(text, live, base);
+  }
+
+  /** A live rendition's media playlist, re-read upstream at most every `PLAYLIST_TTL_MS`. */
+  async liveMedia(
+    session: PlaybackSession,
+    itag: string,
+    base: string,
+  ): Promise<string | null> {
+    const live = requireLive(session);
+    const rendition = live.renditions.get(itag);
+    if (!rendition) return null;
+    const now = this.#now();
+    if (!rendition.cached || now - rendition.cached.at >= PLAYLIST_TTL_MS) {
+      const text = this.#fetchText(session, () => rendition.url);
+      rendition.cached = { at: now, text };
+      text.catch(() => {
+        if (rendition.cached?.text === text) rendition.cached = undefined;
+      });
+    }
+    return rewriteMedia(await rendition.cached.text, itag, rendition, base);
+  }
+
+  /** A live segment (or `init`) listed in an earlier media playlist. */
+  async liveSegment(
+    session: PlaybackSession,
+    itag: string,
+    segment: string,
+    signal: AbortSignal,
+  ): Promise<Response | null> {
+    const rendition = requireLive(session).renditions.get(itag);
+    const url =
+      segment === "init"
+        ? rendition?.initUrl
+        : rendition?.segments.get(Number(segment));
+    if (!url) return null;
+    return session.youtube.fetch(url, {
+      headers: { "user-agent": session.userAgent },
+      signal,
+    });
+  }
+
+  /** GET a playlist through the session; on a 403 the session's URLs are replaced once. */
+  async #fetchText(
+    session: PlaybackSession,
+    url: () => string,
+  ): Promise<string> {
+    let response = await session.youtube.fetch(url(), {
+      headers: { "user-agent": session.userAgent },
+    });
+    if (response.status === 403) {
+      await response.body?.cancel();
+      await this.#refresh(session);
+      if (session.live) {
+        // The rendition URLs come from the master: re-read it to pick up the new ones.
+        const master = await session.youtube.fetch(session.live.masterUrl, {
+          headers: { "user-agent": session.userAgent },
+        });
+        rewriteMaster(await master.text(), session.live, "");
+      }
+      response = await session.youtube.fetch(url(), {
+        headers: { "user-agent": session.userAgent },
+      });
+    }
+    if (!response.ok) throw new Error(`upstream playlist ${response.status}`);
+    return response.text();
   }
 
   #fetchRange(
@@ -184,8 +274,9 @@ export class PlaybackSessions {
   /** New stream URLs for the same video; track ids stay stable across player responses. */
   #refresh(session: PlaybackSession): Promise<void> {
     session.refreshing ??= this.#resolve(session.videoId)
-      .then(({ youtube, sources }) => {
+      .then(({ youtube, sources, masterUrl }) => {
         session.youtube = youtube;
+        if (session.live && masterUrl) session.live.masterUrl = masterUrl;
         session.sources = {
           ...session.sources,
           media: sources.media,
@@ -216,4 +307,9 @@ export class PlaybackSessions {
       for (const s of oldest) this.#sessions.delete(s.id);
     }
   }
+}
+
+function requireLive(session: PlaybackSession): LiveState {
+  if (!session.live) throw new Error(`${session.videoId} is not live`);
+  return session.live;
 }
