@@ -346,8 +346,12 @@ export class PlaybackSessions {
     return new Response(bytes).body as ReadableStream<Uint8Array>;
   }
 
-  async #resolve(videoId: string) {
-    const result = await this.#youtube.player(videoId);
+  async #resolve(videoId: string, reloadToken?: string) {
+    const result = await this.#youtube.player(
+      videoId,
+      undefined,
+      reloadToken ? { reloadToken } : {},
+    );
     if (result.unplayable) throw new Unavailable(result.unplayable);
     const details = result.raw.videoDetails;
     const isLive = Boolean(details?.isLive || details?.isPostLiveDvr);
@@ -364,8 +368,8 @@ export class PlaybackSessions {
     );
     if (sabr) {
       // The SABR server can demand a new player response mid-stream.
-      sabr.reload = async () => {
-        const fresh = await this.#resolve(videoId);
+      sabr.reload = async (token) => {
+        const fresh = await this.#resolve(videoId, token);
         if (!fresh.sabr) throw new Error(`${videoId}: no SABR after reload`);
         return {
           streamingUrl: fresh.sabr.streamingUrl,

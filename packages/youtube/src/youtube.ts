@@ -23,11 +23,18 @@ export class YouTube {
   async player(
     videoId: string,
     identity: ClientIdentity = VISIONOS,
+    options: { reloadToken?: string } = {},
   ): Promise<PlayerResult & { session: YouTubeSession }> {
     const session = await this.#pool.session();
     const player = identity.deciphers ? await this.#pool.player() : undefined;
     const result = await requestPlayer(
-      { videoId, identity, visitorData: session.visitorData, player },
+      {
+        videoId,
+        identity,
+        visitorData: session.visitorData,
+        player,
+        ...options,
+      },
       session.fetch,
     );
     this.#pool.report(session, result.unplayable);

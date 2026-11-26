@@ -16,8 +16,10 @@ export interface SabrEndpoint {
   formats: SabrFormat[];
   /** Egress-bound fetch with the identity's user agent. */
   fetch: typeof globalThis.fetch;
-  /** Asked when the SABR server demands a new player response mid-stream. */
-  reload?: () => Promise<{ streamingUrl: string; ustreamerConfig: string }>;
+  /** Asked when the SABR server demands a new player response mid-stream; `token` must be echoed. */
+  reload?: (
+    token: string | undefined,
+  ) => Promise<{ streamingUrl: string; ustreamerConfig: string }>;
 }
 
 /** The SABR endpoint of a player response, or undefined when it has none. */
@@ -105,8 +107,10 @@ export function sabrOpener(
       ...(reload
         ? {
             callbacks: {
-              onReloadPlayerResponse: async () => {
-                const fresh = await reload();
+              onReloadPlayerResponse: async (context) => {
+                const fresh = await reload(
+                  context?.reloadPlaybackParams?.token,
+                );
                 return {
                   serverAbrStreamingUrl: fresh.streamingUrl,
                   videoPlaybackUstreamerConfig: fresh.ustreamerConfig,

@@ -56,6 +56,26 @@ describe("requestPlayer", () => {
     });
   });
 
+  it("echoes a SABR reload token", async () => {
+    const { fetch, calls } = stubFetch(okResponse);
+    await requestPlayer(
+      {
+        videoId: "mjsMqasGhKU",
+        identity: VISIONOS,
+        visitorData: "VD",
+        reloadToken: "T0K",
+      },
+      fetch,
+    );
+    const body = (await calls[0]?.json()) as {
+      playbackContext: Record<string, unknown>;
+    };
+    expect(body.playbackContext.reloadPlaybackContext).toEqual({
+      reloadPlaybackParams: { token: "T0K" },
+    });
+    expect(body.playbackContext.contentPlaybackContext).toBeDefined();
+  });
+
   it("keeps only formats with a usable URL", async () => {
     const { fetch } = stubFetch(okResponse);
     const result = await requestPlayer(

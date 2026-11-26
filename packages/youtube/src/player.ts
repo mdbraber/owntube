@@ -84,6 +84,12 @@ export interface PlayerRequest {
   /** Loaded player JS; required for identities that decipher. */
   player?: Player;
   poToken?: string;
+  /**
+   * The token of a SABR reload demand. The next player request must echo it,
+   * or the server keeps demanding reloads (companion, 2026-11-20: ten in a row
+   * on mjsMqasGhKU until the pull gave up).
+   */
+  reloadToken?: string;
   hl?: string;
   gl?: string;
 }
@@ -118,6 +124,13 @@ export function buildPlayerBody(req: PlayerRequest): Record<string, unknown> {
           ? { signatureTimestamp: req.player.signature_timestamp }
           : {}),
       },
+      ...(req.reloadToken
+        ? {
+            reloadPlaybackContext: {
+              reloadPlaybackParams: { token: req.reloadToken },
+            },
+          }
+        : {}),
     },
     racyCheckOk: true,
     contentCheckOk: true,
