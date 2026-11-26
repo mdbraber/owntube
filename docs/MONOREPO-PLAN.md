@@ -346,15 +346,30 @@ Not built, on purpose: IPv6 address rotation (production runs on IPv4 because
 YouTube rejects the /56 as a whole; `AddressPolicy` is the seam if the block
 becomes usable).
 
-**Phase 2 — gateway media plane.**
-Playback sessions, SABR transport (VISIONOS VOD, ANDROID_VR live, WEB+pot dubbed
-audio), byte-range transport, live and DVR, captions, whole-file route, images.
-`packages/playback` track model and HLS/DASH serializers. `packages/googlevideo`
-rebased onto 5.x.
-*Exit*: dash.js, hls.js, AVPlayer (iOS/tvOS) and Media3 (Android TV) play every
-corpus video including seek-to-end and live, with no 403 reaching the client.
-*Decision here*: measure SABR vs byte-range (startup, seek latency, failures over
-a day of real use) and make one the VOD default.
+**Phase 2 — gateway media plane. — IN PROGRESS**
+
+Done (2026-11-26):
+
+- **Byte-range VOD over VISIONOS.**
+  - `packages/playback` holds the track model, the DASH (`SegmentBase`) and HLS writers and the sidx parser.
+  - The gateway answers signed `/media/v/<id>/manifest.mpd|master.m3u8` by starting a playback session; every other URL is relative to that session.
+  - Bytes go through the session's address, in 8 MB upstream pieces, and the URL set is replaced once on a 401 or 403.
+  - YouTube labels VP9 as a bare `vp9`, which capability checks reject, so it is written out as `vp09.00.LL.08`.
+- **Live and post-live DVR**: YouTube's HLS, with every URL rewritten into the session. Renditions are keyed by itag, and playlists are re-read upstream at most every 2 s.
+- **Enclosures**:
+  - `audio.m4a` serves the original language's AAC.
+  - `video.mp4` is a fast-start MP4 assembled from the H.264 and AAC tracks without copying media (`packages/playback/mp4`). Its layout is stored on disk once per video. A 25-minute video takes 6 s on first build.
+  - Fragment headers are read one at a time: YouTube revokes a URL after about 100 quick requests in a burst.
+- **Images**: `/media/img/...`, limited to YouTube's image hosts, with a disk cache that serves stale entries while refreshing them and is pruned to a size cap.
+- **Verified**:
+  - headless Chromium: dash.js (VP9, AV1, H.264 with dubbed audio), hls.js (VOD, live, 4-hour DVR) and plain `<video>` (`video.mp4`) all play and seek to the end;
+  - Safari on macOS and iOS: ordinary, 4K, 27 audio languages with subtitles, a vertical Short, live and DVR all work (tested by the owner through the dev gateway on `owntube-dev…/media/*`).
+
+Open:
+
+- Android TV (Media3): moves to phase 5, when the TV app uses the gateway.
+- **VISIONOS SABR** as the second transport (ported from the companion), and the step-down between transports.
+- A podcast app test of the enclosures.
 
 **Phase 3 — gateway metadata API.**
 All browse endpoints mapped into `packages/contracts`. One-off verification:
