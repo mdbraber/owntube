@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { gatewayImageUrl, toImages } from "./images.ts";
-import { parseClock, parseCount } from "./text.ts";
+import { exactCount, parseClock, parseCount } from "./text.ts";
+
+describe("exactCount", () => {
+  it("keeps exact numbers and drops what YouTube leaves out", () => {
+    expect(exactCount(42)).toEqual({ value: 42, approximate: false });
+    expect(exactCount(0)).toEqual({ value: 0, approximate: false });
+    expect(exactCount(null)).toBeUndefined();
+    expect(exactCount(undefined)).toBeUndefined();
+    expect(exactCount(Number.NaN)).toBeUndefined();
+    expect(exactCount(-1)).toBeUndefined();
+  });
+});
 
 describe("parseCount", () => {
   it("reads exact and abbreviated counts", () => {

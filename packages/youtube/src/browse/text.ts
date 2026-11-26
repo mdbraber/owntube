@@ -5,6 +5,13 @@ import type { Count } from "@owntube/contracts/model";
  * gateway always asks for `hl=en`): "1,841,079,665 views" is exact, "1.6M
  * views", "122K" and "4.56M subscribers" are approximate, "No views" is 0.
  */
+/** An exact count YouTube gave as a number; nothing for null, NaN or negatives. */
+export function exactCount(n: number | null | undefined): Count | undefined {
+  return typeof n === "number" && Number.isInteger(n) && n >= 0
+    ? { value: n, approximate: false }
+    : undefined;
+}
+
 export function parseCount(text: string | undefined): Count | undefined {
   if (!text) return undefined;
   const t = text.trim();

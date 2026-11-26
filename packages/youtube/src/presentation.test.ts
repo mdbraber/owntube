@@ -23,6 +23,38 @@ async function visionos(id: string): Promise<PlayerResult> {
 }
 
 describe("toPresentation", () => {
+  it("pairs an audio track with its own URL when a DRC copy shares the itag", () => {
+    const audio = (drc: boolean, url: string) => ({
+      itag: 140,
+      url,
+      mimeType: 'audio/mp4; codecs="mp4a.40.2"',
+      bitrate: 130_000,
+      contentLength: drc ? "309197" : "309288",
+      initRange: { start: "0", end: drc ? "631" : "722" },
+      indexRange: { start: drc ? "632" : "723", end: drc ? "687" : "778" },
+      audioSampleRate: "44100",
+      audioChannels: 2,
+      ...(drc ? { isDrc: true, xtags: "CggKA2RyYxIBMQ" } : {}),
+    });
+    // The DRC copy comes after the plain one, as YouTube lists them.
+    const adaptiveFormats = [
+      audio(false, "https://plain"),
+      audio(true, "https://drc"),
+    ];
+    const raw = { streamingData: { adaptiveFormats } } as RawPlayerResponse;
+    const { presentation, media } = toPresentation({
+      identity: VISIONOS,
+      raw,
+      unplayable: null,
+      formats: adaptiveFormats,
+    });
+    expect(presentation.audio).toHaveLength(1);
+    expect(presentation.audio[0]?.index).toEqual({ start: 723, end: 778 });
+    expect(media.get(presentation.audio[0]?.id ?? "")?.url).toBe(
+      "https://plain",
+    );
+  });
+
   it("offers every dubbed language, with the original marked", async () => {
     const { presentation } = toPresentation(
       await visionos("video-multi-audio"),

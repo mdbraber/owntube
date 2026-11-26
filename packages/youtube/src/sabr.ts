@@ -143,6 +143,7 @@ export function sabrOpener(
         formats.find(
           (f) =>
             f.itag === audioItag &&
+            !f.isDrc &&
             (!o.audioTrackId || f.audioTrackId === o.audioTrackId),
         ),
       startTimeMs,
