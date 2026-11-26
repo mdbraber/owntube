@@ -238,6 +238,22 @@ export const CATALOG_CORPUS: readonly CorpusEntry[] = [
     },
   ),
   catalogEntry(
+    "catalog-chapters",
+    "Catalog.video: a video with chapters",
+    async (c) => {
+      const v = await c.video("cm94WV0ReKg");
+      return { videoId: v.videoId, chapters: String(v.chapters.length) };
+    },
+  ),
+  catalogEntry(
+    "catalog-members-only",
+    "Catalog.video: a members-only video",
+    async (c) => {
+      const v = await c.video("qiLUvCt3k6g");
+      return { videoId: v.videoId, unplayable: v.unplayable?.kind ?? "none" };
+    },
+  ),
+  catalogEntry(
     "catalog-live",
     "Catalog.live: YouTube's Live page",
     async (c) => ({ videos: String((await c.live()).videos.length) }),

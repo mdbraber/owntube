@@ -5,11 +5,15 @@
  *   pnpm --filter @owntube/youtube record:corpus video-hdr  # only these
  *   CORPUS_ID_VIDEO_POST_LIVE_DVR=<id> pnpm … record:corpus video-post-live-dvr  # pick the subject
  *
+ * Recording goes out over IPv4 (CORPUS_FAMILY=ipv6 or auto to change): on
+ * 2026-11-26 naggon's IPv6 /64 drew bot checks that IPv4 did not.
+ *
  * Each file is scrubbed of our address and visitor data before it is written;
  * the write is refused if anything identifying survives.
  */
 import { createRequire } from "node:module";
 import { Log } from "youtubei.js";
+import { createEgress } from "../src/egress.ts";
 import { createCorpusContext } from "../src/fixtures/context.ts";
 import { CORPUS, manualIdEnvName } from "../src/fixtures/corpus.ts";
 import { scrubExchanges } from "../src/fixtures/scrub.ts";
@@ -26,17 +30,22 @@ const youtubeiVersion = (
 const wanted = new Set(process.argv.slice(2));
 const entries = CORPUS.filter((e) => wanted.size === 0 || wanted.has(e.id));
 let failed = 0;
+const family = process.env.CORPUS_FAMILY ?? "ipv4";
+const egress = createEgress();
+const net = egress.fetch(
+  family === "ipv4" ? "0.0.0.0" : family === "ipv6" ? "::" : undefined,
+);
 
 for (const entry of entries) {
   try {
     let subjectId = process.env[manualIdEnvName(entry.id)] || undefined;
     if (!subjectId && entry.discover) {
       subjectId = await entry.discover(
-        (await createCorpusContext(fetch, undefined)).ctx,
+        (await createCorpusContext(net, undefined)).ctx,
       );
     }
     const { ctx, exchanges: recorded } = await createCorpusContext(
-      fetch,
+      net,
       subjectId,
     );
     const resolved = await entry.run(ctx);
@@ -59,4 +68,5 @@ for (const entry of entries) {
   }
 }
 
+await egress.close();
 process.exitCode = failed > 0 ? 1 : 0;

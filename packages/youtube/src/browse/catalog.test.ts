@@ -38,11 +38,14 @@ async function replayed(id: string): Promise<Catalog> {
   });
 }
 
-/** Every image URL in a value, wherever it is. */
+/** Every image URL in a value: entries of thumbnails, avatars and banners, and storyboard templates. */
 function imageUrls(value: unknown): string[] {
   const out: string[] = [];
   JSON.stringify(value, (k, v) => {
-    if (k === "url" && typeof v === "string") out.push(v);
+    if (["thumbnails", "avatars", "banners"].includes(k) && Array.isArray(v)) {
+      for (const image of v as Array<{ url?: string }>)
+        if (image.url) out.push(image.url);
+    }
     if (k === "templateUrl" && typeof v === "string") out.push(v);
     return v;
   });
@@ -105,6 +108,12 @@ describe("Catalog on recorded YouTube responses", () => {
       name: "Linus Tech Tips",
       handle: "@LinusTechTips",
     });
+    expect(first.channel?.videoCount?.approximate).toBe(false);
+    expect(
+      first.channel?.links.some((l) =>
+        /^https:\/\/(www\.)?lttstore\.com/.test(l.url),
+      ),
+    ).toBe(true);
     expect(first.channel?.tabs).toEqual(
       expect.arrayContaining(["videos", "shorts", "streams", "playlists"]),
     );
@@ -173,6 +182,28 @@ describe("Catalog on recorded YouTube responses", () => {
       await catalog.playlist("UULFX6OQ3DkcsbYNE6H8uQQuVA", first.continuation),
     );
     expect(second.videos[0]?.videoId).not.toBe(first.videos[0]?.videoId);
+  });
+
+  it("reads chapters from the player bar", async () => {
+    const v = await (await replayed("catalog-chapters")).video("cm94WV0ReKg");
+    expect(v.chapters).toHaveLength(6);
+    expect(v.chapters[0]?.startSec).toBe(0);
+    expect(
+      v.chapters.every(
+        (c, i, all) =>
+          c.title.length > 0 &&
+          (i === 0 || c.startSec > (all[i - 1]?.startSec ?? 0)),
+      ),
+    ).toBe(true);
+    expectNoGoogleImages(v);
+  });
+
+  it("says a members-only video is members-only", async () => {
+    const v = await (await replayed("catalog-members-only")).video(
+      "qiLUvCt3k6g",
+    );
+    expect(v.unplayable?.kind).toBe("members-only");
+    expect(v.membersOnly).toBe(true);
   });
 
   it("maps YouTube's Live page", async () => {

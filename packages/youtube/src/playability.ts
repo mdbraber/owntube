@@ -44,7 +44,9 @@ export function classifyPlayability(
     };
   }
   if (
-    /members-only|MEMBERS_ONLY|Join this channel/i.test(`${reason} ${screen}`)
+    /members-only|MEMBERS_ONLY|members on level|Join this (YouTube )?channel/i.test(
+      `${reason} ${screen}`,
+    )
   )
     return { kind: "members-only", reason };
   if (status === "LOGIN_REQUIRED") {

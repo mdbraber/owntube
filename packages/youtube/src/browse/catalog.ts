@@ -136,7 +136,7 @@ export class Catalog {
         : {}),
       captions,
       ...storyboardOf(info.storyboards),
-      chapters: [],
+      chapters: chaptersOf(info.player_overlays),
       related,
       unplayable: unplayable
         ? { kind: unplayable.kind, reason: unplayable.reason }
@@ -156,16 +156,22 @@ export class Catalog {
         channel: undefined,
       };
     const ch = await yt.getChannel(channelId);
-    const tabbed =
+    const [tabbed, about] = await Promise.all([
       tab === "videos"
-        ? await ch.getVideos()
+        ? ch.getVideos()
         : tab === "shorts"
-          ? await ch.getShorts()
+          ? ch.getShorts()
           : tab === "streams"
-            ? await ch.getLiveStreams()
-            : await ch.getPlaylists();
+            ? ch.getLiveStreams()
+            : ch.getPlaylists(),
+      ch.getAbout().catch(() => undefined),
+    ]);
     const page = listPage(tabbed.current_tab);
-    const channel = channelDetail(ch, collectItems(ch.current_tab).channels);
+    const channel = channelDetail(
+      ch,
+      collectItems(ch.current_tab).channels,
+      about,
+    );
     // A channel's own tabs leave the channel off each video; it is this one.
     const ref = {
       channelId: channel.channelId,
@@ -286,6 +292,7 @@ function listPage(root: unknown): {
 function channelDetail(
   ch: Awaited<ReturnType<Innertube["getChannel"]>>,
   featured: ChannelDetail["featuredChannels"],
+  about: unknown,
 ): ChannelDetail {
   const header = ch.header as YTNodes.PageHeader | undefined;
   const rows = header?.content?.metadata?.metadata_rows ?? [];
@@ -293,8 +300,22 @@ function channelDetail(
     (r) => r.metadata_parts?.map((p) => p.text?.toString() ?? "") ?? [],
   );
   const handle = parts.find((p) => p.startsWith("@"));
-  const subscribers = parseCount(parts.find((p) => /subscriber/i.test(p)));
-  const videoCount = parseCount(parts.find((p) => /\bvideos?\b/i.test(p)));
+  // The About panel is more precise ("8,013 videos") than the header ("8K videos").
+  const meta =
+    about instanceof YTNodes.AboutChannel ? about.metadata : undefined;
+  const subscribers =
+    parseCount(meta?.subscriber_count?.toString()) ??
+    parseCount(parts.find((p) => /subscriber/i.test(p)));
+  const videoCount =
+    parseCount(meta?.video_count?.toString()) ??
+    parseCount(parts.find((p) => /\bvideos?\b/i.test(p)));
+  const links = (meta?.links ?? [])
+    .filter(
+      (l): l is YTNodes.ChannelExternalLinkView =>
+        l instanceof YTNodes.ChannelExternalLinkView,
+    )
+    .map(linkOf)
+    .filter((l): l is { title: string; url: string } => Boolean(l));
   const banners = (
     header?.content?.banner as unknown as
       | { image?: Array<{ url: string; width?: number; height?: number }> }
@@ -314,7 +335,7 @@ function channelDetail(
       : {}),
     banners: toImages(banners),
     ...(videoCount ? { videoCount } : {}),
-    links: [],
+    links,
     featuredChannels: featured,
     tabs,
   };
@@ -333,6 +354,46 @@ function publishedOf(
   if (Number.isFinite(dayAt))
     return { at: dayAt, precision: "day", ...(text ? { text } : {}) };
   return text ? { text } : undefined;
+}
+
+/** Chapters from the player bar's markers (the description's, or YouTube's automatic ones). */
+function chaptersOf(overlays: unknown): VideoDetail["chapters"] {
+  const bar = (
+    overlays as { decorated_player_bar?: { player_bar?: unknown } } | undefined
+  )?.decorated_player_bar?.player_bar;
+  if (!(bar instanceof YTNodes.MultiMarkersPlayerBar)) return [];
+  const marker =
+    bar.markers_map.find((m) => m.marker_key === "DESCRIPTION_CHAPTERS") ??
+    bar.markers_map.find((m) => /CHAPTERS/.test(m.marker_key));
+  return (marker?.value.chapters ?? []).map((c) => ({
+    title: c.title.toString(),
+    startSec: c.time_range_start_millis / 1000,
+    thumbnails: toImages(c.thumbnail),
+  }));
+}
+
+/** An external link of a channel's About panel: YouTube wraps the URL in its redirector. */
+function linkOf(
+  view: YTNodes.ChannelExternalLinkView,
+): { title: string; url: string } | undefined {
+  const text = view.link.toString();
+  const endpointUrl = (
+    view.link.runs?.[0] as
+      | { endpoint?: { payload?: { url?: string } } }
+      | undefined
+  )?.endpoint?.payload?.url;
+  let url = endpointUrl ?? "";
+  try {
+    const u = new URL(url, "https://www.youtube.com");
+    url =
+      u.pathname === "/redirect"
+        ? (u.searchParams.get("q") ?? "")
+        : u.toString();
+  } catch {
+    url = "";
+  }
+  if (!url && text) url = /^https?:\/\//.test(text) ? text : `https://${text}`;
+  return url ? { title: view.title.toString() || text, url } : undefined;
 }
 
 function storyboardOf(storyboards: unknown): { storyboard?: Storyboard } {

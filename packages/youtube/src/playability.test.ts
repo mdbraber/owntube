@@ -80,6 +80,14 @@ describe("classifyPlayability", () => {
     ).toBe("bot-check");
   });
 
+  it("recognises members-only by its current wording too", () => {
+    const reason =
+      "This video is available to this channel's members on level: LTT Members Plus (or any higher level). Join this YouTube channel to get access to members-only content.";
+    expect(classifyPlayability({ status: "UNPLAYABLE", reason })?.kind).toBe(
+      "members-only",
+    );
+  });
+
   it("treats a missing status as unavailable", () => {
     expect(classifyPlayability(undefined)?.kind).toBe("unavailable");
   });
