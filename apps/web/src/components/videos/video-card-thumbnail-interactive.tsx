@@ -3,25 +3,20 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useInvidiousOrigins } from "@/components/videos/invidious-origin-context";
 import type { VideoActionSurface } from "@/components/videos/video-action-registry";
 import { VideoCardDurationBadge } from "@/components/videos/video-card-duration-badge";
 import { useWatchProgress } from "@/components/videos/video-membership-context";
 import { VideoStatusPills } from "@/components/videos/video-status-pills";
 import { VideoWatchProgress } from "@/components/videos/video-watch-progress";
-import {
-  type CardPreviewPlayback,
-  cardPreviewPlaybackFromDetail,
-} from "@/lib/card-preview-playback";
-import { toBrowserUpstreamImageUrl } from "@/lib/channel-avatar-proxy";
-import { buildHlsSameOriginConfig } from "@/lib/hls-same-origin";
-import { getMediaOrigin } from "@/lib/media-origin";
+import { hlsVodConfig } from "@/lib/hls-config";
 import { cn } from "@/lib/utils";
 import {
   applyVideoThumbnailImgError,
   preferHighResVideoThumbnailUrl,
 } from "@/lib/video-thumbnail-url";
 import { COMPLETION_RATIO } from "@/lib/watch-event";
+import { previewStreamFromDetail } from "@/lib/watch-playback";
+import { browserImageUrl } from "@/lib/youtube-image-via-instance";
 import { trpc } from "@/trpc/react";
 
 const DWELL_MS = 400;
@@ -60,37 +55,11 @@ type VideoCardThumbnailInteractiveProps = {
   surface?: VideoActionSurface;
 };
 
-function waitForVideoPaint(
-  el: HTMLVideoElement,
-  timeoutMs: number,
-): Promise<void> {
-  if (!el.paused && el.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-    return Promise.resolve();
-  }
-  return new Promise((resolve) => {
-    const timer = window.setTimeout(resolve, timeoutMs);
-    const done = () => {
-      window.clearTimeout(timer);
-      el.removeEventListener("playing", done);
-      el.removeEventListener("loadeddata", done);
-      resolve();
-    };
-    el.addEventListener("playing", done, { once: true });
-    el.addEventListener("loadeddata", done, { once: true });
-  });
-}
-
 function teardownMedia(
   video: HTMLVideoElement | null,
-  audio: HTMLAudioElement | null,
   hlsDestroy: (() => void) | null,
 ) {
   hlsDestroy?.();
-  if (audio) {
-    audio.pause();
-    audio.removeAttribute("src");
-    audio.load();
-  }
   if (video) {
     video.pause();
     video.removeAttribute("src");
@@ -112,7 +81,6 @@ export function VideoCardThumbnailInteractive({
 }: VideoCardThumbnailInteractiveProps) {
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const hlsDestroyRef = useRef<(() => void) | null>(null);
   const previewActiveRef = useRef(false);
 
@@ -157,14 +125,10 @@ export function VideoCardThumbnailInteractive({
     return () => window.clearTimeout(t);
   }, [pointerInside]);
 
-  const invidiousOrigins = useInvidiousOrigins();
   const displayThumbnailUrl = useMemo(
     () =>
-      toBrowserUpstreamImageUrl(
-        preferHighResVideoThumbnailUrl(thumbnailUrl, videoId),
-        invidiousOrigins,
-      ),
-    [thumbnailUrl, videoId, invidiousOrigins],
+      browserImageUrl(preferHighResVideoThumbnailUrl(thumbnailUrl, videoId)),
+    [thumbnailUrl, videoId],
   );
 
   // Hover previews are a pointer/desktop affordance. On touch devices the
@@ -196,28 +160,23 @@ export function VideoCardThumbnailInteractive({
     { enabled: queryEnabled, staleTime: 5 * 60_000 },
   );
 
-  const playback = useMemo((): CardPreviewPlayback | null => {
+  // A low-resolution HLS stream of the video (VOD only).
+  const playback = useMemo((): { src: string } | null => {
     if (!pointerInside || !detailQuery.data) return null;
-    if (typeof window === "undefined") return null;
-    return cardPreviewPlaybackFromDetail(
-      detailQuery.data,
-      getMediaOrigin(window.location.origin),
-      window.location.host ?? "",
-    );
+    const src = previewStreamFromDetail(detailQuery.data);
+    return src ? { src } : null;
   }, [pointerInside, detailQuery.data]);
 
   useEffect(() => {
     const v = videoRef.current;
-    const a = audioRef.current;
     if (!pointerInside || !playback) {
       previewActiveRef.current = false;
-      teardownMedia(v, a, hlsDestroyRef.current);
+      teardownMedia(v, hlsDestroyRef.current);
       hlsDestroyRef.current = null;
       return;
     }
 
     let cancelled = false;
-    let splitListenersCleanup: (() => void) | undefined;
 
     hlsDestroyRef.current?.();
     hlsDestroyRef.current = null;
@@ -238,93 +197,7 @@ export function VideoCardThumbnailInteractive({
       if (v.readyState >= HTMLMediaElement.HAVE_METADATA) seekToResume();
       else v.addEventListener("loadedmetadata", seekToResume, { once: true });
 
-      if (playback.kind === "muxed") {
-        v.src = playback.src;
-        v.muted = previewMutedRef.current;
-        try {
-          await v.play();
-          if (!cancelled && pointerInsideRef.current) {
-            previewActiveRef.current = true;
-          }
-        } catch {
-          // Unmuted autoplay can be blocked before any page gesture — retry
-          // muted rather than showing a frozen preview.
-          if (!v.muted) {
-            v.muted = true;
-            try {
-              await v.play();
-              if (!cancelled && pointerInsideRef.current) {
-                previewActiveRef.current = true;
-              }
-              return;
-            } catch {
-              // fall through
-            }
-          }
-          previewActiveRef.current = false;
-        }
-        return;
-      }
-
-      if (playback.kind === "split") {
-        if (!a) return;
-        v.src = playback.videoSrc;
-        v.muted = true;
-        a.src = playback.audioSrc;
-        a.preload = "auto";
-        a.muted = previewMutedRef.current;
-        a.volume = PREVIEW_VOLUME;
-
-        const align = () => {
-          if (!v || !a) return;
-          a.currentTime = v.currentTime;
-        };
-        const onSeek = () => {
-          align();
-        };
-        /** `play` fires before frames; only start companion audio once video paints. */
-        const onVideoPlaying = () => {
-          if (previewMutedRef.current) return;
-          align();
-          void a.play().catch(() => {});
-        };
-        const onTime = () => {
-          if (v.paused || previewMutedRef.current) return;
-          const drift = Math.abs(a.currentTime - v.currentTime);
-          if (drift > 0.35) a.currentTime = v.currentTime;
-        };
-        v.addEventListener("seeking", onSeek);
-        v.addEventListener("seeked", onSeek);
-        v.addEventListener("playing", onVideoPlaying);
-        v.addEventListener("timeupdate", onTime);
-        splitListenersCleanup = () => {
-          v.removeEventListener("seeking", onSeek);
-          v.removeEventListener("seeked", onSeek);
-          v.removeEventListener("playing", onVideoPlaying);
-          v.removeEventListener("timeupdate", onTime);
-        };
-        try {
-          await v.play();
-          if (previewMutedRef.current) {
-            if (!cancelled && pointerInsideRef.current) {
-              previewActiveRef.current = true;
-            }
-            return;
-          }
-          await waitForVideoPaint(v, 5000);
-          if (cancelled) return;
-          align();
-          await a.play();
-          if (!cancelled && pointerInsideRef.current) {
-            previewActiveRef.current = true;
-          }
-        } catch {
-          previewActiveRef.current = false;
-        }
-        return;
-      }
-
-      if (playback.kind === "hls") {
+      {
         const canNative =
           v.canPlayType("application/vnd.apple.mpegurl") !== "" ||
           v.canPlayType("application/x-mpegURL") !== "";
@@ -357,9 +230,9 @@ export function VideoCardThumbnailInteractive({
           const { default: Hls } = await import("hls.js");
           if (!Hls.isSupported() || cancelled) return;
           const hls = new Hls({
+            ...hlsVodConfig(),
             maxBufferLength: 8,
             maxMaxBufferLength: 20,
-            ...buildHlsSameOriginConfig(getMediaOrigin(window.location.origin)),
           });
           hls.loadSource(playback.src);
           hls.attachMedia(v);
@@ -400,8 +273,7 @@ export function VideoCardThumbnailInteractive({
 
     return () => {
       cancelled = true;
-      splitListenersCleanup?.();
-      teardownMedia(videoRef.current, audioRef.current, hlsDestroyRef.current);
+      teardownMedia(videoRef.current, hlsDestroyRef.current);
       hlsDestroyRef.current = null;
       previewActiveRef.current = false;
     };
@@ -450,19 +322,9 @@ export function VideoCardThumbnailInteractive({
 
   useEffect(() => {
     const v = videoRef.current;
-    const a = audioRef.current;
     if (!playback || !v) return;
-    if (playback.kind === "muxed" || playback.kind === "hls") {
-      v.muted = previewMuted;
-      if (!previewMuted) v.volume = PREVIEW_VOLUME;
-    } else if (playback.kind === "split" && a) {
-      a.muted = previewMuted;
-      if (!previewMuted) {
-        a.volume = PREVIEW_VOLUME;
-        a.currentTime = v.currentTime;
-        if (!v.paused) void a.play().catch(() => {});
-      }
-    }
+    v.muted = previewMuted;
+    if (!previewMuted) v.volume = PREVIEW_VOLUME;
   }, [previewMuted, playback]);
 
   const onThumbClick = useCallback(
@@ -559,8 +421,6 @@ export function VideoCardThumbnailInteractive({
           className="px-2 py-0.5 text-[11px]"
         />
       </div>
-      {/* biome-ignore lint/a11y/useMediaCaption: split preview companion */}
-      <audio ref={audioRef} className="hidden" preload="none" />
       {showMute ? (
         <button
           type="button"

@@ -1,5 +1,5 @@
 import { isStrictShortVideo } from "@/lib/short-video";
-import type { UnifiedVideo } from "@/server/services/proxy.types";
+import type { UnifiedVideo } from "@/server/catalog/types";
 
 /**
  * YouTube exposes a hidden per-channel "long-form videos" playlist whose ID is the

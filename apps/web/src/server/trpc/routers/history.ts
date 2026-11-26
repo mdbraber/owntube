@@ -1,12 +1,12 @@
 import { and, desc, eq, like, or } from "drizzle-orm";
 import { z } from "zod";
+import { fetchVideoDetail } from "@/server/catalog";
 import { readChannelMetaByIds } from "@/server/channel-meta/store";
 import { watchHistory } from "@/server/db/schema";
 import { fireHooks } from "@/server/hooks/run-hooks";
 import { removeWatchedFromQueue } from "@/server/queue/remove-watched";
 import { clearRecommendationCachesForUser } from "@/server/recommendation/engine";
 import { loadWatchedVideoIdsForRecommendations } from "@/server/recommendation/watched-videos";
-import { fetchVideoDetail } from "@/server/services/proxy";
 import { protectedProcedure, router } from "@/server/trpc/init";
 
 const historyEventInputSchema = z.object({
@@ -260,7 +260,7 @@ export const historyRouter = router({
             };
           }
           try {
-            const detail = await fetchVideoDetail(ctx.db, {
+            const detail = await fetchVideoDetail({
               videoId: row.videoId,
             });
             return {

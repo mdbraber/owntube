@@ -13,7 +13,7 @@ import { useWatchProgressMap } from "@/components/videos/video-membership-contex
 import { mergeVideosNewestFirst } from "@/lib/published-sort-key";
 import { youtubeImageViaInstance } from "@/lib/youtube-image-via-instance";
 import { playlistHref } from "@/lib/yt-routes";
-import type { ChannelTab, UnifiedVideo } from "@/server/services/proxy.types";
+import type { ChannelTab, UnifiedVideo } from "@/server/catalog/types";
 import { trpc } from "@/trpc/react";
 
 type SuggestedChannel = {
@@ -31,8 +31,6 @@ type ChannelVideosSectionProps = {
   initialTab?: ChannelTab;
   initialVideos: UnifiedVideo[];
   initialContinuation?: string | null;
-  sourceUsed: string;
-  stale?: boolean;
   /** Signed in: the ⋯ menu's channel-page options apply. */
   isAuthed?: boolean;
   /**
@@ -62,8 +60,6 @@ export function ChannelVideosSection({
   initialTab = "videos",
   initialVideos,
   initialContinuation,
-  sourceUsed,
-  stale,
   isAuthed = false,
   channelAvatarUrl,
 }: ChannelVideosSectionProps) {
@@ -98,8 +94,6 @@ export function ChannelVideosSection({
                   channelId,
                   videos: initialVideos,
                   continuation: initialContinuation ?? null,
-                  sourceUsed: sourceUsed as "invidious" | "cache",
-                  stale,
                 },
               ],
               pageParams: [undefined],

@@ -2,7 +2,6 @@ import type { CaptionModel } from "@/components/player/player-captions";
 import type { CaptionTrack } from "@/components/player/player-payload";
 import type {
   AudioModel,
-  ProgressiveQualityMenu,
   QualityModel,
 } from "@/components/player/player-quality";
 import type { ScrubPreviewConfig } from "@/hooks/use-scrub-frame-preview";
@@ -79,6 +78,8 @@ export type ChromeProps = SponsorBlockChromeProps & {
    * and iPad), so no separate cast element is needed.
    */
   castsItself?: boolean;
+  /** The signed HLS playlist a receiver plays when this video is cast. */
+  castSrc?: string;
 };
 
 export type HlsBlockProps = SponsorBlockChromeProps & {
@@ -87,8 +88,6 @@ export type HlsBlockProps = SponsorBlockChromeProps & {
   poster?: string;
   reactKey: string;
   captions?: CaptionTrack[];
-  progressiveQualityMenu: ProgressiveQualityMenu | null;
-  setQualityIndex: (i: number, seekSeconds?: number) => void;
   settingsOpen: boolean;
   onSettingsOpenChange: (open: boolean) => void;
   chapters: VideoChapter[];

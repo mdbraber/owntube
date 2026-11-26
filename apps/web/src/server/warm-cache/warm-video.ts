@@ -1,5 +1,5 @@
+import { fetchVideoComments, fetchVideoDetail } from "@/server/catalog";
 import type { AppDb } from "@/server/db/client";
-import { fetchVideoComments, fetchVideoDetail } from "@/server/services/proxy";
 import {
   DEFAULT_SPONSORBLOCK_CATEGORIES,
   getSponsorBlockSegments,
@@ -26,12 +26,12 @@ export async function warmVideo(
 ): Promise<boolean> {
   let ok = false;
   try {
-    await fetchVideoDetail(db, { videoId });
+    await fetchVideoDetail({ videoId });
     ok = true;
   } catch {
     /* age-restricted/unavailable: skip */
   }
-  await fetchVideoComments(db, { videoId, sortBy: "top" }).catch(() => {});
+  await fetchVideoComments({ videoId, sortBy: "top" }).catch(() => {});
   if (options.sponsorBlock ?? true) {
     await getSponsorBlockSegments(db, {
       videoId,

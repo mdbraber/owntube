@@ -1,4 +1,4 @@
-import type { RecommendationReason } from "@/server/services/proxy.types";
+import type { RecommendationReason } from "@/server/catalog/types";
 
 /** English label explaining why a personalized feed row was recommended. */
 export function formatRecommendationReason(

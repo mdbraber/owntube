@@ -30,7 +30,6 @@
     "db:generate": "pnpm --filter web db:generate",
     "db:studio": "pnpm --filter web db:studio",
     "warm:cache": "pnpm --filter web warm:cache",
-    "check:upstream": "pnpm --filter web check:upstream",
     "export:icons": "pnpm --filter web export:icons",
     "dev:gateway": "pnpm --filter gateway dev"
   },

@@ -11,13 +11,13 @@ import {
   hashPrefixForVideoId,
   sha256VideoIdHex,
 } from "@/lib/sponsorblock-hash";
-import type { AppDb } from "@/server/db/client";
 import {
   readFreshCacheRow,
   readRecentCacheRow,
   registerInFlight,
   writeCache,
-} from "@/server/services/proxy/cache";
+} from "@/server/cache/video-cache";
+import type { AppDb } from "@/server/db/client";
 
 const SPONSORBLOCK_API_BASE = "https://sponsor.ajay.app";
 const FETCH_TIMEOUT_MS = 8_000;

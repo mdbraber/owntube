@@ -17,7 +17,6 @@ import { SponsorBlockSync } from "@/components/settings/sponsorblock-sync";
 import { ThemeSync } from "@/components/settings/theme-sync";
 import { ActionToastProvider } from "@/components/videos/action-toast";
 import { IgnoredVideosProvider } from "@/components/videos/ignored-videos-context";
-import { InvidiousOriginProvider } from "@/components/videos/invidious-origin-context";
 import { VideoMembershipProvider } from "@/components/videos/video-membership-context";
 import { restoreQueryCache, startQueryCachePersist } from "@/lib/query-persist";
 import { isTransientNetworkError } from "@/lib/query-retry";
@@ -35,12 +34,10 @@ function getBaseUrl() {
 
 export function Providers({
   children,
-  invidiousOrigins = [],
   dehydratedState,
 }: {
   children: React.ReactNode;
   /** Server-computed Invidious origins (from INVIDIOUS_BASE_URL) for browser image URLs. */
-  invidiousOrigins?: readonly string[];
   /** App-wide SSR-prefetched queries (settings, sidebar subs) to hydrate once. */
   dehydratedState?: DehydratedState;
 }) {
@@ -135,15 +132,13 @@ export function Providers({
           <MiniPlayerSync />
           <SponsorBlockSync />
           <QueueSync />
-          <InvidiousOriginProvider origins={invidiousOrigins}>
-            <ActionToastProvider>
-              <IgnoredVideosProvider>
-                <VideoMembershipProvider>
-                  <PlayerProvider>{children}</PlayerProvider>
-                </VideoMembershipProvider>
-              </IgnoredVideosProvider>
-            </ActionToastProvider>
-          </InvidiousOriginProvider>
+          <ActionToastProvider>
+            <IgnoredVideosProvider>
+              <VideoMembershipProvider>
+                <PlayerProvider>{children}</PlayerProvider>
+              </VideoMembershipProvider>
+            </IgnoredVideosProvider>
+          </ActionToastProvider>
         </HydrationBoundary>
       </QueryClientProvider>
     </trpc.Provider>

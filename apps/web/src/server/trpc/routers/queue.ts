@@ -1,8 +1,8 @@
 import { and, asc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { watchHref } from "@/lib/yt-routes";
+import { fetchVideoDetail } from "@/server/catalog";
 import { watchQueue } from "@/server/db/schema";
-import { fetchVideoDetail } from "@/server/services/proxy";
 import { protectedProcedure, router } from "@/server/trpc/init";
 
 function nowUnix(): number {
@@ -50,7 +50,7 @@ export const queueRouter = router({
     return Promise.all(
       items.map(async (row) => {
         try {
-          const detail = await fetchVideoDetail(ctx.db, {
+          const detail = await fetchVideoDetail({
             videoId: row.videoId,
           });
           return {

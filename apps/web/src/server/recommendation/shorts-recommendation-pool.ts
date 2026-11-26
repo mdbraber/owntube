@@ -4,6 +4,7 @@ import {
 } from "@/lib/published-sort-key";
 import { isStrictShortVideo } from "@/lib/short-video";
 import { shortsSearchQueriesForTaste } from "@/lib/shorts-discovery-queries";
+import type { UnifiedVideo } from "@/server/catalog/types";
 import type { AppDb } from "@/server/db/client";
 import {
   expandScoredPoolWithRelatedCandidates,
@@ -37,8 +38,8 @@ import {
 import {
   buildKeywordCorpus,
   buildTasteCorpusTitles,
-  readCachedDetailTitlesForVideos,
-  readCachedDislikeTitlesOrdered,
+  readStoredDislikeTitlesOrdered,
+  readStoredTitlesForVideos,
 } from "@/server/recommendation/taste-corpus";
 import {
   buildTfidfModel,
@@ -46,7 +47,6 @@ import {
 } from "@/server/recommendation/tfidf";
 import type { ScoredVideo } from "@/server/recommendation/types";
 import { loadWatchedVideoIdsForRecommendations } from "@/server/recommendation/watched-videos";
-import type { UnifiedVideo } from "@/server/services/proxy.types";
 import { getUserSettings } from "@/server/settings/profile";
 
 export type ShortsRecommendationResult = {
@@ -174,7 +174,7 @@ export async function getShortsRecommendations(
     const tasteVideoIds = Array.from(
       new Set([...signals.likedVideoIds, ...signals.savedVideoIds]),
     );
-    const tasteTitles = readCachedDetailTitlesForVideos(db, tasteVideoIds, 72);
+    const tasteTitles = readStoredTitlesForVideos(db, tasteVideoIds, 72);
     const keywordCorpus = buildKeywordCorpus(userSettings.tasteKeywords);
     const preCorpusTitles = buildTasteCorpusTitles(
       [keywordCorpus, tasteTitles],
@@ -224,7 +224,7 @@ export async function getShortsRecommendations(
       groups: [keywordCorpus, tasteTitles],
     });
     const dislikeModel = buildTfidfModel(
-      readCachedDislikeTitlesOrdered(db, dislikeCorpusVideoIds(signals), 48),
+      readStoredDislikeTitlesOrdered(db, dislikeCorpusVideoIds(signals), 48),
     );
 
     let scored: ScoredVideo[] = uniqueRaw.map((v) => {

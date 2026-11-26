@@ -1,9 +1,8 @@
 import { ShortsFeedClient } from "@/components/shorts/shorts-feed-client";
 import { auth } from "@/server/auth";
+import { fetchVideoDetail } from "@/server/catalog";
+import type { VideoDetail } from "@/server/catalog/types";
 import { getDb } from "@/server/db/client";
-import { describeUpstreamAvailability } from "@/server/services/proxy";
-import { peekFreshVideoDetail } from "@/server/services/proxy/video";
-import type { VideoDetail } from "@/server/services/proxy.types";
 import {
   getUserSettings,
   normalizeTrendingRegionStored,
@@ -30,8 +29,6 @@ export default async function ShortsPage({ searchParams }: ShortsPageProps) {
         )
       : "US";
 
-  const initialUpstream = describeUpstreamAvailability();
-
   const viewerId = Number.isFinite(userId) && userId > 0 ? userId : null;
 
   // The feed is resolved on the CLIENT, not here: fetching it during SSR blocks
@@ -41,16 +38,15 @@ export default async function ShortsPage({ searchParams }: ShortsPageProps) {
   // in-app spinner while `ShortsFeedClient` pulls the feed; a warm feed still
   // arrives in a couple hundred ms from the server cache.
   //
-  // We can still seed the first short's *detail* from cache (synchronous, no
-  // upstream) for a deep-linked ?v= short, so it plays the instant it mounts.
-  let initialDetail: VideoDetail | null = null;
-  if (initialVideoId) {
-    try {
-      initialDetail = peekFreshVideoDetail(db, { videoId: initialVideoId });
-    } catch {
-      initialDetail = null;
-    }
-  }
+  // We can still seed a deep-linked ?v= short's *detail* from the gateway's
+  // cache (cache-only: never waits on YouTube), so it plays the instant it
+  // mounts.
+  const initialDetail: VideoDetail | null = initialVideoId
+    ? await fetchVideoDetail(
+        { videoId: initialVideoId },
+        { cache: "only" },
+      ).catch(() => null)
+    : null;
 
   return (
     <div className="absolute inset-0">
@@ -59,7 +55,6 @@ export default async function ShortsPage({ searchParams }: ShortsPageProps) {
         initialVideoId={initialVideoId}
         initialFeed={null}
         initialDetail={initialDetail}
-        initialUpstream={initialUpstream}
         signedIn={viewerId != null}
       />
     </div>

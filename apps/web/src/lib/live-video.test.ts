@@ -4,7 +4,6 @@ import {
   markUnifiedVideoAsActiveLive,
   mergeActiveLiveVideosFirst,
   normalizeDurationForLive,
-  pickLiveFlagsFromUpstream,
 } from "@/lib/live-video";
 
 describe("normalizeDurationForLive", () => {
@@ -22,59 +21,6 @@ describe("isActiveLiveVideo", () => {
   it("excludes upcoming", () => {
     expect(isActiveLiveVideo({ isLive: true, isUpcoming: true })).toBe(false);
     expect(isActiveLiveVideo({ isLive: true })).toBe(true);
-  });
-});
-
-describe("pickLiveFlagsFromUpstream", () => {
-  it("reads Piped livestream", () => {
-    expect(pickLiveFlagsFromUpstream({ livestream: true })).toEqual({
-      isLive: true,
-      isUpcoming: false,
-    });
-  });
-
-  it("reads Piped isLive alias", () => {
-    expect(pickLiveFlagsFromUpstream({ isLive: true })).toEqual({
-      isLive: true,
-      isUpcoming: false,
-    });
-  });
-
-  it("does not infer live from Piped stream type with missing duration", () => {
-    expect(pickLiveFlagsFromUpstream({ type: "stream", duration: 0 })).toEqual({
-      isLive: false,
-      isUpcoming: false,
-    });
-    expect(pickLiveFlagsFromUpstream({ type: "stream", duration: -1 })).toEqual(
-      {
-        isLive: false,
-        isUpcoming: false,
-      },
-    );
-  });
-
-  it("infers live from Piped trending streams with duration and uploaded both -1", () => {
-    // Shape of a regional-trending live TV item (e.g. "atv Canlı Yayın").
-    expect(
-      pickLiveFlagsFromUpstream({
-        type: "stream",
-        duration: -1,
-        uploaded: -1,
-      }),
-    ).toEqual({ isLive: true, isUpcoming: false });
-  });
-
-  it("reads Invidious liveNow and isUpcoming", () => {
-    expect(pickLiveFlagsFromUpstream({ liveNow: true })).toEqual({
-      isLive: true,
-      isUpcoming: false,
-    });
-    expect(
-      pickLiveFlagsFromUpstream({ liveNow: true, isUpcoming: true }),
-    ).toEqual({
-      isLive: false,
-      isUpcoming: true,
-    });
   });
 });
 

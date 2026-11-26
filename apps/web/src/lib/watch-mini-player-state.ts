@@ -1,24 +1,11 @@
 "use client";
 
+import type { VideoPlayerPayload } from "@/components/player/player-payload";
+
 export const WATCH_MINI_STATE_KEY = "ot:watch-mini-state";
 export const WATCH_MINI_ENABLED_KEY = "ot:mini-player-enabled";
 
-export type WatchMiniPayload =
-  | { mode: "hls"; src: string }
-  | {
-      mode: "progressive";
-      variants: (
-        | { t: "muxed"; label: string; src: string }
-        | {
-            t: "split";
-            label: string;
-            video: string;
-            audio: string;
-            audioTracks: { label: string; src: string }[];
-            defaultAudioIndex?: number;
-          }
-      )[];
-    };
+export type WatchMiniPayload = VideoPlayerPayload;
 
 export type WatchMiniState = {
   videoId: string;
@@ -26,12 +13,22 @@ export type WatchMiniState = {
   poster?: string;
   payload: WatchMiniPayload;
   currentTime: number;
-  qualityIndex?: number;
   volume?: number;
   muted?: boolean;
   /** When true, mini player mounts paused (no autoplay). */
   paused?: boolean;
 };
+
+/** A stored payload of today's shape (older ones listed raw stream URLs). */
+function isPlayerPayload(v: unknown): v is VideoPlayerPayload {
+  if (!v || typeof v !== "object") return false;
+  const p = v as Record<string, unknown>;
+  return (
+    p.mode === "hls" &&
+    typeof p.src === "string" &&
+    (p.dash === null || typeof p.dash === "string")
+  );
+}
 
 export function readWatchMiniState(): WatchMiniState | null {
   try {
@@ -43,17 +40,10 @@ export function readWatchMiniState(): WatchMiniState | null {
     if (
       typeof obj.videoId !== "string" ||
       typeof obj.title !== "string" ||
-      !obj.payload ||
-      typeof obj.payload !== "object"
+      !isPlayerPayload(obj.payload)
     ) {
       return null;
     }
-    const qualityIndex =
-      typeof obj.qualityIndex === "number" &&
-      Number.isFinite(obj.qualityIndex) &&
-      obj.qualityIndex >= 0
-        ? Math.floor(obj.qualityIndex)
-        : undefined;
     const volume =
       typeof obj.volume === "number" && Number.isFinite(obj.volume)
         ? Math.min(1, Math.max(0, obj.volume))
@@ -63,13 +53,12 @@ export function readWatchMiniState(): WatchMiniState | null {
     return {
       videoId: obj.videoId,
       title: obj.title,
-      payload: obj.payload as WatchMiniPayload,
+      payload: obj.payload,
       currentTime:
         typeof obj.currentTime === "number" && Number.isFinite(obj.currentTime)
           ? Math.max(0, obj.currentTime)
           : 0,
       poster: typeof obj.poster === "string" ? obj.poster : undefined,
-      qualityIndex,
       volume,
       muted,
       paused,

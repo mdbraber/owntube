@@ -1,19 +1,19 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import {
+  fetchRelatedVideos,
+  fetchVideoComments,
+  fetchVideoDetail,
+} from "@/server/catalog";
+import {
+  videoCommentsInputSchema,
+  videoDetailInputSchema,
+} from "@/server/catalog/types";
 import { RateLimitExceededError } from "@/server/errors/rate-limit-exceeded";
 import { UpstreamAgeRestrictedError } from "@/server/errors/upstream-age-restricted";
 import { UpstreamLiveUpcomingError } from "@/server/errors/upstream-live-upcoming";
 import { UpstreamUnavailableError } from "@/server/errors/upstream-unavailable";
 import { UpstreamVideoUnavailableError } from "@/server/errors/upstream-video-unavailable";
-import {
-  fetchRelatedVideos,
-  fetchVideoComments,
-  fetchVideoDetail,
-} from "@/server/services/proxy";
-import {
-  videoCommentsInputSchema,
-  videoDetailInputSchema,
-} from "@/server/services/proxy.types";
 import {
   getUserSettings,
   withoutBlockedChannels,
@@ -28,9 +28,9 @@ const videoCommentsQuerySchema = videoCommentsInputSchema.extend({
 export const videoRouter = router({
   detail: publicProcedure
     .input(videoDetailInputSchema)
-    .query(async ({ ctx, input }) => {
+    .query(async ({ input }) => {
       try {
-        return await fetchVideoDetail(ctx.db, input);
+        return await fetchVideoDetail(input);
       } catch (e) {
         if (e instanceof UpstreamAgeRestrictedError) {
           throw new TRPCError({
@@ -63,7 +63,7 @@ export const videoRouter = router({
   related: publicProcedure
     .input(videoDetailInputSchema)
     .query(async ({ ctx, input }) => {
-      const result = await fetchRelatedVideos(ctx.db, input, 20);
+      const result = await fetchRelatedVideos(input, 20);
       if (!ctx.userId) return result;
       return {
         ...result,
@@ -79,13 +79,12 @@ export const videoRouter = router({
       const { cursor, continuation, videoId, sortBy } = input;
       try {
         return await fetchVideoComments(
-          ctx.db,
           {
             videoId,
             sortBy,
             continuation: continuation ?? cursor ?? undefined,
           },
-          { cacheOnly: ctx.prefetchCacheOnly },
+          ctx.prefetchCacheOnly ? { cache: "only" } : {},
         );
       } catch (e) {
         if (e instanceof UpstreamLiveUpcomingError) {

@@ -70,17 +70,9 @@ const YOUTUBE_ONLY_PATHS = new Set([
  */
 const APP_ROUTES = new Set([
   "api",
-  "captions",
   "channel",
-  "channel-avatar",
-  "dash",
   "dashboard",
-  "dvr",
-  "enclosure",
   "history",
-  "hls",
-  "image",
-  "invidious",
   "login",
   "onboarding",
   "playlist",
@@ -92,12 +84,10 @@ const APP_ROUTES = new Set([
   "search",
   "settings",
   "shorts",
-  "stream",
   "subscriptions",
   "trending",
   "tv",
   "watch",
-  "yt-hls",
 ]);
 
 /** Next's RSC cache-busting parameter; never part of a canonical comparison. */

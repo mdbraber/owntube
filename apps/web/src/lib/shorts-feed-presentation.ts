@@ -1,5 +1,5 @@
 import { diversifyVideosByChannel } from "@/lib/video-channel-diversity";
-import type { UnifiedVideo } from "@/server/services/proxy.types";
+import type { UnifiedVideo } from "@/server/catalog/types";
 
 /** Shorts the home shelf asks for; the cache-warmer warms the same request. */
 export const HOME_SHORTS_SHELF_LIMIT = 18;

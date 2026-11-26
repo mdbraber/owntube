@@ -1,5 +1,11 @@
 import { filterShortsFeedVideos } from "@/lib/short-video";
 import { shortsSearchQueriesForTaste } from "@/lib/shorts-discovery-queries";
+import { fetchShortsFeed } from "@/server/catalog/shorts";
+import type {
+  ShortsFeedInput,
+  ShortsFeedResult,
+  UnifiedVideo,
+} from "@/server/catalog/types";
 import type { AppDb } from "@/server/db/client";
 import { UpstreamUnavailableError } from "@/server/errors/upstream-unavailable";
 import {
@@ -11,14 +17,8 @@ import {
   loadShortSeenVideoIds,
 } from "@/server/recommendation/shorts-seen";
 import { collectUserSignals } from "@/server/recommendation/signals";
-import { readCachedDetailTitlesForVideos } from "@/server/recommendation/taste-corpus";
+import { readStoredTitlesForVideos } from "@/server/recommendation/taste-corpus";
 import { loadWatchedVideoIdsForRecommendations } from "@/server/recommendation/watched-videos";
-import { fetchShortsFeed } from "@/server/services/proxy";
-import type {
-  ShortsFeedInput,
-  ShortsFeedResult,
-  UnifiedVideo,
-} from "@/server/services/proxy.types";
 import { getUserSettings } from "@/server/settings/profile";
 
 const SHORTS_PAGE_SIZE = 24;
@@ -161,7 +161,7 @@ async function buildTasteDiscoveryQueries(
 ): Promise<string[]> {
   const settings = getUserSettings(db, userId);
   const signals = collectUserSignals(db, userId);
-  const tasteTitles = readCachedDetailTitlesForVideos(
+  const tasteTitles = readStoredTitlesForVideos(
     db,
     Array.from(new Set([...signals.likedVideoIds, ...signals.savedVideoIds])),
     72,
@@ -243,16 +243,14 @@ async function fetchUnwatchedGenericShorts(
       : input.continuation;
   const merged: UnifiedVideo[] = [];
   const seen = new Set<string>();
-  let sourceUsed: ShortsFeedResult["sourceUsed"] = "invidious";
   let warning: string | undefined;
-  let stale: boolean | undefined;
   let upstreamUnavailable: UpstreamUnavailableError | null = null;
   let hadUpstreamContent = false;
 
   for (let attempt = 0; attempt < MAX_UNWATCHED_FETCH_ATTEMPTS; attempt++) {
     let page: ShortsFeedResult;
     try {
-      page = await fetchShortsFeed(db, { ...input, continuation });
+      page = await fetchShortsFeed({ ...input, continuation });
     } catch (e) {
       if (e instanceof UpstreamUnavailableError) {
         upstreamUnavailable = e;
@@ -261,9 +259,7 @@ async function fetchUnwatchedGenericShorts(
       }
       throw e;
     }
-    sourceUsed = page.sourceUsed;
     warning = page.warning;
-    stale = page.stale;
 
     const filtered = filterShortsFeedVideos(page.videos);
     if (filtered.length > 0) hadUpstreamContent = true;
@@ -278,9 +274,7 @@ async function fetchUnwatchedGenericShorts(
           // Recycle discovery once the upstream chain ends so the feed keeps
           // scrolling instead of dead-ending on a full page.
           continuation: page.continuation ?? SHORTS_GENERIC_REFRESH_CURSOR,
-          sourceUsed,
           warning,
-          stale,
         };
       }
     }
@@ -308,9 +302,7 @@ async function fetchUnwatchedGenericShorts(
     return {
       videos: [],
       continuation: continuation ?? undefined,
-      sourceUsed,
       warning: upstreamUnavailable.message,
-      stale,
     };
   }
 
@@ -321,10 +313,8 @@ async function fetchUnwatchedGenericShorts(
     continuation:
       continuation ??
       (merged.length > 0 ? SHORTS_GENERIC_REFRESH_CURSOR : undefined),
-    sourceUsed,
     warning:
       merged.length === 0 ? (warning ?? ALL_SHORTS_SEEN_WARNING) : warning,
-    stale,
   };
 }
 
@@ -392,13 +382,9 @@ async function fetchShortsShelfFeed(
   if (videos.length >= limit) {
     return {
       videos: videos.slice(0, limit),
-      sourceUsed: "invidious",
     };
   }
-
-  let sourceUsed: ShortsFeedResult["sourceUsed"] = "invidious";
   let warning: string | undefined;
-  let stale: boolean | undefined;
   let continuation: string | undefined;
 
   try {
@@ -407,7 +393,7 @@ async function fetchShortsShelfFeed(
       pageIndex < SHORTS_SHELF_DISCOVERY_PAGES && videos.length < limit;
       pageIndex++
     ) {
-      const page = await fetchShortsFeed(db, {
+      const page = await fetchShortsFeed({
         region,
         // Over-fetch: channel diversity (≤2/channel) and seen/watched filtering
         // thin the result, so pull a wider pool to keep the row full.
@@ -416,9 +402,7 @@ async function fetchShortsShelfFeed(
         purpose: "shelf",
         excludeVideoIds: input.excludeVideoIds,
       });
-      sourceUsed = page.sourceUsed;
       warning = page.warning;
-      stale = page.stale;
       const pageShorts = filterShortsFeedVideos(page.videos);
       const pageUnwatched = filterUnwatchedShorts(pageShorts, watchedEver);
       if (pageUnwatched.length < pageShorts.length) exclusionDroppedAny = true;
@@ -438,7 +422,7 @@ async function fetchShortsShelfFeed(
     // Skipped when nothing was filtered out: a refetch could not add anything.
     if (videos.length < limit && exclusionDroppedAny) {
       try {
-        const fallback = await fetchShortsFeed(db, {
+        const fallback = await fetchShortsFeed({
           region,
           limit: shelfUpstreamLimit(limit),
           purpose: "shelf",
@@ -455,9 +439,7 @@ async function fetchShortsShelfFeed(
           ),
         );
         if (!hadFreshVideos) {
-          sourceUsed = fallback.sourceUsed;
           warning = fallback.warning;
-          stale = fallback.stale;
         }
       } catch (_) {
         // Top-up failed silently — a partial shelf is acceptable
@@ -467,13 +449,11 @@ async function fetchShortsShelfFeed(
     return {
       videos: videos.slice(0, limit),
       continuation: undefined,
-      sourceUsed,
       warning,
-      stale,
     };
   } catch (e) {
     if (videos.length > 0) {
-      return { videos: videos.slice(0, limit), sourceUsed: "invidious" };
+      return { videos: videos.slice(0, limit) };
     }
     throw e;
   }
@@ -564,13 +544,10 @@ export async function fetchShortsFeedForViewer(
     return {
       videos,
       continuation: nextCursor ?? undefined,
-      sourceUsed:
-        personalized.videos.length > 0 ? "invidious" : upstream.sourceUsed,
       warning:
         videos.length === 0
           ? (upstream.warning ?? ALL_SHORTS_SEEN_WARNING)
           : upstream.warning,
-      stale: upstream.stale,
     };
   }
 
@@ -594,10 +571,7 @@ export async function fetchShortsFeedForViewer(
       return {
         videos,
         continuation: nextRecCursor ?? upstream.continuation ?? "rec:refresh",
-        sourceUsed:
-          personalized.videos.length > 0 ? "invidious" : upstream.sourceUsed,
         warning: upstream.warning,
-        stale: upstream.stale,
       };
     }
 
@@ -619,7 +593,6 @@ export async function fetchShortsFeedForViewer(
       return {
         videos: refreshed.personalized.videos.slice(0, limit),
         continuation: refreshedCursor,
-        sourceUsed: "invidious",
       };
     }
 
@@ -640,12 +613,10 @@ export async function fetchShortsFeedForViewer(
       continuation:
         upstream.continuation ??
         (videos.length > 0 ? "rec:refresh" : undefined),
-      sourceUsed: upstream.sourceUsed,
       warning:
         videos.length === 0
           ? (upstream.warning ?? ALL_SHORTS_SEEN_WARNING)
           : upstream.warning,
-      stale: upstream.stale,
     };
   }
 
@@ -653,7 +624,6 @@ export async function fetchShortsFeedForViewer(
     return {
       videos: [],
       continuation: nextRecCursor,
-      sourceUsed: "invidious",
     };
   }
 
@@ -675,7 +645,6 @@ export async function fetchShortsFeedForViewer(
     return {
       videos: personalized.videos.slice(0, limit),
       continuation: nextRecCursor ?? "rec:refresh",
-      sourceUsed: "invidious",
     };
   }
 

@@ -10,7 +10,7 @@ import { handleTimestampLinkClick } from "@/lib/player-seek-event";
 import type { VideoChapter } from "@/lib/video-chapters";
 import { scrubFrameStyleAt } from "@/lib/video-scrub-frames";
 import { watchHref } from "@/lib/yt-routes";
-import type { VideoStoryboard } from "@/server/services/proxy.types";
+import type { VideoStoryboard } from "@/server/catalog/types";
 
 type WatchChaptersSectionProps = {
   videoId: string;

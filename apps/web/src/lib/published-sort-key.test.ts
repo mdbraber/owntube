@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { UnifiedVideo } from "@/server/services/proxy.types";
+import type { UnifiedVideo } from "@/server/catalog/types";
 import {
   coercePublishedSecondsFromUpstream,
   compareSubscriptionHeads,

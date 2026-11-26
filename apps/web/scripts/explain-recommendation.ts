@@ -12,6 +12,8 @@ import {
   mergeVideosByIdPreferNewer,
   pickNewestVideoPerChannel,
 } from "../src/lib/published-sort-key";
+import { fetchVideoDetail } from "../src/server/catalog";
+import type { UnifiedVideo } from "../src/server/catalog/types";
 import { getDb } from "../src/server/db/client";
 import { users } from "../src/server/db/schema";
 import {
@@ -38,16 +40,14 @@ import {
 import {
   buildKeywordCorpus,
   buildTasteCorpusTitles,
-  readCachedDetailTitlesForVideos,
-  readCachedDislikeTitlesOrdered,
+  readStoredDislikeTitlesOrdered,
+  readStoredTitlesForVideos,
 } from "../src/server/recommendation/taste-corpus";
 import {
   buildTfidfModel,
   termFrequencyVector,
 } from "../src/server/recommendation/tfidf";
 import type { ScoredVideo } from "../src/server/recommendation/types";
-import { fetchVideoDetail } from "../src/server/services/proxy";
-import type { UnifiedVideo } from "../src/server/services/proxy.types";
 import { getUserSettings } from "../src/server/settings/profile";
 
 async function main() {
@@ -108,7 +108,7 @@ async function main() {
   const tasteVideoIds = Array.from(
     new Set([...signals.likedVideoIds, ...signals.savedVideoIds]),
   );
-  const tasteTitles = readCachedDetailTitlesForVideos(db, tasteVideoIds, 72);
+  const tasteTitles = readStoredTitlesForVideos(db, tasteVideoIds, 72);
   const keywordCorpus = buildKeywordCorpus(userSettings.tasteKeywords);
   const poolTitles = uniqueRaw.map((v) => v.title).slice(0, 200);
   const corpusTitles = buildTasteCorpusTitles([
@@ -120,7 +120,7 @@ async function main() {
     groups: [keywordCorpus, tasteTitles],
   });
   const dislikeModel = buildTfidfModel(
-    readCachedDislikeTitlesOrdered(db, dislikeCorpusVideoIds(signals), 48),
+    readStoredDislikeTitlesOrdered(db, dislikeCorpusVideoIds(signals), 48),
   );
   const maxCh = Math.max(1, ...signals.channelWeights.values());
   const scoreContext: RecommendationScoreContext = {
@@ -219,7 +219,7 @@ async function main() {
     }
     candidateSource = sourceByVideoId.get(videoId);
     try {
-      const detail = await fetchVideoDetail(db, { videoId });
+      const detail = await fetchVideoDetail({ videoId });
       target = {
         videoId: detail.videoId,
         title: detail.title,

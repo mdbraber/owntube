@@ -1,4 +1,5 @@
 import { and, inArray, lte, sql } from "drizzle-orm";
+import { nowUnix } from "@/server/cache/video-cache";
 import { refreshChannelsLatestVideoAt } from "@/server/channel-meta/recency";
 import type { AppDb } from "@/server/db/client";
 import { subscriptions, websubPushed } from "@/server/db/schema";
@@ -7,7 +8,6 @@ import {
   refreshLongFormWindow,
   WEBSUB_PUSH_HOLD_SEC,
 } from "@/server/rss/cache";
-import { nowUnix } from "@/server/services/proxy/cache";
 import { warmVideo } from "@/server/warm-cache/warm-video";
 import { recordWebSubHealth } from "@/server/websub/health";
 

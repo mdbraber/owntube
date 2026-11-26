@@ -97,6 +97,7 @@ export function PlayerChrome({
   miniStartPaused = false,
   isLive = false,
   castsItself = false,
+  castSrc,
 }: ChromeProps) {
   // OwnTube TV apps are listed for a signed-in viewer on the full player only.
   const tvsEnabled = useActiveViewerIsAuthed() && !shortsMode && !miniMode;
@@ -110,9 +111,9 @@ export function PlayerChrome({
     localAdapter,
     // Not for the Shorts feed or mini player either (many at once, and nobody
     // casts a preview).
-    isLive || castsItself || shortsMode || miniMode
+    isLive || castsItself || shortsMode || miniMode || !castSrc
       ? null
-      : castSourceUrl(videoId),
+      : castSourceUrl(castSrc),
   );
   // Playing here again, or another video: the TV no longer has it "from here".
   useEffect(() => {

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { ChannelAvatarCircle } from "@/components/videos/channel-avatar-circle";
 import { WatchRichText } from "@/components/watch/watch-rich-text";
 import { formatCompactCount } from "@/lib/video-display";
-import type { CommentSort } from "@/server/services/proxy.types";
+import type { CommentSort } from "@/server/catalog/types";
 import { trpc } from "@/trpc/react";
 
 type WatchCommentsSectionProps = {
@@ -211,8 +211,7 @@ export function WatchCommentsSection({ videoId }: WatchCommentsSectionProps) {
 
       {query.isError ? (
         <p className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted)_/_0.35)] px-4 py-6 text-center text-sm text-[hsl(var(--muted-foreground))]">
-          Could not load comments. Check your Piped or Invidious instance and
-          try again later.
+          Could not load comments. Try again later.
         </p>
       ) : null}
 

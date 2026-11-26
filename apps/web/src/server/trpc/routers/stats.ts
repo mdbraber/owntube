@@ -1,10 +1,10 @@
 import { and, eq, gte, sql } from "drizzle-orm";
+import { fetchChannelPage } from "@/server/catalog";
 import { interactions, watchHistory } from "@/server/db/schema";
 import {
   getRecommendationInsights,
   type RecommendationInsights,
 } from "@/server/recommendation/engine";
-import { fetchChannelPage } from "@/server/services/proxy";
 import {
   getUserSettings,
   normalizeTrendingRegionStored,
@@ -80,7 +80,7 @@ export const statsRouter = router({
     const topChannels = await Promise.all(
       topChannelsRaw.map(async (row) => {
         try {
-          const channel = await fetchChannelPage(ctx.db, {
+          const channel = await fetchChannelPage({
             channelId: row.channelId,
           });
           return { ...row, channelName: channel.name ?? row.channelId };

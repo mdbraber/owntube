@@ -23,7 +23,6 @@ export const DEFAULT_PLAYBACK_QUALITY_SELECT_OPTIONS: {
   { value: "720p", label: "720p — fast start (recommended)" },
   { value: "480p", label: "480p" },
   { value: "360p", label: "360p" },
-  { value: "360p-muxed", label: "360p muxed — fastest start (Piped)" },
   { value: "best", label: "Best available" },
 ];
 
@@ -52,64 +51,11 @@ export function writeDefaultPlaybackQuality(
   }
 }
 
-function heightFromQualityLabel(label: string): number | null {
-  const head = label.split(/\s*·\s*/)[0]?.trim() ?? label;
-  const m = head.match(/(\d{2,4})\s*p/i);
-  if (!m?.[1]) return null;
-  const n = Number.parseInt(m[1], 10);
-  return Number.isFinite(n) ? n : null;
-}
-
-/** Pick a variant row index for the user's default quality preference. */
-export function variantIndexForDefaultQuality(
-  variants: ReadonlyArray<{ label: string; t?: string }>,
-  preference: DefaultPlaybackQuality = DEFAULT_PLAYBACK_QUALITY,
-): number {
-  if (variants.length === 0) return 0;
-  if (preference === "best") return 0;
-
-  if (preference === "360p-muxed") {
-    const muxedLow = variants.findIndex(
-      (v) =>
-        v.t === "muxed" &&
-        ((heightFromQualityLabel(v.label) ?? 999) <= 480 ||
-          /360/i.test(v.label)),
-    );
-    if (muxedLow >= 0) return muxedLow;
-    const anyMuxed = variants.findIndex((v) => v.t === "muxed");
-    if (anyMuxed >= 0) return anyMuxed;
-  }
-
-  const target =
-    preference === "1080p"
-      ? 1080
-      : preference === "720p"
-        ? 720
-        : preference === "480p"
-          ? 480
-          : 360;
-
-  const exact = variants.findIndex(
-    (v) => heightFromQualityLabel(v.label) === target,
-  );
-  if (exact >= 0) return exact;
-
-  if (preference === "360p") {
-    const low = variants.findIndex((v) => {
-      const h = heightFromQualityLabel(v.label);
-      return h !== null && h <= 360;
-    });
-    if (low >= 0) return low;
-  }
-
-  return 0;
-}
-
 /**
  * Plain height ceiling for a default-quality preference — used by DASH's ABR cap
  * (no `{label,t}` variant list to match against, just a number). `null` means no
- * cap ("best"). `"360p-muxed"` has no DASH equivalent (no muxed representations),
- * so it maps to the same 360 ceiling as `"360p"`.
+ * cap ("best"). `"360p-muxed"`, a setting from before progressive playback was
+ * dropped, reads as `"360p"`.
  */
 export function heightCapForDefaultQuality(
   preference: DefaultPlaybackQuality = DEFAULT_PLAYBACK_QUALITY,
@@ -127,19 +73,4 @@ export function heightCapForDefaultQuality(
     case "360p-muxed":
       return 360;
   }
-}
-
-/** Move the preferred default variant to the front of the list (Piped watch page). */
-export function reorderVariantsForDefaultQuality<
-  T extends { label: string; t?: string },
->(
-  variants: T[],
-  preference: DefaultPlaybackQuality = DEFAULT_PLAYBACK_QUALITY,
-): T[] {
-  if (variants.length <= 1) return variants;
-  const idx = variantIndexForDefaultQuality(variants, preference);
-  if (idx <= 0) return variants;
-  const out = [...variants];
-  const [pick] = out.splice(idx, 1);
-  return [pick, ...out];
 }

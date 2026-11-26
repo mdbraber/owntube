@@ -1,16 +1,14 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { RateLimitExceededError } from "@/server/errors/rate-limit-exceeded";
-import { UpstreamUnavailableError } from "@/server/errors/upstream-unavailable";
 import {
   fetchChannelPage,
-  fetchRelatedChannels,
-} from "@/server/services/proxy";
-import {
   fetchChannelPlaylists,
   fetchYtPlaylist,
-} from "@/server/services/proxy/channel-playlists";
-import { channelPageInputSchema } from "@/server/services/proxy.types";
+} from "@/server/catalog";
+import { fetchRelatedChannels } from "@/server/catalog/related-channels";
+import { channelPageInputSchema } from "@/server/catalog/types";
+import { RateLimitExceededError } from "@/server/errors/rate-limit-exceeded";
+import { UpstreamUnavailableError } from "@/server/errors/upstream-unavailable";
 import { publicProcedure, router } from "@/server/trpc/init";
 
 const channelPageQuerySchema = channelPageInputSchema.extend({
@@ -29,17 +27,16 @@ const channelPageQuerySchema = channelPageInputSchema.extend({
 export const channelRouter = router({
   page: publicProcedure
     .input(channelPageQuerySchema)
-    .query(async ({ ctx, input }) => {
+    .query(async ({ input }) => {
       const { cursor, continuation, channelId, tab, cacheOnly } = input;
       try {
         return await fetchChannelPage(
-          ctx.db,
           {
             channelId,
             tab,
             continuation: continuation ?? cursor ?? undefined,
           },
-          cacheOnly ? { cacheOnly: true } : undefined,
+          cacheOnly ? { cache: "only" } : undefined,
         );
       } catch (e) {
         if (e instanceof UpstreamUnavailableError) {

@@ -3,8 +3,13 @@ import {
   isSubscriptionShort,
   type LongFormWindow,
 } from "@/lib/long-form-uploads";
-import { toMediaOriginUrl } from "@/lib/media-origin";
 import { parseChaptersFromDescription } from "@/lib/video-chapters";
+import {
+  fetchChannelPage,
+  fetchVideoDetail,
+  fetchVideoSummaries,
+} from "@/server/catalog";
+import type { UnifiedVideo } from "@/server/catalog/types";
 import type { AppDb } from "@/server/db/client";
 import {
   channelMeta,
@@ -17,15 +22,9 @@ import {
   users,
   watchQueue,
 } from "@/server/db/schema";
+import { signedEnclosures } from "@/server/gateway/playback";
 import { ensureRssPass, feedToken, sha256Hex } from "@/server/remote/rss-pass";
 import { getChannelRssEntries, getLongFormWindows } from "@/server/rss/cache";
-import { fetchVideoDetail } from "@/server/services/proxy";
-import {
-  channelCacheKey,
-  detailCacheKey,
-  readLatestCacheRow,
-} from "@/server/services/proxy/cache";
-import type { UnifiedVideo } from "@/server/services/proxy.types";
 
 /**
  * Remote-control publisher: turns each user's local library (playlists, queue,
@@ -84,7 +83,7 @@ export type FeedSnapshot = {
 };
 
 export type PublishOptions = {
-  /** Absolute origin used to build enclosure/link URLs (media host resolved from env). */
+  /** Absolute origin used to build enclosure/link URLs. */
   appOrigin: string;
   /** Stable podcast cover art for the library feeds (queue, playlists, …).
    * Defaults to the companion's own /icon.png; channel feeds keep their
@@ -97,6 +96,8 @@ export type PublishOptions = {
   /** Per-video detail lookups run this many at a time. */
   concurrency?: number;
   onLog?: (message: string) => void;
+  /** Duration/Shorts lookups for channel feed items (tests pass their own). */
+  factsOf?: VideoFactsResolver;
 };
 
 const DEFAULT_CHANNEL_LIMIT = 30;
@@ -124,16 +125,6 @@ function uniqueSlug(base: string, taken: Set<string>): string {
   while (taken.has(slug)) slug = `${base}-${n++}`;
   taken.add(slug);
   return slug;
-}
-
-function enclosures(
-  videoId: string,
-  appOrigin: string,
-): { enclosureAudio: string; enclosureVideo: string } {
-  return {
-    enclosureAudio: toMediaOriginUrl(`/enclosure/${videoId}.m4a`, appOrigin),
-    enclosureVideo: toMediaOriginUrl(`/enclosure/${videoId}.mp4`, appOrigin),
-  };
 }
 
 /**
@@ -174,15 +165,14 @@ async function mapWithConcurrency<T, R>(
  * stored title when a lookup fails (age-restricted/removed).
  */
 async function enrichVideoItems(
-  db: AppDb,
   rows: { videoId: string; title?: string | null }[],
   appOrigin: string,
   concurrency: number,
 ): Promise<FeedItem[]> {
   const items = await mapWithConcurrency(rows, concurrency, async (r) => {
-    const enc = enclosures(r.videoId, appOrigin);
+    const enc = await signedEnclosures(r.videoId, appOrigin);
     try {
-      const d = await fetchVideoDetail(db, { videoId: r.videoId });
+      const d = await fetchVideoDetail({ videoId: r.videoId });
       const chapters = parseChaptersFromDescription(
         d.description,
         d.durationSeconds,
@@ -221,8 +211,7 @@ export type VideoFactsResolver = (
   videoId: string,
 ) => Promise<VideoFacts>;
 
-/** Facts from a cached channel-page video or video detail; undefined unless
- * the duration is known (upstreams send 0/-1 when it isn't). */
+/** Facts from a video summary; undefined unless the duration is known. */
 function pickFacts(v: unknown): VideoFacts | undefined {
   if (!v || typeof v !== "object") return undefined;
   const o = v as Record<string, unknown>;
@@ -242,66 +231,71 @@ function pickFacts(v: unknown): VideoFacts | undefined {
  * go out without `<itunes:duration>` (podcast apps show "unknown" until the
  * episode is loaded), and there'd be nothing to tell a Short by once it has
  * aged out of the long-form window. A video's duration never changes, so any
- * cached copy will do, stale or not: the channel's cached videos page first,
- * then a cached video detail. Only a video neither has seen is looked up
- * live, which caches it for the next run. One resolver per publish run;
- * lookups are shared across feeds and users.
+ * cached copy will do: the channel's page in the gateway's cache first, then
+ * the video's cached summary. Only a video neither has is looked up live (at
+ * most `liveLookups` per run). One resolver per publish run; lookups are
+ * shared across feeds and users.
  */
 export function createVideoFactsResolver(
-  db: AppDb,
   options: {
     liveLookups?: number;
-    fetchDetail?: (videoId: string) => Promise<unknown>;
+    /** A channel's videos, cache-only. */
+    channelVideos?: (channelId: string) => Promise<UnifiedVideo[]>;
+    /** One video's summary, cache-only or live. */
+    summary?: (
+      videoId: string,
+      cacheOnly: boolean,
+    ) => Promise<UnifiedVideo | undefined>;
   } = {},
 ): VideoFactsResolver {
-  const fetchDetail =
-    options.fetchDetail ?? ((videoId) => fetchVideoDetail(db, { videoId }));
+  const channelVideos =
+    options.channelVideos ??
+    (async (channelId: string) =>
+      (await fetchChannelPage({ channelId }, { cache: "only" })).videos);
+  const summary =
+    options.summary ??
+    (async (videoId: string, cacheOnly: boolean) =>
+      (
+        await fetchVideoSummaries([videoId], cacheOnly ? { cache: "only" } : {})
+      ).get(videoId));
   let liveLeft = options.liveLookups ?? LIVE_LOOKUPS_PER_RUN;
-  const byChannel = new Map<string, Map<string, VideoFacts>>();
+  const byChannel = new Map<string, Promise<Map<string, VideoFacts>>>();
   const byVideo = new Map<string, Promise<VideoFacts>>();
 
-  const channelFacts = (channelId: string): Map<string, VideoFacts> => {
+  const channelFacts = (channelId: string) => {
     let m = byChannel.get(channelId);
-    if (m) return m;
-    m = new Map();
-    byChannel.set(channelId, m);
-    const row = readLatestCacheRow(db, channelCacheKey({ channelId }));
-    if (!row) return m;
-    try {
-      const payload = JSON.parse(row.payloadJson) as {
-        videos?: { videoId?: unknown }[];
-      };
-      for (const v of payload.videos ?? []) {
-        const facts = pickFacts(v);
-        if (typeof v.videoId === "string" && facts) m.set(v.videoId, facts);
-      }
-    } catch {
-      // Corrupt/legacy payload — fall through to the detail cache.
+    if (!m) {
+      m = channelVideos(channelId).then(
+        (videos) => {
+          const facts = new Map<string, VideoFacts>();
+          for (const v of videos) {
+            const f = pickFacts(v);
+            if (f) facts.set(v.videoId, f);
+          }
+          return facts;
+        },
+        () => new Map<string, VideoFacts>(),
+      );
+      byChannel.set(channelId, m);
     }
     return m;
   };
 
   const resolve = async (videoId: string): Promise<VideoFacts> => {
-    const row = readLatestCacheRow(db, detailCacheKey({ videoId }));
-    let cached: VideoFacts | undefined;
-    try {
-      cached = row ? pickFacts(JSON.parse(row.payloadJson)) : undefined;
-    } catch {
-      cached = undefined;
-    }
+    const cached = pickFacts(
+      await summary(videoId, true).catch(() => undefined),
+    );
     if (cached) return cached;
     if (liveLeft <= 0) return {};
     liveLeft--;
-    try {
-      return pickFacts(await fetchDetail(videoId)) ?? {};
-    } catch {
-      return {};
-    }
+    return (
+      pickFacts(await summary(videoId, false).catch(() => undefined)) ?? {}
+    );
   };
 
-  return (channelId, videoId) => {
-    const fromChannel = channelFacts(channelId).get(videoId);
-    if (fromChannel) return Promise.resolve(fromChannel);
+  return async (channelId, videoId) => {
+    const fromChannel = (await channelFacts(channelId)).get(videoId);
+    if (fromChannel) return fromChannel;
     let p = byVideo.get(videoId);
     if (!p) {
       p = resolve(videoId);
@@ -340,11 +334,14 @@ async function mergedChannelItems(
   const out: FeedItem[] = [];
   for (let i = 0; i < candidates.length && out.length < limit; i += limit) {
     const page = candidates.slice(i, i + limit);
-    const facts = await mapWithConcurrency(page, concurrency, (e) =>
-      factsOf(e.channelId, e.videoId),
-    );
+    const looked = await mapWithConcurrency(page, concurrency, async (e) => ({
+      facts: await factsOf(e.channelId, e.videoId),
+      enc: await signedEnclosures(e.videoId, appOrigin),
+    }));
     page.forEach((e, j) => {
-      const f = facts[j] ?? {};
+      const item = looked[j];
+      if (!item) return;
+      const { facts: f, enc } = item;
       if (out.length >= limit || isSubscriptionShort({ ...e, ...f }, windows)) {
         return;
       }
@@ -357,7 +354,7 @@ async function mergedChannelItems(
         publishedAt: e.publishedAt,
         thumbnailUrl: publicThumbnail(e.videoId),
         channelName: e.channelName,
-        ...enclosures(e.videoId, appOrigin),
+        ...enc,
       });
     });
   }
@@ -401,7 +398,7 @@ async function buildFeedsForUser(
   db: AppDb,
   userId: number,
   owner: string,
-  opts: Required<Omit<PublishOptions, "onLog">> & {
+  opts: Required<Omit<PublishOptions, "onLog" | "factsOf">> & {
     onLog?: PublishOptions["onLog"];
   },
   factsOf: VideoFactsResolver,
@@ -438,7 +435,7 @@ async function buildFeedsForUser(
       .orderBy(asc(playlistItems.position), asc(playlistItems.addedAt))
       .all();
     if (itemRows.length === 0) continue;
-    const items = await enrichVideoItems(db, itemRows, appOrigin, concurrency);
+    const items = await enrichVideoItems(itemRows, appOrigin, concurrency);
     pushFeed(
       {
         kind: "playlist",
@@ -466,7 +463,7 @@ async function buildFeedsForUser(
     .orderBy(asc(watchQueue.position))
     .all();
   if (queueRows.length > 0) {
-    const items = await enrichVideoItems(db, queueRows, appOrigin, concurrency);
+    const items = await enrichVideoItems(queueRows, appOrigin, concurrency);
     pushFeed(
       {
         kind: "queue",
@@ -491,7 +488,7 @@ async function buildFeedsForUser(
     .orderBy(desc(interactions.createdAt))
     .all();
   if (savedRows.length > 0) {
-    const items = await enrichVideoItems(db, savedRows, appOrigin, concurrency);
+    const items = await enrichVideoItems(savedRows, appOrigin, concurrency);
     pushFeed(
       {
         kind: "saved",
@@ -639,7 +636,7 @@ export async function buildAllFeeds(
     .select({ id: users.id, email: users.email })
     .from(users)
     .all();
-  const factsOf = createVideoFactsResolver(db);
+  const factsOf = options.factsOf ?? createVideoFactsResolver();
   const all: FeedSnapshot[] = [];
   const creds: FeedOwnerCredential[] = [];
   for (const u of userRows) {

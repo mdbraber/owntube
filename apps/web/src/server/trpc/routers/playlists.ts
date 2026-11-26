@@ -1,9 +1,9 @@
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { CHANNEL_TAG_MAX_LEN, normalizeChannelTag } from "@/lib/channel-tag";
+import { fetchVideoDetail } from "@/server/catalog";
 import type { AppDb } from "@/server/db/client";
 import { playlistItems, playlists, playlistTags } from "@/server/db/schema";
-import { fetchVideoDetail } from "@/server/services/proxy";
 import { protectedProcedure, router } from "@/server/trpc/init";
 
 function nowUnix(): number {
@@ -281,7 +281,7 @@ export const playlistsRouter = router({
       return Promise.all(
         rows.map(async (row) => {
           try {
-            const detail = await fetchVideoDetail(ctx.db, {
+            const detail = await fetchVideoDetail({
               videoId: row.videoId,
             });
             return {

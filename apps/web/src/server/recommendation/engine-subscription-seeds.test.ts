@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
+import type { UnifiedVideo } from "@/server/catalog/types";
 import { subscriptionRelatedSeeds } from "@/server/recommendation/engine";
-import type { UnifiedVideo } from "@/server/services/proxy.types";
 
 const NOW = 2_000_000_000;
 

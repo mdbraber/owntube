@@ -12,8 +12,6 @@ import { VideoPlayer } from "@/components/player/video-player";
 import { WatchTracker } from "@/components/player/watch-tracker";
 import { ShortsVerticalActions } from "@/components/shorts/shorts-vertical-actions";
 import { VideoThumbnailImg } from "@/components/videos/video-thumbnail-img";
-import { isIosLikeBrowser } from "@/lib/ios-playback";
-import { getMediaOrigin } from "@/lib/media-origin";
 import {
   aspectRatioFromPixelDimensions,
   inferShortAspectRatioFromDetail,
@@ -23,9 +21,9 @@ import {
   formatPublishedAbsoluteLabel,
   formatPublishedLabel,
 } from "@/lib/video-display";
-import { buildVideoPlayerPayloadFromDetail } from "@/lib/watch-player-payload";
+import { playerPayloadFromDetail } from "@/lib/watch-playback";
 import { watchHref } from "@/lib/yt-routes";
-import type { UnifiedVideo, VideoDetail } from "@/server/services/proxy.types";
+import type { UnifiedVideo, VideoDetail } from "@/server/catalog/types";
 import { trpc } from "@/trpc/react";
 
 type ShortsSlideProps = {
@@ -65,15 +63,13 @@ export function ShortsSlide({
     },
   );
 
-  const playback = useMemo(() => {
-    if (!detailQuery.data || typeof window === "undefined") return null;
-    return buildVideoPlayerPayloadFromDetail(
-      detailQuery.data,
-      getMediaOrigin(window.location.origin),
-      window.location.host,
-      { avoidSplitAudioVideo: isIosLikeBrowser() },
-    );
-  }, [detailQuery.data]);
+  const playback = useMemo(
+    () =>
+      detailQuery.data
+        ? { payload: playerPayloadFromDetail(detailQuery.data) }
+        : null,
+    [detailQuery.data],
+  );
 
   const [frameAspect, setFrameAspect] = useState(() =>
     inferShortAspectRatioFromDetail(detailQuery.data),
@@ -150,11 +146,7 @@ export function ShortsSlide({
   } else if (detailReady && !playback?.payload) {
     body = (
       <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-black/40 px-6 text-center text-sm text-white/80">
-        <p>
-          {playback?.onlyDashOrUnsupported
-            ? "This short cannot be played in the browser."
-            : "No playable stream for this short."}
-        </p>
+        <p>No playable stream for this short.</p>
         <Link
           href={watchHref(video.videoId)}
           className="text-[hsl(var(--primary))] hover:underline"

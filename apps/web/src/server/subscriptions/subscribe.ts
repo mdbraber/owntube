@@ -1,3 +1,4 @@
+import { fetchChannelPage } from "@/server/catalog";
 import { refreshChannelsLatestVideoAt } from "@/server/channel-meta/recency";
 import {
   nowUnix,
@@ -7,7 +8,6 @@ import type { AppDb } from "@/server/db/client";
 import { subscriptions } from "@/server/db/schema";
 import { requestFeedPublish } from "@/server/remote/publish-loop";
 import { refreshChannelRss, refreshLongFormWindow } from "@/server/rss/cache";
-import { fetchChannelPage } from "@/server/services/proxy";
 
 /**
  * Subscribe a user to a channel (idempotent) and warm what the merged feed
@@ -35,6 +35,6 @@ export async function subscribeToChannel(
   void Promise.allSettled([
     refreshChannelRss(db, channelId).finally(requestFeedPublish),
     refreshLongFormWindow(db, channelId),
-    fetchChannelPage(db, { channelId }),
+    fetchChannelPage({ channelId }),
   ]).then(() => refreshChannelsLatestVideoAt(db, [channelId]).catch(() => {}));
 }

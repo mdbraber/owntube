@@ -24,7 +24,6 @@ import {
 import { useHlsVodPlayback } from "@/hooks/use-hls-vod-playback";
 import type { ScrubPreviewConfig } from "@/hooks/use-scrub-frame-preview";
 import { isIosLikeBrowser } from "@/lib/ios-playback";
-import { getMediaOrigin } from "@/lib/media-origin";
 import {
   getShortsMuted,
   useShortsAudioPersist,
@@ -83,8 +82,12 @@ export function HlsVodBlock({
   defaultQualityHeightCap = 1080,
   fullscreenAutoBestQuality = false,
   dvr = false,
+  dash,
 }: SponsorBlockChromeProps & {
+  /** The signed HLS master playlist. */
   src: string;
+  /** The signed DASH manifest, played where MSE does better; null for DVR. */
+  dash: string | null;
   poster?: string;
   title: string;
   reactKey: string;
@@ -118,7 +121,7 @@ export function HlsVodBlock({
   defaultQualityHeightCap?: number | null;
   /** Jump to the best DASH quality on entering fullscreen, restore on exit. */
   fullscreenAutoBestQuality?: boolean;
-  /** Post-Live-DVR: DASH is the only working path, including on iOS. */
+  /** Post-live DVR: plays as HLS everywhere. */
   dvr?: boolean;
 }) {
   const shellRef = useRef<HTMLDivElement>(null);
@@ -133,12 +136,11 @@ export function HlsVodBlock({
     window.setTimeout(() => onPlaybackError(), 0);
   }, [onPlaybackError]);
 
-  // Upgrade the synthesized-HLS source to our synthesized DASH manifest when
-  // the browser can MSE-decode a better ladder (VP9/AV1 → >1080p; the HLS
-  // path is AVC-only). iOS keeps native HLS — MSE strands video there. A
-  // dash.js fatal error drops back to the HLS path for this stream. Decided
-  // post-mount (capability probes are browser-only), so both hooks below see
-  // an empty src until then and neither double-initializes.
+  // Play the DASH manifest where the browser can MSE-decode a better ladder
+  // (VP9/AV1 → >1080p; HLS is AVC-only), else the HLS one. iOS keeps native
+  // HLS — MSE strands video there. A dash.js fatal error drops back to HLS for
+  // this stream. Decided post-mount (capability probes are browser-only), so
+  // both hooks below see an empty src until then and neither double-initializes.
   const [dashDecision, setDashDecision] = useState<{
     key: string;
     src: string | null;
@@ -152,40 +154,16 @@ export function HlsVodBlock({
     at: number;
   } | null>(null);
   useEffect(() => {
-    // `src` is our own synthesized HLS manifest (absolute, on the media
-    // origin — see media-origin.ts) whenever it's this pathname; check the
-    // path rather than a "/hls/" prefix since it's no longer relative.
-    const srcPathname = (() => {
-      try {
-        return new URL(src, window.location.href).pathname;
-      } catch {
-        return "";
-      }
-    })();
-    // Post-Live-DVR is the one case iOS must still take DASH: `/hls/` can't be
-    // synthesized (no byte-range formats, so it 502s) and Invidious's native
-    // hlsUrl is un-deciphered and 403s, leaving an infinite spinner. The /dash
-    // route proxies invidious-companion's manifest, which is MP4/AVC + AAC
-    // only — decodable by iPad Safari's MSE (and ManagedMediaSource on iOS
-    // 17.1+, which `useDashPlayback` already configures).
-    if (
-      dashFailed ||
-      shortsMode ||
-      !videoId ||
-      !srcPathname.startsWith("/hls/") ||
-      (isIosLikeBrowser() && !dvr)
-    ) {
+    if (dashFailed || shortsMode || !dash || dvr || isIosLikeBrowser()) {
       setDashDecision({ key: reactKey, src: null });
       return;
     }
     const family = pickDashVideoFamily();
     setDashDecision({
       key: reactKey,
-      src: family
-        ? `${getMediaOrigin(window.location.origin)}/dash/${encodeURIComponent(videoId)}/manifest.mpd?video=${family}`
-        : null,
+      src: family ? `${dash}&family=${family}` : null,
     });
-  }, [src, videoId, reactKey, shortsMode, dashFailed, dvr]);
+  }, [dash, reactKey, shortsMode, dashFailed, dvr]);
   const decided = dashDecision?.key === reactKey;
   const dashSrc = decided ? dashDecision.src : null;
 
@@ -438,6 +416,7 @@ export function HlsVodBlock({
         shortsMode={shortsMode}
         miniStartPaused={miniStartPaused}
         castsItself={hlsAudio.native && !dashSrc}
+        castSrc={src}
       />
     </div>
   );

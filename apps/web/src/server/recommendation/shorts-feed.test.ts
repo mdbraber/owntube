@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import * as shortsCatalog from "@/server/catalog/shorts";
 import { shortsSeen as shortsSeenTable, users } from "@/server/db/schema";
 import {
   buildShortsExclusionSet,
@@ -9,7 +10,6 @@ import {
 import * as shortsPool from "@/server/recommendation/shorts-recommendation-pool";
 import * as shortsSeen from "@/server/recommendation/shorts-seen";
 import * as watchedVideos from "@/server/recommendation/watched-videos";
-import * as proxy from "@/server/services/proxy";
 import { createTestDb } from "@/test/db";
 
 describe("parseShortsRecPage", () => {
@@ -113,7 +113,7 @@ describe("buildShortsExclusionSet", () => {
 
 describe("fetchShortsFeedForViewer generic recycle", () => {
   it("returns a recycle cursor when upstream runs out but shorts were found", async () => {
-    vi.spyOn(proxy, "fetchShortsFeed").mockResolvedValue({
+    vi.spyOn(shortsCatalog, "fetchShortsFeed").mockResolvedValue({
       videos: [
         {
           videoId: "genericShort1",
@@ -124,7 +124,6 @@ describe("fetchShortsFeedForViewer generic recycle", () => {
         },
       ],
       continuation: undefined,
-      sourceUsed: "invidious" as const,
     });
 
     const result = await fetchShortsFeedForViewer(
@@ -140,10 +139,9 @@ describe("fetchShortsFeedForViewer generic recycle", () => {
   });
 
   it("stops (no cursor) when a recycle pass yields nothing new", async () => {
-    vi.spyOn(proxy, "fetchShortsFeed").mockResolvedValue({
+    vi.spyOn(shortsCatalog, "fetchShortsFeed").mockResolvedValue({
       videos: [],
       continuation: undefined,
-      sourceUsed: "invidious" as const,
     });
 
     const result = await fetchShortsFeedForViewer(
@@ -194,10 +192,9 @@ describe("fetchShortsFeedForViewer shelf purpose", () => {
         durationSeconds: 20,
       },
     ];
-    vi.spyOn(proxy, "fetchShortsFeed").mockResolvedValue({
+    vi.spyOn(shortsCatalog, "fetchShortsFeed").mockResolvedValue({
       videos: upstream,
       continuation: undefined,
-      sourceUsed: "invidious" as const,
     });
 
     const result = await fetchShortsFeedForViewer(
@@ -223,7 +220,7 @@ describe("fetchShortsFeedForViewer shelf purpose", () => {
       hasMore: false,
     });
     const fetchShortsFeed = vi
-      .spyOn(proxy, "fetchShortsFeed")
+      .spyOn(shortsCatalog, "fetchShortsFeed")
       .mockResolvedValue({
         videos: [
           {
@@ -234,7 +231,6 @@ describe("fetchShortsFeedForViewer shelf purpose", () => {
             durationSeconds: 42,
           },
         ],
-        sourceUsed: "invidious" as const,
       });
 
     const result = await fetchShortsFeedForViewer(

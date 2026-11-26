@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { isStrictShortVideo } from "@/lib/short-video";
+import * as catalog from "@/server/catalog";
 import {
   collectRelatedVideoCandidates,
   expandScoredPoolWithRelatedCandidates,
@@ -9,7 +10,6 @@ import {
 import type { UserSignals } from "@/server/recommendation/signals";
 import { buildTfidfModel } from "@/server/recommendation/tfidf";
 import type { ScoredVideo } from "@/server/recommendation/types";
-import * as proxy from "@/server/services/proxy";
 
 function emptySignals(): UserSignals {
   return {
@@ -39,8 +39,8 @@ describe("collectRelatedVideoCandidates", () => {
 
   it("tags related videos with related:seedId and respects caps", async () => {
     const fetchRelatedVideos = vi
-      .spyOn(proxy, "fetchRelatedVideos")
-      .mockImplementation(async (_db, input) => ({
+      .spyOn(catalog, "fetchRelatedVideos")
+      .mockImplementation(async (input) => ({
         videos: [
           {
             videoId: `rel-${input.videoId}-a`,
@@ -53,14 +53,13 @@ describe("collectRelatedVideoCandidates", () => {
             durationSeconds: 120,
           },
         ],
-        sourceUsed: "invidious" as const,
       }));
 
     const seeds = [
       { videoId: "seed1", rawScore: 1 },
       { videoId: "seed2", rawScore: 0.9 },
     ];
-    const tagged = await collectRelatedVideoCandidates({} as never, seeds, {
+    const tagged = await collectRelatedVideoCandidates(seeds, {
       ...HOME_RELATED_LIMITS,
       maxSeeds: 2,
       limitPerSeed: 5,
@@ -74,17 +73,15 @@ describe("collectRelatedVideoCandidates", () => {
   });
 
   it("skips watched ids and pool duplicates", async () => {
-    vi.spyOn(proxy, "fetchRelatedVideos").mockResolvedValue({
+    vi.spyOn(catalog, "fetchRelatedVideos").mockResolvedValue({
       videos: [
         { videoId: "dup", title: "Dup" },
         { videoId: "watched", title: "Watched" },
         { videoId: "fresh", title: "Fresh" },
       ],
-      sourceUsed: "invidious",
     });
 
     const tagged = await collectRelatedVideoCandidates(
-      {} as never,
       [{ videoId: "seed", rawScore: 1 }],
       {
         ...HOME_RELATED_LIMITS,
@@ -98,16 +95,14 @@ describe("collectRelatedVideoCandidates", () => {
   });
 
   it("filters to strict shorts when filterVideo is set", async () => {
-    vi.spyOn(proxy, "fetchRelatedVideos").mockResolvedValue({
+    vi.spyOn(catalog, "fetchRelatedVideos").mockResolvedValue({
       videos: [
         { videoId: "long", title: "Long", durationSeconds: 600 },
         { videoId: "short", title: "Clip #shorts", durationSeconds: 30 },
       ],
-      sourceUsed: "invidious",
     });
 
     const tagged = await collectRelatedVideoCandidates(
-      {} as never,
       [{ videoId: "seed", rawScore: 1 }],
       {
         ...HOME_RELATED_LIMITS,
@@ -143,9 +138,8 @@ describe("expandScoredPoolWithRelatedCandidates", () => {
   });
 
   it("merges and boosts new related rows", async () => {
-    vi.spyOn(proxy, "fetchRelatedVideos").mockResolvedValue({
+    vi.spyOn(catalog, "fetchRelatedVideos").mockResolvedValue({
       videos: [{ videoId: "new-related", title: "New related topic" }],
-      sourceUsed: "invidious",
     });
 
     const scored: ScoredVideo[] = [
@@ -240,8 +234,8 @@ describe("pickRelatedSeeds / history seeds", () => {
   });
 
   it("labels rows related to a subscription upload with that channel", async () => {
-    vi.spyOn(proxy, "fetchRelatedVideos").mockImplementation(
-      async (_db, input) => ({
+    vi.spyOn(catalog, "fetchRelatedVideos").mockImplementation(
+      async (input) => ({
         videos: [
           {
             videoId: `rel-${input.videoId}`,
@@ -251,7 +245,6 @@ describe("pickRelatedSeeds / history seeds", () => {
             durationSeconds: 300,
           },
         ],
-        sourceUsed: "invidious" as const,
       }),
     );
     const scored: ScoredVideo[] = Array.from({ length: 8 }, (_, i) => ({
@@ -300,8 +293,8 @@ describe("pickRelatedSeeds / history seeds", () => {
 
   it("expands from watched seeds even though they sit in the excluded set", async () => {
     const fetchRelatedVideos = vi
-      .spyOn(proxy, "fetchRelatedVideos")
-      .mockImplementation(async (_db, input) => ({
+      .spyOn(catalog, "fetchRelatedVideos")
+      .mockImplementation(async (input) => ({
         videos: [
           {
             videoId: `rel-${input.videoId}`,
@@ -309,7 +302,6 @@ describe("pickRelatedSeeds / history seeds", () => {
             durationSeconds: 300,
           },
         ],
-        sourceUsed: "invidious" as const,
       }));
 
     const scored: ScoredVideo[] = Array.from({ length: 8 }, (_, i) => ({
@@ -336,7 +328,7 @@ describe("pickRelatedSeeds / history seeds", () => {
         scoreContext: { recentCoverageByChannel: new Map() },
       });
 
-    const seededIds = fetchRelatedVideos.mock.calls.map((c) => c[1].videoId);
+    const seededIds = fetchRelatedVideos.mock.calls.map((c) => c[0].videoId);
     expect(seededIds).toEqual(["watched1", "watched2", "pool0"]);
     expect(stats?.added).toBe(3);
     const sources = expanded

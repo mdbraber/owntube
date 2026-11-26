@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { diversifyVideosByChannel } from "@/lib/video-channel-diversity";
-import type { UnifiedVideo } from "@/server/services/proxy.types";
+import type { UnifiedVideo } from "@/server/catalog/types";
 
 function video(videoId: string, channelId?: string): UnifiedVideo {
   return { videoId, title: videoId, channelId } as UnifiedVideo;

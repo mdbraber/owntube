@@ -1,7 +1,7 @@
 import type { VideoActionSurface } from "@/components/videos/video-action-registry";
 import { VideoCard, VideoCardShort } from "@/components/videos/video-card";
 import { watchHref } from "@/lib/yt-routes";
-import type { UnifiedVideo } from "@/server/services/proxy.types";
+import type { UnifiedVideo } from "@/server/catalog/types";
 
 type VideoGridProps = {
   videos: UnifiedVideo[];

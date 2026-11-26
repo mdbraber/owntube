@@ -22,26 +22,6 @@ export function normalizeDurationForLive(
   return durationSeconds;
 }
 
-export function pickLiveFlagsFromUpstream(raw: Record<string, unknown>): {
-  isLive: boolean;
-  isUpcoming: boolean;
-} {
-  const type = typeof raw.type === "string" ? raw.type.toLowerCase() : "";
-  const isUpcoming = raw.isUpcoming === true;
-  const pipedExplicit =
-    raw.livestream === true ||
-    raw.isLive === true ||
-    raw.live === true ||
-    type === "livestream";
-  // Piped list/trending payloads often type active lives as plain "stream" and
-  // only signal them with `duration: -1` (no fixed length) and `uploaded: -1`.
-  const pipedDurationLive = raw.duration === -1 && raw.uploaded === -1;
-  const invidiousLive = raw.liveNow === true;
-  const isLive =
-    !isUpcoming && (pipedExplicit || pipedDurationLive || invidiousLive);
-  return { isLive, isUpcoming };
-}
-
 /** Force live metadata on rows returned from a channel live tab / streams API. */
 export function markUnifiedVideoAsActiveLive<
   T extends {

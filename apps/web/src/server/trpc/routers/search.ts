@@ -1,25 +1,23 @@
 import { TRPCError } from "@trpc/server";
+import { z } from "zod";
+import { fetchSearchSuggestions, searchVideos } from "@/server/catalog";
+import { searchVideosInputSchema } from "@/server/catalog/types";
 import { RateLimitExceededError } from "@/server/errors/rate-limit-exceeded";
 import { UpstreamUnavailableError } from "@/server/errors/upstream-unavailable";
-import { searchVideos } from "@/server/services/proxy";
-import { searchVideosInputSchema } from "@/server/services/proxy.types";
-import {
-  fetchSearchQuerySuggestions,
-  searchSuggestionsInputSchema,
-} from "@/server/services/search-suggestions";
 import { publicProcedure, router } from "@/server/trpc/init";
 
 export const searchRouter = router({
   suggestions: publicProcedure
-    .input(searchSuggestionsInputSchema)
-    .query(async ({ input }) => {
-      return fetchSearchQuerySuggestions(input);
-    }),
+    .input(z.object({ q: z.string().max(200) }))
+    .query(async ({ input }) => ({
+      // Suggestions are a nicety: a failure shows none.
+      suggestions: await fetchSearchSuggestions(input.q).catch(() => []),
+    })),
   videos: publicProcedure
     .input(searchVideosInputSchema)
-    .query(async ({ ctx, input }) => {
+    .query(async ({ input }) => {
       try {
-        return await searchVideos(ctx.db, input);
+        return await searchVideos(input);
       } catch (e) {
         if (e instanceof UpstreamUnavailableError) {
           throw new TRPCError({

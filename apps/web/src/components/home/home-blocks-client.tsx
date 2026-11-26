@@ -53,7 +53,7 @@ import {
 import { cn } from "@/lib/utils";
 import { formatPublishedLabel } from "@/lib/video-display";
 import { watchHref } from "@/lib/yt-routes";
-import type { UnifiedVideo } from "@/server/services/proxy.types";
+import type { UnifiedVideo } from "@/server/catalog/types";
 import { trpc } from "@/trpc/react";
 
 /* ------------------------------ block data ------------------------------ */

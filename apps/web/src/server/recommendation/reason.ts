@@ -1,9 +1,9 @@
-import type { RecommendationScoreBreakdown } from "@/server/recommendation/scoring";
-import type { TfidfModel } from "@/server/recommendation/tfidf";
 import type {
   RecommendationReason,
   UnifiedVideo,
-} from "@/server/services/proxy.types";
+} from "@/server/catalog/types";
+import type { RecommendationScoreBreakdown } from "@/server/recommendation/scoring";
+import type { TfidfModel } from "@/server/recommendation/tfidf";
 
 /**
  * Below this weighted contribution a signal is treated as noise and does not

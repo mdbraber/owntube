@@ -24,7 +24,7 @@ import { VideoThumbnailImg } from "@/components/videos/video-thumbnail-img";
 import { DEFAULT_QUICK_ACTIONS, type QuickAction } from "@/lib/quick-actions";
 import { formatRecommendationReason } from "@/lib/recommendation-reason";
 import { cn } from "@/lib/utils";
-import type { RecommendationReason } from "@/server/services/proxy.types";
+import type { RecommendationReason } from "@/server/catalog/types";
 import { trpc } from "@/trpc/react";
 
 /** Surface-specific leading entry (e.g. "Remove from history" on rows). */

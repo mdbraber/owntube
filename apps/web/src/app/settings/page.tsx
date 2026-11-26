@@ -11,7 +11,7 @@ export default async function SettingsPage() {
   }
 
   const caller = await createCaller();
-  const { instanceSources, ...settings } = await caller.settings.get();
+  const settings = await caller.settings.get();
 
   return (
     <main className="ot-page">
@@ -19,10 +19,7 @@ export default async function SettingsPage() {
           which outranks a max-w-* utility on the same element. */}
       <div className="mx-auto w-full max-w-3xl">
         <PageHeader title="Settings" />
-        <SettingsPanel
-          initial={settings}
-          initialInstanceSources={instanceSources}
-        />
+        <SettingsPanel initial={settings} />
       </div>
     </main>
   );

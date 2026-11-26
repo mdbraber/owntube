@@ -8,7 +8,7 @@ import {
   computeHomeShortsShelfLayout,
   LARGE_VIDEO_GRID_COLUMN_GAP_PX,
 } from "@/lib/video-grid-columns";
-import type { UnifiedVideo } from "@/server/services/proxy.types";
+import type { UnifiedVideo } from "@/server/catalog/types";
 import { trpc } from "@/trpc/react";
 
 const SHORTS_SHELF_STALE_MS = 5 * 60_000;

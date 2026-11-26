@@ -17,7 +17,7 @@ import {
   formatPublishedLabel,
   formatViews,
 } from "@/lib/video-display";
-import type { RecommendationReason } from "@/server/services/proxy.types";
+import type { RecommendationReason } from "@/server/catalog/types";
 
 type VideoCardProps = {
   href: string;

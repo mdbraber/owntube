@@ -3,18 +3,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PlayerAdapter } from "@/components/player/player-types";
 import { useRemotePlayback } from "@/hooks/use-remote-playback";
-import { getClientAppOrigin } from "@/lib/hls-same-origin";
-import { toMediaOriginUrl } from "@/lib/media-origin";
-
 /**
- * The URL a TV plays when the viewer casts this video: the server's VOD HLS,
- * SABR first (see `castMasterPlaylist` in the /hls route), on the media origin.
+ * The URL a TV plays when the viewer casts this video: its signed HLS
+ * playlist, absolute (a receiver resolves nothing against this page).
  */
-export function castSourceUrl(videoId: string): string {
-  return toMediaOriginUrl(
-    `/hls/${encodeURIComponent(videoId)}/master.m3u8?for=cast`,
-    getClientAppOrigin(),
-  );
+export function castSourceUrl(hlsSrc: string): string {
+  return new URL(hlsSrc, window.location.href).toString();
 }
 
 /** Props for the hidden cast `<video>` the player renders. */

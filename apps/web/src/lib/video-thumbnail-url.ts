@@ -45,12 +45,7 @@ export function isSignedInstanceThumbUrl(u: URL): boolean {
 }
 
 function isSameOriginProxiedThumbPath(pathname: string): boolean {
-  return (
-    pathname.startsWith("/image/") ||
-    pathname.startsWith("/channel-avatar") ||
-    // Legacy prefix, still present in payloads cached before Phase 5.
-    pathname.startsWith("/invidious/")
-  );
+  return pathname.startsWith("/media/img/");
 }
 
 function isShortOarFilename(filename: string): boolean {

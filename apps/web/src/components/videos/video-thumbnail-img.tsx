@@ -1,13 +1,12 @@
 "use client";
 
-import { useInvidiousOrigins } from "@/components/videos/invidious-origin-context";
-import { toBrowserUpstreamImageUrl } from "@/lib/channel-avatar-proxy";
 import {
   applyVideoThumbnailImgError,
   preferHeroVideoThumbnailUrl,
   preferHighResVideoThumbnailUrl,
   preferShortVideoThumbnailUrl,
 } from "@/lib/video-thumbnail-url";
+import { browserImageUrl } from "@/lib/youtube-image-via-instance";
 
 type VideoThumbnailImgProps = {
   url?: string;
@@ -44,11 +43,7 @@ export function VideoThumbnailImg({
   alt = "",
   variant = "default",
 }: VideoThumbnailImgProps) {
-  const invidiousOrigins = useInvidiousOrigins();
-  const src = toBrowserUpstreamImageUrl(
-    resolveTieredThumbnailUrl(url, videoId, variant),
-    invidiousOrigins,
-  );
+  const src = browserImageUrl(resolveTieredThumbnailUrl(url, videoId, variant));
   if (!src) return null;
   return (
     // biome-ignore lint/performance/noImgElement: third-party instance thumbnails

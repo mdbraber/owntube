@@ -15,7 +15,6 @@ describe("shortsRouter", () => {
       .mockResolvedValue({
         videos: [],
         continuation: null,
-        sourceUsed: "cache",
       });
     const caller = appRouter.createCaller({ db, userId: null });
 
@@ -61,7 +60,6 @@ describe("shortsRouter", () => {
       .mockResolvedValue({
         videos: [],
         continuation: null,
-        sourceUsed: "cache",
       });
     const id = "abcdefghijklmnopqrstuv";
     const anon = createAnonViewer(

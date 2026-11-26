@@ -21,8 +21,8 @@ export function WatchAgeRestricted({
         {message}
       </p>
       <p className="m-0 max-w-lg text-xs text-[hsl(var(--muted-foreground))]">
-        YouTube requires a signed-in session to play age-restricted videos,
-        which public Piped and Invidious instances don&apos;t provide.
+        YouTube requires a signed-in session to play age-restricted videos, and
+        OwnTube watches without an account.
       </p>
     </div>
   );

@@ -1,8 +1,8 @@
 import { publishedSortKey } from "@/lib/published-sort-key";
+import type { UnifiedVideo } from "@/server/catalog/types";
 import { deterministicUnitInterval } from "@/server/recommendation/deterministic-jitter";
 import type { UserSignals } from "@/server/recommendation/signals";
 import type { TfidfModel } from "@/server/recommendation/tfidf";
-import type { UnifiedVideo } from "@/server/services/proxy.types";
 
 /**
  * Scoring weights. Centralized for tuning. `recentChannelBoost` was lowered from

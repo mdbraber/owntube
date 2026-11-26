@@ -8,7 +8,7 @@ import { VideoRow } from "@/components/videos/video-row";
 import { useAutoFillColumns } from "@/hooks/use-auto-fill-columns";
 import { CARD_MIN_WIDTH_PX } from "@/lib/home-blocks";
 import { formatPublishedLabel } from "@/lib/video-display";
-import type { UnifiedVideo } from "@/server/services/proxy.types";
+import type { UnifiedVideo } from "@/server/catalog/types";
 
 /**
  * A feed page's videos as cards or a list at the page's size, like a home

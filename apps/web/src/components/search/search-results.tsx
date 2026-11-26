@@ -4,13 +4,12 @@ import { ChannelAvatarCircle } from "@/components/videos/channel-avatar-circle";
 import { VideoCard } from "@/components/videos/video-card";
 import { channelHref, watchHref } from "@/lib/yt-routes";
 import { auth } from "@/server/auth";
-import { getDb } from "@/server/db/client";
-import { UpstreamUnavailableError } from "@/server/errors/upstream-unavailable";
-import { searchVideos } from "@/server/services/proxy";
+import { searchVideos } from "@/server/catalog";
 import {
   type SearchVideosResult,
   searchVideosInputSchema,
-} from "@/server/services/proxy.types";
+} from "@/server/catalog/types";
+import { UpstreamUnavailableError } from "@/server/errors/upstream-unavailable";
 
 type SearchResultsProps = {
   query: string;
@@ -75,13 +74,12 @@ export async function SearchResults({ query, sort }: SearchResultsProps) {
     q: query,
     limit: 20,
   });
-  const db = getDb();
   const session = await auth();
   const isAuthed = Boolean(session?.user?.id);
 
   let result: SearchVideosResult;
   try {
-    result = await searchVideos(db, input);
+    result = await searchVideos(input);
   } catch (error) {
     if (error instanceof UpstreamUnavailableError) {
       return (
@@ -158,7 +156,6 @@ export async function SearchResults({ query, sort }: SearchResultsProps) {
             <li>
               Try a different sort mode like <strong>Relevance</strong>.
             </li>
-            <li>Check your Piped / Invidious instance health in Settings.</li>
           </ul>
           {didYouMean.length > 0 ? (
             <div className="space-y-1">

@@ -24,16 +24,7 @@ import { WatchPlayerMount } from "@/components/watch/watch-player-mount";
 import { WatchUpcomingLive } from "@/components/watch/watch-upcoming-live";
 import { WatchVideoUnavailable } from "@/components/watch/watch-video-unavailable";
 import { pickDefaultCaptionIndex } from "@/lib/caption-default";
-import {
-  getAppOriginFromRequestHeaders,
-  toProxiedOrDirectPlayback,
-  toProxiedOrDirectPoster,
-  toProxiedOrDirectVariants,
-} from "@/lib/invidious-proxy";
-import { getMediaOrigin } from "@/lib/media-origin";
 import { isNativeAppUserAgent } from "@/lib/native-app";
-import { buildWatchPlayback } from "@/lib/pick-playback";
-import { scrubPreviewStreamFromDetail } from "@/lib/scrub-preview-stream";
 import { sponsorBlockPrefsFromAppSettings } from "@/lib/sponsorblock-prefs";
 import { parseChaptersFromDescription } from "@/lib/video-chapters";
 import {
@@ -41,10 +32,16 @@ import {
   formatSubscribersLabel,
   formatViews,
 } from "@/lib/video-display";
-import { stripGoogleImageUrls } from "@/lib/youtube-image-via-instance";
+import {
+  playerPayloadFromDetail,
+  previewStreamFromDetail,
+} from "@/lib/watch-playback";
 import { readWatchParams, type WatchParams } from "@/lib/youtube-url";
 import { watchHref } from "@/lib/yt-routes";
 import { auth } from "@/server/auth";
+import { fetchTrendingVideos, fetchVideoDetail } from "@/server/catalog";
+import type { UnifiedVideo, VideoDetail } from "@/server/catalog/types";
+import { videoDetailInputSchema } from "@/server/catalog/types";
 import { getDb } from "@/server/db/client";
 import { UpstreamAgeRestrictedError } from "@/server/errors/upstream-age-restricted";
 import { UpstreamLiveUpcomingError } from "@/server/errors/upstream-live-upcoming";
@@ -54,14 +51,6 @@ import {
   isVideoWatched,
 } from "@/server/history/watch-resume";
 import { getRecommendations } from "@/server/recommendation/engine";
-import { fetchAdaptiveFormats } from "@/server/services/hls/generate";
-import {
-  fetchRelatedVideos,
-  fetchTrendingVideos,
-  fetchVideoDetail,
-} from "@/server/services/proxy";
-import type { UnifiedVideo, VideoDetail } from "@/server/services/proxy.types";
-import { videoDetailInputSchema } from "@/server/services/proxy.types";
 import {
   getUserSettings,
   normalizeTrendingRegionStored,
@@ -90,27 +79,14 @@ function readWatchSearch(
   return readWatchParams(params);
 }
 
-/**
- * How old a cached video detail the watch page may use. It used to fetch fresh
- * on every render, so each open or reload of a watch page (the iOS app renders
- * one per video) cost Invidious a YouTube round trip, ~3,500 a day, for
- * nothing: the companion caches YouTube's player response for an hour, so a
- * fresh fetch hands back the same signed URLs, and playback goes through the
- * /hls and /dash routes, which fetch their own. An hour, like the companion,
- * so details the cache warmer (hourly) and WebSub sync prefetch get used.
- * Live and upcoming videos always come fresh (see `maxAgeSec`).
- */
-const WATCH_DETAIL_MAX_AGE_SEC = 60 * 60;
-
 export async function generateMetadata({
   searchParams,
 }: WatchPageProps): Promise<Metadata> {
   const { videoId } = readWatchSearch(await searchParams);
   if (!videoId) return { title: "Video" };
   const input = videoDetailInputSchema.parse({ videoId });
-  const db = getDb();
   try {
-    const detail = await fetchVideoDetail(db, input);
+    const detail = await fetchVideoDetail(input);
     return { title: detail.title };
   } catch (error) {
     if (error instanceof UpstreamLiveUpcomingError) {
@@ -140,12 +116,6 @@ export default async function WatchPage({ searchParams }: WatchPageProps) {
   // video. "side": a wide panel, whose native column shows Up next, so the
   // page leaves out its own related videos.
   const nativePanel = sp.panel === "1" || sp.panel === "side" ? sp.panel : null;
-  const requestHost =
-    h.get("x-forwarded-host")?.split(",")[0]?.trim() ?? h.get("host") ?? "";
-  const appOrigin = getAppOriginFromRequestHeaders(h);
-  // Video/manifest/caption URLs are built against this instead of appOrigin —
-  // see media-origin.ts for why (Safari HTTP/2 connection-loss bug).
-  const mediaOrigin = getMediaOrigin(appOrigin);
   const isAuthed = Boolean(session?.user?.id);
   const userSettings =
     Number.isFinite(userId) && userId > 0 ? getUserSettings(db, userId) : null;
@@ -160,13 +130,7 @@ export default async function WatchPage({ searchParams }: WatchPageProps) {
   let ageRestricted: UpstreamAgeRestrictedError | null = null;
   let unavailable: UpstreamVideoUnavailableError | null = null;
   try {
-    // Handed to the browser: Google image URLs moved onto the instance, so
-    // the page source names none (see stripGoogleImageUrls).
-    detail = stripGoogleImageUrls(
-      await fetchVideoDetail(db, input, {
-        maxAgeSec: WATCH_DETAIL_MAX_AGE_SEC,
-      }),
-    );
+    detail = await fetchVideoDetail(input);
   } catch (error) {
     if (error instanceof UpstreamLiveUpcomingError) {
       upcomingLive = error;
@@ -196,13 +160,6 @@ export default async function WatchPage({ searchParams }: WatchPageProps) {
       : null;
   const effectiveStartAtSeconds = startAtSeconds ?? resumeSeconds ?? undefined;
 
-  // Pre-warm the adaptive-formats cache in parallel with the page render:
-  // the client's first manifest request (/dash or /hls) otherwise pays the
-  // ~3s upstream formats fetch on its critical path.
-  if (detail && !isLive && !isUpcoming) {
-    void fetchAdaptiveFormats(videoId).catch(() => {});
-  }
-
   // Already-watched videos open at rest: poster + chrome, no autoplay
   // (whatever the setting says), position back at the start.
   const videoWatched =
@@ -210,22 +167,8 @@ export default async function WatchPage({ searchParams }: WatchPageProps) {
       ? isVideoWatched(db, userId, videoId)
       : false;
 
-  // The detail payload usually already carries related videos; only spend the
-  // extra upstream round-trip when it doesn't have enough to fill the sidebar.
-  const RELATED_SIDEBAR_TARGET = 20;
-  const detailRelatedCount = (detail?.relatedVideos ?? []).filter(
-    (v) => v.videoId !== videoId,
-  ).length;
-  const relatedResult =
-    detail && detailRelatedCount < RELATED_SIDEBAR_TARGET
-      ? await fetchRelatedVideos(db, input, 24).catch(() => null)
-      : null;
-
   const relatedMerged = new Map<string, UnifiedVideo>();
-  for (const v of [
-    ...(detail?.relatedVideos ?? []),
-    ...(relatedResult?.videos ?? []),
-  ]) {
+  for (const v of detail?.relatedVideos ?? []) {
     if (v.videoId !== videoId) relatedMerged.set(v.videoId, v);
   }
   let sidebarVideos = withoutBlockedChannels(
@@ -243,66 +186,36 @@ export default async function WatchPage({ searchParams }: WatchPageProps) {
             region: feedRegion,
           })
         ).videos
-      : (await fetchTrendingVideos(db, { region: feedRegion, limit: 28 }))
-          .videos;
+      : (await fetchTrendingVideos({ region: feedRegion, limit: 28 })).videos;
     sidebarVideos = feedVideosRaw
       .filter((v) => v.videoId !== videoId)
       .slice(0, 20);
     sidebarFromFeedFallback = sidebarVideos.length > 0;
   }
-  sidebarVideos = stripGoogleImageUrls(sidebarVideos);
-  const rawPlayback = detail ? buildWatchPlayback(detail) : null;
-  const onlyDashOrUnsupported =
-    rawPlayback !== null &&
-    rawPlayback.kind === "none" &&
-    rawPlayback.onlyDashOrUnsupported;
-  const videoPayload =
-    detail && rawPlayback
-      ? rawPlayback.kind === "hls" || rawPlayback.kind === "dash-live"
-        ? {
-            mode: "hls" as const,
-            src: toProxiedOrDirectPlayback(
-              rawPlayback.url,
-              mediaOrigin,
-              requestHost,
-            ),
-            dvr: detail.isPostLiveDvr === true,
-          }
-        : rawPlayback.kind === "progressive"
-          ? {
-              mode: "progressive" as const,
-              variants: toProxiedOrDirectVariants(
-                rawPlayback.variants,
-                mediaOrigin,
-                requestHost,
-              ),
-            }
-          : null
-      : null;
-  // Subtitle tracks → same-origin `/captions/{id}?label=…` (validating, caching
-  // proxy). Both human-authored and auto-generated tracks are included. The
+  const videoPayload = detail ? playerPayloadFromDetail(detail) : null;
+  // Subtitle tracks, signed gateway WebVTT, human-authored and automatic. The
   // start track follows the account's caption language (lib/caption-default).
   const defaultCaptionIndex = detail?.captions?.length
     ? pickDefaultCaptionIndex(detail.captions, {
         preferred: userSettings?.captionLanguage,
-        originalAudioLanguage: detail.audioSources?.find(
-          (a) => a.audioIsOriginal,
-        )?.language,
+        originalAudioLanguage: detail.originalLanguage,
       })
     : -1;
   const videoCaptions = detail?.captions?.length
-    ? detail.captions.map((c, i) => ({
-        label: c.label,
-        languageCode: c.languageCode,
-        isDefault: i === defaultCaptionIndex,
-        src: `${mediaOrigin}/captions/${encodeURIComponent(detail.videoId)}?label=${encodeURIComponent(
-          c.label,
-        )}`,
-      }))
+    ? detail.captions.flatMap((c, i) =>
+        c.src
+          ? [
+              {
+                label: c.label,
+                languageCode: c.languageCode,
+                isDefault: i === defaultCaptionIndex,
+                src: c.src,
+              },
+            ]
+          : [],
+      )
     : undefined;
-  const poster =
-    detail &&
-    toProxiedOrDirectPoster(detail.thumbnailUrl, mediaOrigin, requestHost);
+  const poster = detail?.thumbnailUrl;
   const chapters = parseChaptersFromDescription(
     detail?.description,
     detail?.durationSeconds,
@@ -317,10 +230,7 @@ export default async function WatchPage({ searchParams }: WatchPageProps) {
     detail?.channelSubscriberCount,
   );
   const scrubPreviewStreamSrc =
-    detail && !isLive && !detail.isPostLiveDvr
-      ? (scrubPreviewStreamFromDetail(detail, mediaOrigin, requestHost) ??
-        undefined)
-      : undefined;
+    (detail && previewStreamFromDetail(detail)) ?? undefined;
   const pageTitle =
     detail?.title ??
     (ageRestricted
@@ -461,16 +371,7 @@ export default async function WatchPage({ searchParams }: WatchPageProps) {
                 />
               ) : (
                 <div className="rounded-xl border bg-[hsl(var(--muted))] p-6 text-sm text-[hsl(var(--muted-foreground))]">
-                  {onlyDashOrUnsupported ? (
-                    <span>
-                      DASH/MPD is not supported by this player (Invidious only
-                      returned an adaptive MPD and no HLS or combined MP4). Try
-                      another instance, enable or fix HLS on your Invidious, or
-                      check that format streams are not proxy-blocked.
-                    </span>
-                  ) : (
-                    "No playable stream is available for this video."
-                  )}
+                  No playable stream is available for this video.
                 </div>
               )}
 

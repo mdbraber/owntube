@@ -1,5 +1,5 @@
+import type { UnifiedVideo } from "@/server/catalog/types";
 import { createPoolInvalidation } from "@/server/recommendation/pool-invalidation";
-import type { UnifiedVideo } from "@/server/services/proxy.types";
 
 /**
  * Per-user cache for the home feed's trending tail (the regional-trending rows

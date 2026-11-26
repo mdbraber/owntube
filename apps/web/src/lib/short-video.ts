@@ -1,12 +1,9 @@
-import type { UnifiedVideo } from "@/server/services/proxy.types";
+import type { UnifiedVideo } from "@/server/catalog/types";
 
-/** YouTube Shorts max length; keeps the vertical feed from filling with long uploads. */
+/** YouTube Shorts max length, for rows that do not say whether they are one. */
 export const MAX_SHORT_DURATION_SECONDS = 60;
 
-/** Slightly looser cap for upstream discovery when metadata is sparse or a few seconds over 60. */
-export const DISCOVERY_SHORT_MAX_DURATION_SECONDS = 90;
-
-/** Upstreams sometimes send `0`/`-1` when length is unknown — treat as missing, not “zero seconds”. */
+/** `0`/`-1` mean the length is unknown, not "zero seconds". */
 export function hasKnownPositiveDuration(
   seconds: number | undefined,
 ): seconds is number {
@@ -14,94 +11,21 @@ export function hasKnownPositiveDuration(
 }
 
 /**
- * Last-resort signal, and a poor one: "#shorts" in a title is an SEO convention,
- * not metadata. Measured against a live search, 4 of 20 results carried the tag
- * while running 8-27 minutes. Only consulted when neither the upstream flag nor
- * a duration is available.
+ * Whether a row is a Short. Rows from the gateway say so (YouTube lists Shorts
+ * with their own renderer), and that answer is final. Only rows without it —
+ * channel RSS entries — fall back to the length, then to "#shorts" in the
+ * title, an SEO convention and a poor signal (4 of 20 tagged search results
+ * ran 8-27 minutes).
  */
-function titleHasShortsTag(title: string): boolean {
-  return title.toLowerCase().includes("#shorts");
-}
-
-/**
- * Upstream said so outright (Invidious `isShort`). Preferred over every other
- * signal because the alternatives cannot actually distinguish a Short: YouTube
- * stopped reporting a real duration for them and Invidious substitutes an
- * approximate 60s, so length alone cannot separate a Short from a genuine
- * 60-second upload.
- */
-function upstreamSaysShort(video: UnifiedVideo): boolean {
-  return video.isShort === true;
-}
-
 export function isStrictShortVideo(video: UnifiedVideo): boolean {
   if (video.isLive || video.isUpcoming) return false;
-  if (upstreamSaysShort(video)) return true;
+  if (typeof video.isShort === "boolean") return video.isShort;
   const d = video.durationSeconds;
-  if (hasKnownPositiveDuration(d)) {
-    return d <= MAX_SHORT_DURATION_SECONDS;
-  }
-  return titleHasShortsTag(video.title);
+  if (hasKnownPositiveDuration(d)) return d <= MAX_SHORT_DURATION_SECONDS;
+  return video.title.toLowerCase().includes("#shorts");
 }
 
-export function invidiousItemIsStrictShort(item: unknown): boolean {
-  if (!item || typeof item !== "object") return false;
-  const o = item as Record<string, unknown>;
-  if (o.isShort === true) return true;
-  if (o.type === "shortVideo") return true;
-  const length =
-    typeof o.lengthSeconds === "number" && Number.isFinite(o.lengthSeconds)
-      ? o.lengthSeconds
-      : undefined;
-  if (hasKnownPositiveDuration(length)) {
-    return length <= MAX_SHORT_DURATION_SECONDS;
-  }
-  const title = typeof o.title === "string" ? o.title : "";
-  return titleHasShortsTag(title);
-}
-
-export function isDiscoveryShortVideo(video: UnifiedVideo): boolean {
-  if (video.isLive || video.isUpcoming) return false;
-  if (isStrictShortVideo(video)) return true;
-  if (upstreamSaysShort(video)) return true;
-  const d = video.durationSeconds;
-  if (hasKnownPositiveDuration(d)) {
-    return d <= DISCOVERY_SHORT_MAX_DURATION_SECONDS;
-  }
-  return titleHasShortsTag(video.title);
-}
-
-export function invidiousItemIsDiscoveryShort(item: unknown): boolean {
-  if (invidiousItemIsStrictShort(item)) return true;
-  if (!item || typeof item !== "object") return false;
-  const o = item as Record<string, unknown>;
-  if (o.isShort === true) return true;
-  if (o.type === "shortVideo") return true;
-  const length =
-    typeof o.lengthSeconds === "number" && Number.isFinite(o.lengthSeconds)
-      ? o.lengthSeconds
-      : undefined;
-  if (hasKnownPositiveDuration(length)) {
-    return length <= DISCOVERY_SHORT_MAX_DURATION_SECONDS;
-  }
-  const title = typeof o.title === "string" ? o.title : "";
-  return titleHasShortsTag(title);
-}
-
-/** Upstream discovery row: strict short, or discovery-length with an explicit signal. */
-export function isUpstreamDiscoveryShort(video: UnifiedVideo): boolean {
-  if (isStrictShortVideo(video)) return true;
-  if (!isDiscoveryShortVideo(video)) return false;
-  return upstreamSaysShort(video) || titleHasShortsTag(video.title);
-}
-
-/** Prefer strict shorts; fall back to tagged discovery only when the page has zero strict shorts. */
+/** The Shorts on a page. */
 export function filterShortsFeedVideos(videos: UnifiedVideo[]): UnifiedVideo[] {
-  const strict = videos.filter(isStrictShortVideo);
-  if (strict.length > 0) return strict;
-  const taggedDiscovery = videos.filter(isUpstreamDiscoveryShort);
-  if (taggedDiscovery.length > 0) return taggedDiscovery;
-  const discovery = videos.filter(isDiscoveryShortVideo);
-  if (discovery.length > 0) return discovery;
-  return [];
+  return videos.filter(isStrictShortVideo);
 }

@@ -5,6 +5,7 @@ import {
   pickNewestVideoPerChannel,
   publishedSortKey,
 } from "@/lib/published-sort-key";
+import type { UnifiedVideo } from "@/server/catalog/types";
 import type { AppDb } from "@/server/db/client";
 import { channelMeta, interactions, watchHistory } from "@/server/db/schema";
 import {
@@ -48,8 +49,8 @@ import { getSubscribedChannelIds } from "@/server/recommendation/subscribed-chan
 import {
   buildKeywordCorpus,
   buildTasteCorpusTitles,
-  readCachedDetailTitlesForVideos,
-  readCachedDislikeTitlesOrdered,
+  readStoredDislikeTitlesOrdered,
+  readStoredTitlesForVideos,
 } from "@/server/recommendation/taste-corpus";
 import {
   buildTfidfModel,
@@ -57,7 +58,6 @@ import {
 } from "@/server/recommendation/tfidf";
 import { clearTrendingTailCacheForUser } from "@/server/recommendation/trending-tail-cache";
 import type { ScoredVideo } from "@/server/recommendation/types";
-import type { UnifiedVideo } from "@/server/services/proxy.types";
 import { getUserSettings } from "@/server/settings/profile";
 
 export type RecommendationResult = {
@@ -512,7 +512,7 @@ async function ensureRecommendationPool(
     const tasteVideoIds = Array.from(
       new Set([...signals.likedVideoIds, ...signals.savedVideoIds]),
     );
-    const tasteTitles = readCachedDetailTitlesForVideos(db, tasteVideoIds, 72);
+    const tasteTitles = readStoredTitlesForVideos(db, tasteVideoIds, 72);
     const keywordCorpus = buildKeywordCorpus(userSettings.tasteKeywords);
     // Recent subscribed uploads (watched or not) form their own taste centroid
     // so title similarity pulls in content like the subscriptions, including
@@ -551,7 +551,7 @@ async function ensureRecommendationPool(
           : [keywordCorpus, tasteTitles],
     });
     const dislikeModel = buildTfidfModel(
-      readCachedDislikeTitlesOrdered(db, dislikeCorpusVideoIds(signals), 48),
+      readStoredDislikeTitlesOrdered(db, dislikeCorpusVideoIds(signals), 48),
     );
 
     // Drop clear keyword SEO spam (stuffed compilations from unknown channels)

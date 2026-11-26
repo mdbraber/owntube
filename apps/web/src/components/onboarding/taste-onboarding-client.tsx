@@ -11,7 +11,7 @@ import {
   type SessionDislike,
 } from "@/lib/taste-deck-filter";
 import { TRENDING_REGION_OPTIONS } from "@/lib/trending-regions";
-import type { UnifiedVideo } from "@/server/services/proxy.types";
+import type { UnifiedVideo } from "@/server/catalog/types";
 import { trpc } from "@/trpc/react";
 
 type Step = "setup" | "keywords" | "videos" | "finish";
@@ -142,7 +142,6 @@ export function TasteOnboardingClient() {
 
   const [step, setStep] = useState<Step>("setup");
   const [trendingRegion, setTrendingRegion] = useState("US");
-  const [invidiousBaseUrl, setInvidiousBaseUrl] = useState("");
   const [keywords, setKeywords] = useState<string[]>([]);
   const [draftKeyword, setDraftKeyword] = useState("");
   const [keywordsSaved, setKeywordsSaved] = useState(false);
@@ -263,7 +262,6 @@ export function TasteOnboardingClient() {
     try {
       await updateSettingsMutation.mutateAsync({
         trendingRegion,
-        invidiousBaseUrl: invidiousBaseUrl.trim() || undefined,
       });
       await Promise.all([
         utils.settings.get.invalidate(),
@@ -449,23 +447,6 @@ export function TasteOnboardingClient() {
                 </option>
               ))}
             </select>
-          </div>
-
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <label
-                htmlFor="onboarding-invidious"
-                className="text-xs font-medium uppercase tracking-wide text-[hsl(var(--muted-foreground))]"
-              >
-                Invidious base URL (optional)
-              </label>
-              <Input
-                id="onboarding-invidious"
-                value={invidiousBaseUrl}
-                onChange={(e) => setInvidiousBaseUrl(e.target.value)}
-                placeholder="https://your-invidious.example"
-              />
-            </div>
           </div>
 
           <p className="text-xs text-[hsl(var(--muted-foreground))]">

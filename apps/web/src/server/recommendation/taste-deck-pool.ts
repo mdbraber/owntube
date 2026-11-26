@@ -8,6 +8,8 @@ import {
   recurringTokensFromDislikedTitles,
   videoPassesTasteSession,
 } from "@/lib/taste-deck-filter";
+import { fetchTrendingVideos } from "@/server/catalog";
+import type { UnifiedVideo } from "@/server/catalog/types";
 import type { AppDb } from "@/server/db/client";
 import { interactions } from "@/server/db/schema";
 import { RateLimitExceededError } from "@/server/errors/rate-limit-exceeded";
@@ -26,12 +28,10 @@ import { collectUserSignals } from "@/server/recommendation/signals";
 import {
   buildKeywordCorpus,
   buildTasteCorpusTitles,
-  readCachedDetailTitlesForVideos,
-  readCachedDislikeTitlesOrdered,
+  readStoredDislikeTitlesOrdered,
+  readStoredTitlesForVideos,
 } from "@/server/recommendation/taste-corpus";
 import { buildTfidfModel } from "@/server/recommendation/tfidf";
-import { fetchTrendingVideos } from "@/server/services/proxy";
-import type { UnifiedVideo } from "@/server/services/proxy.types";
 import { getUserSettings } from "@/server/settings/profile";
 
 function nowUnix(): number {
@@ -135,7 +135,7 @@ export async function buildTasteDeckVideos(
     heavyDislikeChannels.add(ch);
   }
 
-  const dislikeTitles = readCachedDislikeTitlesOrdered(
+  const dislikeTitles = readStoredDislikeTitlesOrdered(
     db,
     dislikeRows.map((r) => r.videoId),
     48,
@@ -199,7 +199,7 @@ export async function buildTasteDeckVideos(
   if (fresh.length === 0) {
     let trending: Awaited<ReturnType<typeof fetchTrendingVideos>>;
     try {
-      trending = await fetchTrendingVideos(db, { region, limit: 120 });
+      trending = await fetchTrendingVideos({ region, limit: 120 });
     } catch (e) {
       if (e instanceof UpstreamUnavailableError) {
         throw new TRPCError({ code: "BAD_GATEWAY", message: e.message });
@@ -243,7 +243,7 @@ export async function buildTasteDeckVideos(
   const tasteVideoIds = Array.from(
     new Set([...signals.likedVideoIds, ...signals.savedVideoIds]),
   );
-  const tasteTitles = readCachedDetailTitlesForVideos(db, tasteVideoIds, 72);
+  const tasteTitles = readStoredTitlesForVideos(db, tasteVideoIds, 72);
   const userSettings = getUserSettings(db, userId);
   const keywordCorpus = buildKeywordCorpus(userSettings.tasteKeywords);
   const poolTitles = fresh.map((v) => v.title).slice(0, 200);

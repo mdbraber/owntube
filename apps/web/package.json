@@ -2,7 +2,7 @@
   "name": "web",
   "version": "0.1.0",
   "private": true,
-  "description": "Self-hosted privacy-first YouTube frontend backed by Invidious. No Google APIs.",
+  "description": "Self-hosted, private YouTube front end. No Google APIs.",
   "license": "MIT",
   "homepage": "https://github.com/spookiss/owntube#readme",
   "repository": {
@@ -14,7 +14,6 @@
   },
   "keywords": [
     "youtube",
-    "invidious",
     "self-hosted",
     "privacy",
     "nextjs",
@@ -38,7 +37,6 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "warm:cache": "tsx scripts/warm-cache.ts",
     "warm:feed": "tsx scripts/warm-cache.ts",
-    "check:upstream": "tsx scripts/check-upstream.ts",
     "export:icons": "tsx scripts/export-brand-icons.ts",
     "db:studio": "drizzle-kit studio",
     "test": "vitest run",
@@ -47,6 +45,7 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
+    "@owntube/contracts": "workspace:*",
     "@radix-ui/react-slot": "^1.2.3",
     "@tanstack/react-query": "^5.90.5",
     "@trpc/client": "^11.7.1",

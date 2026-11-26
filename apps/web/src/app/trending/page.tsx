@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import { TrendingGridSkeleton } from "@/app/trending/trending-grid-skeleton";
 import { PageHeader } from "@/components/layout/page-header";
 import { VideoGrid } from "@/components/videos/video-grid";
-import { trendingInputSchema } from "@/server/services/proxy.types";
+import { trendingInputSchema } from "@/server/catalog/types";
 import { createCaller } from "@/server/trpc/caller";
 
 type TrendingPageProps = {
@@ -18,10 +18,6 @@ async function TrendingGrid({ region }: { region: string }) {
   const data = await caller.trending.list(input);
   return (
     <section className="space-y-4">
-      <p className="text-xs text-[hsl(var(--muted-foreground))]">
-        Source: {data.sourceUsed}
-        {data.stale ? " · stale cache" : ""}
-      </p>
       <VideoGrid videos={data.videos} enableSwipe />
     </section>
   );

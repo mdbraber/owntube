@@ -1,4 +1,4 @@
-import type { UnifiedVideo } from "@/server/services/proxy.types";
+import type { UnifiedVideo } from "@/server/catalog/types";
 
 const UNIT_SECONDS_EN: Record<string, number> = {
   second: 1,

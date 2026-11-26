@@ -1,5 +1,5 @@
 import { youtubeImageViaInstance } from "@/lib/youtube-image-via-instance";
-import type { VideoStoryboard } from "@/server/services/proxy.types";
+import type { VideoStoryboard } from "@/server/catalog/types";
 
 const DEFAULT_INTERVAL_SEC = 5;
 

@@ -148,19 +148,25 @@ describe("video-thumbnail-url", () => {
     } as HTMLImageElement;
 
     applyVideoThumbnailImgError(el);
-    expect(el.src).toBe("https://owntube.test/image/vi/x/hqdefault.jpg");
+    expect(el.src).toBe(
+      "https://owntube.test/media/img/yti/vi/x/hqdefault.jpg",
+    );
     expect(el.dataset.fallbackSteps).toBe("1");
 
     applyVideoThumbnailImgError(el);
-    expect(el.src).toBe("https://owntube.test/image/vi/x/mqdefault.jpg");
+    expect(el.src).toBe(
+      "https://owntube.test/media/img/yti/vi/x/mqdefault.jpg",
+    );
     expect(el.dataset.fallbackSteps).toBe("2");
 
     applyVideoThumbnailImgError(el);
-    expect(el.src).toBe("https://owntube.test/image/vi/x/sddefault.jpg");
+    expect(el.src).toBe(
+      "https://owntube.test/media/img/yti/vi/x/sddefault.jpg",
+    );
     applyVideoThumbnailImgError(el);
-    expect(el.src).toBe("https://owntube.test/image/vi/x/default.jpg");
+    expect(el.src).toBe("https://owntube.test/media/img/yti/vi/x/default.jpg");
     applyVideoThumbnailImgError(el);
-    expect(el.src).toBe("https://owntube.test/image/vi/x/default.jpg");
+    expect(el.src).toBe("https://owntube.test/media/img/yti/vi/x/default.jpg");
     applyVideoThumbnailImgError(el);
     expect(el.dataset.fallbackSteps).toBe("4");
   });

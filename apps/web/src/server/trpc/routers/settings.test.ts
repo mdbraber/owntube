@@ -117,38 +117,4 @@ describe("settingsRouter", () => {
 
     sqlite.close();
   });
-
-  it("reports the server-configured upstream, not a per-account one", async () => {
-    process.env = {
-      ...env,
-      INVIDIOUS_BASE_URL: "https://one.example, https://two.example",
-    };
-    const { db, sqlite } = createTestDb();
-    const ts = Math.floor(Date.now() / 1000);
-    const user = db
-      .insert(users)
-      .values({
-        email: "instances@example.com",
-        passwordHash: "x",
-        createdAt: ts,
-        updatedAt: ts,
-      })
-      .returning({ id: users.id })
-      .get();
-
-    const caller = appRouter.createCaller({ db, userId: user.id });
-    const fetched = await caller.settings.get();
-    // INVIDIOUS_BASE_URL may list several instances to fail over between; the
-    // account has no say in it any more.
-    expect(fetched.instanceSources.invidious.urls).toEqual([
-      "https://one.example",
-      "https://two.example",
-    ]);
-    expect(fetched.instanceSources.invidious.effectiveUrl).toBe(
-      "https://one.example",
-    );
-    expect(fetched.instanceSources.invidious.envDisabled).toBe(false);
-
-    sqlite.close();
-  });
 });

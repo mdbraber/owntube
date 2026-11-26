@@ -1,5 +1,5 @@
+import type { UnifiedVideo } from "@/server/catalog/types";
 import type { RecommendationScoreBreakdown } from "@/server/recommendation/scoring";
-import type { UnifiedVideo } from "@/server/services/proxy.types";
 
 export type ScoredVideo = UnifiedVideo & {
   rawScore: number;

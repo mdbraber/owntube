@@ -6,29 +6,21 @@ import {
   type SetStateAction,
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
 import { HlsVodBlock } from "@/components/player/hls-vod-block";
 import { LiveBlock } from "@/components/player/live-block";
-import { NativeMuxedBlock } from "@/components/player/native-block";
 import type {
   CaptionTrack,
   VideoPlayerPayload,
 } from "@/components/player/player-payload";
 import {
-  initialQualityIndexForPayload,
-  progressiveQualityMenuFromPayload,
-} from "@/components/player/player-quality";
-import {
-  MAX_VARIANT_FALLBACK_ATTEMPTS,
   playbackResumeStorageKey,
   shouldAutoRecoverPlaybackSource,
   tryOneShotPlaybackRecovery,
 } from "@/components/player/player-recovery";
 import type { SponsorBlockChromeProps } from "@/components/player/player-types";
-import { SplitBlock } from "@/components/player/split-block";
 import {
   readWatchQueue,
   type WatchQueueItem,
@@ -47,8 +39,6 @@ import {
   heightCapForDefaultQuality,
   readDefaultPlaybackQuality,
 } from "@/lib/default-playback-quality";
-import { isLiveDashManifestUrl } from "@/lib/pick-playback";
-import { nextPlaybackVariantIndex } from "@/lib/playback-variant-fallback";
 import {
   readPlayerMediaPrefs,
   writePlayerVolumeOnly,
@@ -57,7 +47,7 @@ import type { SponsorBlockPrefs } from "@/lib/sponsorblock-prefs";
 import { cn } from "@/lib/utils";
 import type { VideoChapter } from "@/lib/video-chapters";
 import { videoIdFromWatchHref } from "@/lib/yt-routes";
-import type { VideoStoryboard } from "@/server/services/proxy.types";
+import type { VideoStoryboard } from "@/server/catalog/types";
 import { trpc } from "@/trpc/react";
 
 export type { VideoPlayerPayload };
@@ -92,8 +82,6 @@ export type VideoPlayerProps = {
   defaultPlaybackQuality?: DefaultPlaybackQuality;
   /** DASH: jump to the best quality on entering fullscreen, restore on exit. */
   fullscreenAutoBestQuality?: boolean;
-  /** Resume quality rung when restoring from mini player state. */
-  initialQualityIndex?: number;
   /** Volume / mute captured at handoff from watch (optional). */
   restoredVolume?: number;
   restoredMuted?: boolean;
@@ -121,7 +109,6 @@ export type VideoPlayerProps = {
 /* ------------------------------- Top level ------------------------------- */
 
 /** Watch time before a short ramps from its low start rung up to the default. */
-const SHORTS_QUALITY_UPGRADE_MS = 5000;
 
 export function VideoPlayer({
   videoId,
@@ -141,7 +128,6 @@ export function VideoPlayer({
   onVideoIntrinsics,
   defaultPlaybackQuality: defaultPlaybackQualityProp,
   fullscreenAutoBestQuality = false,
-  initialQualityIndex: initialQualityIndexProp,
   restoredVolume,
   restoredMuted,
   miniStartPaused = false,
@@ -162,8 +148,7 @@ export function VideoPlayer({
    * it like a live stream for scrub preview — a storyboard, when the video has
    * one, is used ahead of any stream and still works.
    */
-  const noScrubStream =
-    isLive || (payload.mode === "hls" && payload.dvr === true);
+  const noScrubStream = isLive || payload.dvr === true;
   const scrubFrames = useScrubFramePreview({
     videoId,
     durationSeconds: isLive ? undefined : durationSeconds,
@@ -231,9 +216,6 @@ export function VideoPlayer({
 
   const displayPoster = shortsMode ? undefined : poster;
 
-  const progressive =
-    effectivePayload.mode === "progressive" ? effectivePayload.variants : null;
-  const progressiveMobileSafe = progressive;
   const resolvedDefaultQuality =
     defaultPlaybackQualityProp ??
     (typeof window === "undefined"
@@ -244,28 +226,7 @@ export function VideoPlayer({
   const dashQualityHeightCap = heightCapForDefaultQuality(
     resolvedDefaultQuality,
   );
-  // Shorts start on the lowest muxed rung (single-file, instant start) no matter
-  // the user's default, then bump up after a few seconds of watching (see the
-  // upgrade effect below). Skim past a short and it never pays for the upgrade.
-  const startQualityPref: DefaultPlaybackQuality = shortsMode
-    ? "360p-muxed"
-    : resolvedDefaultQuality;
-  const [qualityIndex, setQualityIndex] = useState(() => {
-    if (
-      typeof initialQualityIndexProp === "number" &&
-      Number.isFinite(initialQualityIndexProp) &&
-      initialQualityIndexProp >= 0
-    ) {
-      return Math.floor(initialQualityIndexProp);
-    }
-    return initialQualityIndexForPayload(effectivePayload, startQualityPref);
-  });
-  const variantFallbackAttemptsRef = useRef(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const progressiveQualityMenu = useMemo(
-    () => progressiveQualityMenuFromPayload(effectivePayload, qualityIndex),
-    [effectivePayload, qualityIndex],
-  );
   const [resumeSeekSeconds, setResumeSeekSeconds] = useState<
     number | undefined
   >(undefined);
@@ -368,118 +329,24 @@ export function VideoPlayer({
     } catch {}
   }, [startAtSeconds]);
 
-  const setQualityWithResume = useCallback(
-    (i: number, seekSeconds?: number) => {
-      const nextSeek =
-        typeof seekSeconds === "number" && Number.isFinite(seekSeconds)
-          ? Math.max(0, seekSeconds)
-          : undefined;
-      setResumeSeekSeconds(nextSeek);
-      setQualityIndex(i);
-    },
-    [],
-  );
-
+  // A new source starts at its own beginning with the menu closed.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset on a new payload only.
   useEffect(() => {
-    if (
-      miniMode &&
-      typeof initialQualityIndexProp === "number" &&
-      Number.isFinite(initialQualityIndexProp)
-    ) {
-      return;
-    }
-    const pref = shortsMode
-      ? "360p-muxed"
-      : (defaultPlaybackQualityProp ?? readDefaultPlaybackQuality());
-    setQualityIndex(initialQualityIndexForPayload(effectivePayload, pref));
     setResumeSeekSeconds(undefined);
     setSettingsOpen(false);
-    variantFallbackAttemptsRef.current = 0;
-  }, [
-    effectivePayload,
-    defaultPlaybackQualityProp,
-    initialQualityIndexProp,
-    miniMode,
-    shortsMode,
-  ]);
-
-  // Shorts quality "ramp": having started on the lowest muxed rung for an
-  // instant start, upgrade to the *best muxed* rung once they've watched a few
-  // seconds — long enough that a quick skim never triggers the re-buffer. We
-  // deliberately ramp to muxed, not the split HD rungs: a mid-playback switch
-  // into the split (video-only + <audio>) path can stall and get the short
-  // skipped, the very failure we start low to avoid. Scrolling away unmounts
-  // the slide and cancels the timer; HD stays available in the quality menu.
-  useEffect(() => {
-    if (!shortsMode) return;
-    const variants = progressiveMobileSafe;
-    if (!variants || variants.length <= 1) return;
-    // muxed rows are ordered best-first, so the first muxed is the top rung.
-    const targetIdx = variants.findIndex((v) => v.t === "muxed");
-    if (targetIdx < 0 || targetIdx >= qualityIndex) return; // no better muxed
-    const id = window.setTimeout(() => {
-      const media = playerMediaRootRef.current?.querySelector("video");
-      const at =
-        media && Number.isFinite(media.currentTime) ? media.currentTime : 0;
-      setQualityWithResume(targetIdx, at > 0 ? at : undefined);
-    }, SHORTS_QUALITY_UPGRADE_MS);
-    return () => window.clearTimeout(id);
-  }, [shortsMode, progressiveMobileSafe, qualityIndex, setQualityWithResume]);
-
-  useEffect(() => {
-    if (!progressiveMobileSafe || progressiveMobileSafe.length === 0) return;
-    if (qualityIndex < progressiveMobileSafe.length) return;
-    setQualityIndex(0);
-  }, [progressiveMobileSafe, qualityIndex]);
+  }, [effectivePayload]);
 
   useEffect(() => {
     const t = window.setTimeout(() => writePlayerVolumeOnly(splitVolume), 200);
     return () => window.clearTimeout(t);
   }, [splitVolume]);
 
-  const active = useMemo(() => {
-    if (effectivePayload.mode === "hls") {
-      return { kind: "hls" as const, src: effectivePayload.src };
-    }
-    const v = progressiveMobileSafe?.[qualityIndex];
-    if (v) {
-      return { kind: "variant" as const, v };
-    }
-    return { kind: "empty" as const };
-  }, [effectivePayload, progressiveMobileSafe, qualityIndex]);
+  const active = { kind: "hls" as const, src: effectivePayload.src };
 
   const effectiveStartAt =
     typeof resumeSeekSeconds === "number" ? resumeSeekSeconds : startAtSeconds;
 
   const handlePlaybackError = useCallback(() => {
-    if (
-      effectivePayload.mode === "progressive" &&
-      progressiveMobileSafe &&
-      progressiveMobileSafe.length > 1
-    ) {
-      const maxAttempts = Math.min(
-        progressiveMobileSafe.length - 1,
-        MAX_VARIANT_FALLBACK_ATTEMPTS,
-      );
-      if (variantFallbackAttemptsRef.current < maxAttempts) {
-        const nextIdx = nextPlaybackVariantIndex(
-          qualityIndex,
-          progressiveMobileSafe.length,
-        );
-        if (nextIdx !== null) {
-          variantFallbackAttemptsRef.current += 1;
-          const media = playerMediaRootRef.current?.querySelector("video");
-          const currentTime =
-            media && Number.isFinite(media.currentTime) ? media.currentTime : 0;
-          setQualityWithResume(
-            nextIdx,
-            currentTime > 0 ? currentTime : undefined,
-          );
-          return;
-        }
-      }
-    }
-
     // A broken short must never reload the whole /shorts page: the full-page
     // location.assign recovery would refetch the feed, drop scroll position and
     // re-buffer (often re-failing into a reload loop). Skip the hard recovery
@@ -489,31 +356,11 @@ export function VideoPlayer({
       return;
     }
 
-    const candidates: string[] = [];
-    if (active.kind === "hls" && active.src) {
-      candidates.push(active.src);
-    } else if (active.kind === "variant") {
-      if (active.v.t === "muxed") {
-        candidates.push(active.v.src);
-      } else {
-        candidates.push(active.v.video, active.v.audio);
-      }
+    const src = active.src;
+    if (src && shouldAutoRecoverPlaybackSource(src)) {
+      tryOneShotPlaybackRecovery(src.split("?")[0] ?? src, videoId);
     }
-    for (const src of candidates) {
-      if (!src || !shouldAutoRecoverPlaybackSource(src)) continue;
-      const recoveryKey = src.split("?")[0] ?? src;
-      if (tryOneShotPlaybackRecovery(recoveryKey, videoId)) return;
-    }
-  }, [
-    active,
-    effectivePayload.mode,
-    onEndedExternal,
-    progressiveMobileSafe,
-    qualityIndex,
-    setQualityWithResume,
-    shortsMode,
-    videoId,
-  ]);
+  }, [active.src, onEndedExternal, shortsMode, videoId]);
 
   const playNextNow = useCallback(() => {
     if (!nextUp) return;
@@ -535,9 +382,7 @@ export function VideoPlayer({
     setNextCountdown(3);
   }, [shortsMode, onEndedExternal, nextUp, autoplayNext]);
 
-  if (active.kind === "empty") return null;
-  if (active.kind === "hls" && !active.src) return null;
-  if (active.kind === "variant" && !active.v) return null;
+  if (!active.src) return null;
 
   return (
     <div
@@ -563,98 +408,49 @@ export function VideoPlayer({
           shortsMode ? "h-full min-h-0" : undefined,
         )}
       >
-        {active.kind === "hls" ? (
-          // The live DASH manifest only plays in the live block, whatever
-          // `isLive` a caller passed.
-          isLive || isLiveDashManifestUrl(active.src) ? (
-            <LiveBlock
-              {...sponsorChromeProps}
-              captions={captions}
-              reactKey={active.src}
-              src={active.src}
-              scrubPreview={buildScrubPreview(active.src) ?? undefined}
-              title={title}
-              poster={displayPoster}
-              progressiveQualityMenu={progressiveQualityMenu}
-              setQualityIndex={setQualityWithResume}
-              settingsOpen={settingsOpen}
-              onSettingsOpenChange={setSettingsOpen}
-              chapters={chapters}
-              startAtSeconds={effectiveStartAt}
-              cinemaMode={cinemaMode}
-              onExitCinema={exitCinema}
-              onToggleCinema={toggleCinema}
-              onPlaybackError={handlePlaybackError}
-              onEnded={handleVideoEnded}
-              nextUp={nextUp}
-              queue={queue}
-              autoplayNext={autoplayNext}
-              onToggleAutoplayNext={toggleAutoplayNext}
-              onPlayNext={playNextNow}
-              miniMode={miniMode}
-              shortsMode={shortsMode}
-              miniStartPaused={miniStartPaused}
-              autoplay={watchAutoplay}
-              restoredVolume={restoredVolume}
-              restoredMuted={restoredMuted}
-              onVideoIntrinsics={onVideoIntrinsics}
-              defaultQualityHeightCap={dashQualityHeightCap}
-              isLive={isLive}
-            />
-          ) : (
-            <HlsVodBlock
-              {...sponsorChromeProps}
-              captions={captions}
-              reactKey={active.src}
-              src={active.src}
-              title={title}
-              poster={displayPoster}
-              scrubPreview={buildScrubPreview(active.src) ?? undefined}
-              volume={splitVolume}
-              setVolume={setSplitVolume}
-              settingsOpen={settingsOpen}
-              onSettingsOpenChange={setSettingsOpen}
-              chapters={chapters}
-              startAtSeconds={effectiveStartAt}
-              cinemaMode={cinemaMode}
-              onExitCinema={exitCinema}
-              onToggleCinema={toggleCinema}
-              onPlaybackError={handlePlaybackError}
-              onEnded={handleVideoEnded}
-              nextUp={nextUp}
-              queue={queue}
-              autoplayNext={autoplayNext}
-              onToggleAutoplayNext={toggleAutoplayNext}
-              onPlayNext={playNextNow}
-              miniMode={miniMode}
-              shortsMode={shortsMode}
-              shortsActive={shortsActive}
-              miniStartPaused={miniStartPaused}
-              autoplay={watchAutoplay}
-              restoredVolume={restoredVolume}
-              restoredMuted={restoredMuted}
-              onVideoIntrinsics={onVideoIntrinsics}
-              defaultQualityHeightCap={dashQualityHeightCap}
-              fullscreenAutoBestQuality={fullscreenAutoBestQuality}
-              dvr={
-                effectivePayload.mode === "hls" && effectivePayload.dvr === true
-              }
-            />
-          )
-        ) : null}
-        {active.kind === "variant" && active.v.t === "muxed" ? (
-          <NativeMuxedBlock
+        {isLive ? (
+          <LiveBlock
             {...sponsorChromeProps}
             captions={captions}
-            reactKey={active.v.src}
-            src={active.v.src}
-            scrubPreview={buildScrubPreview(active.v.src) ?? undefined}
+            reactKey={active.src}
+            src={active.src}
+            scrubPreview={buildScrubPreview(active.src) ?? undefined}
             title={title}
             poster={displayPoster}
+            settingsOpen={settingsOpen}
+            onSettingsOpenChange={setSettingsOpen}
+            chapters={chapters}
+            startAtSeconds={effectiveStartAt}
+            cinemaMode={cinemaMode}
+            onExitCinema={exitCinema}
+            onToggleCinema={toggleCinema}
+            onPlaybackError={handlePlaybackError}
+            onEnded={handleVideoEnded}
+            nextUp={nextUp}
+            queue={queue}
+            autoplayNext={autoplayNext}
+            onToggleAutoplayNext={toggleAutoplayNext}
+            onPlayNext={playNextNow}
+            miniMode={miniMode}
+            shortsMode={shortsMode}
+            miniStartPaused={miniStartPaused}
+            autoplay={watchAutoplay}
+            restoredVolume={restoredVolume}
+            restoredMuted={restoredMuted}
+            onVideoIntrinsics={onVideoIntrinsics}
+            isLive={isLive}
+          />
+        ) : (
+          <HlsVodBlock
+            {...sponsorChromeProps}
+            captions={captions}
+            reactKey={active.src}
+            src={active.src}
+            title={title}
+            poster={displayPoster}
+            scrubPreview={buildScrubPreview(active.src) ?? undefined}
             volume={splitVolume}
             setVolume={setSplitVolume}
-            progressiveQualityMenu={progressiveQualityMenu}
-            setQualityIndex={setQualityWithResume}
             settingsOpen={settingsOpen}
             onSettingsOpenChange={setSettingsOpen}
             chapters={chapters}
@@ -677,48 +473,12 @@ export function VideoPlayer({
             restoredVolume={restoredVolume}
             restoredMuted={restoredMuted}
             onVideoIntrinsics={onVideoIntrinsics}
-            isLive={isLive}
+            defaultQualityHeightCap={dashQualityHeightCap}
+            fullscreenAutoBestQuality={fullscreenAutoBestQuality}
+            dash={effectivePayload.dash}
+            dvr={effectivePayload.dvr === true}
           />
-        ) : null}
-        {active.kind === "variant" && active.v.t === "split" ? (
-          <SplitBlock
-            {...sponsorChromeProps}
-            captions={captions}
-            key={active.v.video}
-            video={active.v.video}
-            scrubPreview={buildScrubPreview(active.v.video) ?? undefined}
-            audioTracks={active.v.audioTracks}
-            defaultAudioIndex={active.v.defaultAudioIndex}
-            poster={displayPoster}
-            title={title}
-            volume={splitVolume}
-            setVolume={setSplitVolume}
-            progressiveQualityMenu={progressiveQualityMenu}
-            setQualityIndex={setQualityWithResume}
-            settingsOpen={settingsOpen}
-            onSettingsOpenChange={setSettingsOpen}
-            chapters={chapters}
-            startAtSeconds={effectiveStartAt}
-            cinemaMode={cinemaMode}
-            onExitCinema={exitCinema}
-            onToggleCinema={toggleCinema}
-            onPlaybackError={handlePlaybackError}
-            onEnded={handleVideoEnded}
-            nextUp={nextUp}
-            queue={queue}
-            autoplayNext={autoplayNext}
-            onToggleAutoplayNext={toggleAutoplayNext}
-            onPlayNext={playNextNow}
-            miniMode={miniMode}
-            shortsMode={shortsMode}
-            miniStartPaused={miniStartPaused}
-            autoplay={watchAutoplay}
-            restoredVolume={restoredVolume}
-            restoredMuted={restoredMuted}
-            onVideoIntrinsics={onVideoIntrinsics}
-            isLive={isLive}
-          />
-        ) : null}
+        )}
       </div>
       {nextCountdown != null && nextUp ? (
         <div className="absolute right-3 top-3 z-40 rounded-md bg-black/70 px-3 py-1.5 text-xs text-white shadow">

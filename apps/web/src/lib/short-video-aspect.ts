@@ -1,4 +1,4 @@
-import type { VideoDetail } from "@/server/services/proxy.types";
+import type { VideoDetail } from "@/server/catalog/types";
 
 /** Vertical (9:16) — the Shorts default and the flash-free initial guess. */
 const VERTICAL_ASPECT = 9 / 16;
@@ -17,10 +17,7 @@ export function aspectRatioFromPixelDimensions(
  * reports real pixel intrinsics.
  *
  * We deliberately always assume vertical (9:16): the /shorts feed is vertical
- * by convention, and stream `height` is an unreliable orientation signal —
- * some upstreams report a vertical short's *quality number* (e.g. 480) as
- * `height`, which reads as landscape and made the frame flash wide-then-tall.
- * A genuinely landscape clip is corrected the instant `loadedmetadata` fires
+ * by convention. A genuinely landscape clip is corrected the instant `loadedmetadata` fires
  * (see {@link aspectRatioFromPixelDimensions}), so nothing is lost by starting
  * vertical, and the common case stops flashing.
  */

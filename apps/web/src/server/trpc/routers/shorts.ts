@@ -2,6 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { prepareShortsFeedVideos } from "@/lib/shorts-feed-presentation";
 import { ensureAnonViewerId } from "@/server/anon-viewer";
+import { shortsFeedInputSchema } from "@/server/catalog/types";
 import { RateLimitExceededError } from "@/server/errors/rate-limit-exceeded";
 import { UpstreamUnavailableError } from "@/server/errors/upstream-unavailable";
 import { clearRecommendationCachesForUser } from "@/server/recommendation/engine";
@@ -10,8 +11,6 @@ import {
   recordAnonShortSeen,
   recordShortSeen,
 } from "@/server/recommendation/shorts-seen";
-import { describeUpstreamAvailability } from "@/server/services/proxy";
-import { shortsFeedInputSchema } from "@/server/services/proxy.types";
 import {
   getUserSettings,
   normalizeTrendingRegionStored,
@@ -54,7 +53,6 @@ export const shortsRouter = router({
               getUserSettings(ctx.db, ctx.userId).trendingRegion,
             )
           : normalizeTrendingRegionStored(input.region);
-      const upstream = describeUpstreamAvailability();
       try {
         const requestedLimit = input.limit ?? 24;
         const result = await fetchShortsFeedForViewer(
@@ -71,10 +69,7 @@ export const shortsRouter = router({
         return {
           videos: prepareShortsFeedVideos(result.videos, requestedLimit),
           nextCursor: result.continuation ?? undefined,
-          sourceUsed: result.sourceUsed,
           warning: result.warning,
-          stale: result.stale,
-          upstream,
         };
       } catch (e) {
         if (e instanceof UpstreamUnavailableError) {

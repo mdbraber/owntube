@@ -1,14 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { writeCache } from "@/server/cache/video-cache";
+import type { UnifiedVideo } from "@/server/catalog/types";
 import { subscriptions, users } from "@/server/db/schema";
 import {
   buildAllFeeds,
   createVideoFactsResolver,
 } from "@/server/remote/publish";
-import {
-  channelCacheKey,
-  detailCacheKey,
-  writeCache,
-} from "@/server/services/proxy/cache";
 import { createTestDb } from "@/test/db";
 
 const CHANNEL = "UCabcdefghijklmnopqrstuv";
@@ -24,36 +21,34 @@ function rssEntry(videoId: string, publishedAt: number) {
   };
 }
 
+const video = (videoId: string, durationSeconds: number, isShort = false) =>
+  ({
+    videoId,
+    title: videoId,
+    durationSeconds,
+    ...(isShort ? { isShort } : {}),
+  }) satisfies UnifiedVideo;
+
 describe("createVideoFactsResolver", () => {
-  it("prefers the channel page cache, then a cached detail, then one live lookup per video", async () => {
-    const { db } = createTestDb();
-    writeCache(
-      db,
-      channelCacheKey({ channelId: CHANNEL }),
-      "invidious",
-      { videos: [{ videoId: "fromPage", durationSeconds: 600 }] },
-      "channel",
-    );
-    writeCache(
-      db,
-      detailCacheKey({ videoId: "fromDetail" }),
-      "invidious",
-      { videoId: "fromDetail", durationSeconds: 45, isShort: true },
-      "streams",
-    );
-    const fetched: string[] = [];
-    const factsOf = createVideoFactsResolver(db, {
+  it("prefers the cached channel page, then a cached summary, then one live lookup per video", async () => {
+    const live: string[] = [];
+    const factsOf = createVideoFactsResolver({
       liveLookups: 1,
-      fetchDetail: async (videoId) => {
-        fetched.push(videoId);
-        return { durationSeconds: 300 };
+      channelVideos: async () => [video("fromPage", 600)],
+      summary: async (videoId, cacheOnly) => {
+        if (cacheOnly)
+          return videoId === "fromSummary"
+            ? video(videoId, 45, true)
+            : undefined;
+        live.push(videoId);
+        return video(videoId, 300);
       },
     });
 
     expect(await factsOf(CHANNEL, "fromPage")).toEqual({
       durationSeconds: 600,
     });
-    expect(await factsOf(CHANNEL, "fromDetail")).toEqual({
+    expect(await factsOf(CHANNEL, "fromSummary")).toEqual({
       durationSeconds: 45,
       isShort: true,
     });
@@ -61,13 +56,15 @@ describe("createVideoFactsResolver", () => {
     expect(await factsOf(CHANNEL, "live")).toEqual({ durationSeconds: 300 });
     // Budget spent: the next unknown video goes out without a duration.
     expect(await factsOf(CHANNEL, "overBudget")).toEqual({});
-    expect(fetched).toEqual(["live"]);
+    expect(live).toEqual(["live"]);
   });
 
-  it("treats a failed live lookup as unknown", async () => {
-    const { db } = createTestDb();
-    const factsOf = createVideoFactsResolver(db, {
-      fetchDetail: async () => {
+  it("treats failed lookups as unknown", async () => {
+    const factsOf = createVideoFactsResolver({
+      channelVideos: async () => {
+        throw new Error("gateway down");
+      },
+      summary: async () => {
         throw new Error("region blocked");
       },
     });
@@ -116,33 +113,29 @@ describe("buildAllFeeds channel items", () => {
       },
       "rss",
     );
-    writeCache(
-      db,
-      channelCacheKey({ channelId: CHANNEL }),
-      "invidious",
-      {
-        videos: [
-          { videoId: "longInWindow", durationSeconds: 600 },
-          { videoId: "shortBeforeWindow", durationSeconds: 45 },
-        ],
-      },
-      "channel",
-    );
-    writeCache(
-      db,
-      detailCacheKey({ videoId: "longBeforeWindow" }),
-      "invidious",
-      { videoId: "longBeforeWindow", durationSeconds: 1_200 },
-      "streams",
-    );
+    const factsOf = createVideoFactsResolver({
+      channelVideos: async () => [
+        video("longInWindow", 600),
+        video("shortBeforeWindow", 45),
+      ],
+      summary: async (videoId) =>
+        videoId === "longBeforeWindow" ? video(videoId, 1_200) : undefined,
+    });
 
-    const { feeds } = await buildAllFeeds(db, { appOrigin: "http://x" });
+    const { feeds } = await buildAllFeeds(db, {
+      appOrigin: "http://x",
+      factsOf,
+    });
     for (const kind of ["channel", "subscriptions"]) {
       const feed = feeds.find((f) => f.kind === kind);
       expect(feed?.items.map((i) => [i.videoId, i.durationSeconds])).toEqual([
         ["longInWindow", 600],
         ["longBeforeWindow", 1_200],
       ]);
+      // Enclosures are the gateway's signed whole-file URLs.
+      expect(feed?.items[0]?.enclosureAudio).toMatch(
+        /^http:\/\/x\/media\/v\/longInWindow\/audio\.m4a\?exp=\d+&sig=/,
+      );
     }
   });
 });

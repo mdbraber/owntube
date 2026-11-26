@@ -7,6 +7,8 @@ import {
   publishedSortKey,
 } from "@/lib/published-sort-key";
 import { normalizeYoutubeChannelId } from "@/lib/youtube-channel-id";
+import { fetchChannelPage } from "@/server/catalog";
+import type { ChannelPageResult, UnifiedVideo } from "@/server/catalog/types";
 import { refreshChannelsLatestVideoAt } from "@/server/channel-meta/recency";
 import {
   isFreshChannelMeta,
@@ -20,15 +22,6 @@ import { RateLimitExceededError } from "@/server/errors/rate-limit-exceeded";
 import { UpstreamUnavailableError } from "@/server/errors/upstream-unavailable";
 import { removeWatchedFromQueue } from "@/server/queue/remove-watched";
 import { getChannelRssEntries, getLongFormWindows } from "@/server/rss/cache";
-import { fetchChannelPage } from "@/server/services/proxy";
-import {
-  channelCacheKey,
-  readLatestCacheRow,
-} from "@/server/services/proxy/cache";
-import type {
-  ChannelPageResult,
-  UnifiedVideo,
-} from "@/server/services/proxy.types";
 import { getUserSettings } from "@/server/settings/profile";
 import {
   memoMergedPage,
@@ -191,7 +184,6 @@ function markWatchedRows(
 }
 
 async function fetchChannelVideosUpToPages(
-  db: Parameters<typeof fetchChannelPage>[0],
   channelId: string,
   maxPages: number,
 ): Promise<UnifiedVideo[]> {
@@ -200,10 +192,7 @@ async function fetchChannelVideosUpToPages(
   for (let page = 0; page < maxPages; page++) {
     let res: ChannelPageResult;
     try {
-      // Serve from the warm channel-page cache when fresh; the merge feed already
-      // gets each channel's newest upload from the RSS seed, so a slightly stale
-      // page (older videos) is fine and avoids a live ~1s Invidious call per channel.
-      res = await fetchChannelPage(db, { channelId, continuation });
+      res = await fetchChannelPage({ channelId, continuation });
     } catch (e) {
       if (
         e instanceof UpstreamUnavailableError ||
@@ -326,17 +315,14 @@ function enrichSubscriptionVideosWithChannelMeta(
 
 /**
  * RSS-seeded newest videos have no duration (the RSS feed doesn't carry one),
- * and their RSS-sourced view count (from `media:statistics views="…"`) can lag
- * behind the real number. The same video usually also sits in the channel's
- * cached video list (from the warmer/prior loads) with a real duration and a
- * fresher, API-sourced view count — backfill/overwrite from there. Brand-new
- * uploads not yet in any cached channel page simply keep the RSS-derived (or
- * missing) values until the next channel fetch, which is expected.
+ * and their RSS view count can lag. The same video usually also sits in the
+ * channel's page in the gateway's cache with a real duration and a fresher
+ * count — backfill from there, cache-only (never waiting on YouTube).
+ * Brand-new uploads keep the RSS values until the next channel fetch.
  */
-function backfillMissingDurationsFromChannelCache(
-  db: AppDb,
+async function backfillMissingDurationsFromChannelCache(
   videos: UnifiedVideo[],
-): UnifiedVideo[] {
+): Promise<UnifiedVideo[]> {
   const channelIdsNeeded = new Set<string>();
   for (const v of videos) {
     if (typeof v.channelId !== "string" || v.channelId.length === 0) {
@@ -353,36 +339,27 @@ function backfillMissingDurationsFromChannelCache(
 
   const durationByVideoId = new Map<string, number>();
   const viewCountByVideoId = new Map<string, number>();
-  for (const channelId of channelIdsNeeded) {
-    const row = readLatestCacheRow(db, channelCacheKey({ channelId }));
-    if (!row) continue;
-    try {
-      const payload = JSON.parse(row.payloadJson) as {
-        videos?: {
-          videoId?: string;
-          durationSeconds?: number;
-          viewCount?: number;
-        }[];
-      };
-      for (const cv of payload.videos ?? []) {
-        if (typeof cv.videoId !== "string") continue;
-        if (
-          typeof cv.durationSeconds === "number" &&
-          cv.durationSeconds > 0 &&
-          !durationByVideoId.has(cv.videoId)
-        ) {
-          durationByVideoId.set(cv.videoId, cv.durationSeconds);
-        }
-        if (
-          typeof cv.viewCount === "number" &&
-          cv.viewCount >= 0 &&
-          !viewCountByVideoId.has(cv.videoId)
-        ) {
-          viewCountByVideoId.set(cv.videoId, cv.viewCount);
-        }
+  const pages = await Promise.all(
+    [...channelIdsNeeded].map((channelId) =>
+      fetchChannelPage({ channelId }, { cache: "only" }).catch(() => null),
+    ),
+  );
+  for (const page of pages) {
+    for (const cv of page?.videos ?? []) {
+      if (
+        typeof cv.durationSeconds === "number" &&
+        cv.durationSeconds > 0 &&
+        !durationByVideoId.has(cv.videoId)
+      ) {
+        durationByVideoId.set(cv.videoId, cv.durationSeconds);
       }
-    } catch {
-      // Corrupt/legacy payload — skip this channel.
+      if (
+        typeof cv.viewCount === "number" &&
+        cv.viewCount >= 0 &&
+        !viewCountByVideoId.has(cv.videoId)
+      ) {
+        viewCountByVideoId.set(cv.videoId, cv.viewCount);
+      }
     }
   }
   if (durationByVideoId.size === 0 && viewCountByVideoId.size === 0) {
@@ -426,7 +403,6 @@ function decodeMergedFeedCursor(cursor: string | null | undefined): number {
 }
 
 async function appendNextPageIfNeeded(
-  db: AppDb,
   buf: ChannelBuffer,
   rssPublishedByVideoId?: ReadonlyMap<string, number>,
 ): Promise<void> {
@@ -440,8 +416,8 @@ async function appendNextPageIfNeeded(
       // Cache-only: the feed never blocks on a live upstream call. Fresh/stale
       // cached pages plus the RSS seed cover normal loads; an explicit refresh
       // repopulates the cache in bounded parallel. See `refreshFeed`.
-      const res = await fetchChannelPage(db, input, {
-        cacheOnly: true,
+      const res = await fetchChannelPage(input, {
+        cache: "only",
       });
       buf.nextContinuation = res.continuation ?? null;
       const patched = rssPublishedByVideoId
@@ -530,7 +506,7 @@ async function collectSortedFeedPage(
     iter++;
     await Promise.all(
       buffers.map((b) =>
-        appendNextPageIfNeeded(db, b, rssPublishedByChannel.get(b.channelId)),
+        appendNextPageIfNeeded(b, rssPublishedByChannel.get(b.channelId)),
       ),
     );
     for (const b of buffers) {
@@ -606,7 +582,6 @@ const REFRESH_PER_CHANNEL_TIMEOUT_MS = 6000;
  * that talks to Invidious live; normal feed loads are cache-only.
  */
 async function refreshChannelPageCache(
-  db: AppDb,
   channelIds: string[],
 ): Promise<{ refreshed: number }> {
   let cursor = 0;
@@ -616,10 +591,9 @@ async function refreshChannelPageCache(
       const channelId = channelIds[cursor++];
       if (!channelId) continue;
       const fetchDone = fetchChannelPage(
-        db,
         { channelId },
         {
-          bypassChannelCache: true,
+          cache: "refresh",
         },
       )
         .then(() => {
@@ -1009,7 +983,6 @@ export const subscriptionsRouter = router({
       .orderBy(desc(subscriptions.subscribedAt))
       .all();
     const { refreshed } = await refreshChannelPageCache(
-      ctx.db,
       subs.map((s) => s.channelId),
     );
     return { ok: true as const, refreshed, refreshedAt: nowUnix() };
@@ -1042,7 +1015,6 @@ export const subscriptionsRouter = router({
       const perChannel = await Promise.all(
         subs.map(async (s) => {
           const videos = await fetchChannelVideosUpToPages(
-            ctx.db,
             s.channelId,
             pagesPerChannel,
           );
@@ -1136,10 +1108,8 @@ export const subscriptionsRouter = router({
         ctx.db,
         sortedPatchedVideos,
       );
-      const withDurations = backfillMissingDurationsFromChannelCache(
-        ctx.db,
-        withMeta,
-      );
+      const withDurations =
+        await backfillMissingDurationsFromChannelCache(withMeta);
       const settings = getUserSettings(ctx.db, ctx.userId);
       const visibleVideos =
         (input.hideShorts ?? settings.hideShortsInSubscriptions)

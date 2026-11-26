@@ -1,0 +1,412 @@
+import { logger } from "@/lib/logger";
+import { HOME_SHORTS_SHELF_LIMIT } from "@/lib/shorts-feed-presentation";
+import { fetchChannelPage, fetchTrendingVideos } from "@/server/catalog";
+import { fetchShortsFeed } from "@/server/catalog/shorts";
+import { refreshChannelsLatestVideoAt } from "@/server/channel-meta/recency";
+import { refreshChannelMetaIfStale } from "@/server/channel-meta/store";
+import type { AppDb } from "@/server/db/client";
+import * as schema from "@/server/db/schema";
+import { watchQueue } from "@/server/db/schema";
+import { RateLimitExceededError } from "@/server/errors/rate-limit-exceeded";
+import { UpstreamUnavailableError } from "@/server/errors/upstream-unavailable";
+import { shelfUpstreamLimit } from "@/server/recommendation/shorts-feed";
+import {
+  getChannelRssEntries,
+  isChannelRssFresh,
+  isLongFormWindowFresh,
+  refreshChannelRss,
+  refreshLongFormWindow,
+} from "@/server/rss/cache";
+import {
+  getUserSettings,
+  normalizeTrendingRegionStored,
+} from "@/server/settings/profile";
+import { materializeHomeFeed } from "@/server/trpc/routers/feed";
+import {
+  collectRssWarmChannelIds,
+  collectWarmChannelIds,
+  DEFAULT_WARM_HISTORY_CHANNELS,
+  DEFAULT_WARM_SUBSCRIPTION_CHANNELS,
+} from "@/server/warm-cache/collect-channel-ids";
+import { warmVideo } from "@/server/warm-cache/warm-video";
+
+/**
+ * The cache warmer, a job inside the web app (it used to be a sidecar that
+ * built its own image and went stale). Each cycle refreshes what pages read
+ * cache-only: the Live and Shorts shelves, subscribed channels' RSS, pages and
+ * metadata, the likely-next videos, then every user's home feed.
+ */
+
+const WARM_BATCH = 5;
+const WARM_BATCH_PAUSE_MS = 80;
+
+const region = (process.env.OWNTUBE_WARM_REGION ?? "US").trim().toUpperCase();
+const trendingLimit = Number.parseInt(
+  process.env.OWNTUBE_WARM_LIMIT ?? "48",
+  10,
+);
+const historyChannelLimit = Number.parseInt(
+  process.env.OWNTUBE_WARM_HISTORY_CHANNELS ??
+    String(DEFAULT_WARM_HISTORY_CHANNELS),
+  10,
+);
+const subscriptionChannelLimit = Number.parseInt(
+  process.env.OWNTUBE_WARM_SUBSCRIPTION_CHANNELS ??
+    String(DEFAULT_WARM_SUBSCRIPTION_CHANNELS),
+  10,
+);
+
+function envFlag(name: string, defaultValue = true): boolean {
+  const raw = process.env[name];
+  if (raw === undefined) return defaultValue;
+  const normalized = raw.trim().toLowerCase();
+  if (["0", "false", "no", "off"].includes(normalized)) return false;
+  if (["1", "true", "yes", "on"].includes(normalized)) return true;
+  return defaultValue;
+}
+
+const warmChannelsEnabled = envFlag("OWNTUBE_WARM_CHANNELS", true);
+const warmChannelPagesEnabled = envFlag("OWNTUBE_WARM_CHANNEL_PAGES", true);
+const warmShortsEnabled = envFlag("OWNTUBE_WARM_SHORTS", true);
+const warmRecencyEnabled = envFlag("OWNTUBE_WARM_RECENCY", true);
+const warmRssEnabled = envFlag("OWNTUBE_WARM_RSS", true);
+const warmVideosEnabled = envFlag("OWNTUBE_WARM_VIDEOS", true);
+const warmHomeEnabled = envFlag("OWNTUBE_WARM_HOME", true);
+// The newest few uploads only: WebSub sync already warms new uploads as they
+// arrive, and each warmed video costs YouTube round trips (detail, comments).
+// Queued videos are warmed on top of this.
+const warmVideoLimit = Number.parseInt(
+  process.env.OWNTUBE_WARM_VIDEO_LIMIT ?? "5",
+  10,
+);
+
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function logLine(message: string): void {
+  logger.info(message);
+}
+
+function logError(message: string): void {
+  logger.warn(message);
+}
+
+async function runInBatches<T>(
+  label: string,
+  items: string[],
+  worker: (item: string) => Promise<T>,
+): Promise<{ ok: number; skipped: number; failed: number }> {
+  let ok = 0;
+  let skipped = 0;
+  let failed = 0;
+
+  for (let i = 0; i < items.length; i += WARM_BATCH) {
+    if (i > 0) await sleepMs(WARM_BATCH_PAUSE_MS);
+    const chunk = items.slice(i, i + WARM_BATCH);
+    const settled = await Promise.allSettled(chunk.map((item) => worker(item)));
+    for (const result of settled) {
+      if (result.status === "rejected") {
+        failed += 1;
+        continue;
+      }
+      const value = result.value as { skipped?: boolean };
+      if (value?.skipped) skipped += 1;
+      else ok += 1;
+    }
+  }
+
+  logLine(
+    `warm-cache: ${label} — ok=${ok} skipped=${skipped} failed=${failed} total=${items.length}`,
+  );
+  return { ok, skipped, failed };
+}
+
+/**
+ * Materialize each user's personalized home feed so the front page can be
+ * SSR-prefetched cache-only and paints instantly. Runs after channel/RSS/video
+ * warming so the reco engine reads warm candidate caches.
+ */
+async function warmHomeFeeds(db: AppDb): Promise<boolean> {
+  const userRows = db.select({ id: schema.users.id }).from(schema.users).all();
+  if (userRows.length === 0) return true;
+  const stats = await runInBatches(
+    "home feeds",
+    userRows.map((u) => String(u.id)),
+    async (idStr) => {
+      const userId = Number.parseInt(idStr, 10);
+      const settings = getUserSettings(db, userId);
+      const userRegion = normalizeTrendingRegionStored(
+        settings.trendingRegion ?? region,
+      );
+      await materializeHomeFeed(db, userId, {
+        pageSize: 24,
+        region: userRegion,
+      });
+    },
+  );
+  return stats.failed === 0;
+}
+
+async function warmTrending(): Promise<boolean> {
+  const safeLimit =
+    Number.isFinite(trendingLimit) && trendingLimit > 0
+      ? Math.min(trendingLimit, 200)
+      : 48;
+  try {
+    const result = await fetchTrendingVideos({
+      region,
+      limit: safeLimit,
+    });
+    logLine(`warm-cache: trending — ${result.videos.length} videos`);
+    return true;
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    logError(`warm-cache: trending failed — ${message}`);
+    return false;
+  }
+}
+
+async function warmShortsShelf(): Promise<boolean> {
+  try {
+    // The upstream page behind the home shelf, so the warmed row is the one
+    // the shelf reads.
+    const result = await fetchShortsFeed({
+      region,
+      limit: shelfUpstreamLimit(HOME_SHORTS_SHELF_LIMIT),
+      purpose: "shelf",
+    });
+    logLine(`warm-cache: shorts shelf — ${result.videos.length} videos`);
+    return true;
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    logError(`warm-cache: shorts shelf failed — ${message}`);
+    return false;
+  }
+}
+
+async function warmChannelMeta(
+  db: AppDb,
+  channelIds: string[],
+): Promise<boolean> {
+  const stats = await runInBatches(
+    "channel meta",
+    channelIds,
+    async (channelId) => {
+      const meta = await refreshChannelMetaIfStale(db, channelId);
+      return { skipped: !meta.refreshed };
+    },
+  );
+  return stats.failed === 0;
+}
+
+/**
+ * Force-refresh each channel's uploads RSS + long-form window rows. These are
+ * what the merged subscriptions feed, Shorts classification, and recency read
+ * (serve-stale-and-revalidate) — refreshing them here every cycle keeps the
+ * interactive path SQLite-only.
+ */
+/**
+ * Refresh what is due: a channel's RSS when it is no longer fresh (15 min, or
+ * hours for subscribed channels while WebSub pushes their uploads; see
+ * `server/rss/cache.ts`), and its long-form window only when that RSS lists an
+ * upload newer than the window. Fresh feeds are skipped: re-fetching them
+ * only re-asks YouTube for what we already have.
+ */
+async function warmRssFeeds(db: AppDb, channelIds: string[]): Promise<boolean> {
+  const stats = await runInBatches(
+    "rss feeds",
+    channelIds,
+    async (channelId) => {
+      let fetched = false;
+      if (!isChannelRssFresh(db, channelId)) {
+        await refreshChannelRss(db, channelId);
+        fetched = true;
+      }
+      if (!isLongFormWindowFresh(db, channelId)) {
+        await refreshLongFormWindow(db, channelId);
+        fetched = true;
+      }
+      return { skipped: !fetched };
+    },
+  );
+  return stats.failed === 0;
+}
+
+async function warmChannelRecency(
+  db: AppDb,
+  channelIds: string[],
+): Promise<boolean> {
+  try {
+    const updated = await refreshChannelsLatestVideoAt(db, channelIds);
+    logLine(
+      `warm-cache: channel recency — updated=${updated} total=${channelIds.length}`,
+    );
+    return true;
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    logError(`warm-cache: channel recency failed — ${message}`);
+    return false;
+  }
+}
+
+async function warmChannelPages(channelIds: string[]): Promise<boolean> {
+  const stats = await runInBatches(
+    "channel pages",
+    channelIds,
+    async (channelId) => {
+      try {
+        // Refresh: the subscriptions feed reads these pages cache-only.
+        const page = await fetchChannelPage(
+          { channelId },
+          { cache: "refresh" },
+        );
+        return { skipped: page.videos.length === 0 };
+      } catch (error) {
+        if (
+          error instanceof UpstreamUnavailableError ||
+          error instanceof RateLimitExceededError
+        ) {
+          return { skipped: true };
+        }
+        throw error;
+      }
+    },
+  );
+  return stats.failed === 0;
+}
+
+/**
+ * The videos a user is most likely to open next: the newest uploads across
+ * their subscriptions (top of the merged home feed, from the just-warmed RSS
+ * cache) plus everything queued.
+ */
+async function collectWarmVideoIds(
+  db: AppDb,
+  channelIds: string[],
+  limit: number,
+): Promise<string[]> {
+  const perChannel = await Promise.all(
+    channelIds.map((c) => getChannelRssEntries(db, c)),
+  );
+  const newestFirst = perChannel
+    .flat()
+    .filter((e) => typeof e.publishedAt === "number")
+    .sort((a, b) => (b.publishedAt ?? 0) - (a.publishedAt ?? 0));
+  const ids = new Set<string>();
+  for (const e of newestFirst) {
+    if (ids.size >= limit) break;
+    ids.add(e.videoId);
+  }
+  const queued = db
+    .select({ videoId: watchQueue.videoId })
+    .from(watchQueue)
+    .limit(24)
+    .all();
+  for (const q of queued) ids.add(q.videoId);
+  return [...ids];
+}
+
+/**
+ * Pre-fetch what the watch page reads for likely-next videos (the gateway
+ * caches the page and first comments; SponsorBlock lands in SQLite).
+ */
+async function warmVideoDetails(
+  db: AppDb,
+  videoIds: string[],
+): Promise<boolean> {
+  const stats = await runInBatches(
+    "video details",
+    videoIds,
+    async (videoId) => ({ skipped: !(await warmVideo(db, videoId)) }),
+  );
+  return stats.failed === 0;
+}
+
+/** One warm cycle; true when every step succeeded. */
+export async function runWarmCycle(db: AppDb): Promise<boolean> {
+  let hadFailure = false;
+
+  if (!(await warmTrending())) hadFailure = true;
+
+  if (warmShortsEnabled && !(await warmShortsShelf())) hadFailure = true;
+
+  const safeHistoryLimit =
+    Number.isFinite(historyChannelLimit) && historyChannelLimit > 0
+      ? Math.min(historyChannelLimit, 128)
+      : DEFAULT_WARM_HISTORY_CHANNELS;
+  const safeSubscriptionLimit =
+    Number.isFinite(subscriptionChannelLimit) && subscriptionChannelLimit > 0
+      ? Math.min(subscriptionChannelLimit, 256)
+      : DEFAULT_WARM_SUBSCRIPTION_CHANNELS;
+  const channelIds = collectWarmChannelIds(db, {
+    subscriptionLimit: safeSubscriptionLimit,
+    historyLimit: safeHistoryLimit,
+  });
+
+  const rssChannelIds = collectRssWarmChannelIds(db, channelIds);
+
+  if (rssChannelIds.length === 0) {
+    logLine("warm-cache: no subscription or history channels to warm");
+  } else {
+    logLine(
+      `warm-cache: warming ${channelIds.length} channel(s), rss ${rssChannelIds.length}`,
+    );
+    if (warmChannelsEnabled && !(await warmChannelMeta(db, channelIds))) {
+      hadFailure = true;
+    }
+    // RSS before recency: recency reads the rows this step just refreshed.
+    if (warmRssEnabled && !(await warmRssFeeds(db, rssChannelIds))) {
+      hadFailure = true;
+    }
+    if (warmRecencyEnabled && !(await warmChannelRecency(db, rssChannelIds))) {
+      hadFailure = true;
+    }
+    if (warmChannelPagesEnabled && !(await warmChannelPages(channelIds))) {
+      hadFailure = true;
+    }
+    if (warmVideosEnabled) {
+      const safeVideoLimit =
+        Number.isFinite(warmVideoLimit) && warmVideoLimit > 0
+          ? Math.min(warmVideoLimit, 64)
+          : 16;
+      const videoIds = await collectWarmVideoIds(
+        db,
+        channelIds,
+        safeVideoLimit,
+      );
+      if (!(await warmVideoDetails(db, videoIds))) hadFailure = true;
+    }
+  }
+
+  // After candidate caches are warm, materialize each user's home feed.
+  if (warmHomeEnabled && !(await warmHomeFeeds(db))) hadFailure = true;
+  return !hadFailure;
+}
+
+const DEFAULT_INTERVAL_SEC = 15 * 60;
+let started = false;
+
+/** Warm now and then every `OWNTUBE_WARM_INTERVAL_SEC` (0 disables), one cycle at a time. */
+export function startCacheWarmer(db: AppDb): void {
+  if (started) return;
+  const intervalSec = Number.parseInt(
+    process.env.OWNTUBE_WARM_INTERVAL_SEC ?? String(DEFAULT_INTERVAL_SEC),
+    10,
+  );
+  if (!(intervalSec > 0)) return;
+  started = true;
+  const cycle = async () => {
+    const t0 = Date.now();
+    try {
+      const ok = await runWarmCycle(db);
+      logger.info("warm-cache.cycle", { ok, ms: Date.now() - t0 });
+    } catch (error) {
+      logger.warn("warm-cache.cycle_failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    setTimeout(cycle, intervalSec * 1000).unref();
+  };
+  setTimeout(cycle, 30_000).unref();
+}

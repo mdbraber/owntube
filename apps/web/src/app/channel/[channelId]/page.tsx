@@ -9,7 +9,7 @@ import { ChannelAvatarCircle } from "@/components/videos/channel-avatar-circle";
 import { formatSubscribersLabel } from "@/lib/video-display";
 import { youtubeImageViaInstance } from "@/lib/youtube-image-via-instance";
 import { auth } from "@/server/auth";
-import { channelPageInputSchema } from "@/server/services/proxy.types";
+import { channelPageInputSchema } from "@/server/catalog/types";
 import { createCaller } from "@/server/trpc/caller";
 
 type ChannelPageProps = {
@@ -126,8 +126,6 @@ export default async function ChannelPage({ params }: ChannelPageProps) {
         channelId={page.channelId}
         initialVideos={page.videos}
         initialContinuation={page.continuation}
-        sourceUsed={page.sourceUsed}
-        stale={page.stale}
         isAuthed={isAuthed}
         channelAvatarUrl={page.avatarUrl}
       />

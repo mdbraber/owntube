@@ -7,6 +7,7 @@ import {
   publishedFeeds,
   subscriptions,
   userProfile,
+  videoCache,
   watchHistory,
 } from "@/server/db/schema";
 import { clearRecommendationCachesForUser } from "@/server/recommendation/engine";
@@ -15,16 +16,6 @@ import {
   feedToken,
   regenerateRssPass,
 } from "@/server/remote/rss-pass";
-import {
-  clearProxyCaches,
-  getInstanceSourceInfo,
-  resolveProxyBaseCandidates,
-} from "@/server/services/proxy";
-import { upstreamGetText } from "@/server/services/upstream-get";
-import {
-  recordUpstreamFailure,
-  recordUpstreamSuccess,
-} from "@/server/services/upstream-health";
 import {
   appSettingsSchema,
   getUserSettings,
@@ -48,9 +39,6 @@ function withoutDefault<T extends z.ZodType>(
 const settingsPatchSchema = z.object({
   theme: withoutDefault(appSettingsSchema.shape.theme).optional(),
   visualTheme: withoutDefault(appSettingsSchema.shape.visualTheme).optional(),
-  invidiousBaseUrl: z.string().max(512).optional(),
-  invidiousBaseUrls: z.array(z.string().max(512)).max(8).optional(),
-  preferredInvidiousBaseUrl: z.string().max(512).optional(),
   trendingRegion: z.string().length(2).optional(),
   hideShortsInSubscriptions: z.boolean().optional(),
   excludeSubscribedFromRecommendations: z.boolean().optional(),
@@ -120,38 +108,9 @@ function nowUnix(): number {
   return Math.floor(Date.now() / 1000);
 }
 
-async function checkUrl(
-  source: "invidious",
-  baseUrl: string,
-  url: string,
-): Promise<boolean> {
-  const startedAt = Date.now();
-  try {
-    const res = await upstreamGetText(url, 8000);
-    if (res.ok) {
-      recordUpstreamSuccess(source, baseUrl, Date.now() - startedAt);
-      return true;
-    }
-    const error = new Error(
-      res.text.trim()
-        ? `HTTP ${res.status}: ${res.text.trim().slice(0, 160)}`
-        : `HTTP ${res.status} (empty body)`,
-    );
-    recordUpstreamFailure(source, baseUrl, error, Date.now() - startedAt);
-    return false;
-  } catch (error) {
-    recordUpstreamFailure(source, baseUrl, error, Date.now() - startedAt);
-    return false;
-  }
-}
-
 export const settingsRouter = router({
   get: protectedProcedure.query(({ ctx }) => {
-    const settings = getUserSettings(ctx.db, ctx.userId);
-    return {
-      ...settings,
-      instanceSources: getInstanceSourceInfo(),
-    };
+    return getUserSettings(ctx.db, ctx.userId);
   }),
 
   update: protectedProcedure
@@ -236,28 +195,12 @@ export const settingsRouter = router({
       };
     }),
 
-  checkInstances: protectedProcedure.query(async () => {
-    const { invidiousBases } = resolveProxyBaseCandidates();
-    const invidiousResults = await Promise.all(
-      invidiousBases.map((baseUrl) =>
-        checkUrl("invidious", baseUrl, `${baseUrl}/api/v1/stats`),
-      ),
-    );
-    const instanceSources = getInstanceSourceInfo();
-    return {
-      invidiousOk:
-        invidiousResults.length > 0 ? invidiousResults.some(Boolean) : null,
-      instanceSources,
-    };
-  }),
-
   clearCaches: protectedProcedure.mutation(({ ctx }) => {
-    const proxy = clearProxyCaches(ctx.db);
+    // The web app's own caches (RSS, SponsorBlock, home feed); YouTube's
+    // catalogue is cached by the gateway.
+    const cleared = ctx.db.delete(videoCache).run();
     clearRecommendationCachesForUser(ctx.userId);
-    return {
-      ok: true,
-      clearedRows: proxy.clearedRows,
-    };
+    return { ok: true, clearedRows: Number(cleared.changes ?? 0) };
   }),
 
   exportData: protectedProcedure.query(({ ctx }) => {

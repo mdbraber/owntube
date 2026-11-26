@@ -1,4 +1,4 @@
-import type { UnifiedVideo } from "@/server/services/proxy.types";
+import type { UnifiedVideo } from "@/server/catalog/types";
 
 /**
  * Reorders videos so a single channel does not dominate a short list (e.g. the

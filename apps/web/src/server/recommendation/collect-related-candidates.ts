@@ -1,3 +1,5 @@
+import { fetchRelatedVideos } from "@/server/catalog";
+import type { UnifiedVideo } from "@/server/catalog/types";
 import type { AppDb } from "@/server/db/client";
 import type { TaggedVideoCandidate } from "@/server/recommendation/collect-tagged-candidates";
 import { deriveRecommendationReason } from "@/server/recommendation/reason";
@@ -11,8 +13,6 @@ import {
   termFrequencyVector,
 } from "@/server/recommendation/tfidf";
 import type { ScoredVideo } from "@/server/recommendation/types";
-import { fetchRelatedVideos } from "@/server/services/proxy";
-import type { UnifiedVideo } from "@/server/services/proxy.types";
 
 export type RelatedSeed = {
   videoId: string;
@@ -104,7 +104,6 @@ export type CollectRelatedVideoCandidatesOpts = RelatedCollectionLimits & {
  * Fetches upstream related videos for high-scoring seeds (Piped/Invidious via proxy cache).
  */
 export async function collectRelatedVideoCandidates(
-  db: AppDb,
   seeds: RelatedSeed[],
   opts: CollectRelatedVideoCandidatesOpts,
 ): Promise<TaggedVideoCandidate[]> {
@@ -136,7 +135,6 @@ export async function collectRelatedVideoCandidates(
     const settled = await Promise.allSettled(
       batch.map(async (seed) => {
         const result = await fetchRelatedVideos(
-          db,
           { videoId: seed.videoId },
           limitPerSeed,
         );
@@ -255,7 +253,6 @@ export async function expandScoredPoolWithRelatedCandidates(
   opts: ExpandScoredPoolWithRelatedOpts,
 ): Promise<{ scored: ScoredVideo[]; stats: RelatedExpansionStats | null }> {
   const {
-    db,
     scored,
     coldStart,
     limits,
@@ -286,7 +283,7 @@ export async function expandScoredPoolWithRelatedCandidates(
   const maxSeedScore = Math.max(...seeds.map((s) => s.rawScore), 1e-9);
   const seedById = new Map(seeds.map((s) => [s.videoId, s]));
 
-  const relatedTagged = await collectRelatedVideoCandidates(db, seeds, {
+  const relatedTagged = await collectRelatedVideoCandidates(seeds, {
     ...limits,
     excludeVideoIds,
     excludeFromPool: poolIds,

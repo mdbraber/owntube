@@ -1,15 +1,15 @@
 import { eq } from "drizzle-orm";
 import { takeNewestVideos } from "@/lib/published-sort-key";
-import type { AppDb } from "@/server/db/client";
-import { subscriptions } from "@/server/db/schema";
-import { useColdStartBlend } from "@/server/recommendation/coldstart";
-import type { UserSignals } from "@/server/recommendation/signals";
 import {
   fetchChannelPage,
   fetchTrendingVideos,
   searchVideos,
-} from "@/server/services/proxy";
-import type { UnifiedVideo } from "@/server/services/proxy.types";
+} from "@/server/catalog";
+import type { UnifiedVideo } from "@/server/catalog/types";
+import type { AppDb } from "@/server/db/client";
+import { subscriptions } from "@/server/db/schema";
+import { useColdStartBlend } from "@/server/recommendation/coldstart";
+import type { UserSignals } from "@/server/recommendation/signals";
 
 const MIN_WATCH_ROWS_FOR_HISTORY_POOL = 3;
 /**
@@ -166,7 +166,7 @@ export async function collectTaggedVideoCandidates(
       const batch = channelIds.slice(i, i + CHANNEL_FETCH_CONCURRENCY);
       const settled = await Promise.allSettled(
         batch.map(async (channelId) => {
-          const ch = await fetchChannelPage(db, { channelId });
+          const ch = await fetchChannelPage({ channelId });
           return {
             channelId,
             channelAvatarUrl: ch.avatarUrl ?? undefined,
@@ -243,7 +243,7 @@ export async function collectTaggedVideoCandidates(
 
   let trendingWarning: string | undefined;
   if (needTrendingBlend) {
-    const trending = await fetchTrendingVideos(db, { region, limit: 45 });
+    const trending = await fetchTrendingVideos({ region, limit: 45 });
     trendingWarning = trending.warning;
     for (const v of trending.videos) {
       taggedCandidates.push({ video: v, source: "trending" });
@@ -273,10 +273,9 @@ export async function collectTaggedVideoCandidates(
     const batch = keywords.slice(i, i + KEYWORD_SEARCH_CONCURRENCY);
     const settled = await Promise.allSettled(
       batch.map(async (keyword) => {
-        const result = await searchVideos(db, {
+        const result = await searchVideos({
           q: keyword,
           limit: VIDEOS_PER_KEYWORD,
-          region,
           date: KEYWORD_SEARCH_DATE_WINDOW,
         });
         return { keyword, videos: result.videos };

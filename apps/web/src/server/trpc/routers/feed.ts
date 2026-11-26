@@ -2,6 +2,18 @@ import { TRPCError } from "@trpc/server";
 import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { logger } from "@/lib/logger";
+import {
+  readFreshCacheRow,
+  readLatestCacheRow,
+  writeCache,
+} from "@/server/cache/video-cache";
+import { fetchTrendingVideos } from "@/server/catalog";
+import {
+  trendingVideoCategorySchema,
+  type UnifiedVideo,
+  unifiedVideoSchema,
+} from "@/server/catalog/types";
+import type { AppDb } from "@/server/db/client";
 import { interactions, watchHistory } from "@/server/db/schema";
 import { RateLimitExceededError } from "@/server/errors/rate-limit-exceeded";
 import { UpstreamUnavailableError } from "@/server/errors/upstream-unavailable";
@@ -16,7 +28,7 @@ import { getSubscribedChannelIds } from "@/server/recommendation/subscribed-chan
 import {
   buildKeywordCorpus,
   buildTasteCorpusTitles,
-  readCachedDetailTitlesForVideos,
+  readStoredTitlesForVideos,
 } from "@/server/recommendation/taste-corpus";
 import {
   buildTfidfModel,
@@ -28,17 +40,6 @@ import {
   trendingTailPoolInFlight,
   trendingTailPoolInvalidation,
 } from "@/server/recommendation/trending-tail-cache";
-import { fetchTrendingVideos } from "@/server/services/proxy";
-import {
-  readFreshCacheRow,
-  readLatestCacheRow,
-  writeCache,
-} from "@/server/services/proxy/cache";
-import {
-  trendingVideoCategorySchema,
-  type UnifiedVideo,
-  unifiedVideoSchema,
-} from "@/server/services/proxy.types";
 import {
   getUserSettings,
   normalizeTrendingRegionStored,
@@ -97,12 +98,12 @@ export function orderTrendingTailByTaste(
 }
 
 async function buildTrendingTailPoolUncached(
-  db: Parameters<typeof fetchTrendingVideos>[0],
+  db: AppDb,
   userId: number | null,
   region: string,
   excludeSubscribed: boolean,
 ) {
-  const trending = await fetchTrendingVideos(db, { region, limit: 200 });
+  const trending = await fetchTrendingVideos({ region, limit: 200 });
   // Drop live/upcoming streams: regional trending leaks foreign 24/7 live TV
   // (e.g. news channels) that matches no interest and never ends — pure noise in
   // a personalized home tail.
@@ -149,11 +150,7 @@ async function buildTrendingTailPoolUncached(
       const tasteVideoIds = Array.from(
         new Set([...signals.likedVideoIds, ...signals.savedVideoIds]),
       );
-      const tasteTitles = readCachedDetailTitlesForVideos(
-        db,
-        tasteVideoIds,
-        72,
-      );
+      const tasteTitles = readStoredTitlesForVideos(db, tasteVideoIds, 72);
       const poolTitles = pool.map((v) => v.title).slice(0, 200);
       const tasteModel = buildTfidfModel(
         buildTasteCorpusTitles([keywordCorpus, tasteTitles, poolTitles]),
@@ -175,7 +172,7 @@ async function buildTrendingTailPoolUncached(
 }
 
 async function buildTrendingTailPool(
-  db: Parameters<typeof fetchTrendingVideos>[0],
+  db: AppDb,
   userId: number | null,
   region: string,
   excludeSubscribed: boolean,
@@ -388,7 +385,7 @@ async function getHomeStream(
       const refresh = computeHomeStream(db, userId, opts)
         .then(({ stream }) => {
           if (stream.length > 0) {
-            writeCache(db, key, "invidious", stream, "home");
+            writeCache(db, key, "owntube", stream, "home");
           }
         })
         .catch((error: unknown) => {
@@ -405,7 +402,7 @@ async function getHomeStream(
     return { stream: stale, coldStart: false };
   }
   const { stream, coldStart } = await computeHomeStream(db, userId, opts);
-  if (stream.length > 0) writeCache(db, key, "invidious", stream, "home");
+  if (stream.length > 0) writeCache(db, key, "owntube", stream, "home");
   return { stream, coldStart };
 }
 
@@ -421,7 +418,7 @@ export async function materializeHomeFeed(
     writeCache(
       db,
       homeStreamCacheKey(userId, opts.region, settings.personalizedFeedOnly),
-      "invidious",
+      "owntube",
       stream,
       "home",
     );
@@ -462,7 +459,7 @@ export const feedRouter = router({
         };
       }
       const limit = Math.min(200, skip + pageSize + pageSize);
-      const trending = await fetchTrendingVideos(ctx.db, {
+      const trending = await fetchTrendingVideos({
         region,
         limit,
         category,

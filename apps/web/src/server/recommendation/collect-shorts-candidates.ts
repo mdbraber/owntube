@@ -1,12 +1,13 @@
 import { desc, eq } from "drizzle-orm";
 import { takeNewestVideos } from "@/lib/published-sort-key";
 import { filterShortsFeedVideos } from "@/lib/short-video";
+import { fetchChannelPage } from "@/server/catalog";
+import { fetchShortsFeed } from "@/server/catalog/shorts";
+import type { UnifiedVideo } from "@/server/catalog/types";
 import type { AppDb } from "@/server/db/client";
 import { subscriptions } from "@/server/db/schema";
 import { useColdStartBlend } from "@/server/recommendation/coldstart";
 import type { UserSignals } from "@/server/recommendation/signals";
-import { fetchChannelPage, fetchShortsFeed } from "@/server/services/proxy";
-import type { UnifiedVideo } from "@/server/services/proxy.types";
 
 const MIN_UNIQUE_SHORTS_FOR_HISTORY_POOL = 8;
 // Scan essentially all of a user's channels for shorts, not just the top few —
@@ -128,7 +129,7 @@ export async function collectShortsCandidates(
             shorts: [] as UnifiedVideo[],
           };
         }
-        const ch = await fetchChannelPage(db, { channelId, tab: "shorts" });
+        const ch = await fetchChannelPage({ channelId, tab: "shorts" });
         const shorts = filterShortsFeedVideos(
           takeNewestVideos(ch.videos, SHORTS_PER_CHANNEL, nowSec),
         );
@@ -166,7 +167,7 @@ export async function collectShortsCandidates(
 
   if (needDiscoveryBlend) {
     try {
-      const discovery = await fetchShortsFeed(db, {
+      const discovery = await fetchShortsFeed({
         region,
         limit: 40,
         discoveryQueries: tasteDiscoveryQueries,

@@ -45,9 +45,7 @@ export function useSettingsPatch({
           inFlight.current -= 1;
         }
         if (inFlight.current === 0) {
-          utils.settings.get.setData(undefined, (old) =>
-            old ? { ...data, instanceSources: old.instanceSources } : old,
-          );
+          utils.settings.get.setData(undefined, data);
           setState("saved");
         }
         if (patch.favoriteTag !== undefined) {

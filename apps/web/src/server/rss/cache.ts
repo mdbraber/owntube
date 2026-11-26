@@ -5,8 +5,6 @@ import {
   fetchLongFormWindowLive,
   type LongFormWindow,
 } from "@/lib/long-form-uploads";
-import type { AppDb } from "@/server/db/client";
-import { websubPushed } from "@/server/db/schema";
 import {
   nowUnix,
   readFreshCacheRow,
@@ -14,8 +12,10 @@ import {
   readRecentCacheRow,
   registerInFlight,
   writeCache,
-} from "@/server/services/proxy/cache";
-import type { UnifiedVideo } from "@/server/services/proxy.types";
+} from "@/server/cache/video-cache";
+import type { UnifiedVideo } from "@/server/catalog/types";
+import type { AppDb } from "@/server/db/client";
+import { websubPushed } from "@/server/db/schema";
 import { isWebSubCovered } from "@/server/websub/health";
 
 /**

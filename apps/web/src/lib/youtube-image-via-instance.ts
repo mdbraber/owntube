@@ -6,18 +6,19 @@
  */
 const GOOGLE_IMAGE_HOST = /(?:^|\.)(?:ytimg|ggpht|googleusercontent)\.com$/i;
 
-/** `/vi/<id>/<still>.jpg` (or `/vi_webp/…/.webp`) on ytimg. */
-const STILL_PATH = /^\/vi(?:_webp)?\/([\w-]+)\/([\w-]+)\.(?:jpe?g|webp)$/i;
+/** The gateway's image route keys (`/media/img/<key>/<path>`), by Google host. */
+const GATEWAY_IMAGE_KEY: Record<string, string> = {
+  "i.ytimg.com": "yti",
+  "i9.ytimg.com": "yti9",
+  "yt3.ggpht.com": "yt3",
+  "yt3.googleusercontent.com": "yt3gu",
+};
 
 /**
- * The same image, fetched through this instance; any other URL unchanged.
- *
- * - Video stills go to `/image/vi/<id>/<still>.jpg`: the server's thumbnail
- *   proxy, with its disk cache and its fallback to the next still size when
- *   one is missing. YouTube's query (`sqp=…`) is dropped; nothing is signed.
- * - Everything else on Google's hosts (avatars, banners, storyboard sheets,
- *   whose `sigh=` signature must stay) goes to `/channel-avatar?url=…`, which
- *   accepts exactly these hosts and caches what it fetches.
+ * The same image, fetched through the gateway's image route (disk-cached, the
+ * query kept: storyboards and some stills are signed); any other URL
+ * unchanged. Google hosts the gateway does not serve fall back to
+ * `i.ytimg.com`'s shape where that works, else stay as they are.
  *
  * `origin` is empty for the web (same-origin paths) and the server's base URL
  * for the TV app.
@@ -32,16 +33,25 @@ export function youtubeImageViaInstance(url: string, origin = ""): string {
   if (u.protocol !== "https:" || !GOOGLE_IMAGE_HOST.test(u.hostname)) {
     return url;
   }
-  const still = /ytimg\.com$/i.test(u.hostname)
-    ? STILL_PATH.exec(u.pathname)
-    : null;
-  if (still) {
-    return `${origin}/image/vi/${still[1]}/${still[2]}.jpg`;
-  }
+  const host = u.hostname.toLowerCase();
+  const key =
+    GATEWAY_IMAGE_KEY[host] ??
+    (/^i\d*\.ytimg\.com$/.test(host) ? "yti" : undefined) ??
+    (/^yt\d+\.ggpht\.com$/.test(host) ? "yt3" : undefined);
+  if (!key) return url;
   // A storyboard template keeps its `$M` sheet placeholder readable, so
   // `storyboardSheetUrl` can still fill it in after the rewrite.
-  const encoded = encodeURIComponent(u.toString()).replace(/%24M/g, "$M");
-  return `${origin}/channel-avatar?url=${encoded}`;
+  const path = u.pathname.replace(/%24M/g, "$M");
+  return `${origin}/media/img/${key}${path}${u.search}`;
+}
+
+/** A video's still through the gateway (`hqdefault` exists for every video). */
+export function videoStillUrl(
+  videoId: string,
+  still: "hqdefault" | "mqdefault" | "maxresdefault" | "hq720" = "hqdefault",
+  origin = "",
+): string {
+  return `${origin}/media/img/yti/vi/${encodeURIComponent(videoId)}/${still}.jpg`;
 }
 
 /** A whole string that is a Google-hosted image URL. */
@@ -82,4 +92,12 @@ export function stripGoogleImageUrls<T>(value: T): T {
     return (changed ? out : value) as T;
   }
   return value;
+}
+
+/** An image URL ready for the browser: Google-hosted ones through the gateway. */
+export function browserImageUrl(
+  raw: string | undefined | null,
+): string | undefined {
+  const url = raw?.trim();
+  return url ? youtubeImageViaInstance(url) : undefined;
 }

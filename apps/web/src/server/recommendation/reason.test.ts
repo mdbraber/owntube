@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
+import type { UnifiedVideo } from "@/server/catalog/types";
 import { deriveRecommendationReason } from "@/server/recommendation/reason";
 import type { RecommendationScoreBreakdown } from "@/server/recommendation/scoring";
 import type { TfidfModel } from "@/server/recommendation/tfidf";
-import type { UnifiedVideo } from "@/server/services/proxy.types";
 
 function makeBreakdown(
   components: Partial<RecommendationScoreBreakdown["components"]>,

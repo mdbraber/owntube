@@ -1,13 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNativeAdapter } from "@/components/player/player-adapters";
 import { usePlayerCaptions } from "@/components/player/player-captions";
 import { PlayerChrome } from "@/components/player/player-chrome";
 import { useReportVideoIntrinsics } from "@/components/player/player-media-hooks";
-import { dashQualityModel } from "@/components/player/player-quality";
 import type { HlsBlockProps } from "@/components/player/player-types";
-import { useDashPlayback } from "@/hooks/use-dash-playback";
+import { useHlsVodPlayback } from "@/hooks/use-hls-vod-playback";
 import { useLiveIdleStop } from "@/hooks/use-live-idle-stop";
 import {
   readPlayerMediaPrefs,
@@ -41,8 +40,8 @@ function StillWatchingScreen({ onResume }: { onResume: () => void }) {
 }
 
 /**
- * A live broadcast: OwnTube's live DASH manifest (`/dash/<id>/live.mpd`, see
- * `live-manifest.ts`) on dash.js, with the same quality menu as VOD DASH.
+ * A live broadcast (or post-live DVR): the gateway's live HLS, on hls.js or
+ * the browser's own HLS, joining at the live edge.
  */
 export function LiveBlock({
   src,
@@ -68,11 +67,7 @@ export function LiveBlock({
   onPlayNext,
   restoredVolume,
   onVideoIntrinsics,
-  defaultQualityHeightCap,
-}: HlsBlockProps & {
-  /** DASH ABR ceiling — null means uncapped. */
-  defaultQualityHeightCap?: number | null;
-}) {
+}: HlsBlockProps) {
   const shellRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -83,9 +78,9 @@ export function LiveBlock({
     window.setTimeout(() => onPlaybackError(), 0);
   }, [onPlaybackError]);
 
-  // "Still watching?": after hours without interaction the dash.js instance
-  // is destroyed and the source detached, so nothing polls the live manifest
-  // (dash.js keeps refreshing it even while paused). Resuming builds a fresh
+  // "Still watching?": after hours without interaction the player is torn
+  // down and the source detached, so nothing polls the live playlist (hls.js
+  // keeps refreshing it even while paused). Resuming builds a fresh
   // instance under a new key, which joins at the live edge and autoplays.
   const [idleStopped, setIdleStopped] = useState(false);
   const [resumeCount, setResumeCount] = useState(0);
@@ -106,18 +101,16 @@ export function LiveBlock({
     setIdleStopped(false);
   }, []);
 
-  // Autoplay is the effect below (and dash.js itself after an idle resume);
-  // no start time, so dash.js joins at the live edge.
-  const dash = useDashPlayback(
+  // Autoplay is the effect below (and the hook itself after an idle resume);
+  // no start time, so playback joins at the live edge.
+  useHlsVodPlayback(
     videoRef,
     idleStopped ? "" : src,
     sourceKey,
     undefined,
     resumeCount > 0,
     emitPlaybackError,
-    defaultQualityHeightCap,
   );
-  const quality = useMemo(() => dashQualityModel(dash), [dash]);
 
   const adapter = useNativeAdapter({
     videoRef,
@@ -180,8 +173,6 @@ export function LiveBlock({
         playsInline
         x-webkit-airplay="allow"
         preload="auto"
-        // src + caption <track>s are on the media origin (media-origin.ts);
-        // cross-origin <track> loading requires this. No credentials needed.
         crossOrigin="anonymous"
         onError={emitPlaybackError}
         onEnded={onEnded}
@@ -205,7 +196,7 @@ export function LiveBlock({
         videoId={videoId}
         sponsorSegments={sponsorSegments}
         sponsorBlockPrefs={sponsorBlockPrefs}
-        quality={quality}
+        quality={{ kind: "none" }}
         audio={{ kind: "none" }}
         captions={captionModel}
         settingsOpen={settingsOpen}

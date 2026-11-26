@@ -2,39 +2,23 @@
 export type CaptionTrack = {
   label: string;
   languageCode: string;
-  /** Same-origin `/captions/{videoId}?label=…` URL serving WebVTT. */
+  /** The gateway's signed WebVTT URL. */
   src: string;
   /** Start track when captions are on (account caption language). */
   isDefault?: boolean;
 };
 
-export type ProxiedVariant =
-  | { t: "muxed"; label: string; src: string }
-  | {
-      t: "split";
-      label: string;
-      video: string;
-      audio: string;
-      audioTracks: { label: string; src: string }[];
-      defaultAudioIndex?: number;
-    };
-
-export type VideoPlayerPayload =
-  | {
-      mode: "hls";
-      /**
-       * A streaming manifest: an HLS playlist, or — for a live broadcast with
-       * no HLS — OwnTube's live DASH manifest (`/dash/<id>/live.mpd`). The
-       * player picks the engine from the URL (`isLiveDashManifestUrl`).
-       */
-      src: string;
-      /**
-       * Post-Live-DVR (an ended livestream YouTube hasn't converted to VOD).
-       * `src` is our `/hls/<id>` path, but nothing can be synthesized there —
-       * the player must upgrade to `/dash`, which proxies invidious-companion's
-       * manifest. Lets the player keep DASH on iOS for this case alone; see
-       * `hls-vod-block.tsx`.
-       */
-      dvr?: boolean;
-    }
-  | { mode: "progressive"; variants: ProxiedVariant[] };
+/**
+ * What the player plays: the gateway's signed manifests. VOD plays DASH where
+ * the browser can (MSE, not iOS) and HLS elsewhere; live and post-live DVR
+ * exist only as HLS.
+ */
+export type VideoPlayerPayload = {
+  mode: "hls";
+  /** The signed HLS master playlist. */
+  src: string;
+  /** The signed DASH manifest; null for live and DVR. */
+  dash: string | null;
+  /** Post-live DVR: an ended stream YouTube has not turned into a VOD yet. */
+  dvr?: boolean;
+};

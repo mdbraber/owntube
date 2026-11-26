@@ -6,12 +6,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ShortsEmptyHint } from "@/components/shorts/shorts-empty-hint";
 import { ShortsPreloader } from "@/components/shorts/shorts-preloader";
 import { ShortsSlide } from "@/components/shorts/shorts-slide";
-import type { UpstreamAvailability } from "@/server/services/proxy";
 import type {
   ShortsFeedResult,
   UnifiedVideo,
   VideoDetail,
-} from "@/server/services/proxy.types";
+} from "@/server/catalog/types";
 import { trpc } from "@/trpc/react";
 
 type ShortsFeedClientProps = {
@@ -20,7 +19,6 @@ type ShortsFeedClientProps = {
   initialFeed?: ShortsFeedResult | null;
   /** Server-resolved detail for the first short, seeded so it plays at once. */
   initialDetail?: VideoDetail | null;
-  initialUpstream?: UpstreamAvailability;
   signedIn?: boolean;
 };
 
@@ -69,7 +67,6 @@ export function ShortsFeedClient({
   initialVideoId,
   initialFeed,
   initialDetail,
-  initialUpstream,
   signedIn = false,
 }: ShortsFeedClientProps) {
   const [items, setItems] = useState<UnifiedVideo[]>(
@@ -134,13 +131,7 @@ export function ShortsFeedClient({
                 {
                   videos: initialFeed.videos,
                   nextCursor: initialFeed.continuation ?? undefined,
-                  sourceUsed: initialFeed.sourceUsed,
                   warning: initialFeed.warning,
-                  stale: initialFeed.stale,
-                  upstream: initialUpstream ?? {
-                    invidiousConfigured: false,
-                    anyConfigured: false,
-                  },
                 },
               ],
               pageParams: [undefined],
@@ -328,12 +319,6 @@ export function ShortsFeedClient({
     }
   }, [items, activeIndex, utils.video.detail]);
 
-  const upstream = feed.data?.pages[feed.data.pages.length - 1]?.upstream ??
-    initialUpstream ?? {
-      pipedConfigured: false,
-      invidiousConfigured: false,
-      anyConfigured: false,
-    };
   const feedWarning =
     feed.data?.pages[feed.data.pages.length - 1]?.warning ?? undefined;
 
@@ -473,7 +458,7 @@ export function ShortsFeedClient({
         <p className="text-sm text-white/90">
           {feedWarning ?? "No shorts available right now."}
         </p>
-        <ShortsEmptyHint upstream={upstream} signedIn={signedIn} />
+        <ShortsEmptyHint signedIn={signedIn} />
         <button
           type="button"
           className="text-sm text-[hsl(var(--primary))] hover:underline"

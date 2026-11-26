@@ -5,7 +5,7 @@ import { PersonalizedFeedOnlyToggle } from "@/components/dashboard/personalized-
 import { PageHeader } from "@/components/layout/page-header";
 import { watchHref } from "@/lib/yt-routes";
 import { auth } from "@/server/auth";
-import type { RecommendationReason } from "@/server/services/proxy.types";
+import type { RecommendationReason } from "@/server/catalog/types";
 import { createCaller } from "@/server/trpc/caller";
 
 function fmtDuration(seconds: number): string {

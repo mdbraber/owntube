@@ -4,14 +4,9 @@ import type Hls from "hls.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { registerStatsSource } from "@/components/player/player-stats";
 import { languageFirstAudioMenuLabel } from "@/lib/audio-track-label";
-import {
-  buildHlsSameOriginConfig,
-  getClientAppOrigin,
-  installSameOriginMediaFetchGuard,
-} from "@/lib/hls-same-origin";
+import { hlsVodConfig } from "@/lib/hls-config";
 import { isIosLikeBrowser } from "@/lib/ios-playback";
-import { getMediaOrigin } from "@/lib/media-origin";
-import { nativeHlsSrc, prefersNativeHls } from "@/lib/native-hls";
+import { prefersNativeHls } from "@/lib/native-hls";
 
 /**
  * Audio language renditions from the HLS master (one EXT-X-MEDIA per language
@@ -167,7 +162,7 @@ export function useHlsVodPlayback(
       iosLike: isIosLikeBrowser(),
     });
     if (useNative) {
-      const nativeSrc = nativeHlsSrc(src);
+      const nativeSrc = src;
       setNative(true);
       // Language renditions surface on WebKit's AudioTrackList. The manifest
       // marks the original DEFAULT=YES (see hls/generate.ts), but iOS's player
@@ -250,15 +245,11 @@ export function useHlsVodPlayback(
     }
 
     // hls.js: non-Safari, and Safari on the macOS media stack (real Mac /
-    // desktop-mode iPad) where native HLS rejects the manifest. Same-origin
-    // config is a harmless no-op for our already-same-origin segments and still
-    // proxies any stray CDN URL.
+    // desktop-mode iPad) where native HLS rejects the manifest.
     setNative(false);
     let cancelled = false;
     let hls: Hls | null = null;
     let unregisterStats = () => {};
-    const mediaOrigin = getMediaOrigin(getClientAppOrigin());
-    const releaseFetchGuard = installSameOriginMediaFetchGuard(mediaOrigin);
     void (async () => {
       const { default: HlsCtor } = await import("hls.js");
       if (cancelled || !videoRef.current) return;
@@ -269,7 +260,7 @@ export function useHlsVodPlayback(
         });
         return;
       }
-      hls = new HlsCtor(buildHlsSameOriginConfig(mediaOrigin));
+      hls = new HlsCtor(hlsVodConfig());
       hlsRef.current = hls;
       hls.on(HlsCtor.Events.ERROR, (_e, data) => {
         if (data.fatal) onFatalErrorRef.current?.();
@@ -326,7 +317,6 @@ export function useHlsVodPlayback(
       cancelled = true;
       unregisterStats();
       setAudioImplRef.current = () => {};
-      releaseFetchGuard();
       hls?.destroy();
       hlsRef.current = null;
       const v = videoRef.current;

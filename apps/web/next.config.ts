@@ -7,6 +7,8 @@ const MEDIA_ORIGIN = process.env.NEXT_PUBLIC_MEDIA_BASE_URL;
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ["better-sqlite3"],
+  // Workspace packages ship TypeScript source (no build step).
+  transpilePackages: ["@owntube/contracts"],
   // The browser may load images only from this site and its media origin
   // (never Google); media and fetches are watched report-only. See
   // src/lib/content-security-policy.ts.

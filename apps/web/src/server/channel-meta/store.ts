@@ -1,9 +1,9 @@
 import { eq, inArray } from "drizzle-orm";
+import { fetchChannelPage } from "@/server/catalog";
 import type { AppDb } from "@/server/db/client";
 import { channelMeta } from "@/server/db/schema";
 import { RateLimitExceededError } from "@/server/errors/rate-limit-exceeded";
 import { UpstreamUnavailableError } from "@/server/errors/upstream-unavailable";
-import { fetchChannelPage } from "@/server/services/proxy";
 
 export const CHANNEL_META_TTL_SEC = 7 * 24 * 60 * 60;
 
@@ -231,7 +231,7 @@ export async function refreshChannelMetaIfStale(
 
   for (let attempt = 0; attempt < LIST_DETAILED_RETRIES; attempt++) {
     try {
-      const page = await fetchChannelPage(db, { channelId });
+      const page = await fetchChannelPage({ channelId });
       const resolvedName =
         page.name?.trim() || cachedMeta?.channelName || channelId;
       const resolvedAvatar = page.avatarUrl ?? cachedMeta?.avatarUrl ?? null;

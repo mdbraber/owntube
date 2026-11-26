@@ -1,20 +1,12 @@
 "use client";
 
+/** A gateway playback URL: reloading the page signs a fresh one. */
 export function shouldAutoRecoverPlaybackSource(src: string): boolean {
-  if (src.includes("/videoplayback")) return true;
-  return (
-    src.includes("/yt-hls?url=") ||
-    src.includes("/stream/api/manifest/hls") ||
-    src.includes("/stream/api/v1/") ||
-    // Legacy prefix, still present in manifests from before Phase 5.
-    src.includes("/invidious/api/manifest/hls") ||
-    src.includes("/invidious/api/v1/")
-  );
+  return src.includes("/media/v/");
 }
 
 const RECOVERY_ATTEMPT_WINDOW_MS = 5 * 60_000;
 const MAX_RECOVERY_ATTEMPTS = 3;
-export const MAX_VARIANT_FALLBACK_ATTEMPTS = 8;
 
 export function playbackResumeStorageKey(): string {
   if (typeof window === "undefined") return "ot:playback-resume:";

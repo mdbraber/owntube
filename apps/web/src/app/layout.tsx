@@ -12,7 +12,6 @@ import { FaviconInitScript } from "@/components/settings/favicon-init-script";
 import { AppShell } from "@/components/shell/app-shell";
 import { MobileAccountMenu } from "@/components/shell/mobile-account-menu";
 import { UiScale } from "@/components/shell/ui-scale";
-import { collectInvidiousOrigins } from "@/lib/channel-avatar-proxy";
 import { FAVICON_VERSION } from "@/lib/favicon";
 import { isNativeAppUserAgent } from "@/lib/native-app";
 import { auth } from "@/server/auth";
@@ -40,7 +39,7 @@ export const metadata: Metadata = {
     default: "owntube",
     template: "%s · owntube",
   },
-  description: "Self-hosted video front-end with Piped / Invidious",
+  description: "A self-hosted, private YouTube front end",
   manifest: "/manifest.webmanifest",
   icons: {
     icon: [{ url: `/favicon-dark.ico?v=${FAVICON_VERSION}`, sizes: "any" }],
@@ -74,7 +73,6 @@ export default async function RootLayout({
   const nativeApp = isNativeAppUserAgent((await headers()).get("user-agent"));
   // Computed server-side from INVIDIOUS_BASE_URL and handed to the browser via
   // context so client image URLs match SSR without any client-side env var.
-  const invidiousOrigins = collectInvidiousOrigins();
 
   // Hydrate the app-shell queries once, app-wide, so the sidebar subscriptions
   // and settings don't re-fetch on every page load (they fired on every route
@@ -105,10 +103,7 @@ export default async function RootLayout({
       <body
         className={`${inter.variable} ${jetbrainsMono.variable} font-sans antialiased`}
       >
-        <Providers
-          invidiousOrigins={invidiousOrigins}
-          dehydratedState={dehydratedState}
-        >
+        <Providers dehydratedState={dehydratedState}>
           <UiScale />
           {/* WKWebView only allows service workers for app-bound domains. */}
           {nativeApp ? <NativeAppBridge /> : <SwRegister />}

@@ -1,9 +1,9 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { watchHref } from "@/lib/yt-routes";
+import { fetchVideoDetail } from "@/server/catalog";
 import { interactions } from "@/server/db/schema";
 import { clearRecommendationCachesForUser } from "@/server/recommendation/engine";
-import { fetchVideoDetail } from "@/server/services/proxy";
 import { getUserSettings, upsertUserSettings } from "@/server/settings/profile";
 import { protectedProcedure, router } from "@/server/trpc/init";
 
@@ -101,7 +101,7 @@ export const interactionsRouter = router({
     return Promise.all(
       rows.map(async (r) => {
         try {
-          const detail = await fetchVideoDetail(ctx.db, { videoId: r.videoId });
+          const detail = await fetchVideoDetail({ videoId: r.videoId });
           return {
             videoId: r.videoId,
             videoTitle: detail.title ?? r.title ?? r.videoId,

@@ -35,13 +35,12 @@ describe("watch-mini-player-state", () => {
     vi.unstubAllGlobals();
   });
 
-  it("round-trips mini state with quality and media prefs", () => {
+  it("round-trips mini state with media prefs", () => {
     writeWatchMiniState({
       videoId: "abc",
       title: "Test",
-      payload: { mode: "hls", src: "https://example.com/v.m3u8" },
+      payload: { mode: "hls", src: "https://example.com/v.m3u8", dash: null },
       currentTime: 42.5,
-      qualityIndex: 2,
       volume: 0.6,
       muted: false,
       paused: true,
@@ -50,9 +49,8 @@ describe("watch-mini-player-state", () => {
     expect(read).toEqual({
       videoId: "abc",
       title: "Test",
-      payload: { mode: "hls", src: "https://example.com/v.m3u8" },
+      payload: { mode: "hls", src: "https://example.com/v.m3u8", dash: null },
       currentTime: 42.5,
-      qualityIndex: 2,
       volume: 0.6,
       muted: false,
       paused: true,
@@ -68,7 +66,7 @@ describe("watch-mini-player-state", () => {
     writeWatchMiniState({
       videoId: "x",
       title: "X",
-      payload: { mode: "hls", src: "https://example.com/a.m3u8" },
+      payload: { mode: "hls", src: "https://example.com/a.m3u8", dash: null },
       currentTime: 0,
     });
     writeWatchMiniEnabled(false);
@@ -81,7 +79,7 @@ describe("watch-mini-player-state", () => {
     writeWatchMiniState({
       videoId: "old",
       title: "Old",
-      payload: { mode: "hls", src: "https://example.com/old.m3u8" },
+      payload: { mode: "hls", src: "https://example.com/old.m3u8", dash: null },
       currentTime: 10,
     });
     clearWatchMiniStateForOtherVideo("new");
@@ -92,7 +90,7 @@ describe("watch-mini-player-state", () => {
     writeWatchMiniState({
       videoId: "same",
       title: "Same",
-      payload: { mode: "hls", src: "https://example.com/s.m3u8" },
+      payload: { mode: "hls", src: "https://example.com/s.m3u8", dash: null },
       currentTime: 5,
     });
     clearWatchMiniStateForOtherVideo("same");

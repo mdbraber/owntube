@@ -1,61 +1,72 @@
-import { createHash } from "node:crypto";
-import { desc, eq } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 import type { AppDb } from "@/server/db/client";
-import { videoCache } from "@/server/db/schema";
-import { videoDetailSchema } from "@/server/services/proxy.types";
-
-/** Must match `detailCacheKey` in `proxy.ts` (streams detail payload). */
-function streamsDetailCacheKey(videoId: string): string {
-  const h = createHash("sha256")
-    .update(JSON.stringify({ v: 4, kind: "streams", videoId }))
-    .digest("hex");
-  return `streams:v4:${h}`;
-}
-
-function readOneCachedTitle(db: AppDb, videoId: string): string | undefined {
-  if (!videoId || videoId.length < 5) return undefined;
-  const key = streamsDetailCacheKey(videoId);
-  const row = db
-    .select({ payloadJson: videoCache.payloadJson })
-    .from(videoCache)
-    .where(eq(videoCache.cacheKey, key))
-    .orderBy(desc(videoCache.fetchedAt))
-    .limit(1)
-    .all()[0];
-  if (!row) return undefined;
-  try {
-    const parsed = videoDetailSchema.safeParse(JSON.parse(row.payloadJson));
-    if (!parsed.success) return undefined;
-    const t = parsed.data.title.trim();
-    return t || undefined;
-  } catch {
-    return undefined;
-  }
-}
+import { interactions, watchHistory, watchQueue } from "@/server/db/schema";
 
 /**
- * Reads cached video detail titles for interaction-based taste (likes/saves).
- * Best-effort: skips missing/stale cache without network calls.
+ * Titles of these videos as the app stored them (likes, saves, queue and
+ * history keep the title they were added with), for interaction-based taste.
+ * No network: videos without a stored title are skipped.
  */
-export function readCachedDetailTitlesForVideos(
+export function readStoredTitlesForVideos(
   db: AppDb,
   videoIds: readonly string[],
   maxTitles: number,
 ): string[] {
+  const byId = storedTitles(db, videoIds);
   const titles: string[] = [];
   const seenLower = new Set<string>();
-  let n = 0;
   for (const videoId of videoIds) {
-    if (n >= maxTitles) break;
-    const t = readOneCachedTitle(db, videoId);
+    if (titles.length >= maxTitles) break;
+    const t = byId.get(videoId);
     if (!t) continue;
     const low = t.toLowerCase();
     if (seenLower.has(low)) continue;
     seenLower.add(low);
     titles.push(t);
-    n += 1;
   }
   return titles;
+}
+
+function storedTitles(
+  db: AppDb,
+  videoIds: readonly string[],
+): Map<string, string> {
+  const ids = [...new Set(videoIds)];
+  const byId = new Map<string, string>();
+  const remember = (rows: { videoId: string; title: string | null }[]) => {
+    for (const r of rows) {
+      const t = r.title?.trim();
+      if (t && !byId.has(r.videoId)) byId.set(r.videoId, t);
+    }
+  };
+  for (let i = 0; i < ids.length; i += 500) {
+    const chunk = ids.slice(i, i + 500);
+    remember(
+      db
+        .select({ videoId: interactions.videoId, title: interactions.title })
+        .from(interactions)
+        .where(inArray(interactions.videoId, chunk))
+        .all(),
+    );
+    remember(
+      db
+        .select({
+          videoId: watchHistory.videoId,
+          title: watchHistory.videoTitle,
+        })
+        .from(watchHistory)
+        .where(inArray(watchHistory.videoId, chunk))
+        .all(),
+    );
+    remember(
+      db
+        .select({ videoId: watchQueue.videoId, title: watchQueue.title })
+        .from(watchQueue)
+        .where(inArray(watchQueue.videoId, chunk))
+        .all(),
+    );
+  }
+  return byId;
 }
 
 /** "Refine recommendations" keywords repeated 3× so they outweigh single titles in the TF-IDF corpus. */
@@ -94,15 +105,16 @@ export function buildTasteCorpusTitles(
 }
 
 /** One title per dislike row (allows duplicates) for token mining. */
-export function readCachedDislikeTitlesOrdered(
+export function readStoredDislikeTitlesOrdered(
   db: AppDb,
   videoIds: readonly string[],
   max: number,
 ): string[] {
+  const byId = storedTitles(db, videoIds);
   const out: string[] = [];
   for (const videoId of videoIds) {
     if (out.length >= max) break;
-    const t = readOneCachedTitle(db, videoId);
+    const t = byId.get(videoId);
     if (t) out.push(t);
   }
   return out;

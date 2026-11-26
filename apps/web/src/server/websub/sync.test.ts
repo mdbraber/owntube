@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { nowUnix } from "@/server/cache/video-cache";
 import { subscriptions, users, websubPushed } from "@/server/db/schema";
 import { clearRssInFlight, getChannelRssEntries } from "@/server/rss/cache";
-import { nowUnix } from "@/server/services/proxy/cache";
 import { warmVideo } from "@/server/warm-cache/warm-video";
 import { createTestDb } from "@/test/db";
 import { syncWebSub, type WebSubEvent } from "./sync";

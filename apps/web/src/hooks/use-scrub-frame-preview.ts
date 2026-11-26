@@ -6,7 +6,7 @@ import {
   scrubFrameMarkers,
   scrubFrameStyleAt,
 } from "@/lib/video-scrub-frames";
-import type { VideoStoryboard } from "@/server/services/proxy.types";
+import type { VideoStoryboard } from "@/server/catalog/types";
 
 export type ScrubFramePreview = ScrubFrameStyle;
 

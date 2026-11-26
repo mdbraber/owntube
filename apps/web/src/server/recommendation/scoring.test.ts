@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { UnifiedVideo } from "@/server/catalog/types";
 import {
   isLikelyShortVideo,
   isTooOldForRecommendations,
@@ -12,7 +13,6 @@ import {
 } from "@/server/recommendation/scoring";
 import type { UserSignals } from "@/server/recommendation/signals";
 import { buildTfidfModel } from "@/server/recommendation/tfidf";
-import type { UnifiedVideo } from "@/server/services/proxy.types";
 
 function emptySignals(overrides: Partial<UserSignals> = {}): UserSignals {
   return {

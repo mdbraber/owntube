@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 import { ApiTokensSection } from "@/components/settings/api-tokens-section";
 import { BottomNavEditor } from "@/components/settings/bottom-nav-editor";
-import { InstanceSourceHint } from "@/components/settings/instance-source-hint";
 import { RssFeedsSection } from "@/components/settings/rss-feeds-section";
 import {
   Segmented,
@@ -45,7 +44,6 @@ import {
 import { TRENDING_REGION_OPTIONS } from "@/lib/trending-regions";
 import { cn } from "@/lib/utils";
 import { writeWatchMiniEnabled } from "@/lib/watch-mini-player-state";
-import type { InstanceSourceInfo } from "@/server/services/proxy";
 import type { AppSettings } from "@/server/settings/profile";
 import { useThemeStore } from "@/stores/theme-store";
 import { trpc } from "@/trpc/react";
@@ -131,16 +129,11 @@ function SaveStatus({
 
 type SettingsPanelProps = {
   initial: AppSettings;
-  initialInstanceSources: InstanceSourceInfo;
 };
 
-export function SettingsPanel({
-  initial,
-  initialInstanceSources,
-}: SettingsPanelProps) {
+export function SettingsPanel({ initial }: SettingsPanelProps) {
   const { settings, save, state, error } = useSettingsPatch();
   const s: AppSettings = settings ?? initial;
-  const instanceSources = settings?.instanceSources ?? initialInstanceSources;
 
   // The account's values win over whatever this browser remembered.
   // biome-ignore lint/correctness/useExhaustiveDependencies: once, on open.
@@ -353,15 +346,12 @@ export function SettingsPanel({
           title={sectionTitle("server")}
           description={
             <>
-              Video sources come from{" "}
-              <code className="rounded bg-[hsl(var(--muted))] px-1 font-mono text-xs">
-                INVIDIOUS_BASE_URL
-              </code>{" "}
-              on the server; list several to fail over between them.
+              OwnTube reads YouTube through its gateway, which caches what it
+              fetches.
             </>
           }
         >
-          <ServerRows initial={instanceSources} />
+          <ServerRows />
         </SettingsSection>
       </div>
     </div>
@@ -780,14 +770,9 @@ function DataExportRows() {
   );
 }
 
-function ServerRows({ initial }: { initial: InstanceSourceInfo }) {
+function ServerRows() {
   const utils = trpc.useUtils();
-  const [checked, setChecked] = useState<InstanceSourceInfo | null>(null);
-  const [health, setHealth] = useState<string | null>(null);
   const [cacheMessage, setCacheMessage] = useState<string | null>(null);
-  const healthQuery = trpc.settings.checkInstances.useQuery(undefined, {
-    enabled: false,
-  });
   const clearCaches = trpc.settings.clearCaches.useMutation({
     onSuccess: async (res) => {
       await Promise.all([
@@ -803,44 +788,13 @@ function ServerRows({ initial }: { initial: InstanceSourceInfo }) {
     onError: (e) => setCacheMessage(`Clearing failed: ${e.message}`),
   });
 
-  async function onCheck() {
-    setHealth(null);
-    const data = await healthQuery.refetch();
-    if (!data.data) return setHealth("Health check failed.");
-    setChecked(data.data.instanceSources);
-    setHealth(
-      data.data.invidiousOk == null
-        ? "Invidious: not set"
-        : `Invidious: ${data.data.invidiousOk ? "healthy" : "down"}`,
-    );
-  }
-
   return (
     <>
-      <SettingRow stack title="Instances">
-        <InstanceSourceHint row={(checked ?? initial).invidious} />
-        <div className="mt-3 flex flex-wrap items-center gap-3">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={onCheck}
-            disabled={healthQuery.isFetching}
-          >
-            {healthQuery.isFetching ? "Checking…" : "Check health"}
-          </Button>
-          {health ? (
-            <span className="text-xs text-[hsl(var(--muted-foreground))]">
-              {health}
-            </span>
-          ) : null}
-        </div>
-      </SettingRow>
       <SettingRow
         title="Cache"
         description={
           cacheMessage ??
-          "Clear the server's caches after big imports or upstream trouble."
+          "Clear OwnTube's own caches (home feed, RSS, SponsorBlock) after big imports."
         }
       >
         <Button
