@@ -1,3 +1,7 @@
+import {
+  LIVE_IDLE_CHECK_MS,
+  shouldStopIdleLive,
+} from "@web/lib/live-idle-stop";
 import type { NativePlayRequest } from "@web/lib/native-app";
 import { buildWatchPlayback } from "@web/lib/pick-playback";
 import type { VideoDetail } from "@web/server/services/proxy.types";
@@ -25,6 +29,11 @@ export type NowPlaying = {
   upNext: UpNextItem[];
   /** The account's "Autoplay next": related videos play on at the end. */
   autoplayNext: boolean;
+  /**
+   * A live stream stopped for idleness ("Still watching?", see
+   * live-idle-stop.ts): its source is unloaded until resumeAfterIdle.
+   */
+  idleStopped?: boolean;
 };
 
 export type UpNextItem = {
@@ -71,6 +80,16 @@ export function getPlayer(): VideoPlayer {
   });
   created.addListener("playingChange", ({ isPlaying }) => {
     progress.playing = isPlaying;
+    // Someone pressed pause or play (in the app, on the lock screen, in
+    // Picture-in-Picture): a pause while the stream is ready, not a stall,
+    // and the play that follows it. Stalls come with status "loading".
+    if (!isPlaying && created.status === "readyToPlay") {
+      pausedWhileReady = true;
+      noteInteraction();
+    } else if (isPlaying && pausedWhileReady) {
+      pausedWhileReady = false;
+      noteInteraction();
+    }
   });
   created.addListener("playToEnd", () => {
     resumeSettled = true;
@@ -221,7 +240,11 @@ export function openVideo(
   video: OpenVideo,
   { present = true }: { present?: boolean } = {},
 ) {
-  if (state?.video.videoId === video.videoId && !state.error) {
+  if (
+    state?.video.videoId === video.videoId &&
+    !state.error &&
+    !state.idleStopped
+  ) {
     if (present) router.navigate("/player");
     return;
   }
@@ -238,6 +261,7 @@ export function openVideo(
     autoplay: true,
   };
   setState({ video: request, upNext: [], autoplayNext: false });
+  noteInteraction();
   loadingId = video.videoId;
   resumeSettled = video.startSeconds !== undefined;
   seekTo = video.startSeconds && !video.isLive ? video.startSeconds : undefined;
@@ -431,6 +455,44 @@ export function retryPlayback() {
     },
     { present: false },
   );
+}
+
+// --- "Still watching?" (live only) -------------------------------------------
+
+let lastInteractionAt = Date.now();
+/** Whether the last pause came while the stream was ready (see playingChange). */
+let pausedWhileReady = false;
+
+/** Someone touched the player panel or mini player, or used its controls. */
+export function noteInteraction() {
+  lastInteractionAt = Date.now();
+}
+
+/**
+ * A live stream left hours without interaction, also in the background or in
+ * Picture-in-Picture, is unloaded rather than paused: AVPlayer keeps
+ * reloading a live playlist while paused, and every reload is a request to
+ * YouTube. The panel and mini player then offer to carry on.
+ */
+function stopIfIdleLive() {
+  if (!state || state.idleStopped || state.error) return;
+  const isLive = state.video.isLive === true;
+  if (!shouldStopIdleLive(lastInteractionAt, Date.now(), isLive)) return;
+  clearReadyTimer();
+  loadingId = null;
+  pending = [];
+  getPlayer().pause();
+  void getPlayer().replaceAsync(null);
+  setState({ ...state, idleStopped: true });
+}
+
+setInterval(stopIfIdleLive, LIVE_IDLE_CHECK_MS);
+
+/** "Still watching?" answered: loads the live stream again, at the live edge. */
+export function resumeAfterIdle() {
+  const video = state?.idleStopped ? state.video : null;
+  if (!video) return;
+  openVideo({ ...video, startSeconds: undefined }, { present: false });
 }
 
 /** Stops playback and leaves the mini player. */

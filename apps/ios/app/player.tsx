@@ -23,7 +23,9 @@ import { allowRotation, isPhone, lockToPortrait } from "@/lib/orientation";
 import {
   applyPageHints,
   getPlayer,
+  noteInteraction,
   openVideo,
+  resumeAfterIdle,
   retryPlayback,
   useNowPlaying,
 } from "@/player/store";
@@ -107,7 +109,7 @@ export default function PlayerPanel() {
   }, []);
 
   if (!nowPlaying) return <View style={styles.screen} />;
-  const { video, error } = nowPlaying;
+  const { video, error, idleStopped } = nowPlaying;
 
   const videoView = (
     <VideoView
@@ -127,12 +129,27 @@ export default function PlayerPanel() {
     />
   );
 
+  // "Still watching?": the live stream was unloaded after hours untouched.
+  const idleRow = idleStopped ? (
+    <View style={styles.errorRow}>
+      <Text style={styles.idle}>Still watching?</Text>
+      <Pressable
+        accessibilityRole="button"
+        onPress={resumeAfterIdle}
+        style={styles.retry}
+      >
+        <Text style={styles.retryLabel}>Continue watching</Text>
+      </Pressable>
+    </View>
+  ) : null;
+
   // iPhone on its side: the video alone, edge to edge.
   if (landscapePhone) {
     return (
-      <View style={styles.screen}>
+      <View style={styles.screen} onTouchStart={noteInteraction}>
         <StatusBar hidden />
         {videoView}
+        {idleRow}
       </View>
     );
   }
@@ -186,13 +203,17 @@ export default function PlayerPanel() {
     const sideWidth = width - COLUMN_WIDTH;
     const videoHeight = Math.min((sideWidth * 9) / 16, height * 0.62);
     return (
-      <View style={[styles.screen, styles.row, { paddingTop: insets.top }]}>
+      <View
+        style={[styles.screen, styles.row, { paddingTop: insets.top }]}
+        onTouchStart={noteInteraction}
+      >
         <View style={styles.side}>
           {bar}
           <View style={[styles.videoBox, { height: videoHeight }]}>
             {videoView}
           </View>
           {errorRow}
+          {idleRow}
           {page}
         </View>
         <View style={[styles.upNext, { paddingBottom: insets.bottom }]}>
@@ -203,10 +224,11 @@ export default function PlayerPanel() {
   }
 
   return (
-    <View style={styles.screen}>
+    <View style={styles.screen} onTouchStart={noteInteraction}>
       {bar}
       {videoView}
       {errorRow}
+      {idleRow}
       <QueueSection nowPlaying={nowPlaying} />
       {page}
     </View>
@@ -251,6 +273,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   error: { color: "#ff6b81", fontSize: 15, flex: 1 },
+  idle: { color: "#fff", fontSize: 15, flex: 1 },
   retry: {
     paddingHorizontal: 16,
     paddingVertical: 8,

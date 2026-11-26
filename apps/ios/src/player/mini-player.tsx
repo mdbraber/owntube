@@ -10,7 +10,13 @@ import {
   useColorScheme,
   View,
 } from "react-native";
-import { getPlayer, stopPlayback, useNowPlaying } from "@/player/store";
+import {
+  getPlayer,
+  noteInteraction,
+  resumeAfterIdle,
+  stopPlayback,
+  useNowPlaying,
+} from "@/player/store";
 
 /**
  * What's playing, above the tab bar (the tab bar's bottom accessory, drawn by
@@ -26,10 +32,14 @@ export function MiniPlayer() {
   const dark = useColorScheme() === "dark";
   const color = dark ? "#fff" : "#000";
   if (!nowPlaying) return null;
-  const { video } = nowPlaying;
+  const { video, idleStopped } = nowPlaying;
+  // "Still watching?" (a live stream unloaded for idleness): play reloads it.
+  const togglePlaying = idleStopped
+    ? resumeAfterIdle
+    : () => (isPlaying ? player.pause() : player.play());
 
   return (
-    <View style={styles.row}>
+    <View style={styles.row} onTouchStart={noteInteraction}>
       <Pressable
         style={styles.open}
         accessibilityRole="button"
@@ -51,7 +61,7 @@ export function MiniPlayer() {
         hitSlop={10}
         accessibilityRole="button"
         accessibilityLabel={isPlaying ? "Pause" : "Play"}
-        onPress={() => (isPlaying ? player.pause() : player.play())}
+        onPress={togglePlaying}
         style={styles.button}
       >
         <SymbolView
