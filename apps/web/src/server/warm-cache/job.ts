@@ -1,6 +1,6 @@
 import { logger } from "@/lib/logger";
 import { HOME_SHORTS_SHELF_LIMIT } from "@/lib/shorts-feed-presentation";
-import { fetchChannelPage, fetchTrendingVideos } from "@/server/catalog";
+import { fetchChannelPage, fetchLiveVideos } from "@/server/catalog";
 import { fetchShortsFeed } from "@/server/catalog/shorts";
 import { refreshChannelsLatestVideoAt } from "@/server/channel-meta/recency";
 import { refreshChannelMetaIfStale } from "@/server/channel-meta/store";
@@ -154,10 +154,7 @@ async function warmTrending(): Promise<boolean> {
       ? Math.min(trendingLimit, 200)
       : 48;
   try {
-    const result = await fetchTrendingVideos({
-      region,
-      limit: safeLimit,
-    });
+    const result = await fetchLiveVideos({ limit: safeLimit });
     logLine(`warm-cache: trending — ${result.videos.length} videos`);
     return true;
   } catch (error: unknown) {

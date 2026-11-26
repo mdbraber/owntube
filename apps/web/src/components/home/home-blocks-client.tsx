@@ -454,11 +454,9 @@ function RecommendedBlockBody({ block }: { block: HomeBlock }) {
   );
 }
 
-/** Regional trending (same source as /trending, labelled "Explore"). */
+/** YouTube's Live page (same source as /live). */
 function ExploreBlockBody({ block }: { block: HomeBlock }) {
-  const settings = trpc.settings.get.useQuery();
-  const region = settings.data?.trendingRegion ?? "US";
-  const query = trpc.trending.list.useQuery({ region, limit: 60 });
+  const query = trpc.live.list.useQuery({ limit: 60 });
   const videos: BlockVideo[] = (query.data?.videos ?? []).map(fromUnified);
   return (
     <VideoBlockBody

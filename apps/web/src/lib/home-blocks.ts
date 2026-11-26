@@ -311,7 +311,7 @@ export function homeBlockHref(block: HomeBlock): string {
     case "recommended":
       return "/recommended";
     case "explore":
-      return "/trending";
+      return "/live";
     case "history":
       return "/history";
     case "queue":

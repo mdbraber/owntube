@@ -3,11 +3,11 @@ import type { VideoDetail as GatewayVideoDetail } from "@owntube/contracts/model
 import type {
   ChannelPageInput,
   ChannelPageResult,
+  LiveInput,
+  LiveVideosResult,
   RelatedVideosResult,
   SearchVideosInput,
   SearchVideosResult,
-  TrendingInput,
-  TrendingVideosResult,
   UnifiedVideo,
   VideoCommentsInput,
   VideoCommentsResult,
@@ -165,11 +165,11 @@ export async function searchVideos(
   };
 }
 
-/** YouTube's Live page (what Invidious called trending). */
-export async function fetchTrendingVideos(
-  input: Partial<TrendingInput> = {},
+/** YouTube's Live page: streams live now. */
+export async function fetchLiveVideos(
+  input: LiveInput = {},
   opts: CacheMode = {},
-): Promise<TrendingVideosResult> {
+): Promise<LiveVideosResult> {
   const page = await call(() => gateway().live(opts));
   const videos = page.videos.map(toUnifiedVideo);
   return { videos: input.limit ? videos.slice(0, input.limit) : videos };

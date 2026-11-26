@@ -8,7 +8,7 @@ import {
   recurringTokensFromDislikedTitles,
   videoPassesTasteSession,
 } from "@/lib/taste-deck-filter";
-import { fetchTrendingVideos } from "@/server/catalog";
+import { fetchLiveVideos } from "@/server/catalog";
 import type { UnifiedVideo } from "@/server/catalog/types";
 import type { AppDb } from "@/server/db/client";
 import { interactions } from "@/server/db/schema";
@@ -197,9 +197,9 @@ export async function buildTasteDeckVideos(
   }
 
   if (fresh.length === 0) {
-    let trending: Awaited<ReturnType<typeof fetchTrendingVideos>>;
+    let trending: Awaited<ReturnType<typeof fetchLiveVideos>>;
     try {
-      trending = await fetchTrendingVideos({ region, limit: 120 });
+      trending = await fetchLiveVideos({ limit: 120 });
     } catch (e) {
       if (e instanceof UpstreamUnavailableError) {
         throw new TRPCError({ code: "BAD_GATEWAY", message: e.message });

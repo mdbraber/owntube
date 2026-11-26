@@ -266,7 +266,7 @@ export function TasteOnboardingClient() {
       await Promise.all([
         utils.settings.get.invalidate(),
         utils.feed.home.invalidate(),
-        utils.trending.list.invalidate(),
+        utils.live.list.invalidate(),
       ]);
       setStep("keywords");
     } catch (e) {

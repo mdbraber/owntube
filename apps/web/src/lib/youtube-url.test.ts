@@ -131,7 +131,7 @@ describe("canonicalYoutubePath: confirmed failures", () => {
     [`/channel/${UC}/videos`, `/channel/${UC}`],
     ["/results?search_query=rick+astley", "/search?q=rick+astley"],
     ["/feed/subscriptions", "/subscriptions"],
-    ["/feed/trending", "/trending"],
+    ["/feed/trending", "/live"],
     ["/feed/history", "/history"],
     ["/feed/library", "/playlists"],
     ["/feed/playlists", "/playlists"],
@@ -217,7 +217,7 @@ describe("canonicalYoutubePath: required behaviour", () => {
   });
 
   it("maps every feed", () => {
-    expect(redirectOf("/feed/explore")).toBe("/trending");
+    expect(redirectOf("/feed/explore")).toBe("/live");
     expect(redirectOf("/feed/you")).toBe("/playlists");
     expect(redirectOf("/feed/somethingelse")).toBe("/");
     expect(redirectOf("/feed")).toBe("/");

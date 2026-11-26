@@ -22,6 +22,6 @@ export function formatRecommendationReason(
         ? `Similar to ${reason.channelName}, which you're subscribed to`
         : "Related to videos you watched";
     case "trending":
-      return "Trending now";
+      return "Live now";
   }
 }

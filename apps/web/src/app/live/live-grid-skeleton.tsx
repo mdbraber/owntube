@@ -14,7 +14,7 @@ const CARD_IDS = [
  * card shape the loaded trending videos use, so the loading state is a
  * backdrop of what's about to appear rather than bare text.
  */
-export function TrendingGridSkeleton() {
+export function LiveGridSkeleton() {
   return (
     <div
       className="ot-video-grid mx-[-16px] w-[calc(100%_+_2rem)] sm:mx-0 sm:w-full"

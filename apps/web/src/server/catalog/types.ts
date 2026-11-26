@@ -208,24 +208,19 @@ export const videoCommentsResultSchema = z.object({
 
 export type VideoCommentsResult = z.infer<typeof videoCommentsResultSchema>;
 
-export const trendingVideoCategorySchema = z
-  .enum(["music", "gaming", "movies"])
-  .optional();
-
-export const trendingInputSchema = z.object({
-  region: z.string().length(2).default("US"),
-  limit: z.number().int().min(1).max(60).optional(),
-  category: trendingVideoCategorySchema,
+/** YouTube's Live page: streams live now (YouTube has no Trending page any more). */
+export const liveInputSchema = z.object({
+  limit: z.number().int().min(1).max(200).optional(),
 });
 
-export type TrendingInput = z.infer<typeof trendingInputSchema>;
+export type LiveInput = z.infer<typeof liveInputSchema>;
 
-export const trendingVideosResultSchema = z.object({
+export const liveVideosResultSchema = z.object({
   videos: z.array(unifiedVideoSchema),
   warning: z.string().optional(),
 });
 
-export type TrendingVideosResult = z.infer<typeof trendingVideosResultSchema>;
+export type LiveVideosResult = z.infer<typeof liveVideosResultSchema>;
 
 export const shortsFeedPurposeSchema = z.enum(["feed", "shelf"]);
 

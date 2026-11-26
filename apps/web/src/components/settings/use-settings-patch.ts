@@ -57,7 +57,7 @@ export function useSettingsPatch({
         }
         if (patch.trendingRegion !== undefined) {
           void utils.feed.home.invalidate();
-          void utils.trending.list.invalidate();
+          void utils.live.list.invalidate();
         }
       } catch (e) {
         setState("error");

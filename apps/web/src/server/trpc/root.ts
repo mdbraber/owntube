@@ -7,6 +7,7 @@ import { favoritesRouter } from "@/server/trpc/routers/favorites";
 import { feedRouter } from "@/server/trpc/routers/feed";
 import { historyRouter } from "@/server/trpc/routers/history";
 import { interactionsRouter } from "@/server/trpc/routers/interactions";
+import { liveRouter } from "@/server/trpc/routers/live";
 import { playlistsRouter } from "@/server/trpc/routers/playlists";
 import { queueRouter } from "@/server/trpc/routers/queue";
 import { remoteRouter } from "@/server/trpc/routers/remote";
@@ -18,7 +19,6 @@ import { statsRouter } from "@/server/trpc/routers/stats";
 import { subscriptionsRouter } from "@/server/trpc/routers/subscriptions";
 import { takeoutRouter } from "@/server/trpc/routers/takeout";
 import { tasteRouter } from "@/server/trpc/routers/taste";
-import { trendingRouter } from "@/server/trpc/routers/trending";
 import { tvRemoteRouter } from "@/server/trpc/routers/tv-remote";
 import { videoRouter } from "@/server/trpc/routers/video";
 
@@ -43,7 +43,7 @@ export const appRouter = router({
   subscriptions: subscriptionsRouter,
   takeout: takeoutRouter,
   taste: tasteRouter,
-  trending: trendingRouter,
+  live: liveRouter,
   video: videoRouter,
 });
 

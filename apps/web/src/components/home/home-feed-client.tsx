@@ -173,9 +173,7 @@ export function HomeFeedClient({ region, isAuthed }: HomeFeedClientProps) {
         ? "Personalized feed — we are still learning what you like."
         : "Based on the channels you watched recently (trending only fills a small share).";
     }
-    const cat = lastPage.category;
-    const catLabel = cat ?? "general";
-    return `Trending ${lastPage.region} · ${catLabel}. ${
+    return `Live now. ${
       isAuthed
         ? 'The "For You" tab contains recommendations.'
         : "Sign in for a personalized feed."

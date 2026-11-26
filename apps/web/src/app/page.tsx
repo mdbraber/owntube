@@ -57,7 +57,7 @@ function prefetchBlock(
         pageSize: Math.min(48, Math.max(12, blockFetchCount(block))),
       });
     case "explore":
-      return helpers.trending.list.prefetch({ region, limit: 60 });
+      return helpers.live.list.prefetch({ limit: 60 });
     default:
       return Promise.resolve();
   }

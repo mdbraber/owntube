@@ -39,7 +39,7 @@ import {
 import { readWatchParams, type WatchParams } from "@/lib/youtube-url";
 import { watchHref } from "@/lib/yt-routes";
 import { auth } from "@/server/auth";
-import { fetchTrendingVideos, fetchVideoDetail } from "@/server/catalog";
+import { fetchLiveVideos, fetchVideoDetail } from "@/server/catalog";
 import type { UnifiedVideo, VideoDetail } from "@/server/catalog/types";
 import { videoDetailInputSchema } from "@/server/catalog/types";
 import { getDb } from "@/server/db/client";
@@ -186,7 +186,7 @@ export default async function WatchPage({ searchParams }: WatchPageProps) {
             region: feedRegion,
           })
         ).videos
-      : (await fetchTrendingVideos({ region: feedRegion, limit: 28 })).videos;
+      : (await fetchLiveVideos({ limit: 28 })).videos;
     sidebarVideos = feedVideosRaw
       .filter((v) => v.videoId !== videoId)
       .slice(0, 20);

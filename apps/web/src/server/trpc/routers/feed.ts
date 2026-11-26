@@ -7,12 +7,8 @@ import {
   readLatestCacheRow,
   writeCache,
 } from "@/server/cache/video-cache";
-import { fetchTrendingVideos } from "@/server/catalog";
-import {
-  trendingVideoCategorySchema,
-  type UnifiedVideo,
-  unifiedVideoSchema,
-} from "@/server/catalog/types";
+import { fetchLiveVideos } from "@/server/catalog";
+import { type UnifiedVideo, unifiedVideoSchema } from "@/server/catalog/types";
 import type { AppDb } from "@/server/db/client";
 import { interactions, watchHistory } from "@/server/db/schema";
 import { RateLimitExceededError } from "@/server/errors/rate-limit-exceeded";
@@ -54,8 +50,6 @@ const homeInputSchema = z
     cursor: z.number().int().min(0).nullish(),
     pageSize: z.number().int().min(1).max(48).default(24),
     region: z.string().length(2).optional(),
-    /** When set, home uses regional trending for this Invidious category (any user). */
-    category: trendingVideoCategorySchema,
   })
   .optional();
 
@@ -100,13 +94,12 @@ export function orderTrendingTailByTaste(
 async function buildTrendingTailPoolUncached(
   db: AppDb,
   userId: number | null,
-  region: string,
   excludeSubscribed: boolean,
 ) {
-  const trending = await fetchTrendingVideos({ region, limit: 200 });
-  // Drop live/upcoming streams: regional trending leaks foreign 24/7 live TV
+  const trending = await fetchLiveVideos({ limit: 200 });
+  // Drop live/upcoming streams: YouTube's Live page is mostly 24/7 live TV
   // (e.g. news channels) that matches no interest and never ends — pure noise in
-  // a personalized home tail.
+  // a personalized home tail. Its past streams stay.
   const withoutLive = trending.videos.filter((v) => !v.isLive && !v.isUpcoming);
   let pool = withoutLive;
   if (userId) {
@@ -194,7 +187,6 @@ async function buildTrendingTailPool(
     const pool = await buildTrendingTailPoolUncached(
       db,
       userId,
-      region,
       excludeSubscribed,
     );
     return {
@@ -429,7 +421,6 @@ export const feedRouter = router({
   home: publicProcedure.input(homeInputSchema).query(async ({ ctx, input }) => {
     const pageSize = input?.pageSize ?? 24;
     const skip = resolveHomeFeedSkip(input, pageSize);
-    const category = input?.category;
     const savedRegion =
       ctx.userId != null
         ? normalizeTrendingRegionStored(
@@ -440,7 +431,7 @@ export const feedRouter = router({
       input?.region ?? savedRegion ?? "US",
     );
     try {
-      if (ctx.userId && !category) {
+      if (ctx.userId) {
         // Materialized read-through: SSR prefetch is cache-only (never blocks on
         // the reco engine / upstream); the client and warmer compute + persist.
         const { stream, coldStart } = await getHomeStream(ctx.db, ctx.userId, {
@@ -455,15 +446,10 @@ export const feedRouter = router({
           coldStart,
           hasMore,
           region,
-          category: null as null,
         };
       }
       const limit = Math.min(200, skip + pageSize + pageSize);
-      const trending = await fetchTrendingVideos({
-        region,
-        limit,
-        category,
-      });
+      const trending = await fetchLiveVideos({ limit });
       let pool = trending.videos;
       if (ctx.userId) {
         const seenRows = ctx.db
@@ -482,12 +468,11 @@ export const feedRouter = router({
       }
       const { videos, hasMore } = sliceHomeFeedStream(pool, skip, pageSize);
       return {
-        kind: "trending" as const,
+        kind: "live" as const,
         videos,
         coldStart: true,
         hasMore,
         region,
-        category: category ?? null,
       };
     } catch (e) {
       if (e instanceof UpstreamUnavailableError) {

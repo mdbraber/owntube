@@ -8,6 +8,10 @@ const nextConfig: NextConfig = {
   // The browser may load images only from this site (never Google); media
   // and fetches are watched report-only. See
   // src/lib/content-security-policy.ts.
+  // Trending became Live (YouTube's Trending page was its Live tab).
+  async redirects() {
+    return [{ source: "/trending", destination: "/live", permanent: true }];
+  },
   async headers() {
     return [
       {

@@ -21,7 +21,7 @@ export function HomeRegionPicker({
     onSuccess: async () => {
       await utils.settings.get.invalidate();
       await utils.feed.home.invalidate();
-      await utils.trending.list.invalidate();
+      await utils.live.list.invalidate();
     },
   });
 

@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { takeNewestVideos } from "@/lib/published-sort-key";
 import {
   fetchChannelPage,
-  fetchTrendingVideos,
+  fetchLiveVideos,
   searchVideos,
 } from "@/server/catalog";
 import type { UnifiedVideo } from "@/server/catalog/types";
@@ -144,7 +144,7 @@ export async function collectTaggedVideoCandidates(
   historyOnlyUnique: number;
   trendingWarning?: string;
 }> {
-  const { region, signals, tasteKeywords } = args;
+  const { signals, tasteKeywords } = args;
   const nowSec = Math.floor(Date.now() / 1000);
   const coldStart = useColdStartBlend(signals.totalWatches);
   const taggedCandidates: TaggedVideoCandidate[] = [];
@@ -243,7 +243,7 @@ export async function collectTaggedVideoCandidates(
 
   let trendingWarning: string | undefined;
   if (needTrendingBlend) {
-    const trending = await fetchTrendingVideos({ region, limit: 45 });
+    const trending = await fetchLiveVideos({ limit: 45 });
     trendingWarning = trending.warning;
     for (const v of trending.videos) {
       taggedCandidates.push({ video: v, source: "trending" });

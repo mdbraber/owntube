@@ -93,7 +93,7 @@ const ExploreIcon = (
     strokeLinejoin="round"
     aria-hidden
   >
-    <title>Explore</title>
+    <title>Live</title>
     <circle cx="12" cy="12" r="9" />
     <path d="m15.6 8.4-2.1 5.1-5.1 2.1 2.1-5.1z" />
     <path d="M11.6 12.4h.01" />
@@ -102,7 +102,7 @@ const ExploreIcon = (
 
 const ExploreIconActive = (
   <svg viewBox="0 0 24 24" fill="none" aria-hidden>
-    <title>Explore</title>
+    <title>Live</title>
     <path
       fillRule="evenodd"
       clipRule="evenodd"
@@ -338,8 +338,8 @@ export const SIDEBAR_NAV: NavItem[] = [
   },
   {
     key: "explore",
-    href: "/trending",
-    label: "Explore",
+    href: "/live",
+    label: "Live",
     icon: ExploreIcon,
     iconActive: ExploreIconActive,
   },
@@ -467,7 +467,7 @@ export function activeForPath(
 ): boolean {
   if (href === "/") return pathname === "/";
   if (key === "explore") {
-    return pathname === "/trending" || pathname.startsWith("/trending");
+    return pathname === "/live" || pathname.startsWith("/live/");
   }
   return pathname === href || pathname.startsWith(`${href}/`);
 }

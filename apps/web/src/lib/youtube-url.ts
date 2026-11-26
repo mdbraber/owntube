@@ -25,8 +25,8 @@ const VIDEO_PREFIXES = new Set(["shorts", "embed", "live", "v", "e"]);
 const FEED_TARGETS: Record<string, string> = {
   subscriptions: "/subscriptions",
   channels: "/subscriptions/channels",
-  trending: "/trending",
-  explore: "/trending",
+  trending: "/live",
+  explore: "/live",
   history: "/history",
   library: "/playlists",
   playlists: "/playlists",
@@ -73,6 +73,7 @@ const APP_ROUTES = new Set([
   "channel",
   "dashboard",
   "history",
+  "live",
   "login",
   "media",
   "onboarding",
@@ -86,7 +87,6 @@ const APP_ROUTES = new Set([
   "settings",
   "shorts",
   "subscriptions",
-  "trending",
   "tv",
   "watch",
 ]);

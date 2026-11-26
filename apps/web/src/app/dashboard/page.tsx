@@ -48,7 +48,7 @@ function reasonLabel(
     case "related":
       return "Related to a watch";
     case "trending":
-      return "Trending";
+      return "Live";
     default:
       return null;
   }

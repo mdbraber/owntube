@@ -777,7 +777,7 @@ function ServerRows() {
     onSuccess: async (res) => {
       await Promise.all([
         utils.feed.home.invalidate(),
-        utils.trending.list.invalidate(),
+        utils.live.list.invalidate(),
         utils.search.videos.invalidate(),
         utils.video.detail.invalidate(),
         utils.video.related.invalidate(),
