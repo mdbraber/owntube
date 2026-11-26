@@ -37,26 +37,17 @@ function sessionUrls(sid: string): PresentationUrls {
 }
 
 /** What the client asked for: codec families it can decode and the tallest picture it wants. */
-function selectTracks(
-  presentation: Presentation,
-  c: Context,
-  transport: PlaybackSession["transport"],
-): Presentation {
+function selectTracks(presentation: Presentation, c: Context): Presentation {
   const families = (c.req.query("family") ?? "avc,vp9,av01")
     .split(",")
     .filter((f): f is VideoFamily => FAMILIES.has(f as VideoFamily));
   const maxHeight =
     Number(c.req.query("maxHeight")) || Number.POSITIVE_INFINITY;
-  // Over SABR only fMP4 tracks can be served.
-  const servable = (t: { mimeType: string }) =>
-    transport === "byte-range" || t.mimeType.endsWith("mp4");
   return {
     ...presentation,
     video: presentation.video.filter(
-      (v) =>
-        families.includes(v.family) && v.height <= maxHeight && servable(v),
+      (v) => families.includes(v.family) && v.height <= maxHeight,
     ),
-    audio: presentation.audio.filter(servable),
   };
 }
 
@@ -120,11 +111,7 @@ export function mediaRoutes(
         { "content-type": HLS, "cache-control": "no-store" },
       );
     }
-    const presentation = selectTracks(
-      session.sources.presentation,
-      c,
-      session.transport,
-    );
+    const presentation = selectTracks(session.sources.presentation, c);
     if (presentation.video.length === 0 || presentation.audio.length === 0)
       return c.text("no playable tracks", 404);
     return c.body(write(session, presentation), 200, {

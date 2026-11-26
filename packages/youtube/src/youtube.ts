@@ -41,4 +41,9 @@ export class YouTube {
     // Stream URLs are bound to the session's address: fetch them with `session.fetch`.
     return { ...result, session };
   }
+
+  /** Gives up on a YouTube session (see `SessionPool.retire`). */
+  retire(session: YouTubeSession): void {
+    this.#pool.retire(session);
+  }
 }

@@ -1,6 +1,11 @@
 import type { Segment } from "@owntube/playback/sidx";
 import { describe, expect, it } from "vitest";
-import { mfhdSequence, SabrTrack, type StreamOpener } from "./sabr.ts";
+import {
+  AttestationRequired,
+  mfhdSequence,
+  SabrTrack,
+  type StreamOpener,
+} from "./sabr.ts";
 
 /**
  * A synthetic track file: a 100-byte prefix (stands for ftyp+moov+sidx), then
@@ -60,6 +65,7 @@ function track(
   return new SabrTrack(
     {
       kind: "video",
+      container: "mp4",
       itag: 136,
       companionAudioItag: 140,
       segments: segmentsOf,
@@ -125,5 +131,98 @@ describe("mfhdSequence", () => {
   it("reads a moof's sequence number and rejects anything else", () => {
     expect(mfhdSequence(fragmentBytes(4))).toBe(5);
     expect(() => mfhdSequence(new Uint8Array(24))).toThrow(/moof/);
+  });
+});
+
+describe("SabrTrack over WebM", () => {
+  // Clusters identified by Timecode (= their cue time), not by moof sequence.
+  const clusterSizes = [120, 90, 150];
+  const clusters: Segment[] = [];
+  let pos = PREFIX;
+  for (const [i, size] of clusterSizes.entries()) {
+    clusters.push({
+      range: { start: pos, end: pos + size - 1 },
+      durationSec: 4,
+      time: i * 4000,
+    });
+    pos += size;
+  }
+  const webm = new Uint8Array(pos).fill(0x22, 0, PREFIX);
+  for (const [i, c] of clusters.entries()) {
+    const bytes = new Uint8Array(clusterSizes[i] as number).fill(0x60 + i);
+    // Cluster ID, 1-byte size, Timecode element (ID 0xE7, 4-byte uint).
+    bytes.set(
+      [
+        0x1f,
+        0x43,
+        0xb6,
+        0x75,
+        0x80 | 6,
+        0xe7,
+        0x84,
+        0,
+        0,
+        ((i * 4000) >> 8) & 0xff,
+        (i * 4000) & 0xff,
+      ],
+      0,
+    );
+    webm.set(bytes, c.range.start);
+  }
+  const open: StreamOpener = (startMs) => {
+    const first = clusters.findIndex((c) => (c.time ?? 0) >= startMs);
+    const body = new Uint8Array([
+      ...webm.subarray(0, PREFIX),
+      ...webm.subarray(clusters[first]?.range.start ?? pos),
+    ]);
+    return {
+      stream: new Response(body).body as ReadableStream<ArrayBufferView>,
+      close: async () => {},
+    };
+  };
+  const t = new SabrTrack(
+    {
+      kind: "video",
+      container: "webm",
+      itag: 247,
+      companionAudioItag: 251,
+      segments: async () => clusters,
+      indexEnd: PREFIX - 1,
+    },
+    open,
+  );
+
+  it("reads clusters by range, recognised by their Timecode", async () => {
+    for (const c of [clusters[2], clusters[0], clusters[1]]) {
+      const r = c?.range ?? { start: 0, end: 0 };
+      expect(await t.read(r)).toEqual(webm.subarray(r.start, r.end + 1));
+    }
+  });
+});
+
+describe("SabrTrack when a pull fails", () => {
+  it("rejects the read with the pull's error and starts a new pull next time", async () => {
+    let attempt = 0;
+    const open: StreamOpener = (startMs) => {
+      attempt++;
+      if (attempt === 1) {
+        // Prefix arrives, then the server rejects attestation mid-stream.
+        const stream = new ReadableStream<ArrayBufferView>({
+          start(controller) {
+            controller.enqueue(file.subarray(0, PREFIX));
+          },
+          pull(controller) {
+            controller.error(new AttestationRequired());
+          },
+        });
+        return { stream, close: async () => {} };
+      }
+      return opener().open(startMs);
+    };
+    const t = track(open);
+    const s = segments[1]?.range ?? { start: 0, end: 0 };
+    await expect(t.read(s)).rejects.toBeInstanceOf(AttestationRequired);
+    expect(await t.read(s)).toEqual(expected(s.start, s.end));
+    expect(attempt).toBe(2);
   });
 });

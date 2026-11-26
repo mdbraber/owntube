@@ -4,6 +4,8 @@ import type { ByteRange } from "./tracks.ts";
 export interface Segment {
   range: ByteRange;
   durationSec: number;
+  /** Start in the container's own time units, where the container identifies fragments by time (WebM: the cue time). */
+  time?: number;
 }
 
 /**

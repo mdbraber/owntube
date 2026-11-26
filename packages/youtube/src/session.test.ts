@@ -59,6 +59,17 @@ describe("SessionPool", () => {
     expect(await p.session()).not.toBe(first);
   });
 
+  it("retires a session at once when asked, flagging its address", async () => {
+    const flagged: Array<string | undefined> = [];
+    const { p } = pool({
+      addresses: { next: () => "2001:db8::2", flag: (a) => flagged.push(a) },
+    });
+    const first = await p.session();
+    p.retire(first);
+    expect(flagged).toEqual(["2001:db8::2"]);
+    expect(await p.session()).not.toBe(first);
+  });
+
   it("forgives a bot check followed by a normal answer", async () => {
     const { p } = pool({ maxStrikes: 2 });
     const first = await p.session();

@@ -1,11 +1,22 @@
 import type { Segment } from "@owntube/playback/sidx";
 import type { ByteRange } from "@owntube/playback/tracks";
+import { clusterTimecode } from "@owntube/playback/webm";
 import type { ClientInfo } from "googlevideo/protos";
 import { SabrStream } from "googlevideo/sabr-stream";
 import type { SabrFormat } from "googlevideo/shared-types";
 import { buildSabrFormat, EnabledTrackTypes } from "googlevideo/utils";
 import type { ClientIdentity } from "./clients.ts";
 import type { RawFormat, RawPlayerResponse } from "./player.ts";
+
+/**
+ * YouTube rejected the stream's attestation: this identity needs a PO token
+ * (or a fresh identity) before SABR will continue.
+ */
+export class AttestationRequired extends Error {
+  constructor() {
+    super("sabr: stream protection attestation rejected");
+  }
+}
 
 /** Where and as whom a video is streamed over SABR. */
 export interface SabrEndpoint {
@@ -16,6 +27,8 @@ export interface SabrEndpoint {
   formats: SabrFormat[];
   /** Egress-bound fetch with the identity's user agent. */
   fetch: typeof globalThis.fetch;
+  /** Mints a PO token when the SABR server asks for attestation; without one, a rejection ends the pull. */
+  mintPoToken?: () => Promise<Uint8Array>;
   /** Asked when the SABR server demands a new player response mid-stream; `token` must be echoed. */
   reload?: (
     token: string | undefined,
@@ -70,6 +83,8 @@ export function sabrEndpoint(
 
 export interface SabrTrackOptions {
   kind: "video" | "audio";
+  /** How fragments are recognised: fMP4 by `mfhd` sequence, WebM clusters by Timecode (= their cue time). */
+  container: "mp4" | "webm";
   itag: number;
   /** For dubbed audio: which language's track (`audioTrack.id`). */
   audioTrackId?: string;
@@ -97,6 +112,19 @@ export function sabrOpener(
   return (startTimeMs) => {
     const e = endpoint();
     const reload = e.reload;
+    const callbacks: NonNullable<
+      ConstructorParameters<typeof SabrStream>[0]["callbacks"]
+    > = {};
+    if (reload) {
+      callbacks.onReloadPlayerResponse = async (context) => {
+        const fresh = await reload(context?.reloadPlaybackParams?.token);
+        return {
+          serverAbrStreamingUrl: fresh.streamingUrl,
+          videoPlaybackUstreamerConfig: fresh.ustreamerConfig,
+        };
+      };
+    }
+    if (e.mintPoToken) callbacks.onMintPoToken = e.mintPoToken;
     const stream = new SabrStream({
       videoId: e.videoId,
       fetchFunction: e.fetch,
@@ -104,21 +132,7 @@ export function sabrOpener(
       videoPlaybackUstreamerConfig: e.ustreamerConfig,
       clientInfo: e.clientInfo,
       formats: e.formats,
-      ...(reload
-        ? {
-            callbacks: {
-              onReloadPlayerResponse: async (context) => {
-                const fresh = await reload(
-                  context?.reloadPlaybackParams?.token,
-                );
-                return {
-                  serverAbrStreamingUrl: fresh.streamingUrl,
-                  videoPlaybackUstreamerConfig: fresh.ustreamerConfig,
-                };
-              },
-            },
-          }
-        : {}),
+      callbacks,
     });
     const audioItag = o.kind === "audio" ? o.itag : o.companionAudioItag;
     const started = stream.start({
@@ -140,12 +154,55 @@ export function sabrOpener(
     const other =
       o.kind === "video" ? started.audioStream : started.videoStream;
     void other.pipeTo(new WritableStream()).catch(() => {});
+    const out = failable(
+      o.kind === "video" ? started.videoStream : started.audioStream,
+    );
+    stream.on("error", (error) => out.fail(error));
+    // Without a token to offer, a rejection is final: stop now instead of after googlevideo's retries.
+    stream.on("streamProtectionStatusUpdate", (status) => {
+      if (status.status === 3 && !e.mintPoToken) {
+        out.fail(new AttestationRequired());
+        void stream.abort().catch(() => {});
+      }
+    });
     return {
-      stream: o.kind === "video" ? started.videoStream : started.audioStream,
+      stream: out.stream,
       close: async () => {
         await stream.abort().catch(() => {});
       },
     };
+  };
+}
+
+/** A stream that can be made to fail from outside (when the SABR session errors). */
+function failable(inner: ReadableStream<ArrayBufferView>) {
+  const reader = inner.getReader();
+  let failure: Error | undefined;
+  let wake: ((error: Error) => void) | undefined;
+  const stream = new ReadableStream<ArrayBufferView>({
+    async pull(controller) {
+      if (failure) return controller.error(failure);
+      const failed = new Promise<never>((_, reject) => {
+        wake = reject;
+      });
+      try {
+        const { done, value } = await Promise.race([reader.read(), failed]);
+        if (done) controller.close();
+        else controller.enqueue(value);
+      } catch (error) {
+        controller.error(error);
+      } finally {
+        wake = undefined;
+      }
+    },
+    cancel: (reason) => reader.cancel(reason),
+  });
+  return {
+    stream,
+    fail(error: Error) {
+      failure ??= error;
+      wake?.(failure);
+    },
   };
 }
 
@@ -154,7 +211,8 @@ export function sabrOpener(
  * file's own bytes (measured 2026-11-26: init, index and fragments identical
  * to byte-range reads), so a range maps onto fragments from the index. A pull
  * keeps going while reads are sequential and restarts at the right time on a
- * jump; each fragment's `mfhd` sequence number (index + 1) confirms where a
+ * jump. Each fragment says which one it is (fMP4: the `mfhd` sequence number,
+ * index + 1; WebM: the cluster Timecode, its cue time), which confirms where a
  * pull actually is.
  */
 export class SabrTrack {
@@ -177,7 +235,13 @@ export class SabrTrack {
     // wait behind the read that needs it.
     const segments =
       range.end > this.#o.indexEnd ? await this.#o.segments() : undefined;
-    const run = this.#queue.then(() => this.#read(range, segments));
+    const run = this.#queue.then(() =>
+      this.#read(range, segments).catch(async (error: unknown) => {
+        // A failed pull cannot be resumed; the next read starts a new one.
+        await this.close();
+        throw error;
+      }),
+    );
     this.#queue = run.catch(() => {});
     return run;
   }
@@ -227,11 +291,9 @@ export class SabrTrack {
       const seg = segments[index];
       if (!seg) throw new Error(`sabr: no fragment ${k}`);
       const bytes = await pull.take(seg.range.end - seg.range.start + 1);
-      const sequence = mfhdSequence(bytes);
-      if (sequence !== index + 1)
-        throw new Error(
-          `sabr: expected fragment ${index + 1}, got ${sequence}`,
-        );
+      const found = fragmentIndex(bytes, this.#o.container, segments);
+      if (found !== index)
+        throw new Error(`sabr: expected fragment ${index}, got ${found}`);
       pull.next = index + 1;
       this.#keep(index, bytes);
       if (index === k) return bytes;
@@ -253,7 +315,7 @@ export class SabrTrack {
     const prefix = await pull.take(this.#o.indexEnd + 1);
     this.#prefix ??= prefix;
     pull.next = k;
-    if (segments) await pull.alignTo(k, segments);
+    if (segments) await pull.alignTo(k, segments, this.#o.container);
   }
 
   #keep(index: number, bytes: Uint8Array): void {
@@ -286,19 +348,21 @@ class Pull {
     return out;
   }
 
-  /** Skips whole fragments until the next one is `k`, judged by the next moof's sequence number. */
-  async alignTo(k: number, segments: readonly Segment[]): Promise<void> {
+  /** Skips whole fragments until the next one is `k`. */
+  async alignTo(
+    k: number,
+    segments: readonly Segment[],
+    container: SabrTrackOptions["container"],
+  ): Promise<void> {
     for (;;) {
       await this.#fill(24);
-      const sequence = mfhdSequence(this.#buffer);
-      if (sequence === k + 1) return;
-      if (sequence > k + 1 || sequence < 1)
-        throw new Error(
-          `sabr: stream at fragment ${sequence}, wanted ${k + 1}`,
-        );
-      const seg = segments[sequence - 1] as Segment;
+      const index = fragmentIndex(this.#buffer, container, segments);
+      if (index === k) return;
+      if (index === undefined || index > k)
+        throw new Error(`sabr: stream at fragment ${index}, wanted ${k}`);
+      const seg = segments[index] as Segment;
       await this.take(seg.range.end - seg.range.start + 1);
-      this.next = sequence;
+      this.next = index + 1;
     }
   }
 
@@ -322,6 +386,18 @@ class Pull {
       this.#buffer = merged;
     }
   }
+}
+
+/** Which fragment (by index) starts at the beginning of `bytes`, or undefined when none does. */
+export function fragmentIndex(
+  bytes: Uint8Array,
+  container: SabrTrackOptions["container"],
+  segments: readonly Segment[],
+): number | undefined {
+  if (container === "mp4") return mfhdSequence(bytes) - 1;
+  const time = clusterTimecode(bytes);
+  const index = segments.findIndex((s) => s.time === time);
+  return index < 0 ? undefined : index;
 }
 
 /** The `mfhd` sequence number of the moof at the start of `bytes`. */

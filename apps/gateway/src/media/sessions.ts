@@ -11,12 +11,14 @@ import {
 } from "@owntube/playback/mp4/fragmented";
 import { parseSidx, type Segment } from "@owntube/playback/sidx";
 import type { AudioTrack, VideoTrack } from "@owntube/playback/tracks";
+import { parseCues, parseWebmInit } from "@owntube/playback/webm";
 import type { Unplayable } from "@owntube/youtube/playability";
 import {
   type PresentationSources,
   toPresentation,
 } from "@owntube/youtube/presentation";
 import {
+  AttestationRequired,
   type SabrEndpoint,
   SabrTrack,
   sabrEndpoint,
@@ -301,18 +303,15 @@ export class PlaybackSessions {
     };
   }
 
-  /** SABR serves fMP4 tracks (WebM over SABR is not built). */
   #canUseSabr(session: PlaybackSession, trackId: string): boolean {
-    return (
-      Boolean(session.sabr) &&
-      Boolean(findTrack(session, trackId)?.mimeType.endsWith("mp4"))
-    );
+    return Boolean(session.sabr) && Boolean(findTrack(session, trackId));
   }
 
   async #sabrPiece(
     session: PlaybackSession,
     trackId: string,
     piece: ByteSpan,
+    retried = false,
   ): Promise<ReadableStream<Uint8Array>> {
     if (!this.#canUseSabr(session, trackId))
       throw new Error(`no SABR for ${trackId}`);
@@ -330,6 +329,9 @@ export class PlaybackSessions {
         throw new Error(`no SABR source for ${trackId}`);
       const options = {
         kind: t.kind,
+        container: t.mimeType.endsWith("mp4")
+          ? ("mp4" as const)
+          : ("webm" as const),
         itag: media.itag,
         ...(media.audioTrackId ? { audioTrackId: media.audioTrackId } : {}),
         companionAudioItag: companion.itag,
@@ -342,7 +344,18 @@ export class PlaybackSessions {
       );
       session.sabrTracks.set(trackId, track);
     }
-    const bytes = await track.read(piece);
+    let bytes: Uint8Array;
+    try {
+      bytes = await track.read(piece);
+    } catch (error) {
+      if (!(error instanceof AttestationRequired) || retried) throw error;
+      // YouTube no longer trusts this identity: start over with a fresh one, once.
+      this.#youtube.retire(session.youtube);
+      for (const t of session.sabrTracks.values()) await t.close();
+      session.sabrTracks.clear();
+      await this.#refresh(session);
+      return this.#sabrPiece(session, trackId, piece, true);
+    }
     return new Response(bytes).body as ReadableStream<Uint8Array>;
   }
 
@@ -475,16 +488,18 @@ export class PlaybackSessions {
     );
   }
 
+  /** A track's fragments from its index: fMP4 sidx, or WebM Cues (which also need the init's Segment offset). */
   async #readSegments(
     session: PlaybackSession,
     trackId: string,
   ): Promise<Segment[]> {
     const track = findTrack(session, trackId);
     if (!track) throw new Error(`no track ${trackId}`);
-    return parseSidx(
-      await this.#bytes(session, trackId, track.index),
-      track.index.start,
-    );
+    const index = await this.#bytes(session, trackId, track.index);
+    if (track.mimeType.endsWith("mp4"))
+      return parseSidx(index, track.index.start);
+    const init = parseWebmInit(await this.#bytes(session, trackId, track.init));
+    return parseCues(index, init, track.contentLength);
   }
 
   /** New stream URLs for the same video; track ids stay stable across player responses. */

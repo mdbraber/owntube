@@ -121,6 +121,18 @@ export class SessionPool {
     return this.#player.player;
   }
 
+  /**
+   * Replaces `session` now and flags its address: YouTube has made clear it
+   * no longer trusts this identity (a rejected SABR attestation).
+   */
+  retire(session: YouTubeSession): void {
+    if (session.id !== this.#currentId) return;
+    this.#addresses.flag(session.localAddress);
+    this.#strikes = 0;
+    this.#current = undefined;
+    this.#currentId = undefined;
+  }
+
   /** Tells the pool how YouTube answered a request made with `session`. */
   report(session: YouTubeSession, unplayable: Unplayable | null): void {
     if (session.id !== this.#currentId) return; // already replaced
