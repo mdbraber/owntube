@@ -7,6 +7,7 @@ import type {
   PlaylistPage,
   SearchResult,
   Storyboard,
+  UploadDate,
   VideoDetail,
 } from "@owntube/contracts/model";
 import { type Innertube, YT, YTNodes } from "youtubei.js";
@@ -202,11 +203,21 @@ export class Catalog {
     };
   }
 
-  async search(query: string, continuation?: string): Promise<SearchResult> {
+  /** `uploadDate` narrows to recent uploads; a continuation carries its query's filters. */
+  async search(
+    query: string,
+    options: { uploadDate?: UploadDate; continuation?: string } = {},
+  ): Promise<SearchResult> {
     const yt = await this.#yt();
+    const { uploadDate, continuation } = options;
     const root = continuation
       ? await this.#continue(yt, "/search", continuation)
-      : (await yt.search(query)).page;
+      : (
+          await yt.search(
+            query,
+            uploadDate ? { upload_date: uploadDate } : undefined,
+          )
+        ).page;
     const items = collectItems(root);
     const next = findContinuation(root);
     return { ...items, ...(next ? { continuation: next } : {}) };

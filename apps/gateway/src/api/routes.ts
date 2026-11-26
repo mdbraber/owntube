@@ -1,5 +1,12 @@
 import { timingSafeEqual } from "node:crypto";
-import { channelTabSchema, continuationSchema } from "@owntube/contracts/model";
+import {
+  channelTabSchema,
+  continuationSchema,
+  uploadDateSchema,
+  type VideoDetail,
+  type VideoSummary,
+  videoSummarySchema,
+} from "@owntube/contracts/model";
 import type { Catalog } from "@owntube/youtube/catalog";
 import { type Context, Hono } from "hono";
 import { z } from "zod";
@@ -11,6 +18,34 @@ const CHANNEL_ID = /^UC[A-Za-z0-9_-]{22}$/;
 const PLAYLIST_ID = /^[A-Za-z0-9_-]{2,64}$/;
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
+
+const BATCH_MAX = 100;
+const BATCH_CONCURRENCY = 4;
+
+/** A video page's list-row fields. */
+function summaryOf(d: VideoDetail): VideoSummary {
+  return videoSummarySchema.parse(d);
+}
+
+/** `work` over `items`, at most `limit` at a time, results in order. */
+async function mapLimited<T, R>(
+  items: readonly T[],
+  limit: number,
+  work: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  const lane = async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await work(items[i] as T);
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, lane),
+  );
+  return out;
+}
 
 /** How long answers stay fresh, and how long a stale one may stand in when YouTube fails. */
 const POLICY = {
@@ -78,6 +113,28 @@ export function apiRoutes(
     return answer(c, () => cached("video", id, () => catalog.video(id)));
   });
 
+  // Summaries for a list of ids (queue, history, saved, playlists), out of the
+  // same per-video cache as the video page. Ids YouTube will not describe are
+  // left out; the caller keeps what it stored.
+  app.get("/api/videos", async (c) => {
+    const ids = [
+      ...new Set((c.req.query("ids") ?? "").split(",").filter(Boolean)),
+    ];
+    if (
+      ids.length === 0 ||
+      ids.length > BATCH_MAX ||
+      !ids.every((id) => VIDEO_ID.test(id))
+    )
+      return c.json({ error: `1 to ${BATCH_MAX} video ids` }, 400);
+    const videos = await mapLimited(ids, BATCH_CONCURRENCY, (id) =>
+      cached("video", id, () => catalog.video(id)).then(
+        (detail) => summaryOf(detail),
+        () => undefined,
+      ),
+    );
+    return c.json({ videos: videos.filter((v) => v !== undefined) });
+  });
+
   app.get("/api/video/:id/comments", (c) => {
     const id = c.req.param("id");
     const sort = c.req.query("sort") === "new" ? "new" : "top";
@@ -105,11 +162,17 @@ export function apiRoutes(
 
   app.get("/api/search", (c) => {
     const q = z.string().trim().min(1).max(200).safeParse(c.req.query("q"));
-    if (!q.success) return c.json({ error: "bad query" }, 400);
+    const date = uploadDateSchema.optional().safeParse(c.req.query("date"));
+    if (!q.success || !date.success)
+      return c.json({ error: "bad query or date" }, 400);
     const next = continuation(c);
+    const uploadDate = date.data;
     return answer(c, () =>
-      cached("search", `${q.data}:${next ?? ""}`, () =>
-        catalog.search(q.data, next),
+      cached("search", `${q.data}:${uploadDate ?? ""}:${next ?? ""}`, () =>
+        catalog.search(q.data, {
+          ...(uploadDate ? { uploadDate } : {}),
+          ...(next ? { continuation: next } : {}),
+        }),
       ),
     );
   });

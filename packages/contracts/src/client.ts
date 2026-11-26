@@ -5,6 +5,7 @@ import {
   commentPageSchema,
   playlistPageSchema,
   searchResultSchema,
+  type UploadDate,
   videoDetailSchema,
   videoSummarySchema,
 } from "./model.ts";
@@ -69,6 +70,15 @@ export function createGatewayClient(options: GatewayClientOptions) {
   return {
     video: (videoId: string) =>
       get(`/api/video/${id(videoId)}`, videoDetailSchema),
+    /** List-row summaries for these ids (at most 100); ids YouTube will not describe are absent. */
+    videos: async (videoIds: readonly string[]) =>
+      (
+        await get(
+          "/api/videos",
+          z.object({ videos: z.array(videoSummarySchema) }),
+          { ids: videoIds.join(",") },
+        )
+      ).videos,
     comments: (
       videoId: string,
       sort: "top" | "new" = "top",
@@ -87,8 +97,15 @@ export function createGatewayClient(options: GatewayClientOptions) {
         tab,
         continuation,
       }),
-    search: (q: string, continuation?: string) =>
-      get("/api/search", searchResultSchema, { q, continuation }),
+    search: (
+      q: string,
+      options: { uploadDate?: UploadDate; continuation?: string } = {},
+    ) =>
+      get("/api/search", searchResultSchema, {
+        q,
+        date: options.uploadDate,
+        continuation: options.continuation,
+      }),
     suggestions: (q: string) =>
       get("/api/suggestions", z.array(z.string()), { q }),
     playlist: (playlistId: string, continuation?: string) =>

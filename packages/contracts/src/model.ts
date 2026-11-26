@@ -183,6 +183,10 @@ export const channelPageSchema = z.object({
 });
 export type ChannelPage = z.infer<typeof channelPageSchema>;
 
+/** Search's upload-date filter (YouTube's own windows). */
+export const uploadDateSchema = z.enum(["today", "week", "month", "year"]);
+export type UploadDate = z.infer<typeof uploadDateSchema>;
+
 export const searchResultSchema = z.object({
   videos: z.array(videoSummarySchema),
   channels: z.array(channelSummarySchema),

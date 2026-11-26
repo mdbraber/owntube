@@ -66,6 +66,21 @@ describe("gateway app", () => {
     ).toBe(502);
   });
 
+  it("checks batch ids and search filters, and leaves out what YouTube will not describe", async () => {
+    const authorized = { headers: { authorization: `Bearer ${KEY}` } };
+    expect((await app.request("/api/videos", authorized)).status).toBe(400);
+    expect(
+      (await app.request("/api/videos?ids=dQw4w9WgXcQ,nope", authorized))
+        .status,
+    ).toBe(400);
+    const res = await app.request("/api/videos?ids=dQw4w9WgXcQ", authorized);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ videos: [] });
+    expect(
+      (await app.request("/api/search?q=x&date=decade", authorized)).status,
+    ).toBe(400);
+  });
+
   it("does not serve media for an unknown session", async () => {
     expect(
       (

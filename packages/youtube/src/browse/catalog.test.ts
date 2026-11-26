@@ -150,7 +150,9 @@ describe("Catalog on recorded YouTube responses", () => {
         ?.approximate,
     ).toBe(true);
     const second = searchResultSchema.parse(
-      await catalog.search("linus tech tips", first.continuation),
+      await catalog.search("linus tech tips", {
+        continuation: first.continuation,
+      }),
     );
     expect(second.videos.length).toBeGreaterThan(0);
     expectNoGoogleImages([first, second]);

@@ -34,10 +34,13 @@ describe("createGatewayClient", () => {
       apiKey: "K",
       fetch,
     });
-    const result = await client.search("lofi hip hop", "TOKEN");
+    const result = await client.search("lofi hip hop", {
+      uploadDate: "week",
+      continuation: "TOKEN",
+    });
     expect(result.videos[0]?.videoId).toBe("dQw4w9WgXcQ");
     expect(seen[0]?.url).toBe(
-      "http://gw:8080/api/search?q=lofi+hip+hop&continuation=TOKEN",
+      "http://gw:8080/api/search?q=lofi+hip+hop&date=week&continuation=TOKEN",
     );
     expect(seen[0]?.headers.get("authorization")).toBe("Bearer K");
   });

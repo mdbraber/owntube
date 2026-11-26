@@ -202,7 +202,9 @@ export const CATALOG_CORPUS: readonly CorpusEntry[] = [
     "Catalog.search and its second page",
     async (c) => {
       const first = await c.search("linus tech tips");
-      const second = await c.search("linus tech tips", first.continuation);
+      const second = await c.search("linus tech tips", {
+        continuation: first.continuation,
+      });
       return {
         first: String(first.videos.length),
         channels: String(first.channels.length),
