@@ -15,7 +15,7 @@ import type { Unplayable } from "../playability.ts";
 import type { RawFormat, RawPlayerResponse } from "../player.ts";
 import { toImages } from "./images.ts";
 import { collaboratorsFrom, collectItems, findContinuation } from "./items.ts";
-import { parseCount } from "./text.ts";
+import { exactCount, parseCount } from "./text.ts";
 
 /** YouTube's "Live" destination channel: what OwnTube calls Live (Invidious served it as "trending"). */
 export const LIVE_CHANNEL = "UC4R8DWoMoI7CAwX8_LjQHig";
@@ -102,6 +102,9 @@ export class Catalog {
     const audioLanguages = audioLanguagesOf(formats);
     const originalLanguage = audioLanguages.find((a) => a.isOriginal)?.language;
     const qualities = qualitiesOf(formats);
+    // YouTube leaves these null on some videos (very new ones, hidden likes).
+    const views = exactCount(b.view_count);
+    const likes = exactCount(b.like_count);
     const captions = (
       (info.captions as YTNodes.PlayerCaptionsTracklist | undefined)
         ?.caption_tracks ?? []
@@ -129,9 +132,7 @@ export class Catalog {
       ...(collaborators.length > 1 ? { collaborators } : {}),
       thumbnails: toImages(b.thumbnail),
       ...(b.duration && live === "none" ? { durationSec: b.duration } : {}),
-      ...(b.view_count !== undefined
-        ? { views: { value: b.view_count, approximate: false } }
-        : {}),
+      ...(views ? { views } : {}),
       ...(published ? { published } : {}),
       live,
       ...(startsAt && live === "upcoming" ? { startsAt } : {}),
@@ -140,9 +141,7 @@ export class Catalog {
       description: b.short_description ?? "",
       keywords: b.keywords ?? [],
       ...(b.category ? { category: b.category } : {}),
-      ...(b.like_count !== undefined
-        ? { likes: { value: b.like_count, approximate: false } }
-        : {}),
+      ...(likes ? { likes } : {}),
       captions,
       ...(originalLanguage ? { originalLanguage } : {}),
       audioLanguages,

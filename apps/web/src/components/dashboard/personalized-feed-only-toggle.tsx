@@ -39,12 +39,12 @@ export function PersonalizedFeedOnlyToggle() {
       />
       <span className="space-y-1">
         <span className="block text-sm font-medium">
-          Personalized picks only (no trending)
+          Personalized picks only (no live)
         </span>
         <span className="block text-sm text-[hsl(var(--muted-foreground))]">
-          Drop the regional-trending tail from the recommended feed. The feed
-          digs deeper into videos related to what you watch and like, so you get
-          more discovery instead of trending filler.
+          Drop the live-stream tail from the recommended feed. The feed digs
+          deeper into videos related to what you watch and like, so you get more
+          discovery instead of live filler.
         </span>
       </span>
     </label>

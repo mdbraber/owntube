@@ -171,7 +171,7 @@ export function HomeFeedClient({ region, isAuthed }: HomeFeedClientProps) {
     if (lastPage.kind === "personalized") {
       return lastPage.coldStart
         ? "Personalized feed — we are still learning what you like."
-        : "Based on the channels you watched recently (trending only fills a small share).";
+        : "Based on the channels you watched recently (live streams only fill a small share).";
     }
     return `Live now. ${
       isAuthed
@@ -262,7 +262,7 @@ export function HomeFeedClient({ region, isAuthed }: HomeFeedClientProps) {
         <>
           <div className="flex flex-wrap items-baseline justify-between gap-4">
             <h2 className="text-xl font-bold tracking-tight">
-              {lastPage?.kind === "personalized" ? "For You" : "Trending"}
+              {lastPage?.kind === "personalized" ? "For You" : "Live"}
             </h2>
             <span className="font-mono text-xs text-[hsl(var(--muted-foreground))]">
               {merged.length} video{merged.length === 1 ? "" : "s"}

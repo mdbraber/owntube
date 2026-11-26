@@ -31,6 +31,20 @@ const HDR_TRANSFERS = new Set([
 ]);
 
 /**
+ * One encoding of a format. An itag alone is not enough: a DRC copy of an
+ * audio itag (and other xtags variants) shares it but is a different file,
+ * with different init and index ranges.
+ */
+function formatKey(f: RawFormat): string {
+  return [
+    f.itag,
+    f.audioTrack?.id ?? "",
+    f.isDrc ? "drc" : "",
+    f.xtags ?? "",
+  ].join("|");
+}
+
+/**
  * The byte-range presentation of a player response: every adaptive format
  * with a URL and an index becomes a track. HDR is left out (players are not
  * asked about HDR support yet) and so are DRC audio duplicates.
@@ -40,14 +54,9 @@ export function toPresentation(result: PlayerResult): PresentationSources {
   const video: VideoTrack[] = [];
   const audio: AudioTrack[] = [];
   // Every adaptive format, with its resolved URL when it has one (SABR-only responses have none).
-  const resolved = new Map(
-    result.formats.map((f) => [`${f.itag}|${f.audioTrack?.id ?? ""}`, f.url]),
-  );
+  const resolved = new Map(result.formats.map((f) => [formatKey(f), f.url]));
   for (const raw of result.raw.streamingData?.adaptiveFormats ?? []) {
-    const format = {
-      ...raw,
-      url: resolved.get(`${raw.itag}|${raw.audioTrack?.id ?? ""}`),
-    };
+    const format = { ...raw, url: resolved.get(formatKey(raw)) };
     const parsed = parseMime(format.mimeType);
     const contentLength = Number(format.contentLength);
     if (
