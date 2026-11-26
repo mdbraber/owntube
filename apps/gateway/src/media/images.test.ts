@@ -25,10 +25,14 @@ describe("imageRoutes", () => {
   it("fetches once, then serves from disk", async () => {
     const { fetch, asked } = upstream();
     const app = imageRoutes({ cacheDir: dir, fetch });
-    const first = await app.request("/media/img/vi/dQw4w9WgXcQ/hqdefault.jpg");
+    const first = await app.request(
+      "/media/img/yti/vi/dQw4w9WgXcQ/hqdefault.jpg",
+    );
     expect(first.status).toBe(200);
     expect(first.headers.get("content-type")).toBe("image/jpeg");
-    const second = await app.request("/media/img/vi/dQw4w9WgXcQ/hqdefault.jpg");
+    const second = await app.request(
+      "/media/img/yti/vi/dQw4w9WgXcQ/hqdefault.jpg",
+    );
     expect([...new Uint8Array(await second.arrayBuffer())]).toEqual([
       0xff, 0xd8, 1,
     ]);
@@ -39,9 +43,9 @@ describe("imageRoutes", () => {
     const { fetch, asked } = upstream();
     let clock = 0;
     const app = imageRoutes({ cacheDir: dir, fetch, now: () => clock });
-    await app.request("/media/img/vi/x/hqdefault.jpg");
+    await app.request("/media/img/yti/vi/x/hqdefault.jpg");
     clock += 25 * 3600 * 1000;
-    const stale = await app.request("/media/img/vi/x/hqdefault.jpg");
+    const stale = await app.request("/media/img/yti/vi/x/hqdefault.jpg");
     expect([...new Uint8Array(await stale.arrayBuffer())]).toEqual([
       0xff, 0xd8, 1,
     ]);
@@ -49,14 +53,14 @@ describe("imageRoutes", () => {
     expect(asked).toHaveLength(2);
   });
 
-  it("keeps the signature query only for storyboards", async () => {
+  it("keeps the signed query of thumbnails and storyboards", async () => {
     const { fetch, asked } = upstream();
     const app = imageRoutes({ cacheDir: dir, fetch });
-    await app.request("/media/img/sb/x/storyboard3_L2/M0.jpg?sqp=a&sigh=b");
-    await app.request("/media/img/vi/x/hqdefault.jpg?track=1");
+    await app.request("/media/img/yti/sb/x/storyboard3_L2/M0.jpg?sqp=a&sigh=b");
+    await app.request("/media/img/yti/vi/x/hq720.jpg?sqp=c&rs=d");
     expect(asked).toEqual([
       "https://i.ytimg.com/sb/x/storyboard3_L2/M0.jpg?sqp=a&sigh=b",
-      "https://i.ytimg.com/vi/x/hqdefault.jpg",
+      "https://i.ytimg.com/vi/x/hq720.jpg?sqp=c&rs=d",
     ]);
   });
 
@@ -64,7 +68,7 @@ describe("imageRoutes", () => {
     const { fetch, asked } = upstream();
     const app = imageRoutes({ cacheDir: dir, fetch });
     expect((await app.request("/media/img/evil/x.jpg")).status).toBe(404);
-    expect((await app.request("/media/img/vi/../../etc/passwd")).status).toBe(
+    expect((await app.request("/media/img/yti/../../etc/passwd")).status).toBe(
       404,
     );
     expect(asked).toEqual([]);
@@ -74,7 +78,7 @@ describe("imageRoutes", () => {
     const { fetch } = upstream("text/html");
     const app = imageRoutes({ cacheDir: dir, fetch });
     expect(
-      (await app.request("/media/img/vi/x/maxresdefault.jpg")).status,
+      (await app.request("/media/img/yti/vi/x/maxresdefault.jpg")).status,
     ).toBe(404);
   });
 });
@@ -84,7 +88,7 @@ describe("pruneImages", () => {
     const { fetch } = upstream();
     const app = imageRoutes({ cacheDir: dir, fetch });
     for (const name of ["a", "b", "c"]) {
-      await app.request(`/media/img/vi/${name}/hqdefault.jpg`);
+      await app.request(`/media/img/yti/vi/${name}/hqdefault.jpg`);
       await new Promise((r) => setTimeout(r, 5));
     }
     expect(await pruneImages(dir, 6)).toBe(1);

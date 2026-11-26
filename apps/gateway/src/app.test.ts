@@ -1,3 +1,4 @@
+import { Catalog } from "@owntube/youtube/catalog";
 import { SessionPool } from "@owntube/youtube/session";
 import { YouTube } from "@owntube/youtube/youtube";
 import { describe, expect, it } from "vitest";
@@ -20,6 +21,10 @@ const noSessions = new PlaybackSessions({
 describe("gateway app", () => {
   const app = createApp({
     sessions: noSessions,
+    catalog: new Catalog({
+      yt: () => Promise.reject(new Error("no YouTube in this test")),
+      player: () => Promise.reject(new Error("no YouTube in this test")),
+    }),
     signingKey: KEY,
     images: { cacheDir: "/nonexistent", fetch: offline },
   });
@@ -41,6 +46,24 @@ describe("gateway app", () => {
     const exp = Math.floor(Date.now() / 1000) + 60;
     const forged = `/media/v/dQw4w9WgXcQ/manifest.mpd?exp=${exp}&sig=${signPlayback("x".repeat(32), "dQw4w9WgXcQ", exp)}`;
     expect((await app.request(forged)).status).toBe(403);
+  });
+
+  it("keeps the catalogue API behind the shared key", async () => {
+    expect((await app.request("/api/video/dQw4w9WgXcQ")).status).toBe(401);
+    expect(
+      (
+        await app.request("/api/video/dQw4w9WgXcQ", {
+          headers: { authorization: "Bearer nope" },
+        })
+      ).status,
+    ).toBe(401);
+    const authorized = { headers: { authorization: `Bearer ${KEY}` } };
+    expect((await app.request("/api/video/not-an-id", authorized)).status).toBe(
+      400,
+    );
+    expect(
+      (await app.request("/api/video/dQw4w9WgXcQ", authorized)).status,
+    ).toBe(502);
   });
 
   it("does not serve media for an unknown session", async () => {

@@ -10,6 +10,7 @@ COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY apps/gateway/package.json apps/gateway/package.json
 COPY packages/youtube/package.json packages/youtube/package.json
 COPY packages/playback/package.json packages/playback/package.json
+COPY packages/contracts/package.json packages/contracts/package.json
 RUN pnpm install --frozen-lockfile --prod --filter gateway...
 
 FROM node:24-bookworm-slim
@@ -25,6 +26,7 @@ COPY --from=deps /app /app
 COPY tsconfig.node.json ./
 COPY packages/youtube/src packages/youtube/src
 COPY packages/playback/src packages/playback/src
+COPY packages/contracts/src packages/contracts/src
 COPY apps/gateway/src apps/gateway/src
 USER node
 WORKDIR /app/apps/gateway

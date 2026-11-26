@@ -21,7 +21,8 @@
     "googlevideo": "^5.0.1",
     "playwright-core": "1.59.1",
     "undici": "^7.30.0",
-    "youtubei.js": "^18.3.0"
+    "youtubei.js": "^18.3.0",
+    "@owntube/contracts": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^24",
@@ -37,6 +38,7 @@
     "./session": "./src/session.ts",
     "./youtube": "./src/youtube.ts",
     "./sabr": "./src/sabr.ts",
-    "./potoken": "./src/potoken.ts"
+    "./potoken": "./src/potoken.ts",
+    "./catalog": "./src/browse/catalog.ts"
   }
 }

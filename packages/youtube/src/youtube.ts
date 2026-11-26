@@ -1,3 +1,4 @@
+import { Innertube } from "youtubei.js";
 import { type ClientIdentity, VISIONOS } from "./clients.ts";
 import { type PlayerResult, requestPlayer } from "./player.ts";
 import type { SessionPool, YouTubeSession } from "./session.ts";
@@ -9,6 +10,7 @@ import type { SessionPool, YouTubeSession } from "./session.ts";
  */
 export class YouTube {
   readonly #pool: SessionPool;
+  #innertube: { sessionId: string; yt: Promise<Innertube> } | undefined;
 
   constructor(pool: SessionPool) {
     this.#pool = pool;
@@ -40,6 +42,28 @@ export class YouTube {
     this.#pool.report(session, result.unplayable);
     // Stream URLs are bound to the session's address: fetch them with `session.fetch`.
     return { ...result, session };
+  }
+
+  /**
+   * youtubei.js on the current YouTube session (its address and visitor
+   * data), for the catalogue; replaced when the pool replaces the session.
+   */
+  async innertube(): Promise<Innertube> {
+    const session = await this.#pool.session();
+    if (this.#innertube?.sessionId !== session.id) {
+      const yt = Innertube.create({
+        fetch: session.fetch,
+        visitor_data: session.visitorData,
+        retrieve_player: false,
+        enable_session_cache: false,
+        lang: "en",
+      });
+      this.#innertube = { sessionId: session.id, yt };
+      yt.catch(() => {
+        if (this.#innertube?.yt === yt) this.#innertube = undefined;
+      });
+    }
+    return this.#innertube.yt;
   }
 
   /** Gives up on a YouTube session (see `SessionPool.retire`). */

@@ -1,4 +1,5 @@
 import { serve } from "@hono/node-server";
+import { Catalog } from "@owntube/youtube/catalog";
 import { WEB } from "@owntube/youtube/clients";
 import { createEgress } from "@owntube/youtube/egress";
 import { BrowserPoTokenMinter } from "@owntube/youtube/potoken";
@@ -14,6 +15,12 @@ const config = loadConfig();
 const egress = createEgress({
   ...(config.proxyUrl ? { proxyUrl: config.proxyUrl } : {}),
 });
+const youtube = new YouTube(new SessionPool({ egress }));
+const catalog = new Catalog({
+  yt: () => youtube.innertube(),
+  // Our own VISIONOS identity; a bot check here counts against the session like any other.
+  player: (videoId) => youtube.player(videoId),
+});
 const poTokens = config.poBrowser
   ? new BrowserPoTokenMinter({
       executablePath: config.poBrowser,
@@ -26,11 +33,12 @@ const sessions = new PlaybackSessions({
   log: (line) => process.stderr.write(`${new Date().toISOString()} ${line}\n`),
   preferSabr: config.transport === "sabr",
   progressiveStore: diskProgressiveStore(`${config.cacheDir}/progressive`),
-  youtube: new YouTube(new SessionPool({ egress })),
+  youtube,
 });
 const imageCacheDir = `${config.cacheDir}/images`;
 const app = createApp({
   sessions,
+  catalog,
   signingKey: config.signingKey,
   images: { cacheDir: imageCacheDir, fetch: egress.fetch() },
 });

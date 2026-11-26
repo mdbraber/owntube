@@ -1,0 +1,22 @@
+{
+  "name": "@owntube/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "OwnTube's domain model, as the gateway serves it and the web app (and later the clients) consume it.",
+  "exports": {
+    "./model": "./src/model.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "typescript": "^5",
+    "vitest": "^4.0.3"
+  }
+}

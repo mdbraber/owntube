@@ -6,37 +6,19 @@ import { Hono } from "hono";
  * gateway, cached on disk: clients never contact Google, and a repeat load is
  * local. Only these hosts can be reached through it.
  */
-const ORIGINS: Record<
-  string,
-  { origin: string; ttlSec: number; keepQuery: boolean }
-> = {
-  vi: {
-    origin: "https://i.ytimg.com/vi/",
-    ttlSec: 24 * 3600,
-    keepQuery: false,
-  },
-  vi_webp: {
-    origin: "https://i.ytimg.com/vi_webp/",
-    ttlSec: 24 * 3600,
-    keepQuery: false,
-  },
-  // Storyboard sprites are signed with a query (`sigh=`).
-  sb: {
-    origin: "https://i.ytimg.com/sb/",
-    ttlSec: 7 * 24 * 3600,
-    keepQuery: true,
-  },
-  yt3: {
-    origin: "https://yt3.ggpht.com/",
-    ttlSec: 7 * 24 * 3600,
-    keepQuery: false,
-  },
-  yt3gu: {
-    origin: "https://yt3.googleusercontent.com/",
-    ttlSec: 7 * 24 * 3600,
-    keepQuery: false,
-  },
+const ORIGINS: Record<string, string> = {
+  yti: "https://i.ytimg.com/",
+  yti9: "https://i9.ytimg.com/",
+  yt3: "https://yt3.ggpht.com/",
+  yt3gu: "https://yt3.googleusercontent.com/",
 };
+
+/** Thumbnails can improve after upload; avatars, banners and storyboard sprites rarely change. */
+function ttlSec(key: string, path: string): number {
+  return key.startsWith("yti") && !path.startsWith("sb/")
+    ? 24 * 3600
+    : 7 * 24 * 3600;
+}
 
 /** Larger than this is not an image we cache (a mis-routed video would evict everything). */
 const MAX_BYTES = 8 * 1024 * 1024;
@@ -86,24 +68,25 @@ export function imageRoutes(options: ImageOptions): Hono {
   }
 
   const app = new Hono();
-  app.get("/media/img/:kind/*", async (c) => {
-    const spec = ORIGINS[c.req.param("kind")];
-    const rest = c.req.path.slice(`/media/img/${c.req.param("kind")}/`.length);
-    if (!spec || rest === "" || rest.includes(".."))
+  app.get("/media/img/:host/*", async (c) => {
+    const key = c.req.param("host");
+    const origin = ORIGINS[key];
+    const rest = c.req.path.slice(`/media/img/${key}/`.length);
+    if (!origin || rest === "" || rest.includes(".."))
       return c.text("not found", 404);
-    const query = spec.keepQuery ? new URL(c.req.url).search : "";
-    const url = `${spec.origin}${rest}${query}`;
+    // Queries are kept: YouTube signs thumbnail and storyboard URLs.
+    const url = `${origin}${rest}${new URL(c.req.url).search}`;
+    const ttl = ttlSec(key, rest);
     const headers = (type: string) => ({
       "content-type": type,
-      "cache-control": `public, max-age=${spec.ttlSec}`,
+      "cache-control": `public, max-age=${ttl}`,
     });
 
     const cached = await cacache.get(options.cacheDir, url).catch(() => null);
     if (cached) {
       const meta = cached.metadata as Entry;
       // Stale: serve it now and refresh in the background.
-      if (now() - meta.fetchedAt > spec.ttlSec * 1000)
-        void fill(url).catch(() => {});
+      if (now() - meta.fetchedAt > ttl * 1000) void fill(url).catch(() => {});
       return c.body(new Uint8Array(cached.data), 200, headers(meta.type));
     }
     const fresh = await fill(url).catch(() => null);

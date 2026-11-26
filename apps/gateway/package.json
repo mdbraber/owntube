@@ -19,7 +19,8 @@
     "@owntube/youtube": "workspace:*",
     "cacache": "^20.0.0",
     "hono": "^4.13.22",
-    "zod": "^4.1.12"
+    "zod": "^4.1.12",
+    "@owntube/contracts": "workspace:*"
   },
   "devDependencies": {
     "@types/cacache": "^20.0.0",

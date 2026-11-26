@@ -1,4 +1,7 @@
 import type { Innertube, Types } from "youtubei.js";
+import { Catalog } from "../browse/catalog.ts";
+import { classifyPlayability } from "../playability.ts";
+import type { RawPlayerResponse } from "../player.ts";
 
 type InnerTubeClient = Types.InnerTubeClient;
 
@@ -111,6 +114,135 @@ const MRBEAST = "UCX6OQ3DkcsbYNE6H8uQQuVA";
 const LINUS_TECH_TIPS = "UCXuqSBlHAE6Xw-yeJA0Tunw";
 /** YouTube's "Live" destination channel; what Invidious served as "trending". */
 const YOUTUBE_LIVE = "UC4R8DWoMoI7CAwX8_LjQHig";
+
+/**
+ * The Catalog's player source for corpus entries: the VISIONOS player request
+ * through the corpus's own youtubei.js instance, so it is recorded and replayed
+ * with everything else.
+ */
+function recordedPlayer(
+  yt: Innertube,
+): ConstructorParameters<typeof Catalog>[0]["player"] {
+  return async (videoId) => {
+    // The body youtubei.js's own VISIONOS player request sends.
+    const response = await yt.actions.execute("/player", {
+      videoId,
+      racyCheckOk: true,
+      contentCheckOk: true,
+      playbackContext: {
+        contentPlaybackContext: {
+          vis: 0,
+          splay: false,
+          lactMilliseconds: "-1",
+        },
+      },
+      client: "VISIONOS",
+    });
+    const raw = response.data as RawPlayerResponse;
+    return { raw, unplayable: classifyPlayability(raw.playabilityStatus) };
+  };
+}
+
+/** A corpus entry that records the Catalog's own calls; `run` returns a summary, the test re-runs it on the recording. */
+function catalogEntry(
+  id: string,
+  description: string,
+  run: (catalog: Catalog) => Promise<Record<string, string>>,
+): CorpusEntry {
+  return {
+    id,
+    description,
+    run: ({ yt }) =>
+      run(new Catalog({ yt: async () => yt, player: recordedPlayer(yt) })),
+  };
+}
+
+export const CATALOG_CORPUS: readonly CorpusEntry[] = [
+  catalogEntry(
+    "catalog-video",
+    "Catalog.video: an ordinary video page",
+    async (c) => {
+      const v = await c.video("dQw4w9WgXcQ");
+      return {
+        videoId: v.videoId,
+        related: String(v.related.length),
+        captions: String(v.captions.length),
+      };
+    },
+  ),
+  catalogEntry(
+    "catalog-collaboration",
+    "Catalog.video: a collaboration's credited channels",
+    async (c) => {
+      const v = await c.video("efu_T8e_q8Q");
+      return {
+        videoId: v.videoId,
+        collaborators: String(v.collaborators?.length ?? 0),
+      };
+    },
+  ),
+  catalogEntry(
+    "catalog-channel",
+    "Catalog.channel: a videos tab and its second page",
+    async (c) => {
+      const first = await c.channel(LINUS_TECH_TIPS, "videos");
+      const second = await c.channel(
+        LINUS_TECH_TIPS,
+        "videos",
+        first.continuation,
+      );
+      return {
+        first: String(first.videos.length),
+        second: String(second.videos.length),
+      };
+    },
+  ),
+  catalogEntry(
+    "catalog-search",
+    "Catalog.search and its second page",
+    async (c) => {
+      const first = await c.search("linus tech tips");
+      const second = await c.search("linus tech tips", first.continuation);
+      return {
+        first: String(first.videos.length),
+        channels: String(first.channels.length),
+        second: String(second.videos.length),
+      };
+    },
+  ),
+  catalogEntry(
+    "catalog-comments",
+    "Catalog.comments and the second page",
+    async (c) => {
+      const first = await c.comments("dQw4w9WgXcQ", "top");
+      const second = await c.comments("dQw4w9WgXcQ", "top", first.continuation);
+      return {
+        first: String(first.comments.length),
+        second: String(second.comments.length),
+      };
+    },
+  ),
+  catalogEntry(
+    "catalog-playlist",
+    "Catalog.playlist (an uploads playlist) and its second page",
+    async (c) => {
+      const first = await c.playlist(`UULF${MRBEAST.slice(2)}`);
+      const second = await c.playlist(
+        `UULF${MRBEAST.slice(2)}`,
+        first.continuation,
+      );
+      return {
+        first: String(first.videos.length),
+        second: String(second.videos.length),
+      };
+    },
+  ),
+  catalogEntry(
+    "catalog-live",
+    "Catalog.live: YouTube's Live page",
+    async (c) => ({ videos: String((await c.live()).videos.length) }),
+  ),
+];
 
 export const CORPUS: readonly CorpusEntry[] = [
   {
@@ -295,6 +427,7 @@ export const CORPUS: readonly CorpusEntry[] = [
       };
     },
   },
+  ...CATALOG_CORPUS,
 ];
 
 /** Shorts tabs list `ShortsLockupView`s, which carry the id in their endpoint rather than `video_id`. */
