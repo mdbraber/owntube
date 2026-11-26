@@ -1,6 +1,6 @@
 {
   "extends": "../../tsconfig.node.json",
   "//": "No Node APIs in src: the web app and clients import this package.",
-  "compilerOptions": { "types": [] },
+  "compilerOptions": { "types": [], "lib": ["ES2024", "DOM"] },
   "include": ["src/**/*.ts"]
 }

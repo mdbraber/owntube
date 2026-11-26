@@ -5,7 +5,9 @@
   "type": "module",
   "description": "OwnTube's domain model, as the gateway serves it and the web app (and later the clients) consume it.",
   "exports": {
-    "./model": "./src/model.ts"
+    "./model": "./src/model.ts",
+    "./client": "./src/client.ts",
+    "./signing": "./src/signing.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
