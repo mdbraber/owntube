@@ -2,7 +2,7 @@
 #   docker build -f apps/web/Dockerfile -t owntube .
 # Run:  docker compose up
 
-FROM node:22-bookworm-slim AS base
+FROM node:24-bookworm-slim AS base
 WORKDIR /app
 
 # curl: the playback hooks contract (OWNTUBE_HOOKS_DIR) promises shell
@@ -17,18 +17,14 @@ RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
 # Install only the web workspace (and its deps) from the root lockfile.
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY apps/web/package.json apps/web/package.json
-# Shared workspace package the web app depends on (@owntube/brand-icon).
+# Workspace packages the web app depends on (@owntube/brand-icon, @owntube/contracts).
 COPY packages/brand-icon/package.json packages/brand-icon/package.json
+COPY packages/contracts/package.json packages/contracts/package.json
 RUN pnpm install --frozen-lockfile --filter web...
 
 COPY packages/brand-icon packages/brand-icon
+COPY packages/contracts packages/contracts
 COPY apps/web apps/web
-
-# NEXT_PUBLIC_* vars are inlined into the client bundle at build time, so they
-# must be declared ARG + re-exposed as ENV before `next build` runs — compose
-# passing them via `args:` alone has no effect without this.
-ARG NEXT_PUBLIC_MEDIA_BASE_URL=""
-ENV NEXT_PUBLIC_MEDIA_BASE_URL=$NEXT_PUBLIC_MEDIA_BASE_URL
 
 ENV NEXT_TELEMETRY_DISABLED=1
 WORKDIR /app/apps/web

@@ -1,6 +1,6 @@
 /**
- * Where the browser may load images, media and fetches from: this site and its
- * media origin (see media-origin.ts), never Google.
+ * Where the browser may load images, media and fetches from: this site (the
+ * gateway's `/media/*` is on it), never Google.
  *
  * OwnTube moves every Google-hosted image onto the instance
  * (youtube-image-via-instance.ts), but a missed code path would still make the
@@ -15,27 +15,18 @@
  */
 export const CSP_REPORT_PATH = "/api/csp-report";
 
-function sources(mediaOrigin: string | undefined): string {
-  const origins = ["'self'"];
-  const media = mediaOrigin?.trim().replace(/\/+$/, "");
-  if (media && /^https?:\/\/[^/]+$/i.test(media)) origins.push(media);
-  return origins.join(" ");
-}
-
 /** The enforced policy: images. */
-export function enforcedCsp(mediaOrigin: string | undefined): string {
-  return [
-    `img-src ${sources(mediaOrigin)} data: blob:`,
-    `report-uri ${CSP_REPORT_PATH}`,
-  ].join("; ");
+export function enforcedCsp(): string {
+  return [`img-src 'self' data: blob:`, `report-uri ${CSP_REPORT_PATH}`].join(
+    "; ",
+  );
 }
 
 /** The report-only policy: media and fetches, to learn before enforcing. */
-export function reportOnlyCsp(mediaOrigin: string | undefined): string {
-  const self = sources(mediaOrigin);
+export function reportOnlyCsp(): string {
   return [
-    `media-src ${self} blob: data:`,
-    `connect-src ${self}`,
+    `media-src 'self' blob: data:`,
+    `connect-src 'self'`,
     `report-uri ${CSP_REPORT_PATH}`,
   ].join("; ");
 }

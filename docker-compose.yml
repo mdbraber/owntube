@@ -1,3 +1,7 @@
+# OwnTube: the web app and its YouTube gateway.
+# Set GATEWAY_SIGNING_KEY (openssl rand -base64 48) and AUTH_SECRET in .env.
+# Behind a reverse proxy, route /media/* straight to the gateway (port 8080);
+# without one the web app forwards it.
 services:
   app:
     build:
@@ -6,11 +10,16 @@ services:
     restart: unless-stopped
     ports:
       - "3000:3000"
+    depends_on:
+      gateway:
+        condition: service_healthy
     environment:
       DATABASE_PATH: /app/apps/web/data/owntube.db
-      PIPED_BASE_URL: ${PIPED_BASE_URL:-disabled}
-      INVIDIOUS_BASE_URL: ${INVIDIOUS_BASE_URL:-}
-      AUTH_SECRET: ${AUTH_SECRET:-change-me-in-production}
+      GATEWAY_URL: http://gateway:8080
+      GATEWAY_SIGNING_KEY: ${GATEWAY_SIGNING_KEY:?set GATEWAY_SIGNING_KEY in .env}
+      AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env}
+      OWNTUBE_WARM_INTERVAL_SEC: ${OWNTUBE_WARM_INTERVAL_SEC:-900}
+      OWNTUBE_WARM_REGION: ${OWNTUBE_WARM_REGION:-US}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       NEXT_TELEMETRY_DISABLED: "1"
     healthcheck:
@@ -22,35 +31,19 @@ services:
     volumes:
       - owntube-data:/app/apps/web/data
 
-  cache-warmer:
+  gateway:
     build:
       context: .
-      dockerfile: apps/web/Dockerfile
+      dockerfile: apps/gateway/Dockerfile
     restart: unless-stopped
-    depends_on:
-      app:
-        condition: service_healthy
     environment:
-      DATABASE_PATH: /app/apps/web/data/owntube.db
-      PIPED_BASE_URL: ${PIPED_BASE_URL:-disabled}
-      INVIDIOUS_BASE_URL: ${INVIDIOUS_BASE_URL:-}
-      OWNTUBE_WARM_INTERVAL_SEC: ${OWNTUBE_WARM_INTERVAL_SEC:-1200}
-      OWNTUBE_WARM_REGION: ${OWNTUBE_WARM_REGION:-US}
-      OWNTUBE_WARM_LIMIT: ${OWNTUBE_WARM_LIMIT:-48}
-      OWNTUBE_WARM_CHANNELS: ${OWNTUBE_WARM_CHANNELS:-true}
-      OWNTUBE_WARM_CHANNEL_PAGES: ${OWNTUBE_WARM_CHANNEL_PAGES:-true}
-      OWNTUBE_WARM_SHORTS: ${OWNTUBE_WARM_SHORTS:-true}
-      OWNTUBE_WARM_HISTORY_CHANNELS: ${OWNTUBE_WARM_HISTORY_CHANNELS:-32}
-      OWNTUBE_WARM_SUBSCRIPTION_CHANNELS: ${OWNTUBE_WARM_SUBSCRIPTION_CHANNELS:-64}
-      LOG_LEVEL: ${LOG_LEVEL:-info}
-      NEXT_TELEMETRY_DISABLED: "1"
+      GATEWAY_SIGNING_KEY: ${GATEWAY_SIGNING_KEY:?set GATEWAY_SIGNING_KEY in .env}
+      # YouTube flags whole IPv6 /64s faster than IPv4 addresses.
+      GATEWAY_EGRESS_FAMILY: ${GATEWAY_EGRESS_FAMILY:-ipv4}
+      GATEWAY_CACHE_DIR: /data/cache
     volumes:
-      - owntube-data:/app/apps/web/data
-    command: >
-      sh -c 'while true; do
-        pnpm warm:cache || true;
-        sleep $${OWNTUBE_WARM_INTERVAL_SEC:-1200};
-      done'
+      - owntube-gateway:/data
 
 volumes:
   owntube-data:
+  owntube-gateway:

@@ -28,6 +28,9 @@ COPY packages/youtube/src packages/youtube/src
 COPY packages/playback/src packages/playback/src
 COPY packages/contracts/src packages/contracts/src
 COPY apps/gateway/src apps/gateway/src
+# Caches (metadata, images, progressive layouts) live here; a named volume
+# mounted on it takes this ownership.
+RUN mkdir -p /data && chown node:node /data
 USER node
 WORKDIR /app/apps/gateway
 EXPOSE 8080

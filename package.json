@@ -2,7 +2,7 @@
   "name": "owntube-monorepo",
   "version": "0.1.0",
   "private": true,
-  "description": "OwnTube monorepo \u2014 privacy-first YouTube frontend (apps/web), its YouTube gateway (apps/gateway) and TV/iOS clients.",
+  "description": "OwnTube monorepo — privacy-first YouTube frontend (apps/web), its YouTube gateway (apps/gateway) and TV/iOS clients.",
   "license": "MIT",
   "homepage": "https://github.com/spookiss/owntube#readme",
   "repository": {
@@ -13,7 +13,7 @@
     "url": "https://github.com/spookiss/owntube/issues"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=24"
   },
   "packageManager": "pnpm@9.15.9",
   "scripts": {

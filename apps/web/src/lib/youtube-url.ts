@@ -74,6 +74,7 @@ const APP_ROUTES = new Set([
   "dashboard",
   "history",
   "login",
+  "media",
   "onboarding",
   "playlist",
   "playlists",

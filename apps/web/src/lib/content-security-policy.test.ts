@@ -5,28 +5,16 @@ import {
   reportOnlyCsp,
 } from "@/lib/content-security-policy";
 
-const MEDIA = "https://owntube-media.example";
-
 describe("content security policy", () => {
-  it("allows images from this site and its media origin only", () => {
-    expect(enforcedCsp(MEDIA)).toBe(
-      `img-src 'self' ${MEDIA} data: blob:; report-uri /api/csp-report`,
-    );
-    expect(enforcedCsp(`${MEDIA}/`)).toContain(`'self' ${MEDIA} data:`);
-  });
-
-  it("is self only without a (valid) media origin", () => {
-    expect(enforcedCsp(undefined)).toBe(
+  it("allows images from this site only", () => {
+    expect(enforcedCsp()).toBe(
       "img-src 'self' data: blob:; report-uri /api/csp-report",
-    );
-    expect(enforcedCsp("https://x.example/path; script-src *")).not.toContain(
-      "script-src",
     );
   });
 
   it("reports media and fetch origins without blocking them", () => {
-    expect(reportOnlyCsp(MEDIA)).toBe(
-      `media-src 'self' ${MEDIA} blob: data:; connect-src 'self' ${MEDIA}; report-uri /api/csp-report`,
+    expect(reportOnlyCsp()).toBe(
+      "media-src 'self' blob: data:; connect-src 'self'; report-uri /api/csp-report",
     );
   });
 });
