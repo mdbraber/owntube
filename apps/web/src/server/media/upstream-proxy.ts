@@ -15,9 +15,27 @@ import {
 } from "@/lib/invidious-proxy";
 import { normalizeUpstreamBaseUrl } from "@/lib/upstream-base-url";
 import { type AssetKind, getCachedAsset } from "@/server/assets/cache";
+import { companionInternalBase } from "@/server/services/companion";
 
 function invidiousUpstreamBase(): string {
   return normalizeUpstreamBaseUrl(process.env.INVIDIOUS_BASE_URL);
+}
+
+/**
+ * Where `videoplayback` (byte-range media) goes: the companion's own
+ * `/companion/videoplayback`, not Invidious'. A stream URL is bound to the
+ * address that asked YouTube for it (`ip=`), and the companion asks: it
+ * fetches from that very address and replaces a URL YouTube revoked (about a
+ * minute of media in) with a fresh one. Invidious' proxy fetches from its own
+ * address instead, which YouTube punishes by revoking the URL, and passes the
+ * 403 on: playback stopped at ~1:00 (2026-11-26). Null keeps Invidious:
+ * no companion configured, or OWNTUBE_VIDEOPLAYBACK_VIA_COMPANION=false.
+ */
+export function videoplaybackUpstreamBase(subpath: string): string | null {
+  if (!/(^|\/)videoplayback$/.test(subpath)) return null;
+  if (process.env.OWNTUBE_VIDEOPLAYBACK_VIA_COMPANION === "false") return null;
+  const companion = companionInternalBase();
+  return companion ? `${companion}/companion` : null;
 }
 
 /**
@@ -559,8 +577,9 @@ export async function handleUpstreamMediaRequest(
     }
   }
 
+  const mediaUpstream = videoplaybackUpstreamBase(subpath) ?? inv;
   const chunked = await maybeChunkedMediaResponse(
-    inv,
+    mediaUpstream,
     subpath,
     search,
     forwardHeaders,
@@ -571,7 +590,7 @@ export async function handleUpstreamMediaRequest(
   let r: Response;
   try {
     r = await fetchInvidiousUpstream(
-      inv,
+      mediaUpstream,
       subpath,
       search,
       forwardHeaders,
