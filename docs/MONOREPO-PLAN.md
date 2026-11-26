@@ -1,6 +1,6 @@
 # OwnTube monorepo: one codebase from browser to YouTube
 
-Status: **phase 0 done**, 2026-11-26. Written against GitHub `main` `a2bd519` (OwnTube),
+Status: **phases 0–1 done**, 2026-11-26. Written against GitHub `main` `a2bd519` (OwnTube),
 the production companion tree `/usr/local/src/invidious-companion-sabr` `12afa50`
 (upstream `07ae73c` + 54 commits) and the Invidious fork `nedworks/integration`
 `39f4a9ff`. Supersedes the "do not replace Invidious" non-goal in
@@ -301,16 +301,52 @@ WEB and TV):
 Phase 1 repeats this with the player JS and per feature (formats, dubbed
 audio tracks, captions) to decide the PO-token question.
 
-**Phase 1 — `packages/youtube` core.**
-Egress, SessionPool, PoTokenProvider, player, typed errors. Port the companion's
-unit tests (ipv6 rotation, session rotation, ladders, WebM, bot retry) to vitest
-and add the missing ones (fMP4 sidx/tfdt cutting, request building).
-Record, per feature (player, dubbed audio, captions), which client works
-without a PO token. Try `chrome-headless-shell` against Camoufox for token
-validation over a day.
-*Exit*: on dev, the player call works for the whole corpus from the configured
-egress, PO token readiness reported, /64 flagging exercised by a test, and a
-written table of which features need a token.
+**Phase 1 — `packages/youtube` core. — DONE**
+
+Built (52 tests): client identities (`clients.ts`, constants as NewPipe and
+youtubei.js send them); YouTube's decipher JS run in a fresh `node:vm` context
+with a time limit (`decipher.ts`); the typed `/player` request (`player.ts`);
+playability as a type, checked against the recorded responses
+(`playability.ts`); `Egress`, one undici agent per source address, with
+redirect and abort passed through and verified on IPv4 and IPv6
+(`egress.ts`); `SessionPool`, one coherent visitor+address identity, rotated on
+age or repeated bot checks, with the player JS shared (`session.ts`); the
+`YouTube` entry point (`youtube.ts`). Two re-runnable probes:
+`probe:clients` (what each client gives) and `probe:sustained` (whether
+byte-range URLs survive a playback).
+
+Measured from naggon on 2026-11-26, anonymous, **no PO token**:
+
+| client | ladder | dubbed tracks | media | captions | live/DVR | byte-range at playback pace |
+|---|---|---|---|---|---|---|
+| **VISIONOS** | to 2160p | all | ok | ok | HLS | **whole 246 MB file in 759 s, no failure** |
+| TV_SIMPLY (with player JS) | to 2160p | all | ok (live 400) | ok | HLS | revoked after 72 s (403) |
+| ANDROID_VR | to 2160p | original only | ok | ok | HLS + DASH | revoked after 72 s (403) |
+| WEB, MWEB | SABR only / 360p | – | – | ok | – | – |
+| TV (Cobalt) | unplayable | | | | | |
+
+Age-restricted videos need a signed-in account with every client (out of
+scope for now). Captions fetched fine for every client that lists them.
+
+**Transport order (decided 2026-11-26).** YouTube is closing token-free paths
+one client at a time (WEB is SABR-only, ANDROID_VR has turned erratic; yt-dlp
+issues #12482, #16150, #17348), so VISIONOS will not stay open forever. Both
+SABR and PO tokens stay in the design as fallbacks, in this order, chosen per
+playback session by the gateway:
+
+1. VISIONOS byte-range: plain range proxy, no token, no SABR.
+2. VISIONOS SABR: no token.
+3. WEB SABR with a PO token: needs the on-demand browser.
+
+The gateway steps down by itself when a step stops working (a 403 at the
+start, SABR-only formats, a bot check), and the probes stay as tools to see
+which step YouTube has closed. Building order: (1) in phase 2, (2) ported
+from the companion in phase 2, (3) after that, with the PO-token engine
+decided by measuring it then.
+
+Not built, on purpose: IPv6 address rotation (production runs on IPv4 because
+YouTube rejects the /56 as a whole; `AddressPolicy` is the seam if the block
+becomes usable).
 
 **Phase 2 — gateway media plane.**
 Playback sessions, SABR transport (VISIONOS VOD, ANDROID_VR live, WEB+pot dubbed
@@ -376,8 +412,12 @@ Made 2026-11-26:
 
 Open:
 
-6. **PO token engine**, decided by the phase 1 and 2 measurements (none at all,
-   on-demand Chromium, or on-demand Camoufox).
+6. **PO token engine** for the third transport step (on-demand Chromium or
+   on-demand Camoufox), decided by measuring it when that step is built.
+7. **Transport order** (decided): VISIONOS byte-range, then VISIONOS SABR,
+   then WEB SABR with a PO token. See phase 1.
+8. **Age-restricted videos**: not supported for now (they need a signed-in
+   account).
 
 ## Risks
 
