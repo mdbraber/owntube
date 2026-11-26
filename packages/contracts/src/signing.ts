@@ -33,7 +33,8 @@ export type PlaybackFile =
   | "manifest.mpd"
   | "master.m3u8"
   | "audio.m4a"
-  | "video.mp4";
+  | "video.mp4"
+  | "captions.vtt";
 
 /** A signed gateway playback URL (path only: same host, `/media/*` routed to the gateway). */
 export async function playbackUrl(

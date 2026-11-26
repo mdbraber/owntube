@@ -46,6 +46,9 @@ describe("gateway app", () => {
     const exp = Math.floor(Date.now() / 1000) + 60;
     const forged = `/media/v/dQw4w9WgXcQ/manifest.mpd?exp=${exp}&sig=${signPlayback("x".repeat(32), "dQw4w9WgXcQ", exp)}`;
     expect((await app.request(forged)).status).toBe(403);
+    expect(
+      (await app.request("/media/v/dQw4w9WgXcQ/captions.vtt?lang=en")).status,
+    ).toBe(403);
   });
 
   it("keeps the catalogue API behind the shared key", async () => {
