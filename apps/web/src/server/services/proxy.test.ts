@@ -15,12 +15,14 @@ import {
   channelCacheKey,
   shortsFeedCacheKey,
 } from "@/server/services/proxy/cache";
+import { clearDetailInFlight } from "@/server/services/proxy/video";
 import { resetRateLimiterForTests } from "@/server/services/rate-limiter";
 import { createTestDb } from "@/test/db";
 
 describe("searchVideos", () => {
   beforeEach(() => {
     resetRateLimiterForTests();
+    clearDetailInFlight();
     vi.stubGlobal(
       "fetch",
       vi.fn(() => Promise.reject(new Error("fetch not mocked for this test"))),
@@ -274,21 +276,107 @@ describe("searchVideos", () => {
 
     const d1 = await fetchVideoDetail(db, { videoId: "dQw4w9WgXcQ" });
     expect(d1.hlsUrl).toContain("c=1");
-    // Detail + optional storyboard probe share the same Invidious videos endpoint.
-    expect(invCalls).toBe(2);
+    // One Invidious request per detail: no second "storyboard probe".
+    expect(invCalls).toBe(1);
 
     const d2 = await fetchVideoDetail(db, { videoId: "dQw4w9WgXcQ" });
     expect(d2.hlsUrl).toContain("c=1");
-    expect(invCalls).toBe(2);
+    expect(invCalls).toBe(1);
 
     const d3 = await fetchVideoDetail(
       db,
       { videoId: "dQw4w9WgXcQ" },
       { bypassDetailCache: true },
     );
-    expect(d3.hlsUrl).toContain("c=3");
-    expect(invCalls).toBe(4);
+    expect(d3.hlsUrl).toContain("c=2");
+    expect(invCalls).toBe(2);
 
+    sqlite.close();
+  });
+
+  function mockInvidiousDetail(detail: Record<string, unknown> = {}): {
+    calls: () => number;
+  } {
+    let invCalls = 0;
+    vi.mocked(fetch).mockImplementation((input) => {
+      const u = String(input);
+      if (u.includes("/api/v1/videos/dQw4w9WgXcQ") && !u.includes("/related")) {
+        invCalls += 1;
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              videoId: "dQw4w9WgXcQ",
+              title: "Invidious",
+              hlsUrl: `/api/manifest/hls/playlist/dQw4w9WgXcQ?c=${invCalls}`,
+              ...detail,
+            }),
+          ),
+        );
+      }
+      return Promise.reject(new Error(`unexpected fetch: ${u}`));
+    });
+    return { calls: () => invCalls };
+  }
+
+  it("fetchVideoDetail maxAgeSec reuses a recent row and refetches an older one", async () => {
+    const { db, sqlite } = createTestDb();
+    process.env.INVIDIOUS_BASE_URL = "http://localhost:3001";
+    const inv = mockInvidiousDetail();
+
+    await fetchVideoDetail(db, { videoId: "dQw4w9WgXcQ" });
+    expect(inv.calls()).toBe(1);
+
+    const recent = await fetchVideoDetail(
+      db,
+      { videoId: "dQw4w9WgXcQ" },
+      { maxAgeSec: 600 },
+    );
+    expect(recent.hlsUrl).toContain("c=1");
+    expect(inv.calls()).toBe(1);
+
+    // Make the row 11 minutes old (still within its cache TTL).
+    const nowSec = Math.floor(Date.now() / 1000);
+    db.update(videoCache)
+      .set({ fetchedAt: nowSec - 11 * 60 })
+      .run();
+    const older = await fetchVideoDetail(
+      db,
+      { videoId: "dQw4w9WgXcQ" },
+      { maxAgeSec: 600 },
+    );
+    expect(older.hlsUrl).toContain("c=2");
+    expect(inv.calls()).toBe(2);
+    sqlite.close();
+  });
+
+  it("fetchVideoDetail maxAgeSec always refetches a live video", async () => {
+    const { db, sqlite } = createTestDb();
+    process.env.INVIDIOUS_BASE_URL = "http://localhost:3001";
+    const inv = mockInvidiousDetail({ liveNow: true });
+
+    await fetchVideoDetail(db, { videoId: "dQw4w9WgXcQ" });
+    await fetchVideoDetail(db, { videoId: "dQw4w9WgXcQ" }, { maxAgeSec: 600 });
+    expect(inv.calls()).toBe(2);
+    sqlite.close();
+  });
+
+  it("fetchVideoDetail shares one upstream fetch between concurrent callers", async () => {
+    const { db, sqlite } = createTestDb();
+    process.env.INVIDIOUS_BASE_URL = "http://localhost:3001";
+    const inv = mockInvidiousDetail();
+
+    const [a, b, c] = await Promise.all([
+      fetchVideoDetail(db, { videoId: "dQw4w9WgXcQ" }),
+      fetchVideoDetail(db, { videoId: "dQw4w9WgXcQ" }, { maxAgeSec: 600 }),
+      fetchVideoDetail(
+        db,
+        { videoId: "dQw4w9WgXcQ" },
+        { bypassDetailCache: true },
+      ),
+    ]);
+    expect(inv.calls()).toBe(1);
+    expect(a.hlsUrl).toBe(b.hlsUrl);
+    expect(b.hlsUrl).toBe(c.hlsUrl);
     sqlite.close();
   });
 

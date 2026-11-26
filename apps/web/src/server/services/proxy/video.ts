@@ -22,10 +22,7 @@ import {
   mapInvidiousItem,
   mapInvidiousVideo,
 } from "@/server/services/proxy/mappers/invidious";
-import {
-  liveUpstreamSource,
-  pickInvidiousStoryboard,
-} from "@/server/services/proxy/normalize";
+import { liveUpstreamSource } from "@/server/services/proxy/normalize";
 import { searchVideos } from "@/server/services/proxy/search";
 import {
   type RelatedVideosResult,
@@ -33,30 +30,9 @@ import {
   type UnifiedVideo,
   type VideoDetail,
   type VideoDetailInput,
-  type VideoStoryboard,
   videoDetailSchema,
 } from "@/server/services/proxy.types";
 import { acquireUpstreamSlot } from "@/server/services/rate-limiter";
-
-async function tryFetchInvidiousStoryboard(
-  videoId: string,
-  invidiousBase: string,
-): Promise<VideoStoryboard | undefined> {
-  try {
-    acquireUpstreamSlot();
-    const json = await fetchJson(
-      buildInvidiousVideosUrl(invidiousBase, videoId),
-      { source: "invidious", baseUrl: invidiousBase },
-    );
-    if (!json || typeof json !== "object") return undefined;
-    return pickInvidiousStoryboard(
-      json as Record<string, unknown>,
-      invidiousBase,
-    );
-  } catch {
-    return undefined;
-  }
-}
 
 function inferMediaProxyBase(detail: VideoDetail): string | undefined {
   if (detail.mediaProxyBase) return detail.mediaProxyBase;
@@ -83,13 +59,32 @@ function enrichDetailForPlayback(detail: VideoDetail): VideoDetail {
   return { ...detail, mediaProxyBase };
 }
 
-function readFreshDetailCache(db: AppDb, key: string): VideoDetail | null {
+function readFreshDetailCache(
+  db: AppDb,
+  key: string,
+  maxAgeSec?: number,
+): VideoDetail | null {
   const row = readFreshCacheRow(db, key);
   if (!row) return null;
+  if (
+    maxAgeSec !== undefined &&
+    Math.floor(Date.now() / 1000) - row.fetchedAt > maxAgeSec
+  ) {
+    return null;
+  }
   const parsed = videoDetailSchema.safeParse(
     JSON.parse(row.payloadJson) as unknown,
   );
   if (!parsed.success) return null;
+  // A bounded-age read is for a page that will play the video: live and
+  // upcoming state moves (an upcoming stream goes live, a live one ends), so
+  // those always come fresh.
+  if (
+    maxAgeSec !== undefined &&
+    (parsed.data.isLive === true || parsed.data.isUpcoming === true)
+  ) {
+    return null;
+  }
   logger.info("video_cache.hit", { cacheKey: key, kind: row.kind });
   return enrichDetailForPlayback({
     ...parsed.data,
@@ -180,11 +175,29 @@ function buildInvidiousRelatedUrl(base: string, videoId: string): string {
 
 export type FetchVideoDetailOptions = {
   /**
-   * When true, skip the SQLite “fresh” row for this video so Invidious returns
-   * a new `hlsUrl` and adaptive URLs (signed links go 404 quickly).
+   * When true, skip the SQLite “fresh” row for this video and always ask
+   * Invidious. Note that this rarely yields new signed URLs: the companion
+   * caches YouTube's player response for an hour.
    */
   bypassDetailCache?: boolean;
+  /**
+   * Accept a fresh cached row only when fetched at most this many seconds
+   * ago, and never for a live or upcoming video. For pages that play the
+   * video: bounded staleness without a YouTube round trip per render.
+   */
+  maxAgeSec?: number;
 };
+
+/**
+ * Upstream detail fetches in progress, per cache key: the watch page and its
+ * metadata render in parallel and would otherwise fetch the same video twice.
+ */
+const inFlightDetails = new Map<string, Promise<VideoDetail>>();
+
+/** Forget in-flight detail fetches (with the other proxy caches). */
+export function clearDetailInFlight(): void {
+  inFlightDetails.clear();
+}
 
 export async function fetchVideoDetail(
   db: AppDb,
@@ -193,10 +206,21 @@ export async function fetchVideoDetail(
 ): Promise<VideoDetail> {
   const key = detailCacheKey(input);
   if (!opts?.bypassDetailCache) {
-    const cached = readFreshDetailCache(db, key);
+    const cached = readFreshDetailCache(db, key, opts?.maxAgeSec);
     if (cached) return cached;
   }
+  const inFlight = inFlightDetails.get(key);
+  if (inFlight) return inFlight;
+  const task = fetchVideoDetailUpstream(db, input, key);
+  registerInFlight(inFlightDetails, key, task);
+  return task;
+}
 
+async function fetchVideoDetailUpstream(
+  db: AppDb,
+  input: VideoDetailInput,
+  key: string,
+): Promise<VideoDetail> {
   const { invidiousBases } = resolveProxyBaseCandidates();
   const errors: string[] = [];
 
@@ -248,15 +272,10 @@ export async function fetchVideoDetail(
     throwIfUpstreamFailed(errors, "video detail unavailable");
   }
 
-  let enriched = enrichDetailForPlayback(resolved);
-  const storyboardInvidiousBase = invidiousBases[0];
-  if (storyboardInvidiousBase && !enriched.storyboard) {
-    const storyboard = await tryFetchInvidiousStoryboard(
-      input.videoId,
-      storyboardInvidiousBase,
-    );
-    if (storyboard) enriched = { ...enriched, storyboard };
-  }
+  // The storyboard comes from the same response (mapInvidiousVideo); a second
+  // fetch of the same URL used to "probe" for it, which could only find the
+  // same nothing and cost Invidious another YouTube round trip.
+  const enriched = enrichDetailForPlayback(resolved);
   writeCache(
     db,
     key,

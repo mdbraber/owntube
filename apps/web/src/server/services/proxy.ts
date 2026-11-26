@@ -29,7 +29,10 @@ export {
 } from "@/server/services/proxy/channel";
 
 import { clearShortsInFlight } from "@/server/services/proxy/shorts";
-import { clearRelatedInFlight } from "@/server/services/proxy/video";
+import {
+  clearDetailInFlight,
+  clearRelatedInFlight,
+} from "@/server/services/proxy/video";
 
 export { fetchShortsFeed } from "@/server/services/proxy/shorts";
 
@@ -39,6 +42,7 @@ export function clearProxyCaches(db: AppDb): { clearedRows: number } {
   clearShortsInFlight();
   clearSearchInFlight();
   clearRelatedInFlight();
+  clearDetailInFlight();
   const res = db.delete(videoCache).run();
   return { clearedRows: Number(res.changes ?? 0) };
 }
