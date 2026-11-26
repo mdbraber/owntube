@@ -1,10 +1,12 @@
 import { createServerSideHelpers } from "@trpc/react-query/server";
 import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
+import { headers } from "next/headers";
 import type { ReactNode } from "react";
 import superjson from "superjson";
 import { Providers } from "@/app/providers";
 import { UserNav } from "@/components/auth/user-nav";
+import { NativeAppBridge } from "@/components/native-app/native-app-bridge";
 import { SwRegister } from "@/components/pwa/sw-register";
 import { FaviconInitScript } from "@/components/settings/favicon-init-script";
 import { AppShell } from "@/components/shell/app-shell";
@@ -12,6 +14,7 @@ import { MobileAccountMenu } from "@/components/shell/mobile-account-menu";
 import { UiScale } from "@/components/shell/ui-scale";
 import { collectInvidiousOrigins } from "@/lib/channel-avatar-proxy";
 import { FAVICON_VERSION } from "@/lib/favicon";
+import { isNativeAppUserAgent } from "@/lib/native-app";
 import { auth } from "@/server/auth";
 import { createTRPCContext } from "@/server/trpc/context";
 import { appRouter } from "@/server/trpc/root";
@@ -65,6 +68,10 @@ export default async function RootLayout({
 }>) {
   const session = await auth();
   const isLoggedIn = Boolean(session?.user?.id);
+  // Inside the iOS app, which draws the navigation natively. Known from the
+  // request, so the web chrome is left out of the first render, not hidden
+  // after hydration.
+  const nativeApp = isNativeAppUserAgent((await headers()).get("user-agent"));
   // Computed server-side from INVIDIOUS_BASE_URL and handed to the browser via
   // context so client image URLs match SSR without any client-side env var.
   const invidiousOrigins = collectInvidiousOrigins();
@@ -87,7 +94,11 @@ export default async function RootLayout({
   const dehydratedState = helpers.dehydrate();
 
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html
+      lang="en"
+      suppressHydrationWarning
+      data-native-app={nativeApp ? "" : undefined}
+    >
       <head>
         <FaviconInitScript />
       </head>
@@ -99,9 +110,11 @@ export default async function RootLayout({
           dehydratedState={dehydratedState}
         >
           <UiScale />
-          <SwRegister />
+          {/* WKWebView only allows service workers for app-bound domains. */}
+          {nativeApp ? <NativeAppBridge /> : <SwRegister />}
           <AppShell
             isLoggedIn={isLoggedIn}
+            nativeApp={nativeApp}
             topbarRight={<UserNav />}
             bottomNavAccount={<MobileAccountMenu />}
           >

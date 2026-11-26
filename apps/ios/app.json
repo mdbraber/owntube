@@ -1,0 +1,44 @@
+{
+  "expo": {
+    "name": "OwnTube",
+    "slug": "owntube-ios",
+    "scheme": "owntube",
+    "platforms": ["ios"],
+    "orientation": "default",
+    "userInterfaceStyle": "automatic",
+    "icon": "./assets/icon.png",
+    "backgroundColor": "#111216",
+    "ios": {
+      "bundleIdentifier": "com.mdbraber.owntube",
+      "supportsTablet": true,
+      "infoPlist": {
+        "UIBackgroundModes": ["audio"],
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-video",
+        {
+          "supportsBackgroundPlayback": true,
+          "supportsPictureInPicture": true
+        }
+      ],
+      ["expo-status-bar"],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "17.0"
+          }
+        }
+      ],
+      "./plugins/with-widget",
+      "expo-web-browser",
+      "expo-secure-store",
+      "expo-image",
+      "expo-quick-actions"
+    ]
+  }
+}

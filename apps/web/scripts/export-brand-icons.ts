@@ -10,6 +10,9 @@ const PNG_SIZES = [192, 512] as const;
 const FAVICON_SIZE = 32;
 const APPLE_TOUCH_SIZE = 180;
 const TV_ASSETS_DIR = path.join(process.cwd(), "..", "tv", "assets");
+const IOS_ASSETS_DIR = path.join(process.cwd(), "..", "ios", "assets");
+/** App Store / Xcode single-size icon; iOS derives every other size from it. */
+const IOS_ICON_SIZE = 1024;
 const TV_ICON_SIZE = 512;
 /** Android TV home-screen banner, fixed by the platform. */
 const TV_BANNER_WIDTH = 320;
@@ -203,13 +206,36 @@ async function exportAppleTvImages(background: sharp.Color) {
   }
 }
 
+/**
+ * The iOS app's icon, for the same reason as the TV's: apps/ios is an Expo app
+ * outside the workspace. Full-bleed and opaque, because iOS applies its own
+ * corner mask (a pre-rounded tile would show as a faint inner frame) and fills
+ * any transparency with black.
+ */
+async function exportIosAssets() {
+  const logo = await fs.readFile(
+    path.join(PUBLIC_DIR, "logo-dark.svg"),
+    "utf8",
+  );
+  const { svg, background } = toFullBleedIcon(logo);
+  await fs.mkdir(IOS_ASSETS_DIR, { recursive: true });
+  await sharp(Buffer.from(svg))
+    .resize(IOS_ICON_SIZE, IOS_ICON_SIZE)
+    .flatten({ background })
+    .png()
+    .toFile(path.join(IOS_ASSETS_DIR, "icon.png"));
+}
+
 async function main() {
   for (const variant of VARIANTS) {
     await exportVariant(variant);
     await exportWordmark(variant);
   }
   await exportTvAssets();
-  console.log("Brand icons exported to public/ and ../tv/assets/");
+  await exportIosAssets();
+  console.log(
+    "Brand icons exported to public/, ../tv/assets/ and ../ios/assets/",
+  );
 }
 
 main().catch((error) => {

@@ -1,9 +1,9 @@
 packages:
   - apps/web
-  - apps/ios
   - packages/*
-  # apps/tv is intentionally NOT part of the shared install yet: Expo SDK 52
-  # pulls React 18 / @types/react 18, which conflicts with the web app's
-  # React 19 and breaks its typecheck when the store is shared. The TV app is
-  # installed on its own (cd apps/tv && pnpm install) once its Android toolchain
-  # is set up. Re-include it here behind a React-types resolution strategy.
+  # The Expo apps (apps/tv, apps/ios) are intentionally NOT part of the shared
+  # install: React Native and Metro want a flat, hoisted node_modules and their
+  # own React / @types/react versions, which break the web app's typecheck and
+  # its `sharp` native build when the store is shared. Each is installed on its
+  # own (cd apps/<app> && pnpm install), hoisted flat by its own
+  # pnpm-workspace.yaml.

@@ -148,6 +148,15 @@ describe("canonicalYoutubePath: confirmed failures", () => {
 });
 
 describe("canonicalYoutubePath: required behaviour", () => {
+  it("keeps the iOS app's player panel flag on watch links", () => {
+    expect(redirectOf(`/watch?v=${ID}&panel=1`)).toBeNull();
+    expect(redirectOf(`/watch?v=${ID}&si=x&panel=1`)).toBe(
+      `/watch?v=${ID}&panel=1`,
+    );
+    expect(redirectOf(`/watch?v=${ID}&panel=side`)).toBeNull();
+    expect(redirectOf(`/watch?v=${ID}&panel=yes`)).toBe(`/watch?v=${ID}`);
+  });
+
   it("drops tracking parameters", () => {
     expect(
       redirectOf(

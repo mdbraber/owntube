@@ -1,110 +1,149 @@
-# OwnTube iOS
+# OwnTube for iPhone and iPad (`apps/ios`)
 
-A minimal native iOS shell (Tauri v2 + WKWebView) that loads your self-hosted
-OwnTube web app, wherever it runs — the address is configuration, not code.
+An Expo app that puts the OwnTube web app in a native iOS shell. iOS draws
+the tab bar, navigation bars, menus, search field and lists, with Liquid Glass
+on iOS 26 and later. The web app's pages fill the space in between. The server
+address is configuration, not code.
 
-Why it exists: the installed **PWA** cannot do Picture-in-Picture or background /
-screen-off playback — iOS blocks those in `display: standalone` home-screen web
-apps. A native WKWebView is not subject to that restriction, so PiP works from
-the native player controls and audio can keep playing when the screen locks
-(`UIBackgroundModes: audio`).
+It replaces the earlier Tauri shell. Like that shell, it plays video
+inline, in Picture-in-Picture and with the screen off (`UIBackgroundModes:
+audio`), none of which the home-screen PWA can do. Being Expo, it shares its
+toolchain and patterns with `apps/tv`.
 
-## Prerequisites
-- Xcode + command line tools, an iPhone, and a free Apple ID for personal signing.
-- Rust and the iOS toolchain (`xcodegen`, `cocoapods`).
+## How it fits together
 
-## Configuration
-Nothing environment-specific lives in the repo: `tauri.conf.json` ships a
-neutral `http://localhost:3000` and no signing team. Your own values go in a
-gitignored `.env`:
+- **Native tabs** (`app/(tabs)/_layout.tsx`): Home, Subscriptions, Library and
+  the system Search tab, each with its own navigation stack. On iPad the tab
+  bar can become the iPadOS sidebar, and Library and Settings use a readable
+  column.
+- **Web pages** (`src/components/web-screen.tsx`): one WebView per screen,
+  with a native navigation bar: the page's title, Back, and a menu with Share,
+  Open in Safari and Reload. Links that leave the server open in a Safari
+  sheet. All WebViews share one cookie store and localStorage.
+- **Navigation**, as in YouTube's app:
+  - Every page except a video is a native screen. A link to another page
+    pushes it onto the tab's stack, so Back (the button, the edge swipe,
+    long-press for history) is iOS's own and returns to the page as it was
+    left. There's no forward, as in any iOS app.
+  - What counts as another page: a different path, or another video or
+    playlist (`isNewNativePage` in `@web/lib/native-app`). Tabs, filters,
+    sorting and a new search stay on their screen. Sign-in and onboarding
+    move on in place.
+  - The page reports link taps to the app (`navigate` message) instead of
+    following them. The few programmatic navigations are let through, handed
+    over, and undone behind the new screen.
+  - Each tab keeps its own stack, and tapping the current tab returns to its
+    first screen.
+- **Player panel** (`app/player.tsx`, `src/player`), as in YouTube's app.
+  Layouts:
+  - iPhone: video, the queue bar, then the page. Turning the phone sideways
+    shows only the video, edge to edge; the rest of the app stays portrait
+    (`src/lib/orientation.ts`). The full-screen button opens in landscape and
+    leaves when the phone turns back.
+  - iPad: the panel takes the whole screen. When it's wide, the video and its
+    page sit on the left (`panel=side`) and a native column on the right
+    shows the queue, then Up next.
+
+  How it behaves:
+  - A video opens in one panel that slides up over what you were browsing,
+    with nothing added to Back. The native video (AVPlayer via expo-video,
+    Apple's own controls) is on top. Below it is the video's web page in
+    panel mode (`/watch?v=…&panel=1`, without its own player): title,
+    channel, actions, description, comments and related videos.
+  - Swipe the panel down (or tap the chevron) and the video plays on in the
+    mini player above the tab bar, with you back where you were. Tapping the
+    mini player opens the panel again.
+  - Another video tapped in the panel replaces this one in place.
+  - Any other page tapped in the panel (the channel…) swipes the panel away
+    and opens in the tab you were browsing.
+  - Playback goes on in Picture-in-Picture and in the background, with Now
+    Playing on the lock screen. It starts with the server's HLS
+    (`/hls/<id>/master.m3u8`) and falls back to what the web picks for Safari
+    on iPhone (`buildWatchPlayback`). A stream that never starts fails over
+    after 30 s, and an error offers Try again.
+  - The panel's page reports the title, artwork and resume position (`play`
+    message). Progress goes to history every 20 s and when the app leaves
+    the foreground, as the TV app does.
+  - **Queue**: its own section, as YouTube's. On iPhone it's a bar under the
+    video ("Queue · 3 videos", the next one named) that opens into the whole
+    queue; on wide iPads it heads the right-hand column. It refreshes when
+    the page changes the queue.
+  - At the end of a video the queue plays on, then related videos when the
+    account's "Autoplay next" is on. Playing a queued video removes it from
+    the queue.
+- **Library** (`app/(tabs)/library/index.tsx`): the web app's account
+  destinations as a native SwiftUI list (`@expo/ui`).
+- **Embedded mode in the web app**: the WebView adds `OwnTubeApp/<version>` to
+  its user agent. The server sees it (`apps/web/src/lib/native-app.ts`) and
+  leaves its own top bar, sidebar and bottom tab bar out of the first render.
+  The page pads itself by the safe area, so content scrolls under the glass
+  bars.
+- **Bridge**: inside the app, the page sends messages through
+  `window.ReactNativeWebView` (`components/native-app/native-app-bridge.tsx`):
+  its title and URL, link taps, the video it shows, who is signed in, and the
+  watch queue for the widget. Both sides share the message types in
+  `@web/lib/native-app`.
+- **Links** (`app/+native-intent.tsx`, `src/lib/app-path.ts`): these open
+  whether they launch the app or arrive while it runs. A video opens in the
+  player panel; any other page opens as a new screen over Home:
+  - `owntube://watch?v=<id>` (the widget)
+  - `owntube://watch/<id>` (Privacy Redirect)
+  - `owntube://<any web path>`
+  - YouTube URLs
+
+  YouTube-shaped paths are canonicalised by the web middleware.
+- **Settings** (`app/(tabs)/library/settings.tsx`): a native form (SwiftUI)
+  with these parts:
+  - the server, which you can change at runtime: it's checked, stored on the
+    device and the app reloads on it;
+  - Autoplay next, the account setting shared with web and TV;
+  - the signed-in account;
+  - a link to the full web settings.
+- **Quick actions** (`src/lib/home-screen-actions.ts`): long-pressing the
+  icon gives Resume (the last video played, in the panel), Search,
+  Subscriptions and Queue.
+- **App session** (`src/lib/session.ts`): native API calls use a device token,
+  as the TV app does. A page reports who is signed in (`session` message). If
+  the app has no token for that account, it starts a device pairing and the
+  page approves it with its own sign-in (`approvePairing` command, sent the
+  other way). Signing out of the web drops the token.
+- **Widget** (`targets/widget`, `plugins/with-widget.js`): "Continue watching"
+  from the queue. The app's `widget-bridge` module writes the queue to the App
+  Group `group.<bundle id>` and reloads the widget. Built the same way as the
+  TV app's Top Shelf (`apps/tv/plugins/with-top-shelf.js`).
+
+## Setup
+
+`apps/ios` is installed on its own, outside the repo's pnpm workspace (see the
+root `pnpm-workspace.yaml`). Its own `pnpm-workspace.yaml` makes the
+`node_modules` flat (`nodeLinker: hoisted`), which React Native needs.
+
 ```sh
-cp .env.example .env    # then set OWNTUBE_URL and IOS_DEVELOPMENT_TEAM
-```
-`scripts/tauri.ts` merges them into the build via the Tauri CLI's `--config`
-flag, and writes `capabilities/remote.local.json` granting your server's origin
-permission to call the app's commands. A real environment variable overrides
-`.env`, so CI can set `OWNTUBE_URL` directly. The Rust side reads the origin
-from whatever the window is showing, so no address is compiled in.
-
-## Run on a connected iPhone
-Unlike `apps/tv`, this app is part of the pnpm workspace, so a root `pnpm install`
-covers it.
-```sh
-pnpm --filter ios ios:dev   # from the repo root
-pnpm ios:dev                # or from apps/ios
-```
-Or open the generated Xcode project and Run (⌘R):
-```sh
-pnpm ios:open         # opens src-tauri/gen/apple/owntube.xcodeproj
-```
-First run: in Xcode, select your device, confirm "Automatically manage signing"
-with your Apple ID, then trust the developer profile on the phone under
-Settings → General → VPN & Device Management.
-
-> Personal (free) signing certificates expire after 7 days — re-run `pnpm ios:dev`
-> (or Xcode Run) to refresh. A paid Apple Developer account removes this limit.
-
-### Known issue: `pnpm ios:build` (release) is broken
-The generated Xcode project copies the Rust static library from
-`Externals/$(CONFIGURATION)/libapp.a`, but that resolves to `debug` even in a
-release build, while `tauri ios build` compiles the library to
-`Externals/arm64/release/`. On a clean checkout the release build therefore
-fails with *"libapp.a couldn't be opened"*.
-
-Worse, it does **not** fail on a working copy that has previously run
-`ios:dev`: a stale `Externals/arm64/debug/libapp.a` is left behind there, so the
-release build silently bundles the **debug** Rust library instead. `Externals/`
-is gitignored, which is why only fresh clones surface the error.
-
-Once a release build *has* run, `ios:dev` breaks too: `Externals` is a source
-group in `project.yml`, so with both `arm64/debug/libapp.a` and
-`arm64/release/libapp.a` present, xcodegen emits two copy commands for the same
-destination and Xcode fails with *"Multiple commands produce libapp.a"*. The
-workaround is to delete the configuration you are not building:
-```sh
-rm -rf src-tauri/gen/apple/Externals/arm64/release
+cd apps/ios
+pnpm install
+cp .env.example .env    # set EXPO_PUBLIC_OWNTUBE_URL (the default server;
+                        # Settings can change it on the device)
+pnpm prebuild           # generates ios/ (gitignored) from app.json + plugins
+pnpm ios                # build, install and run on a simulator or device
 ```
 
-Fixing this properly means correcting the copy phase in
-`src-tauri/gen/apple/project.yml` so it tracks `$(CONFIGURATION)` honestly;
-left alone for now since only dev builds are in use.
+To run on a phone, open `ios/OwnTube.xcworkspace` in Xcode, pick your team
+under Signing & Capabilities for both the OwnTube and OwnTubeWidget targets,
+and run. The App Group must be enabled for both; Xcode's automatic signing
+registers it.
 
-## Network note
-If `OWNTUBE_URL` points at a host on your home network, the phone has to be able
-to reach it (same Wi‑Fi, or VPN/Tailscale). If it can't, you'll see the local
-fallback page in `dist/index.html`.
-
-## Layout
-- `src-tauri/tauri.conf.json` — app config; the main window `url` points at the
-  remote server, `csp: null` so the server's own headers apply.
-- `src-tauri/Info-ios.plist` — declarative extra Info.plist keys (background audio).
-- `src-tauri/gen/apple/` — generated Xcode project (regenerated by the CLI).
-- `scripts/export-app-icon.ts` — derives the app icon from the shared web logo.
-- `dist/index.html` — offline fallback only; the real UI is the remote server.
+If `EXPO_PUBLIC_OWNTUBE_URL` points at a host on your home network, the phone
+has to be able to reach it (same Wi‑Fi, or VPN/Tailscale).
 
 ## App icon
-This app keeps **no brand assets of its own**. The icon set under
-`src-tauri/icons/` and `src-tauri/gen/apple/Assets.xcassets/` is generated from
-`apps/web/public/logo-dark.svg` — the same file the web app and its favicons use.
-Edit the logo there, then:
+
+`assets/icon.png` is generated from the web logo, like the TV app's icons:
+
 ```sh
-pnpm icon
+pnpm --filter web export:icons   # from the repo root
 ```
 
-The one iOS-specific transform, done in `scripts/export-app-icon.ts`: the web
-logo draws its own rounded tile plus a 12%-white border, and an app icon must
-not carry either. iOS applies its own corner mask, so the logo's border would
-appear as a faint second frame just inside the rounded corners. The script
-strips the tile rects and re-renders the mark full-bleed on the tile's own
-background colour, which it also reuses as the `--ios-color` fill. If the logo
-ever changes shape such that no tile rect is found, the script fails loudly
-rather than quietly shipping a wrong icon.
+## Next steps
 
-Rendering goes through `sharp`, matching `apps/web`'s icon export. Do not
-substitute ImageMagick: its built-in SVG renderer silently drops the chevron,
-which is a stroked rather than filled path.
-
-## Not included (add only if needed)
-No custom native code yet. If lock-screen audio without PiP doesn't hold on
-device, the next step is a small **Swift** file activating an
-`AVAudioSession(.playback)` — deliberately deferred to keep this minimal.
+1. Push notifications for new uploads (needs a sender on the server).
+2. Playlist context in Up next (playing on through a playlist), as the TV has.

@@ -182,9 +182,17 @@ export function readWatchParams(
   return { videoId: parsed?.videoId ?? null, startSeconds, list };
 }
 
-function watchPath(videoId: string, startSeconds?: number): string {
+/** OwnTube's own `panel` values: the iOS app's player panel (lib/native-app.ts). */
+const PANEL_VALUES = new Set(["1", "side"]);
+
+function watchPath(
+  videoId: string,
+  startSeconds?: number,
+  panel?: string | null,
+): string {
   const out = new URLSearchParams({ v: videoId });
   if (startSeconds !== undefined) out.set("t", String(startSeconds));
+  if (panel && PANEL_VALUES.has(panel)) out.set("panel", panel);
   return `/watch?${out.toString()}`;
 }
 
@@ -246,7 +254,9 @@ function resolve(
   // opens the playlist.
   if (first === "watch") {
     const watch = readWatchParams(params, second);
-    if (watch.videoId) return watchPath(watch.videoId, watch.startSeconds);
+    if (watch.videoId) {
+      return watchPath(watch.videoId, watch.startSeconds, params.get("panel"));
+    }
     if (!params.has("v") && !second && watch.list) {
       return withQuery("/playlist", { list: watch.list });
     }

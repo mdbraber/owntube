@@ -923,3 +923,12 @@ video[data-native-pip] {
     opacity: 1;
   }
 }
+
+/* Inside the iOS app (apps/ios) the page fills the whole screen under the
+   native, translucent navigation and tab bars; the WebView reports their
+   height as its safe area. Pad the scroll area by it, so content starts below
+   the navigation bar and scrolls on under the bars' glass. */
+html[data-native-app] .ot-app-scroll {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
