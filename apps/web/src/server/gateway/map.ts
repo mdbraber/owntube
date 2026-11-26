@@ -133,6 +133,8 @@ export function toVideoDetail(
     isUpcoming: summary.isUpcoming,
     isShort: d.isShort,
     ...(d.originalLanguage ? { originalLanguage: d.originalLanguage } : {}),
+    audioLanguages: d.audioLanguages,
+    qualities: d.qualities,
     captions,
     ...(signed ? { playback: signed.playback } : {}),
   };

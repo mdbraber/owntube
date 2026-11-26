@@ -153,6 +153,21 @@ export const videoDetailSchema = z.object({
   isShort: z.boolean().optional(),
   /** The original audio's language, for videos with dubbed tracks. */
   originalLanguage: z.string().optional(),
+  /**
+   * A dubbed video's audio languages, original first (a manifest's `lang=`
+   * narrows it to one); empty for a single audio track.
+   */
+  audioLanguages: z
+    .array(
+      z.object({
+        language: z.string(),
+        label: z.string(),
+        isOriginal: z.boolean(),
+      }),
+    )
+    .optional(),
+  /** Picture heights it comes in, tallest first (a manifest's `maxHeight=` caps them). */
+  qualities: z.array(z.number()).optional(),
   /** Subtitle/caption tracks; empty when none. */
   captions: z.array(captionTrackSchema).optional(),
   /** Absent when the video cannot be played. */
