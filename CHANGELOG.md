@@ -59,5 +59,5 @@ First public release. The full backlog (P0 → P3) is implemented and reasonably
 - Multi-stage Dockerfile + Compose
 - Optional self-hosted Invidious via `scripts/setup-invidious.sh`
 
-[Unreleased]: https://github.com/spookiss/owntube/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/spookiss/owntube/releases/tag/v0.1.0
+[Unreleased]: https://github.com/mdbraber/owntube/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/mdbraber/owntube/releases/tag/v0.1.0

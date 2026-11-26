@@ -4,13 +4,13 @@
   "private": true,
   "description": "OwnTube monorepo — privacy-first YouTube frontend (apps/web) and TV client (apps/tv).",
   "license": "MIT",
-  "homepage": "https://github.com/spookiss/owntube#readme",
+  "homepage": "https://github.com/mdbraber/owntube#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/spookiss/owntube.git"
+    "url": "https://github.com/mdbraber/owntube.git"
   },
   "bugs": {
-    "url": "https://github.com/spookiss/owntube/issues"
+    "url": "https://github.com/mdbraber/owntube/issues"
   },
   "engines": {
     "node": ">=22"
