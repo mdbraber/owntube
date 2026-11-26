@@ -251,7 +251,11 @@ every JSDOM token; that is why Camoufox came in.
 ## Phases
 
 Prod keeps running on the current stack until phase 6. Phases 1–5 are developed
-on a branch and run on `owntube-dev` side by side. Each phase has an exit check.
+on a branch (tested locally: unit tests, `next build`, e2e against a local
+gateway) and each has an exit check. `owntube-dev` ran phases 1–3 side by side;
+it was removed on 2026-11-26 (with the `owntube-claude` sandbox): it shared
+prod's database and `.env`, which made it a hazard more than a safety net.
+Phase 6 cuts prod over directly, with the previous images ready to roll back.
 
 **Phase 0 — scaffolding and corpus. — DONE (branch `gateway/phase-0`)**
 
@@ -449,7 +453,7 @@ compose runs web + gateway, `/media/*` forwarded by the app when no proxy
 routes it. Verified: web typecheck, 578 web unit tests (gateway 40, youtube 103,
 playback 25, contracts 7), `next build`, and e2e 8/8
 against a local gateway (DASH playback with every request on the site).
-*Left for deployment:* the e2e on dev; Safari (native HLS) by hand; the TV and
+*Left for the cutover:* the e2e on prod; Safari (native HLS) by hand; the TV and
 iOS apps (phase 5) still read the removed playback fields.
 
 **Phase 5 — clients.**
@@ -468,15 +472,17 @@ gateway). Images go through `/media/img` (cards: `hqdefault` under a cover
 crop). iOS plays the signed HLS once the detail arrives. Both rename Trending
 to Live. Both typecheck (dependencies installed with `--ignore-scripts`, for
 the check only); every URL the TV builds answers 200 from a local gateway.
-*Left:* deploy web + gateway to dev, build the TV on gloob and iOS, and play
-the corpus on the devices.
+*Left:* at the cutover (phase 6), build the TV on gloob and iOS, and play the
+corpus on the devices.
 
 **Phase 6 — cutover.**
 Deploy `web` + `gateway` on naggon, Caddy `/media/*` route (with HTTP/3), remove the `owntube-media` host, migrate (no user data
 moves; web drops `video_cache`). Remove the Invidious, Postgres, companion and
 warmer containers; archive `mdbraber/invidious` and the companion tree; delete
 `check-upstream.ts`, `setup-invidious.sh` and the Invidious docs. Rollback =
-previous images + compose file, kept for two weeks.
+previous images + compose file, kept for two weeks. Order: back up prod's
+database; build the web and gateway images; swap; the owner plays the corpus
+on TV, iPhone and Safari; roll back within minutes if something breaks.
 *Exit*: a week of normal use with no fallbacks needed.
 
 ## Decisions
