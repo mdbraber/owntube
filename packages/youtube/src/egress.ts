@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import { Agent, type Dispatcher, ProxyAgent } from "undici";
 
 /**
@@ -45,7 +46,14 @@ export function createEgress(options: EgressOptions = {}): Egress {
       return existing;
     }
     const agent = new Agent({
-      connect: { timeout, ...(localAddress ? { localAddress } : {}) },
+      // The family has to follow the source address: without it a host with both
+      // A and AAAA records is reached over IPv6 even from an IPv4 source (seen 2026-11-26).
+      connect: {
+        timeout,
+        ...(localAddress
+          ? { localAddress, family: isIP(localAddress) === 6 ? 6 : 4 }
+          : {}),
+      },
       bodyTimeout: timeout,
       headersTimeout: timeout,
     });

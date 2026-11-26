@@ -23,6 +23,12 @@ const configSchema = z.object({
    * identity instead.
    */
   poBrowser: z.string().optional(),
+  /**
+   * Which address family YouTube traffic leaves over. `auto` follows the
+   * host's preference (IPv6 where it has it); on naggon on 2026-11-26 the IPv6
+   * /64 drew bot checks that IPv4 did not.
+   */
+  egressFamily: z.enum(["auto", "ipv4", "ipv6"]).default("auto"),
   /** Where the image cache lives. */
   cacheDir: z.string().default("data/cache"),
   /** Image cache size kept by the hourly prune. */
@@ -44,6 +50,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     shutdownGraceMs: env.GATEWAY_SHUTDOWN_GRACE_MS,
     signingKey: env.GATEWAY_SIGNING_KEY,
     transport: env.GATEWAY_TRANSPORT || undefined,
+    egressFamily: env.GATEWAY_EGRESS_FAMILY || undefined,
     poBrowser: env.GATEWAY_PO_BROWSER || undefined,
     cacheDir: env.GATEWAY_CACHE_DIR || undefined,
     imageCacheMaxBytes: env.GATEWAY_IMAGE_CACHE_MAX_BYTES || undefined,

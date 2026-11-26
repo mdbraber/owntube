@@ -11,6 +11,7 @@ describe("loadConfig", () => {
       shutdownGraceMs: 10_000,
       signingKey: "k".repeat(32),
       transport: "auto",
+      egressFamily: "auto",
       cacheDir: "data/cache",
       imageCacheMaxBytes: 1024 * 1024 * 1024,
     });

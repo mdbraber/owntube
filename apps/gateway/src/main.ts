@@ -15,7 +15,16 @@ const config = loadConfig();
 const egress = createEgress({
   ...(config.proxyUrl ? { proxyUrl: config.proxyUrl } : {}),
 });
-const youtube = new YouTube(new SessionPool({ egress }));
+// The source address the family implies ("0.0.0.0" / "::"), or the host's default route.
+const sourceAddress = { auto: undefined, ipv4: "0.0.0.0", ipv6: "::" }[
+  config.egressFamily
+];
+const youtube = new YouTube(
+  new SessionPool({
+    egress,
+    addresses: { next: () => sourceAddress, flag: () => {} },
+  }),
+);
 const catalog = new Catalog({
   yt: () => youtube.innertube(),
   // Our own VISIONOS identity; a bot check here counts against the session like any other.
@@ -24,7 +33,7 @@ const catalog = new Catalog({
 const poTokens = config.poBrowser
   ? new BrowserPoTokenMinter({
       executablePath: config.poBrowser,
-      fetch: egress.fetch(),
+      fetch: egress.fetch(sourceAddress),
       userAgent: WEB.userAgent,
     })
   : undefined;
@@ -40,7 +49,7 @@ const app = createApp({
   sessions,
   catalog,
   signingKey: config.signingKey,
-  images: { cacheDir: imageCacheDir, fetch: egress.fetch() },
+  images: { cacheDir: imageCacheDir, fetch: egress.fetch(sourceAddress) },
 });
 setInterval(() => {
   pruneImages(imageCacheDir, config.imageCacheMaxBytes).catch((error: Error) =>

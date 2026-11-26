@@ -39,6 +39,13 @@ describe("createEgress", () => {
     expect(v6).toBe("::1");
   });
 
+  it("reaches a dual-stack name over the family of the source address", async () => {
+    const v4 = await (await egress.fetch("0.0.0.0")(`${base}/whoami`)).text();
+    expect(v4).toMatch(/127\.0\.0\.1$/);
+    const v6 = await (await egress.fetch("::")(`${base}/whoami`)).text();
+    expect(v6).toBe("::1");
+  });
+
   it("passes redirect: manual through", async () => {
     const res = await egress.fetch()(`${base}/redirect`, {
       redirect: "manual",
