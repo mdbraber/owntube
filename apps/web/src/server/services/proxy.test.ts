@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppDb } from "@/server/db/client";
 import { videoCache } from "@/server/db/schema";
 import { UpstreamUnavailableError } from "@/server/errors/upstream-unavailable";
+import { clearRssInFlight, refreshChannelRss } from "@/server/rss/cache";
 import {
   fetchChannelPage,
   fetchRelatedVideos,
@@ -741,6 +742,65 @@ describe("fetchChannelPage", () => {
     const page = await fetchChannelPage(db, { channelId: "UCchan" });
     expect(page.sourceUsed).toBe("invidious");
     expect(page.videos[0]?.videoId).toBe("newupload01");
+    sqlite.close();
+  });
+
+  function rssFeed(videoId: string, publishedSec: number): string {
+    return `<?xml version="1.0"?><feed><entry>
+      <yt:videoId>${videoId}</yt:videoId>
+      <title>Video ${videoId}</title>
+      <published>${new Date(publishedSec * 1000).toISOString()}</published>
+      <author><name>Artist</name></author>
+    </entry></feed>`;
+  }
+
+  async function seedChannelRss(
+    db: AppDb,
+    videoId: string,
+    publishedSec: number,
+  ) {
+    vi.mocked(fetch).mockImplementation((input) => {
+      const u = String(input);
+      if (u.includes("youtube.com/feeds/videos.xml")) {
+        return Promise.resolve(new Response(rssFeed(videoId, publishedSec)));
+      }
+      return Promise.reject(new Error(`unexpected fetch: ${u}`));
+    });
+    clearRssInFlight();
+    await refreshChannelRss(db, "UCchan");
+  }
+
+  it("keeps serving an expired channel page while its RSS shows no newer upload", async () => {
+    const { db, sqlite } = createTestDb();
+    process.env.INVIDIOUS_BASE_URL = "https://inv.test";
+    const now = Math.floor(Date.now() / 1000);
+    seedChannelPage(db, 60 * 60);
+    await seedChannelRss(db, "olduploadxx", now - 2 * 60 * 60);
+    vi.mocked(fetch).mockClear();
+    mockChannelUpstream("New upload");
+
+    const page = await fetchChannelPage(db, { channelId: "UCchan" });
+    expect(page.stale).toBe(false);
+    expect(page.sourceUsed).toBe("cache");
+    expect(page.videos[0]?.videoId).toBe("olduploadxx");
+    // No channel page fetch ("UCchan" is no real UC id, so handle resolution
+    // still runs, as in the tests above).
+    const urls = vi.mocked(fetch).mock.calls.map((c) => String(c[0]));
+    expect(urls.filter((u) => u.includes("/api/v1/channels"))).toEqual([]);
+    sqlite.close();
+  });
+
+  it("refetches an expired channel page once its RSS lists a newer upload", async () => {
+    const { db, sqlite } = createTestDb();
+    process.env.INVIDIOUS_BASE_URL = "https://inv.test";
+    const now = Math.floor(Date.now() / 1000);
+    seedChannelPage(db, 60 * 60);
+    await seedChannelRss(db, "newupload01", now - 10 * 60);
+    mockChannelUpstream("New upload");
+
+    const page = await fetchChannelPage(db, { channelId: "UCchan" });
+    // The usual expired-page path: answered from cache, refetched behind it.
+    expect(page.stale).toBe(true);
     sqlite.close();
   });
 

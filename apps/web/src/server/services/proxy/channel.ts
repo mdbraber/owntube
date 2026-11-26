@@ -11,7 +11,10 @@ import { preferHighResVideoThumbnailUrl } from "@/lib/video-thumbnail-url";
 import type { AppDb } from "@/server/db/client";
 import { channelIdAliases } from "@/server/db/schema";
 import { repairListingRows } from "@/server/listing-rows/repair";
-import { getChannelRssEntries } from "@/server/rss/cache";
+import {
+  freshRssNewestPublishedAt,
+  getChannelRssEntries,
+} from "@/server/rss/cache";
 import {
   channelCacheKey,
   readFreshCacheRow,
@@ -63,11 +66,47 @@ export function clearChannelInFlight(): void {
   inFlightChannel.clear();
 }
 
+/**
+ * How long a channel's first videos page may be served past its TTL while the
+ * channel's RSS confirms nothing was published since (see below).
+ */
+const CHANNEL_PAGE_RSS_CONFIRMED_MAX_AGE_SEC = 24 * 3600;
+
+/**
+ * A channel's first videos page can only be outdated by a new upload, which
+ * the channel's uploads RSS lists within minutes (and at once under WebSub
+ * push). So an expired first page stays usable, up to a day, while the
+ * channel's fresh RSS shows nothing published after the page was fetched:
+ * no YouTube round trip through Invidious to fetch the same page again. View
+ * counts on it may be up to that old.
+ */
+function readRssConfirmedChannelRow(
+  db: AppDb,
+  key: string,
+  input: ChannelPageInput,
+) {
+  if ((input.tab ?? "videos") !== "videos" || input.continuation) {
+    return undefined;
+  }
+  const row = readLatestCacheRow(db, key);
+  if (!row) return undefined;
+  const now = Math.floor(Date.now() / 1000);
+  if (now - row.fetchedAt >= CHANNEL_PAGE_RSS_CONFIRMED_MAX_AGE_SEC) {
+    return undefined;
+  }
+  const newest = freshRssNewestPublishedAt(db, input.channelId);
+  if (newest === null || newest > row.fetchedAt) return undefined;
+  return row;
+}
+
 function readFreshChannelCache(
   db: AppDb,
   key: string,
+  input?: ChannelPageInput,
 ): ChannelPageResult | null {
-  const row = readFreshCacheRow(db, key);
+  const row =
+    readFreshCacheRow(db, key) ??
+    (input ? readRssConfirmedChannelRow(db, key, input) : undefined);
   if (!row) return null;
   const raw = JSON.parse(row.payloadJson) as unknown;
   const parsed = cachedChannelPayloadSchema.safeParse(raw);
@@ -655,7 +694,7 @@ export async function fetchChannelPage(
       : { ...decodedInput, channelId: canonicalId };
   const key = channelCacheKey(input);
   if (opts?.cacheOnly) {
-    const fresh = readFreshChannelCache(db, key);
+    const fresh = readFreshChannelCache(db, key, input);
     if (fresh) return fresh;
     const stale = readStaleChannelCache(db, key);
     if (stale) return stale;
@@ -668,7 +707,7 @@ export async function fetchChannelPage(
     };
   }
   if (!opts?.bypassChannelCache) {
-    const fresh = readFreshChannelCache(db, key);
+    const fresh = readFreshChannelCache(db, key, input);
     if (fresh) return fresh;
   }
   const inFlight = inFlightChannel.get(key);

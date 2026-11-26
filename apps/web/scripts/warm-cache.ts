@@ -19,6 +19,8 @@ import { UpstreamUnavailableError } from "../src/server/errors/upstream-unavaila
 import { shelfUpstreamLimit } from "../src/server/recommendation/shorts-feed";
 import {
   getChannelRssEntries,
+  isChannelRssFresh,
+  isLongFormWindowFresh,
   refreshChannelRss,
   refreshLongFormWindow,
 } from "../src/server/rss/cache";
@@ -77,8 +79,11 @@ const warmRecencyEnabled = envFlag("OWNTUBE_WARM_RECENCY", true);
 const warmRssEnabled = envFlag("OWNTUBE_WARM_RSS", true);
 const warmVideosEnabled = envFlag("OWNTUBE_WARM_VIDEOS", true);
 const warmHomeEnabled = envFlag("OWNTUBE_WARM_HOME", true);
+// The newest few uploads only: WebSub sync already warms new uploads as they
+// arrive, and each warmed video costs YouTube round trips (detail, comments).
+// Queued videos are warmed on top of this.
 const warmVideoLimit = Number.parseInt(
-  process.env.OWNTUBE_WARM_VIDEO_LIMIT ?? "16",
+  process.env.OWNTUBE_WARM_VIDEO_LIMIT ?? "5",
   10,
 );
 const assetCacheMaxMb = Number.parseInt(
@@ -220,14 +225,28 @@ async function warmChannelMeta(
  * (serve-stale-and-revalidate) — refreshing them here every cycle keeps the
  * interactive path SQLite-only.
  */
+/**
+ * Refresh what is due: a channel's RSS when it is no longer fresh (15 min, or
+ * hours for subscribed channels while WebSub pushes their uploads; see
+ * `server/rss/cache.ts`), and its long-form window only when that RSS lists an
+ * upload newer than the window. Fresh feeds are skipped: re-fetching them
+ * only re-asks YouTube for what we already have.
+ */
 async function warmRssFeeds(db: AppDb, channelIds: string[]): Promise<boolean> {
   const stats = await runInBatches(
     "rss feeds",
     channelIds,
     async (channelId) => {
-      await refreshChannelRss(db, channelId);
-      await refreshLongFormWindow(db, channelId);
-      return {};
+      let fetched = false;
+      if (!isChannelRssFresh(db, channelId)) {
+        await refreshChannelRss(db, channelId);
+        fetched = true;
+      }
+      if (!isLongFormWindowFresh(db, channelId)) {
+        await refreshLongFormWindow(db, channelId);
+        fetched = true;
+      }
+      return { skipped: !fetched };
     },
   );
   return stats.failed === 0;

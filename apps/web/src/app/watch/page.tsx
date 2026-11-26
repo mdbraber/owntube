@@ -96,10 +96,11 @@ function readWatchSearch(
  * one per video) cost Invidious a YouTube round trip, ~3,500 a day, for
  * nothing: the companion caches YouTube's player response for an hour, so a
  * fresh fetch hands back the same signed URLs, and playback goes through the
- * /hls and /dash routes, which fetch their own. Live and upcoming videos
- * always come fresh (see `maxAgeSec`).
+ * /hls and /dash routes, which fetch their own. An hour, like the companion,
+ * so details the cache warmer (hourly) and WebSub sync prefetch get used.
+ * Live and upcoming videos always come fresh (see `maxAgeSec`).
  */
-const WATCH_DETAIL_MAX_AGE_SEC = 10 * 60;
+const WATCH_DETAIL_MAX_AGE_SEC = 60 * 60;
 
 export async function generateMetadata({
   searchParams,
