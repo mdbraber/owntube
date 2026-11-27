@@ -122,16 +122,22 @@ export function ownedMemo(
     .all()[0];
 }
 
-export function memoBySourceUrl(
+/** The user's memo from this source about this video, if stored already. */
+export function memoBySource(
   db: AppDb,
   userId: number,
   sourceUrl: string,
+  videoId: string,
 ): MemoRow | undefined {
   return db
     .select()
     .from(videoMemos)
     .where(
-      and(eq(videoMemos.userId, userId), eq(videoMemos.sourceUrl, sourceUrl)),
+      and(
+        eq(videoMemos.userId, userId),
+        eq(videoMemos.sourceUrl, sourceUrl),
+        eq(videoMemos.videoId, videoId),
+      ),
     )
     .limit(1)
     .all()[0];
@@ -202,7 +208,7 @@ export type NewMemo = {
 
 /**
  * Store a memo, or return the one already stored for the same source URL
- * (unchanged), so an automation can retry safely. `created` says which.
+ * and video (unchanged), so an automation can retry safely. `created` says which.
  */
 export function insertMemo(
   db: AppDb,
@@ -213,7 +219,7 @@ export function insertMemo(
   const source = memo.source;
   const sourceUrl = source.kind === "direct" ? null : source.url;
   if (sourceUrl) {
-    const existing = memoBySourceUrl(db, userId, sourceUrl);
+    const existing = memoBySource(db, userId, sourceUrl, memo.videoId);
     if (existing) return { memo: toVideoMemo(existing), created: false };
   }
   const inserted = db
@@ -235,12 +241,14 @@ export function insertMemo(
       videoTitle: memo.videoTitle ?? null,
       channelName: memo.channelName ?? null,
     })
-    // A concurrent retry may win the unique (user, source_url) index.
+    // A concurrent retry may win the unique (user, source_url, video) index.
     .onConflictDoNothing()
     .returning()
     .get();
   if (inserted) return { memo: toVideoMemo(inserted), created: true };
-  const raced = sourceUrl ? memoBySourceUrl(db, userId, sourceUrl) : undefined;
+  const raced = sourceUrl
+    ? memoBySource(db, userId, sourceUrl, memo.videoId)
+    : undefined;
   if (!raced) throw new Error("memo insert failed");
   return { memo: toVideoMemo(raced), created: false };
 }

@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import type { AppDb } from "@/server/db/client";
 import { playlistItems, playlists } from "@/server/db/schema";
 
@@ -53,4 +53,35 @@ export function addVideoToPlaylist(
     .where(eq(playlists.id, item.playlistId))
     .run();
   return true;
+}
+
+/**
+ * The id of the user's playlist named `name` (trimmed, case-insensitive; the
+ * oldest when several match), creating it when there is none.
+ */
+export function playlistIdByName(
+  db: AppDb,
+  userId: number,
+  name: string,
+  now: number = Math.floor(Date.now() / 1000),
+): number {
+  const wanted = name.trim();
+  const found = db
+    .select({ id: playlists.id })
+    .from(playlists)
+    .where(
+      and(
+        eq(playlists.userId, userId),
+        sql`lower(trim(${playlists.name})) = lower(${wanted})`,
+      ),
+    )
+    .orderBy(asc(playlists.id))
+    .limit(1)
+    .all()[0];
+  if (found) return found.id;
+  return db
+    .insert(playlists)
+    .values({ userId, name: wanted, createdAt: now, updatedAt: now })
+    .returning({ id: playlists.id })
+    .get().id;
 }

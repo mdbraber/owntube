@@ -7,7 +7,7 @@ import { videoMemos } from "@/server/db/schema";
 import {
   insertMemo,
   listMemos,
-  memoBySourceUrl,
+  memoBySource,
   memoCounts,
   memoOccurredAtSchema,
   memoSourceSchema,
@@ -19,6 +19,7 @@ import {
 import {
   addVideoToPlaylist,
   isOwnedPlaylist,
+  playlistIdByName,
 } from "@/server/playlists/add-item";
 import { protectedProcedure, router } from "@/server/trpc/init";
 
@@ -28,19 +29,28 @@ function nowUnix(): number {
 
 const memoIdSchema = z.number().int().positive();
 
-const addMemoInputSchema = z.object({
-  videoId: memoVideoIdSchema,
-  channelId: z.string().min(1).max(128).optional(),
-  text: memoTextSchema,
-  occurredAt: memoOccurredAtSchema.optional(),
-  /** Omitted: a memo typed in OwnTube (`direct`). */
-  source: memoSourceSchema.optional(),
-  /** Also add the video to this playlist of the user's. */
-  playlistId: z.number().int().positive().optional(),
-  /** What the client already knows about the video; saves a lookup. */
-  videoTitle: z.string().trim().min(1).max(500).optional(),
-  channelName: z.string().trim().min(1).max(200).optional(),
-});
+const addMemoInputSchema = z
+  .object({
+    videoId: memoVideoIdSchema,
+    channelId: z.string().min(1).max(128).optional(),
+    text: memoTextSchema,
+    occurredAt: memoOccurredAtSchema.optional(),
+    /** Omitted: a memo typed in OwnTube (`direct`). */
+    source: memoSourceSchema.optional(),
+    /** Also add the video to this playlist of the user's… */
+    playlistId: z.number().int().positive().optional(),
+    /**
+     * …or to the user's playlist with this name (case-insensitive), created
+     * when there is none, so an automation needs no playlist id.
+     */
+    playlistName: z.string().trim().min(1).max(120).optional(),
+    /** What the client already knows about the video; saves a lookup. */
+    videoTitle: z.string().trim().min(1).max(500).optional(),
+    channelName: z.string().trim().min(1).max(200).optional(),
+  })
+  .refine((v) => v.playlistId === undefined || v.playlistName === undefined, {
+    message: "Give playlistId or playlistName, not both.",
+  });
 
 type VideoFacts = {
   videoTitle: string | null;
@@ -93,9 +103,9 @@ export const memosRouter = router({
     .query(({ ctx, input }) => memoCounts(ctx.db, ctx.userId, input.videoIds)),
 
   /**
-   * Add a memo. One with the same source URL is returned unchanged (`created:
-   * false`), so retries are harmless. With `playlistId`, the video is added to
-   * that playlist as well (already there: left alone).
+   * Add a memo. One with the same source URL and video is returned unchanged (`created:
+   * false`), so retries are harmless. With `playlistId` or `playlistName`, the
+   * video is added to that playlist as well (already there: left alone).
    */
   add: protectedProcedure
     .input(addMemoInputSchema)
@@ -114,7 +124,7 @@ export const memosRouter = router({
       const existing =
         source.kind === "direct"
           ? undefined
-          : memoBySourceUrl(ctx.db, ctx.userId, source.url);
+          : memoBySource(ctx.db, ctx.userId, source.url, input.videoId);
       // A retry of a stored source memo needs no lookup.
       const facts = existing
         ? {
@@ -137,16 +147,17 @@ export const memosRouter = router({
         },
         ts,
       );
+      const playlistId =
+        input.playlistId ??
+        (input.playlistName !== undefined
+          ? playlistIdByName(ctx.db, ctx.userId, input.playlistName, ts)
+          : undefined);
       const addedToPlaylist =
-        input.playlistId !== undefined &&
+        playlistId !== undefined &&
         addVideoToPlaylist(
           ctx.db,
           ctx.userId,
-          {
-            playlistId: input.playlistId,
-            videoId: memo.videoId,
-            channelId: memo.channelId,
-          },
+          { playlistId, videoId: memo.videoId, channelId: memo.channelId },
           ts,
         );
       return { memo, created, addedToPlaylist };

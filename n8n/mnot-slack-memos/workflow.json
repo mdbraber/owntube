@@ -1,0 +1,284 @@
+{
+  "id": "mnotSlackMemos01",
+  "name": "OwnTube: MNOT Slack YouTube links → memos",
+  "active": false,
+  "nodes": [
+    {
+      "id": "0fb8471f-065c-5649-8835-fef65db826a0",
+      "name": "Every 30 minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "1c6952f8-cb90-53a8-b33d-dbb482f11e02",
+      "name": "Slack users",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "url": "https://slack.com/api/users.list",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "slackApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "limit",
+              "value": "200"
+            }
+          ]
+        },
+        "options": {
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "name": "cursor",
+                    "value": "={{ $response.body.response_metadata.next_cursor }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ $response.body.ok !== true || !$response.body.response_metadata?.next_cursor }}",
+              "limitPagesFetched": true,
+              "maxRequests": 50,
+              "requestInterval": 1500
+            }
+          }
+        }
+      },
+      "credentials": {
+        "slackApi": {
+          "id": "mnotSlackUser01",
+          "name": "Slack user token (MNOT memos)"
+        }
+      }
+    },
+    {
+      "id": "f369d293-4b40-5615-a2c1-feac7368790c",
+      "name": "Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// What to read and where to put it.\nconst config = {\n  \"workspace\": \"metnerdsomtafel\",\n  \"playlistName\": \"MNOT Slack\",\n  \"owntube\": \"https://owntube.home.nedworks.org\",\n  \"queries\": [\n    \"youtube\",\n    \"youtu.be\"\n  ]\n};\nconst state = $getWorkflowStaticData('global');\nconst startedAt = new Date().toISOString();\n// First run: everything search can see; then from a few days back.\nconst after = state.after ? ` after:${state.after}` : '';\nreturn config.queries.map((q) => ({ json: { ...config, startedAt, query: `${q}${after}` } }));\n"
+      }
+    },
+    {
+      "id": "f88bab24-df4d-524a-8c76-51fa440cfd8c",
+      "name": "Search messages",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        0
+      ],
+      "parameters": {
+        "url": "https://slack.com/api/search.messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "slackApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "={{ $json.query }}"
+            },
+            {
+              "name": "count",
+              "value": "100"
+            },
+            {
+              "name": "sort",
+              "value": "timestamp"
+            },
+            {
+              "name": "sort_dir",
+              "value": "asc"
+            }
+          ]
+        },
+        "options": {
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "name": "page",
+                    "value": "={{ $pageCount + 1 }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ $response.body.ok !== true || $response.body.messages.paging.page >= $response.body.messages.paging.pages }}",
+              "limitPagesFetched": true,
+              "maxRequests": 100,
+              "requestInterval": 3200
+            }
+          }
+        }
+      },
+      "credentials": {
+        "slackApi": {
+          "id": "mnotSlackUser01",
+          "name": "Slack user token (MNOT memos)"
+        }
+      }
+    },
+    {
+      "id": "a45ea598-2dd0-5304-b2a5-b304c8dc9ba7",
+      "name": "Build memos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Pure helpers for the \"MNOT Slack → OwnTube memos\" n8n flow. build.py pastes\n// this file into the flow's Code node; slack-memos.test.mjs tests it with Node.\n\nconst VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;\nconst MEMO_TEXT_BUDGET = 4500; // OwnTube accepts 5000; leave room for the link\n\n/** The YouTube video id a URL points at, or null. */\nfunction youtubeVideoId(raw) {\n  let url;\n  try {\n    url = new URL(raw.replace(/&amp;/g, \"&\"));\n  } catch {\n    return null;\n  }\n  const host = url.hostname.replace(/^(www|m|music)\\./, \"\");\n  let id = null;\n  if (host === \"youtu.be\") {\n    id = url.pathname.split(\"/\")[1] ?? null;\n  } else if (host === \"youtube.com\" || host === \"youtube-nocookie.com\") {\n    const parts = url.pathname.split(\"/\").filter(Boolean);\n    if (parts[0] === \"watch\") id = url.searchParams.get(\"v\");\n    else if ([\"shorts\", \"live\", \"embed\", \"v\"].includes(parts[0]))\n      id = parts[1] ?? null;\n  }\n  return id && VIDEO_ID.test(id) ? id : null;\n}\n\n/** Every distinct video a Slack message links to, in order of appearance. */\nfunction videoIdsInMessage(message) {\n  const sources = [message.text ?? \"\"];\n  for (const a of message.attachments ?? []) {\n    sources.push(a.from_url ?? \"\", a.original_url ?? \"\", a.title_link ?? \"\");\n  }\n  const ids = [];\n  for (const s of sources) {\n    for (const m of s.matchAll(/https?:\\/\\/[^\\s|>]+/g)) {\n      const id = youtubeVideoId(m[0]);\n      if (id && !ids.includes(id)) ids.push(id);\n    }\n  }\n  return ids;\n}\n\n/** A Slack user's name as people see it. */\nfunction displayName(user) {\n  const p = user.profile ?? {};\n  return (\n    p.display_name || p.real_name || user.real_name || user.name || user.id\n  );\n}\n\n/**\n * Slack mrkdwn to Markdown: links, mentions, channels, *bold*, ~strike~,\n * entities and line breaks. _italic_, `code`, ```blocks``` and > quotes mean\n * the same in both.\n */\nfunction slackToMarkdown(text, namesById) {\n  let t = text ?? \"\";\n  t = t.replace(\n    /<(https?:\\/\\/[^|>]+)\\|([^>]+)>/g,\n    (_, url, label) => `[${label.replace(/[[\\]]/g, \"\")}](${url})`,\n  );\n  t = t.replace(/<(https?:\\/\\/[^|>]+)>/g, \"$1\");\n  t = t.replace(/<mailto:([^|>]+)\\|([^>]+)>/g, \"[$2](mailto:$1)\");\n  t = t.replace(\n    /<@([UW][A-Z0-9]+)(?:\\|([^>]+))?>/g,\n    (_, id, name) => `@${namesById[id] ?? name ?? id}`,\n  );\n  t = t.replace(/<#C[A-Z0-9]+\\|([^>]*)>/g, \"#$1\");\n  t = t.replace(/<!(here|channel|everyone)(?:\\|[^>]*)?>/g, \"@$1\");\n  t = t.replace(/<!subteam\\^[A-Z0-9]+\\|([^>]+)>/g, \"$1\");\n  t = t.replace(\n    /(^|[\\s(])\\*(\\S(?:[^*\\n]*\\S)?)\\*(?=[\\s).,;:!?]|$)/gm,\n    \"$1**$2**\",\n  );\n  t = t.replace(/(^|[\\s(])~(\\S(?:[^~\\n]*\\S)?)~(?=[\\s).,;:!?]|$)/gm, \"$1~~$2~~\");\n  t = t.replace(/&lt;/g, \"<\").replace(/&gt;/g, \">\").replace(/&amp;/g, \"&\");\n  // Slack keeps single line breaks; Markdown needs them marked.\n  return t.replace(/([^\\n])\\n(?!\\n)/g, \"$1  \\n\").trim();\n}\n\n/** The memo text: the message as Markdown, then a link to it. */\nfunction memoText(message, namesById) {\n  let body = slackToMarkdown(message.text, namesById);\n  if (body.length > MEMO_TEXT_BUDGET) {\n    body = `${body.slice(0, MEMO_TEXT_BUDGET).trimEnd()}…`;\n  }\n  const link = `[View in Slack](${message.permalink})`;\n  return body ? `${body}\\n\\n${link}` : link;\n}\n\n/**\n * memos.add inputs for search matches: one per (message, video), skipping\n * direct messages, deduplicated by permalink.\n */\nfunction memoInputs(matches, namesById, config) {\n  const seen = new Set();\n  const out = [];\n  for (const m of matches) {\n    const ch = m.channel ?? {};\n    if (ch.is_im || ch.is_mpim || !m.permalink || seen.has(m.permalink))\n      continue;\n    seen.add(m.permalink);\n    const ids = videoIdsInMessage(m);\n    if (ids.length === 0) continue;\n    const author = namesById[m.user] ?? m.username ?? undefined;\n    for (const videoId of ids) {\n      out.push({\n        videoId,\n        text: memoText(m, namesById),\n        occurredAt: String(m.ts),\n        source: {\n          kind: \"slack\",\n          url: m.permalink,\n          ...(ch.name ? { label: `#${ch.name}` } : {}),\n          ...(author ? { author } : {}),\n          workspace: config.workspace,\n        },\n        playlistName: config.playlistName,\n      });\n    }\n  }\n  return out;\n}\n\n/** YYYY-MM-DD, `days` before `iso`: the next run's `after:` search bound. */\nfunction searchAfter(iso, days) {\n  const d = new Date(iso);\n  d.setUTCDate(d.getUTCDate() - days);\n  return d.toISOString().slice(0, 10);\n}\n\nconst config = $('Config').first().json;\nconst names = {};\nfor (const page of $('Slack users').all()) {\n  if (page.json.ok !== true) throw new Error(`Slack users.list: ${page.json.error}`);\n  for (const u of page.json.members ?? []) names[u.id] = displayName(u);\n}\nconst matches = [];\nfor (const page of $input.all()) {\n  if (page.json.ok !== true) throw new Error(`Slack search.messages: ${page.json.error}`);\n  matches.push(...(page.json.messages?.matches ?? []));\n}\nconst inputs = memoInputs(matches, names, config);\nif (inputs.length === 0) {\n  // Nothing to add, so nothing can fail: move the search window on.\n  $getWorkflowStaticData('global').after = searchAfter(config.startedAt, 3);\n}\nreturn inputs.map((payload) => ({ json: { payload } }));\n"
+      }
+    },
+    {
+      "id": "23eb2677-cebe-5746-9653-d5318047eee1",
+      "name": "Add memo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.owntube }}/api/trpc/memos.add",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ json: $json.payload }) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 200
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "owntubeMemosToken01",
+          "name": "OwnTube memos token (MNOT Slack)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "02a5fd71-c76d-54c2-a4db-bc53342d5ab5",
+      "name": "Finish",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Pure helpers for the \"MNOT Slack → OwnTube memos\" n8n flow. build.py pastes\n// this file into the flow's Code node; slack-memos.test.mjs tests it with Node.\n\nconst VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;\nconst MEMO_TEXT_BUDGET = 4500; // OwnTube accepts 5000; leave room for the link\n\n/** The YouTube video id a URL points at, or null. */\nfunction youtubeVideoId(raw) {\n  let url;\n  try {\n    url = new URL(raw.replace(/&amp;/g, \"&\"));\n  } catch {\n    return null;\n  }\n  const host = url.hostname.replace(/^(www|m|music)\\./, \"\");\n  let id = null;\n  if (host === \"youtu.be\") {\n    id = url.pathname.split(\"/\")[1] ?? null;\n  } else if (host === \"youtube.com\" || host === \"youtube-nocookie.com\") {\n    const parts = url.pathname.split(\"/\").filter(Boolean);\n    if (parts[0] === \"watch\") id = url.searchParams.get(\"v\");\n    else if ([\"shorts\", \"live\", \"embed\", \"v\"].includes(parts[0]))\n      id = parts[1] ?? null;\n  }\n  return id && VIDEO_ID.test(id) ? id : null;\n}\n\n/** Every distinct video a Slack message links to, in order of appearance. */\nfunction videoIdsInMessage(message) {\n  const sources = [message.text ?? \"\"];\n  for (const a of message.attachments ?? []) {\n    sources.push(a.from_url ?? \"\", a.original_url ?? \"\", a.title_link ?? \"\");\n  }\n  const ids = [];\n  for (const s of sources) {\n    for (const m of s.matchAll(/https?:\\/\\/[^\\s|>]+/g)) {\n      const id = youtubeVideoId(m[0]);\n      if (id && !ids.includes(id)) ids.push(id);\n    }\n  }\n  return ids;\n}\n\n/** A Slack user's name as people see it. */\nfunction displayName(user) {\n  const p = user.profile ?? {};\n  return (\n    p.display_name || p.real_name || user.real_name || user.name || user.id\n  );\n}\n\n/**\n * Slack mrkdwn to Markdown: links, mentions, channels, *bold*, ~strike~,\n * entities and line breaks. _italic_, `code`, ```blocks``` and > quotes mean\n * the same in both.\n */\nfunction slackToMarkdown(text, namesById) {\n  let t = text ?? \"\";\n  t = t.replace(\n    /<(https?:\\/\\/[^|>]+)\\|([^>]+)>/g,\n    (_, url, label) => `[${label.replace(/[[\\]]/g, \"\")}](${url})`,\n  );\n  t = t.replace(/<(https?:\\/\\/[^|>]+)>/g, \"$1\");\n  t = t.replace(/<mailto:([^|>]+)\\|([^>]+)>/g, \"[$2](mailto:$1)\");\n  t = t.replace(\n    /<@([UW][A-Z0-9]+)(?:\\|([^>]+))?>/g,\n    (_, id, name) => `@${namesById[id] ?? name ?? id}`,\n  );\n  t = t.replace(/<#C[A-Z0-9]+\\|([^>]*)>/g, \"#$1\");\n  t = t.replace(/<!(here|channel|everyone)(?:\\|[^>]*)?>/g, \"@$1\");\n  t = t.replace(/<!subteam\\^[A-Z0-9]+\\|([^>]+)>/g, \"$1\");\n  t = t.replace(\n    /(^|[\\s(])\\*(\\S(?:[^*\\n]*\\S)?)\\*(?=[\\s).,;:!?]|$)/gm,\n    \"$1**$2**\",\n  );\n  t = t.replace(/(^|[\\s(])~(\\S(?:[^~\\n]*\\S)?)~(?=[\\s).,;:!?]|$)/gm, \"$1~~$2~~\");\n  t = t.replace(/&lt;/g, \"<\").replace(/&gt;/g, \">\").replace(/&amp;/g, \"&\");\n  // Slack keeps single line breaks; Markdown needs them marked.\n  return t.replace(/([^\\n])\\n(?!\\n)/g, \"$1  \\n\").trim();\n}\n\n/** The memo text: the message as Markdown, then a link to it. */\nfunction memoText(message, namesById) {\n  let body = slackToMarkdown(message.text, namesById);\n  if (body.length > MEMO_TEXT_BUDGET) {\n    body = `${body.slice(0, MEMO_TEXT_BUDGET).trimEnd()}…`;\n  }\n  const link = `[View in Slack](${message.permalink})`;\n  return body ? `${body}\\n\\n${link}` : link;\n}\n\n/**\n * memos.add inputs for search matches: one per (message, video), skipping\n * direct messages, deduplicated by permalink.\n */\nfunction memoInputs(matches, namesById, config) {\n  const seen = new Set();\n  const out = [];\n  for (const m of matches) {\n    const ch = m.channel ?? {};\n    if (ch.is_im || ch.is_mpim || !m.permalink || seen.has(m.permalink))\n      continue;\n    seen.add(m.permalink);\n    const ids = videoIdsInMessage(m);\n    if (ids.length === 0) continue;\n    const author = namesById[m.user] ?? m.username ?? undefined;\n    for (const videoId of ids) {\n      out.push({\n        videoId,\n        text: memoText(m, namesById),\n        occurredAt: String(m.ts),\n        source: {\n          kind: \"slack\",\n          url: m.permalink,\n          ...(ch.name ? { label: `#${ch.name}` } : {}),\n          ...(author ? { author } : {}),\n          workspace: config.workspace,\n        },\n        playlistName: config.playlistName,\n      });\n    }\n  }\n  return out;\n}\n\n/** YYYY-MM-DD, `days` before `iso`: the next run's `after:` search bound. */\nfunction searchAfter(iso, days) {\n  const d = new Date(iso);\n  d.setUTCDate(d.getUTCDate() - days);\n  return d.toISOString().slice(0, 10);\n}\n\nconst results = $input.all();\nconst failed = results.filter((r) => r.json.error);\nconst created = results.filter((r) => r.json.result?.data?.json?.created).length;\nif (failed.length > 0) {\n  // Keep the search window, so the next run tries these again.\n  const sample = failed.slice(0, 3).map((r) => JSON.stringify(r.json.error).slice(0, 300));\n  throw new Error(`${failed.length} of ${results.length} memos failed: ${sample.join(' | ')}`);\n}\nconst config = $('Config').first().json;\nconst after = searchAfter(config.startedAt, 3);\n$getWorkflowStaticData('global').after = after;\nreturn [{ json: { memos: results.length, created, nextSearchAfter: after } }];\n"
+      }
+    }
+  ],
+  "connections": {
+    "Every 30 minutes": {
+      "main": [
+        [
+          {
+            "node": "Slack users",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack users": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Search messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search messages": {
+      "main": [
+        [
+          {
+            "node": "Build memos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build memos": {
+      "main": [
+        [
+          {
+            "node": "Add memo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add memo": {
+      "main": [
+        [
+          {
+            "node": "Finish",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Amsterdam"
+  },
+  "pinData": {}
+}
