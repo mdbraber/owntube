@@ -2,6 +2,7 @@
   "name": "ios",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@11.29.0",
   "main": "expo-router/entry",
   "description": "OwnTube for iPhone and iPad: native tabs, menus and settings around the web app's pages, with native media features (PiP, background audio, widget).",
   "scripts": {

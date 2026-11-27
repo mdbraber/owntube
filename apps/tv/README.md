@@ -46,6 +46,7 @@ signed in before this setting existed keep using the URL they were built with.
 ## Build
 
 ```bash
+pnpm install --frozen-lockfile   # in apps/tv: its own pnpm root; corepack picks pnpm 11 from package.json
 EXPO_PUBLIC_OWNTUBE_URL=https://owntube.example.org CI=1 pnpm run prebuild   # EXPO_TV=1 expo prebuild
 cd android
 EXPO_PUBLIC_OWNTUBE_URL=https://owntube.example.org NODE_ENV=production \
@@ -53,6 +54,9 @@ EXPO_PUBLIC_OWNTUBE_URL=https://owntube.example.org NODE_ENV=production \
 # → android/app/build/outputs/apk/release/app-release.apk (debug-signed for now)
 ```
 
+- `apps/tv` is not part of the root workspace, so a root `pnpm install` does not install it. Its
+  lockfile needs pnpm 11+ (`packageManager` pins it; pnpm 9 and 10 stop with "packages field
+  missing" or `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`).
 - `EXPO_TV=1` (set by the `prebuild`/`android` scripts) makes `@react-native-tvos/config-tv`
   generate a TV build.
 - Gradle does not track `EXPO_PUBLIC_*`: after changing only the URL, delete
