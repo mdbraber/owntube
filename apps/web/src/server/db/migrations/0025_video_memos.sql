@@ -18,4 +18,4 @@ CREATE TABLE IF NOT EXISTS video_memos (
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS video_memos_user_video_idx ON video_memos (user_id, video_id);
 --> statement-breakpoint
-CREATE UNIQUE INDEX IF NOT EXISTS video_memos_user_source_url_uidx ON video_memos (user_id, source_url) WHERE source_url IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS video_memos_user_source_video_uidx ON video_memos (user_id, source_url, video_id) WHERE source_url IS NOT NULL;

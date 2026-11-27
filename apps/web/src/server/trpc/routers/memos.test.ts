@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   API_TOKEN_SCOPE_KEYS,
@@ -269,6 +270,73 @@ describe("memos router", () => {
     expect(await asAlice.memos.counts({ videoIds: [] })).toEqual([]);
   });
 
+  it("keeps one memo per video when a message shares several", async () => {
+    const source = { kind: "slack" as const, url: SLACK_URL };
+    const a = await asAlice.memos.add({
+      videoId: VIDEO,
+      text: "two links",
+      source,
+    });
+    const b = await asAlice.memos.add({
+      videoId: OTHER_VIDEO,
+      text: "two links",
+      source,
+    });
+    const again = await asAlice.memos.add({
+      videoId: OTHER_VIDEO,
+      text: "two links",
+      source,
+    });
+    expect([a.created, b.created, again.created]).toEqual([true, true, false]);
+    expect(again.memo.id).toBe(b.memo.id);
+    expect(db.select().from(videoMemos).all()).toHaveLength(2);
+  });
+
+  describe("playlistName", () => {
+    it("finds the playlist by name, any case, or creates it once", async () => {
+      const source = { kind: "slack" as const, url: SLACK_URL };
+      const first = await asAlice.memos.add({
+        videoId: VIDEO,
+        text: "x",
+        source,
+        playlistName: "MNOT Slack",
+      });
+      await asAlice.memos.add({
+        videoId: OTHER_VIDEO,
+        text: "y",
+        source,
+        playlistName: "  mnot slack ",
+      });
+      expect(first.addedToPlaylist).toBe(true);
+      const lists = (await asAlice.playlists.list()).filter(
+        (p) => p.name.toLowerCase() === "mnot slack",
+      );
+      expect(lists.map((l) => [l.name, l.itemCount])).toEqual([
+        ["MNOT Slack", 2],
+      ]);
+      // Bob's own list of that name is a different playlist.
+      await asBob.memos.add({
+        videoId: VIDEO,
+        text: "z",
+        playlistName: "MNOT Slack",
+      });
+      expect(lists[0]?.id).not.toBe(
+        (await asBob.playlists.list()).find((p) => p.name === "MNOT Slack")?.id,
+      );
+    });
+
+    it("refuses playlistId and playlistName together", async () => {
+      await expect(
+        asAlice.memos.add({
+          videoId: VIDEO,
+          text: "x",
+          playlistId: 1,
+          playlistName: "A",
+        }),
+      ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    });
+  });
+
   describe("playlistId", () => {
     it("adds the video to the user's playlist, once", async () => {
       const { id } = await asAlice.playlists.create({ name: "From Slack" });
@@ -283,7 +351,11 @@ describe("memos router", () => {
       await asAlice.memos.add({ ...input, source: undefined, text: "again" });
       expect(first.addedToPlaylist).toBe(true);
       expect(retry.addedToPlaylist).toBe(true);
-      const items = db.select().from(playlistItems).all();
+      const items = db
+        .select()
+        .from(playlistItems)
+        .where(eq(playlistItems.playlistId, id))
+        .all();
       expect(items.map((i) => i.videoId)).toEqual([VIDEO]);
       expect(items[0]?.channelId).toBe("UCfromlookup000000000000");
     });

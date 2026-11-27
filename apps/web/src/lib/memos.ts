@@ -77,3 +77,23 @@ export function memoSourceLabel(source: MemoSourceView): string {
   if (source.label) return source.label;
   return source.url ? hostOf(source.url) : "Link";
 }
+
+/**
+ * A memo's Markdown as plain text, for a tooltip or a podcast description:
+ * emphasis and code marks go, a link keeps its text (and, with `urls`, its
+ * address in brackets).
+ */
+export function memoPlainText(
+  markdown: string,
+  opts: { urls?: boolean } = {},
+): string {
+  return markdown
+    .replace(/!?\[([^\]]*)\]\((\S+?)\)/g, (_, text: string, url: string) =>
+      opts.urls && text !== url ? `${text} (${url})` : text || url,
+    )
+    .replace(/<(https?:\/\/[^>\s]+)>/g, "$1")
+    .replace(/```[a-z]*\n?/gi, "")
+    .replace(/(\*\*|__|~~|`)/g, "")
+    .replace(/(^|[\s(])[*_](\S(?:.*?\S)?)[*_](?=[\s).,;:!?]|$)/gm, "$1$2")
+    .trim();
+}

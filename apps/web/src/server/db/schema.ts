@@ -358,9 +358,9 @@ export const publishedFeeds = sqliteTable(
 /**
  * Private notes on a video: typed in OwnTube (`direct`) or added by an
  * automation through the API (`slack`, `link`), with where and when they were
- * said. A source memo is a quote and stays read-only. `source_url` is unique
- * per user, so an automation that retries the same Slack message stores it
- * once. Title and channel name are denormalized at write time (like
+ * said. A source memo is a quote and stays read-only. (source_url, video) is
+ * unique per user, so an automation that retries the same Slack message stores
+ * it once per video it shares. Title and channel name are denormalized at write time (like
  * watch_history) so library search finds memo videos no other table knows.
  */
 export const videoMemos = sqliteTable(
@@ -388,8 +388,8 @@ export const videoMemos = sqliteTable(
   },
   (t) => [
     index("video_memos_user_video_idx").on(t.userId, t.videoId),
-    uniqueIndex("video_memos_user_source_url_uidx")
-      .on(t.userId, t.sourceUrl)
+    uniqueIndex("video_memos_user_source_video_uidx")
+      .on(t.userId, t.sourceUrl, t.videoId)
       .where(sql`source_url IS NOT NULL`),
   ],
 );

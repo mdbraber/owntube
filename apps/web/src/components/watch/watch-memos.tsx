@@ -10,7 +10,8 @@ import {
   useState,
 } from "react";
 import { useActionToast } from "@/components/videos/action-toast";
-import { TrashIcon } from "@/components/videos/video-action-icons";
+import { PencilIcon, TrashIcon } from "@/components/videos/video-action-icons";
+import { MemoMarkdown } from "@/components/watch/memo-markdown";
 import {
   formatMemoTime,
   formatMemoTimeFull,
@@ -107,7 +108,7 @@ function MemoEditor({
   );
 }
 
-function MemoHeader({ memo }: { memo: Memo }) {
+function MemoHeader({ memo, wide }: { memo: Memo; wide?: boolean }) {
   const label = memoSourceLabel(memo.source);
   const time = formatMemoTime(memo.occurredAt);
   const source =
@@ -125,7 +126,9 @@ function MemoHeader({ memo }: { memo: Memo }) {
       <span className="font-semibold">{label}</span>
     );
   return (
-    <p className="m-0 flex min-w-0 items-center gap-1 pr-7 text-xs text-[hsl(var(--memo-muted))]">
+    <p
+      className={`m-0 flex min-w-0 items-center gap-1 text-xs text-[hsl(var(--memo-muted))] ${wide ? "pr-14" : "pr-7"}`}
+    >
       <span className="truncate">{source}</span>
       <span aria-hidden="true">·</span>
       <time
@@ -153,18 +156,33 @@ function MemoCard({
   onDelete: () => void;
 }) {
   const editable = memo.source.kind === "direct";
+  const iconButton =
+    "flex h-7 w-7 items-center justify-center rounded-full text-[hsl(var(--memo-muted))] transition hover:bg-[hsl(var(--memo-border)_/_0.6)] hover:text-[hsl(var(--memo-foreground))]";
   return (
     <article className="ot-memo-card relative rounded-xl px-4 pb-3 pt-2.5">
-      <MemoHeader memo={memo} />
-      <button
-        type="button"
-        aria-label="Delete memo"
-        title="Delete memo"
-        onClick={onDelete}
-        className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full text-[hsl(var(--memo-muted))] transition hover:bg-[hsl(var(--memo-border)_/_0.6)] hover:text-[hsl(var(--memo-foreground))]"
-      >
-        <TrashIcon className="h-3.5 w-3.5" />
-      </button>
+      <MemoHeader memo={memo} wide={editable} />
+      <div className="absolute right-2 top-2 flex items-center">
+        {editable && !editing ? (
+          <button
+            type="button"
+            aria-label="Edit memo"
+            title="Edit memo"
+            onClick={onEdit}
+            className={iconButton}
+          >
+            <PencilIcon className="h-3.5 w-3.5" />
+          </button>
+        ) : null}
+        <button
+          type="button"
+          aria-label="Delete memo"
+          title="Delete memo"
+          onClick={onDelete}
+          className={iconButton}
+        >
+          <TrashIcon className="h-3.5 w-3.5" />
+        </button>
+      </div>
       <div className="mt-1">
         {editing ? (
           <MemoEditor
@@ -173,18 +191,22 @@ function MemoCard({
             onDone={onEditDone}
           />
         ) : editable ? (
-          <button
-            type="button"
-            onClick={onEdit}
+          // Clicking the text edits it, as a shortcut for the pencil (the
+          // keyboard's way in); a click on a link in it follows the link.
+          // biome-ignore lint/a11y/noStaticElementInteractions: mouse shortcut for the Edit button
+          // biome-ignore lint/a11y/useKeyWithClickEvents: the Edit button is the keyboard path
+          <div
+            className="cursor-text"
             title="Click to edit"
-            className="block w-full cursor-text whitespace-pre-wrap break-words text-left text-sm leading-6"
+            onClick={(e) => {
+              if ((e.target as HTMLElement).closest("a")) return;
+              onEdit();
+            }}
           >
-            {memo.text}
-          </button>
+            <MemoMarkdown text={memo.text} />
+          </div>
         ) : (
-          <p className="m-0 whitespace-pre-wrap break-words text-sm leading-6">
-            {memo.text}
-          </p>
+          <MemoMarkdown text={memo.text} />
         )}
       </div>
     </article>

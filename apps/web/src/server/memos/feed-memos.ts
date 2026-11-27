@@ -1,5 +1,5 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
-import { memoSourceLabel } from "@/lib/memos";
+import { memoPlainText, memoSourceLabel } from "@/lib/memos";
 import type { AppDb } from "@/server/db/client";
 import { videoMemos } from "@/server/db/schema";
 import { toVideoMemo, type VideoMemo } from "@/server/memos/memos";
@@ -22,7 +22,11 @@ export function memoPreamble(memos: readonly VideoMemo[]): string {
   if (memos.length === 0) return "";
   const blocks = memos.map((m) => {
     const head = `${memoSourceLabel(m.source)} · ${utcTime(m.occurredAt)}`;
-    return [head, m.text, m.source.url ?? ""].filter(Boolean).join("\n");
+    const text = memoPlainText(m.text, { urls: true });
+    // A text that already links its source doesn't need it again.
+    const url =
+      m.source.url && !text.includes(m.source.url) ? m.source.url : "";
+    return [head, text, url].filter(Boolean).join("\n");
   });
   return `Memos\n\n${blocks.join("\n\n")}`;
 }

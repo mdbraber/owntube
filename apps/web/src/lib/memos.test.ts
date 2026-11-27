@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatMemoTime, memoSourceLabel } from "@/lib/memos";
+import { formatMemoTime, memoPlainText, memoSourceLabel } from "@/lib/memos";
 
 const local = (y: number, m: number, d: number, h: number, min: number) =>
   Math.floor(new Date(y, m, d, h, min).getTime() / 1000);
@@ -50,5 +50,26 @@ describe("memoSourceLabel", () => {
     };
     expect(memoSourceLabel({ ...link, label: "Blog post" })).toBe("Blog post");
     expect(memoSourceLabel({ ...link, label: null })).toBe("example.com");
+  });
+});
+
+describe("memoPlainText", () => {
+  it("drops emphasis and code marks", () => {
+    expect(memoPlainText("**Bold** and _it_ and *it* and ~~gone~~ `x`")).toBe(
+      "Bold and it and it and gone x",
+    );
+  });
+  it("keeps link text, with the address when asked", () => {
+    const md =
+      "See [the thread](https://acme.slack.com/p1) and <https://x.org/a>";
+    expect(memoPlainText(md)).toBe("See the thread and https://x.org/a");
+    expect(memoPlainText(md, { urls: true })).toBe(
+      "See the thread (https://acme.slack.com/p1) and https://x.org/a",
+    );
+  });
+  it("leaves underscores inside words and URLs alone", () => {
+    expect(memoPlainText("snake_case https://x.org/a_b_c")).toBe(
+      "snake_case https://x.org/a_b_c",
+    );
   });
 });

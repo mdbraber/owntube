@@ -10,6 +10,7 @@ import {
 } from "@/components/videos/video-action-icons";
 import type { VideoActionSurface } from "@/components/videos/video-action-registry";
 import { useVideoMembership } from "@/components/videos/video-membership-context";
+import { memoPlainText } from "@/lib/memos";
 import { saveMembershipLabel } from "@/lib/save-membership";
 import { cn } from "@/lib/utils";
 import { watchHref } from "@/lib/yt-routes";
@@ -17,7 +18,7 @@ import { watchHref } from "@/lib/yt-routes";
 const MEMO_PREVIEW_LEN = 280;
 
 function memoPreview(text: string): string {
-  const flat = text.replace(/\s+/g, " ").trim();
+  const flat = memoPlainText(text).replace(/\s+/g, " ").trim();
   return flat.length > MEMO_PREVIEW_LEN
     ? `${flat.slice(0, MEMO_PREVIEW_LEN - 1)}…`
     : flat;
