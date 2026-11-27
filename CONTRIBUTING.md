@@ -10,14 +10,16 @@ Thanks for taking the time. OwnTube is a solo side-project, so my main goal is t
 ## Local setup
 
 ```bash
-cp .env.example .env
+cp apps/web/.env.example apps/web/.env
 corepack enable && corepack prepare pnpm@9.15.9 --activate
 pnpm install
 pnpm run db:migrate
 pnpm dev
 ```
 
-Run the gateway next to the web app (`pnpm dev:gateway`); it is the only part that talks to YouTube.
+Run the gateway next to the web app (`pnpm dev:gateway`, which reads `apps/web/.env` too); it is the only part that talks to YouTube.
+
+`apps/tv` and `apps/ios` are not part of this workspace: install each on its own (`cd apps/tv && pnpm install`), see their READMEs.
 
 ## Workflow
 

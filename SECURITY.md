@@ -45,7 +45,7 @@ Out of scope:
 
 A few notes for operators:
 
-- **Always** set a strong `AUTH_SECRET`. The default value in `.env.example` is intentionally invalid for production.
+- **Always** set strong, separate `AUTH_SECRET` and `GATEWAY_SIGNING_KEY` values (`openssl rand -base64 48`). The web app and the gateway refuse to start in production while either is missing or still a placeholder from an example env file.
 - Put OwnTube behind a reverse proxy with TLS (Caddy, nginx, Traefik, …). Don't expose port 3000 directly to the internet.
-- Back up `data/owntube.db` regularly — see [docs/SELF-HOSTING.md](docs/SELF-HOSTING.md).
-- Set a long random `GATEWAY_SIGNING_KEY` and keep the gateway's port (8080) internal: only `/media/*` should reach it, through your reverse proxy.
+- Back up `data/owntube.db` regularly — see [docs/SELF-HOSTING.md](docs/SELF-HOSTING.md#backups).
+- Keep the gateway's port (8080) internal: only `/media/*` should reach it, through your reverse proxy.

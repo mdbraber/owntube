@@ -57,7 +57,7 @@ cp apps/web/.env.example apps/web/.env
 corepack enable && corepack prepare pnpm@9.15.9 --activate
 pnpm install
 pnpm run db:migrate
-pnpm dev:gateway   # in a second terminal: the gateway on :8080
+pnpm dev:gateway   # in a second terminal: the gateway on :8080 (reads apps/web/.env too)
 pnpm dev
 ```
 
@@ -66,12 +66,13 @@ Open <http://localhost:3000>. Register an account on `/register` and you're in.
 ## Docker
 
 ```bash
-docker compose up --build
+printf 'AUTH_SECRET=%s\nGATEWAY_SIGNING_KEY=%s\n' "$(openssl rand -base64 48)" "$(openssl rand -base64 48)" > .env
+docker compose up -d --build
 ```
 
-Set `GATEWAY_SIGNING_KEY` and `AUTH_SECRET` in `.env` (compose runs the web app and the gateway). The SQLite database is persisted in the named volume `owntube-data`, the gateway's caches in `owntube-gateway`. Behind a reverse proxy, route `/media/*` to the gateway (port 8080); without one the web app forwards it.
+Compose runs the web app and the gateway. The SQLite database is persisted in the named volume `owntube-data`, the gateway's caches in `owntube-gateway`. Behind a reverse proxy, route `/media/*` to the gateway (port 8080); without one the web app forwards it.
 
-For Unraid deployment, use `docker-compose.unraid.yml` + `.env.unraid` and follow [docs/UNRAID-DEPLOYMENT.md](docs/UNRAID-DEPLOYMENT.md).
+[docs/SELF-HOSTING.md](docs/SELF-HOSTING.md) covers settings, reverse proxies, backups, Unraid (`docker-compose.unraid.yml`) and upgrading from the older Invidious setup.
 
 ## Routes
 
@@ -116,7 +117,7 @@ All variables are documented in [apps/web/.env.example](apps/web/.env.example). 
 - `GATEWAY_URL` — the gateway's internal address (default `http://localhost:8080`)
 - `GATEWAY_SIGNING_KEY` — shared by the web app and the gateway (API key and playback URL signatures)
 - `GATEWAY_EGRESS_FAMILY` — on the gateway: `ipv4` (recommended), `ipv6` or `auto`
-- `AUTH_SECRET` — Auth.js JWT secret (**must** be set in production)
+- `AUTH_SECRET` — Auth.js JWT secret (a production server refuses to start without a real one)
 - `LOG_LEVEL` — `debug` / `info` / `warn` / `error`
 
 ## Project layout
