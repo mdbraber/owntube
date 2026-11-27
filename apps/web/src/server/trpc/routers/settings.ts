@@ -44,6 +44,7 @@ const settingsPatchSchema = z.object({
   excludeSubscribedFromRecommendations: z.boolean().optional(),
   personalizedFeedOnly: z.boolean().optional(),
   defaultCinemaMode: z.boolean().optional(),
+  includeMemosInFeeds: z.boolean().optional(),
   enableMiniPlayer: z.boolean().optional(),
   autoplayOnWatch: z.boolean().optional(),
   autoplayNext: z.boolean().optional(),

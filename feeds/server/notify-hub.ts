@@ -16,10 +16,15 @@ export type HubConfig = {
   token: string;
 };
 
-export function hubTopicUrls(publicUrl: string, feed: FeedKey, token: string): string[] {
+export function hubTopicUrls(
+  publicUrl: string,
+  feed: FeedKey,
+  token: string,
+): string[] {
   const origin = new URL(publicUrl).origin;
   return (["audio", "video"] as const).map(
-    (variant) => `${origin}${secretFeedPath(token, feed.kind, feed.slug, variant)}`,
+    (variant) =>
+      `${origin}${secretFeedPath(token, feed.kind, feed.slug, variant)}`,
   );
 }
 

@@ -130,6 +130,12 @@ export const appSettingsSchema = z.object({
   hideShortsInSubscriptions: z.boolean().default(true),
   /** Start watch page with cinema mode enabled. */
   defaultCinemaMode: z.boolean().default(false),
+  /**
+   * Start each episode description in the playlist, queue and saved podcast
+   * feeds with the memos on that video. Off: memos are private notes, and a
+   * feed reaches a podcast app.
+   */
+  includeMemosInFeeds: z.boolean().default(false),
   /** Keep a mini player when leaving watch page. */
   enableMiniPlayer: z.boolean().default(true),
   /** Start playing automatically when the watch page opens. */
@@ -314,6 +320,7 @@ const defaultSettings: AppSettings = {
   tasteKeywords: [],
   hideShortsInSubscriptions: true,
   defaultCinemaMode: false,
+  includeMemosInFeeds: false,
   enableMiniPlayer: true,
   autoplayOnWatch: true,
   autoplayNext: true,

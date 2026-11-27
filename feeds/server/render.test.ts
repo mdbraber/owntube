@@ -142,7 +142,10 @@ test("hub link is advertised when configured; credentials stay out of derived UR
     selfUrl: "https://alice:pw@pub.example/rss/playlist/cooking.audio.xml",
     hubUrl: "https://websub.example/",
   });
-  assert.match(xml, /<atom:link href="https:\/\/websub\.example\/" rel="hub"\/>/);
+  assert.match(
+    xml,
+    /<atom:link href="https:\/\/websub\.example\/" rel="hub"\/>/,
+  );
   assert.match(
     xml,
     /<atom:link href="https:\/\/alice:pw@pub\.example\/rss\/playlist\/cooking\.audio\.xml" rel="self"/,

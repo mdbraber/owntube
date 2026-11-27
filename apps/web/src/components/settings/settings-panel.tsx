@@ -338,6 +338,12 @@ export function SettingsPanel({ initial }: SettingsPanelProps) {
 
         <SettingsSection id="integrations" title={sectionTitle("integrations")}>
           <RssFeedsSection />
+          <ToggleRow
+            title="Include memos in podcast feeds"
+            description="Episode descriptions in your playlist, queue and saved feeds start with your memos on that video: who, when, the text and its link. Memos are private, so this is off unless you turn it on."
+            checked={s.includeMemosInFeeds}
+            onChange={(v) => set({ includeMemosInFeeds: v })}
+          />
           <ApiTokensSection />
         </SettingsSection>
 
@@ -789,27 +795,25 @@ function ServerRows() {
   });
 
   return (
-    <>
-      <SettingRow
-        title="Cache"
-        description={
-          cacheMessage ??
-          "Clear OwnTube's own caches (home feed, RSS, SponsorBlock) after big imports."
-        }
+    <SettingRow
+      title="Cache"
+      description={
+        cacheMessage ??
+        "Clear OwnTube's own caches (home feed, RSS, SponsorBlock) after big imports."
+      }
+    >
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => {
+          setCacheMessage(null);
+          clearCaches.mutate();
+        }}
+        disabled={clearCaches.isPending}
       >
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            setCacheMessage(null);
-            clearCaches.mutate();
-          }}
-          disabled={clearCaches.isPending}
-        >
-          {clearCaches.isPending ? "Clearing…" : "Clear cache"}
-        </Button>
-      </SettingRow>
-    </>
+        {clearCaches.isPending ? "Clearing…" : "Clear cache"}
+      </Button>
+    </SettingRow>
   );
 }

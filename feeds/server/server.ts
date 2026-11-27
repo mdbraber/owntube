@@ -37,7 +37,12 @@ import {
   type Variant,
   xmlEscape,
 } from "./render.ts";
-import { parseSecretPath, redactToken, secretFeedPath, TOKEN_RE } from "./secret-urls.ts";
+import {
+  parseSecretPath,
+  redactToken,
+  secretFeedPath,
+  TOKEN_RE,
+} from "./secret-urls.ts";
 import { FeedStore, type UserCredential } from "./store.ts";
 import {
   channelIdFromTopic,
@@ -82,7 +87,9 @@ const hub: HubConfig | null =
       }
     : null;
 if (HUB_URL && !hub) {
-  process.stderr.write("feeds-server: HUB_URL needs HUB_PUBLISH_TOKEN and PUBLIC_URL\n");
+  process.stderr.write(
+    "feeds-server: HUB_URL needs HUB_PUBLISH_TOKEN and PUBLIC_URL\n",
+  );
   process.exit(1);
 }
 if (hub) {
@@ -238,7 +245,8 @@ function isUserCredential(v: unknown): v is UserCredential {
     c.username.length > 0 &&
     typeof c.passSha256 === "string" &&
     /^[0-9a-f]{64}$/.test(c.passSha256) &&
-    (c.feedToken === undefined || (typeof c.feedToken === "string" && TOKEN_RE.test(c.feedToken)))
+    (c.feedToken === undefined ||
+      (typeof c.feedToken === "string" && TOKEN_RE.test(c.feedToken)))
   );
 }
 
@@ -329,7 +337,9 @@ async function handlePublish(
     notifyHub(hub, changed, (o) => store.tokenFor(o)).then(
       () => logLine(`hub notified: ${changed.length} changed feed(s)`),
       (error: unknown) =>
-        logLine(`hub notify failed: ${error instanceof Error ? error.message : String(error)}`),
+        logLine(
+          `hub notify failed: ${error instanceof Error ? error.message : String(error)}`,
+        ),
     );
   }
 }
@@ -529,7 +539,11 @@ h1{font-size:1.4rem}ul{list-style:none;padding:0}li{padding:.6rem 0;border-botto
 <ul>\n${items}\n</ul></body></html>\n`;
 }
 
-function renderOpml(req: http.IncomingMessage, owner: string, token: string): string {
+function renderOpml(
+  req: http.IncomingMessage,
+  owner: string,
+  token: string,
+): string {
   const base = originOf(req);
   const outlines = store
     .list(owner)
@@ -629,7 +643,12 @@ const server = http.createServer((req, res) => {
             return;
           }
           const self = new URL(
-            secretFeedPath(secret.token, secret.kind, secret.slug, secret.variant),
+            secretFeedPath(
+              secret.token,
+              secret.kind,
+              secret.slug,
+              secret.variant,
+            ),
             hub?.publicUrl ?? originOf(req),
           ).href;
           sendXml(
@@ -705,7 +724,9 @@ server.listen(PORT, () => {
     logLine("feeds-server: /publish IP allow-list off (Bearer only)");
   }
   logLine(
-    hub ? `feeds-server: WebSub hub ${HUB_URL}` : "feeds-server: WebSub hub off (HUB_URL unset)",
+    hub
+      ? `feeds-server: WebSub hub ${HUB_URL}`
+      : "feeds-server: WebSub hub off (HUB_URL unset)",
   );
   if (WEBSUB_CALLBACK_URL) {
     logLine(
@@ -728,6 +749,8 @@ server.listen(PORT, () => {
     setInterval(tick, WEBSUB_TICK_MS).unref();
     tick();
   } else {
-    logLine("feeds-server: YouTube WebSub subscriber off (WEBSUB_CALLBACK_URL unset)");
+    logLine(
+      "feeds-server: YouTube WebSub subscriber off (WEBSUB_CALLBACK_URL unset)",
+    );
   }
 });

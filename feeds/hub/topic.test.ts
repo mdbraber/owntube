@@ -32,8 +32,12 @@ test("encoding differences in username and path still match", () => {
     topicKey(`https://m@example.com:pw@owntube.example${PATH}`),
   );
   assert.equal(
-    topicKey("https://a@owntube.example/rss/playlist/r%c3%a9sum%c3%a9.audio.xml"),
-    topicKey("https://a@owntube.example/rss/playlist/r%C3%A9sum%C3%A9.audio.xml"),
+    topicKey(
+      "https://a@owntube.example/rss/playlist/r%c3%a9sum%c3%a9.audio.xml",
+    ),
+    topicKey(
+      "https://a@owntube.example/rss/playlist/r%C3%A9sum%C3%A9.audio.xml",
+    ),
   );
   assert.equal(
     topicKey("https://a@OwnTube.Example/rss/q.xml"),
@@ -45,11 +49,16 @@ test("non-http topics are rejected", () => {
   assert.equal(topicKey("ftp://owntube.example/x"), null);
   assert.equal(topicKey("not a url"), null);
   assert.equal(topicHostname("not a url"), null);
-  assert.equal(topicHostname(`https://a:b@owntube.example:8443${PATH}`), "owntube.example");
+  assert.equal(
+    topicHostname(`https://a:b@owntube.example:8443${PATH}`),
+    "owntube.example",
+  );
 });
 
 test("fetchTarget moves credentials into a Basic header", () => {
-  const t = fetchTarget(`https://m%40example.com:p%3Ass@owntube.example${PATH}`);
+  const t = fetchTarget(
+    `https://m%40example.com:p%3Ass@owntube.example${PATH}`,
+  );
   assert.equal(t.url, `https://owntube.example${PATH}`);
   assert.equal(
     t.authorization,
@@ -65,7 +74,10 @@ test("redact hides the password only", () => {
     redact(`https://alice:secret@owntube.example${PATH}`),
     `https://alice:***@owntube.example${PATH}`,
   );
-  assert.equal(redact(`https://owntube.example${PATH}`), `https://owntube.example${PATH}`);
+  assert.equal(
+    redact(`https://owntube.example${PATH}`),
+    `https://owntube.example${PATH}`,
+  );
 });
 
 test("redact hides a leading secret-address token", () => {
@@ -87,13 +99,18 @@ test("redact hides a leading secret-address token", () => {
 test("redact masks both a token and a password when both are present", () => {
   const token = "abcdef0123456789abcdef0123456789";
   assert.equal(
-    redact(`https://alice:secret@owntube.example/rss/${token}/queue/queue.audio.xml`),
+    redact(
+      `https://alice:secret@owntube.example/rss/${token}/queue/queue.audio.xml`,
+    ),
     "https://alice:***@owntube.example/rss/abcdef…/queue/queue.audio.xml",
   );
 });
 
 test("redact leaves other paths unchanged", () => {
-  assert.equal(redact(`https://owntube.example${PATH}`), `https://owntube.example${PATH}`);
+  assert.equal(
+    redact(`https://owntube.example${PATH}`),
+    `https://owntube.example${PATH}`,
+  );
   assert.equal(
     redact("https://owntube.example/rss/not-a-token/queue.audio.xml"),
     "https://owntube.example/rss/not-a-token/queue.audio.xml",

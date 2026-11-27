@@ -23,8 +23,10 @@ import {
   watchQueue,
 } from "@/server/db/schema";
 import { signedEnclosures } from "@/server/gateway/playback";
+import { memosByVideo, withMemoPreamble } from "@/server/memos/feed-memos";
 import { ensureRssPass, feedToken, sha256Hex } from "@/server/remote/rss-pass";
 import { getChannelRssEntries, getLongFormWindows } from "@/server/rss/cache";
+import { getUserSettings } from "@/server/settings/profile";
 
 /**
  * Remote-control publisher: turns each user's local library (playlists, queue,
@@ -405,6 +407,25 @@ async function buildFeedsForUser(
 ): Promise<{ feeds: FeedSnapshot[]; refs: PublishedFeedRef[] }> {
   const { appOrigin, channelFeedLimit, mergedFeedLimit, concurrency } = opts;
   const now = Math.floor(Date.now() / 1000);
+  const includeMemos = getUserSettings(db, userId).includeMemosInFeeds;
+  /** The user's own lists, with memos on top of each description if asked. */
+  const listItems = async (
+    rows: { videoId: string; title?: string | null }[],
+  ): Promise<FeedItem[]> => {
+    const items = await enrichVideoItems(rows, appOrigin, concurrency);
+    if (!includeMemos) return items;
+    const memos = memosByVideo(
+      db,
+      userId,
+      items.map((i) => i.videoId),
+    );
+    return items.map((item) => {
+      const list = memos.get(item.videoId);
+      return list
+        ? { ...item, description: withMemoPreamble(item.description, list) }
+        : item;
+    });
+  };
   const feeds: FeedSnapshot[] = [];
   const refs: PublishedFeedRef[] = [];
   const pushFeed = (feed: FeedSnapshot, refId: string): void => {
@@ -435,7 +456,7 @@ async function buildFeedsForUser(
       .orderBy(asc(playlistItems.position), asc(playlistItems.addedAt))
       .all();
     if (itemRows.length === 0) continue;
-    const items = await enrichVideoItems(itemRows, appOrigin, concurrency);
+    const items = await listItems(itemRows);
     pushFeed(
       {
         kind: "playlist",
@@ -463,7 +484,7 @@ async function buildFeedsForUser(
     .orderBy(asc(watchQueue.position))
     .all();
   if (queueRows.length > 0) {
-    const items = await enrichVideoItems(queueRows, appOrigin, concurrency);
+    const items = await listItems(queueRows);
     pushFeed(
       {
         kind: "queue",
@@ -488,7 +509,7 @@ async function buildFeedsForUser(
     .orderBy(desc(interactions.createdAt))
     .all();
   if (savedRows.length > 0) {
-    const items = await enrichVideoItems(savedRows, appOrigin, concurrency);
+    const items = await listItems(savedRows);
     pushFeed(
       {
         kind: "saved",

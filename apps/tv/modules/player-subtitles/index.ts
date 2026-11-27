@@ -5,9 +5,8 @@ type PlayerSubtitlesNative = {
 };
 
 // Absent in builds without the native side (and off Android): a no-op.
-const native = requireOptionalNativeModule<PlayerSubtitlesNative>(
-  "PlayerSubtitles",
-);
+const native =
+  requireOptionalNativeModule<PlayerSubtitlesNative>("PlayerSubtitles");
 
 /**
  * Space under the captions, as a fraction of the video view's height. YouTube

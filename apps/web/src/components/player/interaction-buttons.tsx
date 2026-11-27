@@ -4,7 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { ShareDialog } from "@/components/player/share-dialog";
 import { useActionToast } from "@/components/videos/action-toast";
 import { useVideoActions } from "@/components/videos/use-video-actions";
-import { ShareIcon, XIcon } from "@/components/videos/video-action-icons";
+import {
+  MemoIcon,
+  ShareIcon,
+  XIcon,
+} from "@/components/videos/video-action-icons";
 import {
   isVideoActionActive,
   VideoActionGlyph,
@@ -17,6 +21,7 @@ import {
 } from "@/components/videos/video-actions-menu";
 import { saveMembershipLabel } from "@/lib/save-membership";
 import { cn } from "@/lib/utils";
+import { useMemoComposerStore } from "@/stores/memo-composer-store";
 import { trpc } from "@/trpc/react";
 
 type InteractionButtonsProps = {
@@ -124,6 +129,7 @@ export function InteractionButtons({
     actions.playlistName,
   );
   const { showToast } = useActionToast();
+  const openMemo = useMemoComposerStore((s) => s.open);
   const onSaveMainPress = () => {
     if (membership.active) {
       setSaveMenuOpen((o) => !o);
@@ -202,6 +208,17 @@ export function InteractionButtons({
         ) : null}
       </div>
       {toggle("queue")}
+      {isAuthenticated ? (
+        <button
+          type="button"
+          className={cn(pillBase, "rounded-full px-3", pillTone(false))}
+          title="Add memo"
+          aria-label="Add memo"
+          onClick={() => openMemo(videoId)}
+        >
+          <MemoIcon />
+        </button>
+      ) : null}
       <ShareDialog
         videoId={videoId}
         open={shareOpen}

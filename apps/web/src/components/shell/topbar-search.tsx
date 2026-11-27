@@ -9,6 +9,11 @@ import {
   useRef,
   useState,
 } from "react";
+import { hasLibraryFilter, parseLibraryQuery } from "@/lib/library-query";
+import {
+  type FilterSuggestion,
+  libraryFilterSuggestions,
+} from "@/lib/library-search-suggestions";
 import {
   filterSearchQueryHistory,
   readSearchQueryHistory,
@@ -77,28 +82,72 @@ export function TopbarSearch() {
     [history, debouncedQ],
   );
 
+  // A query with in:/tag:/has: filters searches the library: it never goes
+  // to YouTube, not even for suggestions.
+  const libraryQuery = hasLibraryFilter(debouncedQ);
+  const authed = trpc.auth.session.useQuery().data?.authed ?? false;
   const upstreamQuery = trpc.search.suggestions.useQuery(
     { q: debouncedQ },
     {
-      enabled: panelOpen && debouncedQ.length > 0,
+      enabled: panelOpen && debouncedQ.length > 0 && !libraryQuery,
       staleTime: 60_000,
       retry: false,
     },
   );
+  const typingFilter = /(^|[\s(-])(has|tag|in):/i.test(q);
+  const vocabulary = trpc.search.libraryVocabulary.useQuery(undefined, {
+    enabled: authed && (typingFilter || libraryQuery),
+    staleTime: 60_000,
+  });
 
-  const suggestions = useMemo(
+  const filterSuggestions = useMemo<FilterSuggestion[]>(
+    () =>
+      panelOpen ? libraryFilterSuggestions(q, vocabulary.data ?? null) : [],
+    [panelOpen, q, vocabulary.data],
+  );
+
+  const queryProblem = useMemo(() => {
+    if (!libraryQuery) return null;
+    if (!authed) return "Sign in to search your library.";
+    const parsed = parseLibraryQuery(debouncedQ, {
+      favoriteTag: vocabulary.data?.favoriteTag ?? "favorite",
+    });
+    return parsed.kind === "error" ? parsed.message : null;
+  }, [authed, debouncedQ, libraryQuery, vocabulary.data?.favoriteTag]);
+
+  const textSuggestions = useMemo(
     () =>
       mergeSearchSuggestions(
         debouncedQ,
         historyMatches,
-        upstreamQuery.data?.suggestions ?? [],
+        libraryQuery ? [] : (upstreamQuery.data?.suggestions ?? []),
         10,
       ),
-    [debouncedQ, historyMatches, upstreamQuery.data?.suggestions],
+    [debouncedQ, historyMatches, libraryQuery, upstreamQuery.data?.suggestions],
   );
+  // While a filter is being typed, its values replace the text suggestions.
+  const filterMode = filterSuggestions.length > 0;
+  const suggestions = filterMode
+    ? filterSuggestions.map((f) => f.value)
+    : textSuggestions;
+
+  // A filter still being typed (`in:`) isn't an error yet.
+  const shownProblem = filterMode ? null : queryProblem;
 
   const showPanel =
-    panelOpen && (suggestions.length > 0 || upstreamQuery.isFetching);
+    panelOpen &&
+    (suggestions.length > 0 ||
+      shownProblem !== null ||
+      (!libraryQuery && upstreamQuery.isFetching));
+
+  /** Take a filter value into the box and keep typing. */
+  const acceptFilter = useCallback((value: string) => {
+    setQ(value);
+    setDebouncedQ(value.trim());
+    setActiveIndex(-1);
+    setPanelOpen(true);
+    inputRef.current?.focus();
+  }, []);
 
   const navigateToQuery = useCallback(
     (query: string) => {
@@ -122,7 +171,9 @@ export function TopbarSearch() {
       return;
     }
     if (activeIndex >= 0 && activeIndex < suggestions.length) {
-      navigateToQuery(suggestions[activeIndex] ?? trimmed);
+      const picked = suggestions[activeIndex] ?? trimmed;
+      if (filterMode) acceptFilter(picked);
+      else navigateToQuery(picked);
       return;
     }
     // A pasted YouTube link opens its OwnTube page instead of a text search.
@@ -138,7 +189,15 @@ export function TopbarSearch() {
     setHistory(readSearchQueryHistory());
     setPanelOpen(false);
     router.push(searchUrl(trimmed));
-  }, [activeIndex, navigateToQuery, q, router, suggestions]);
+  }, [
+    acceptFilter,
+    activeIndex,
+    filterMode,
+    navigateToQuery,
+    q,
+    router,
+    suggestions,
+  ]);
 
   return (
     <div className="relative block w-full min-w-0 max-w-2xl">
@@ -275,12 +334,52 @@ export function TopbarSearch() {
             aria-label="Search suggestions"
             className="max-h-72 overflow-y-auto"
           >
-            {upstreamQuery.isFetching && suggestions.length === 0 ? (
+            {shownProblem ? (
+              <p
+                role="alert"
+                className="px-3 py-2 text-sm font-medium text-[hsl(var(--destructive))]"
+              >
+                {shownProblem}
+              </p>
+            ) : null}
+            {filterMode
+              ? filterSuggestions.map((f, index) => (
+                  <button
+                    key={f.value}
+                    type="button"
+                    id={`${LISTBOX_ID}-option-${index}`}
+                    role="option"
+                    aria-selected={activeIndex === index}
+                    className={cn(
+                      "ot-topbar-search-option flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[hsl(var(--foreground))] hover:bg-[hsl(var(--accent))]",
+                      activeIndex === index && "bg-[hsl(var(--accent))]",
+                    )}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => acceptFilter(f.value)}
+                  >
+                    <span className="shrink-0 rounded bg-[hsl(var(--muted))] px-1 font-mono text-[11px] text-[hsl(var(--muted-foreground))]">
+                      filter
+                    </span>
+                    <span className="min-w-0 truncate font-mono text-[13px]">
+                      {f.label}
+                    </span>
+                    {f.hint ? (
+                      <span className="ml-auto shrink-0 text-xs text-[hsl(var(--muted-foreground))]">
+                        {f.hint}
+                      </span>
+                    ) : null}
+                  </button>
+                ))
+              : null}
+            {!filterMode &&
+            !libraryQuery &&
+            upstreamQuery.isFetching &&
+            suggestions.length === 0 ? (
               <p className="px-3 py-2 text-sm text-[hsl(var(--muted-foreground))]">
                 Loading suggestions…
               </p>
             ) : null}
-            {suggestions.map((suggestion, index) => {
+            {(filterMode ? [] : suggestions).map((suggestion, index) => {
               const fromHistory = historyMatches.some(
                 (h) => h.toLowerCase() === suggestion.toLowerCase(),
               );

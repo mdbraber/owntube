@@ -9,8 +9,9 @@
  * (DNS rebinding), so outbound requests re-check every resolved address at
  * connect time too.
  */
-import { promises as dns } from "node:dns";
+
 import type { LookupAddress, LookupOptions } from "node:dns";
+import { promises as dns } from "node:dns";
 import net from "node:net";
 import { Agent, fetch as undiciFetch } from "undici";
 
@@ -95,7 +96,11 @@ async function defaultResolve(hostname: string): Promise<LookupAddress[]> {
  */
 export function publicOnlyLookup(
   resolve: LookupResolver = defaultResolve,
-): (hostname: string, options: LookupOptions, callback: LookupCallback) => void {
+): (
+  hostname: string,
+  options: LookupOptions,
+  callback: LookupCallback,
+) => void {
   return (hostname, options, callback) => {
     resolve(hostname).then(
       (addresses) => {
@@ -104,7 +109,10 @@ export function publicOnlyLookup(
           return;
         }
         if (!addresses.every((a) => isPublicAddress(a.address))) {
-          callback(new Error(`${hostname} resolved to a non-public address`), "");
+          callback(
+            new Error(`${hostname} resolved to a non-public address`),
+            "",
+          );
           return;
         }
         if (options?.all === true) {
@@ -133,7 +141,10 @@ export const publicOnlyFetch: typeof fetch = ((
   input: RequestInfo | URL,
   init: RequestInit = {},
 ) =>
-  undiciFetch(input as never, {
-    ...(init as Record<string, unknown>),
-    dispatcher: publicOnlyAgent,
-  } as never) as unknown as Promise<Response>) as typeof fetch;
+  undiciFetch(
+    input as never,
+    {
+      ...(init as Record<string, unknown>),
+      dispatcher: publicOnlyAgent,
+    } as never,
+  ) as unknown as Promise<Response>) as typeof fetch;

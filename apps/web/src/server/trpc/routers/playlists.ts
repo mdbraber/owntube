@@ -4,6 +4,7 @@ import { CHANNEL_TAG_MAX_LEN, normalizeChannelTag } from "@/lib/channel-tag";
 import { fetchVideoSummaries } from "@/server/catalog";
 import type { AppDb } from "@/server/db/client";
 import { playlistItems, playlists, playlistTags } from "@/server/db/schema";
+import { addVideoToPlaylist } from "@/server/playlists/add-item";
 import { protectedProcedure, router } from "@/server/trpc/init";
 
 function nowUnix(): number {
@@ -397,47 +398,8 @@ export const playlistsRouter = router({
       }),
     )
     .mutation(({ ctx, input }) => {
-      const owner = ctx.db
-        .select({ id: playlists.id })
-        .from(playlists)
-        .where(
-          and(
-            eq(playlists.id, input.playlistId),
-            eq(playlists.userId, ctx.userId),
-          ),
-        )
-        .limit(1)
-        .all()[0];
-      if (!owner) return { ok: false as const };
-
-      const ts = nowUnix();
-      const maxPos = ctx.db
-        .select({
-          n: sql<number>`coalesce(max(${playlistItems.position}), -1)`,
-        })
-        .from(playlistItems)
-        .where(eq(playlistItems.playlistId, input.playlistId))
-        .all()[0];
-      ctx.db
-        .insert(playlistItems)
-        .values({
-          playlistId: input.playlistId,
-          videoId: input.videoId,
-          channelId: input.channelId ?? null,
-          addedAt: ts,
-          position: Number(maxPos?.n ?? -1) + 1,
-        })
-        .onConflictDoNothing({
-          target: [playlistItems.playlistId, playlistItems.videoId],
-        })
-        .run();
-
-      ctx.db
-        .update(playlists)
-        .set({ updatedAt: ts })
-        .where(eq(playlists.id, input.playlistId))
-        .run();
-      return { ok: true as const };
+      const ok = addVideoToPlaylist(ctx.db, ctx.userId, input, nowUnix());
+      return ok ? { ok: true as const } : { ok: false as const };
     }),
 
   removeItem: protectedProcedure

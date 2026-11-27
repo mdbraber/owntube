@@ -42,6 +42,7 @@ import { ChannelScreen } from "@/screens/ChannelScreen";
 import { HistoryScreen } from "@/screens/HistoryScreen";
 import { HomeScreen } from "@/screens/HomeScreen";
 import { LibraryScreen } from "@/screens/LibraryScreen";
+import { LiveScreen } from "@/screens/LiveScreen";
 import { PlaylistsScreen } from "@/screens/PlaylistsScreen";
 import { QueueScreen } from "@/screens/QueueScreen";
 import { RecommendedScreen } from "@/screens/RecommendedScreen";
@@ -50,7 +51,6 @@ import { SearchScreen } from "@/screens/SearchScreen";
 import { SettingsScreen } from "@/screens/SettingsScreen";
 import { ShortsScreen } from "@/screens/ShortsScreen";
 import { SubscriptionsScreen } from "@/screens/SubscriptionsScreen";
-import { LiveScreen } from "@/screens/LiveScreen";
 import { WatchScreen } from "@/screens/WatchScreen";
 import { colors, spacing } from "@/theme";
 

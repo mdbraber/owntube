@@ -2,11 +2,26 @@
 
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
-import { QueuedIcon, SavedIcon } from "@/components/videos/video-action-icons";
+import { useMemoCount } from "@/components/videos/memo-counts-context";
+import {
+  MemoIcon,
+  QueuedIcon,
+  SavedIcon,
+} from "@/components/videos/video-action-icons";
 import type { VideoActionSurface } from "@/components/videos/video-action-registry";
 import { useVideoMembership } from "@/components/videos/video-membership-context";
 import { saveMembershipLabel } from "@/lib/save-membership";
 import { cn } from "@/lib/utils";
+import { watchHref } from "@/lib/yt-routes";
+
+const MEMO_PREVIEW_LEN = 280;
+
+function memoPreview(text: string): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length > MEMO_PREVIEW_LEN
+    ? `${flat.slice(0, MEMO_PREVIEW_LEN - 1)}…`
+    : flat;
+}
 
 /** Pills that restate their page get suppressed per surface. */
 export const SURFACE_PILL_OMIT: Partial<
@@ -29,8 +44,9 @@ type VideoStatusPillsProps = {
 };
 
 /**
- * State pills for a video thumbnail's bottom row: Queued, Saved, and playlist
- * membership (glyph + playlist name). State renders here — next to the
+ * State pills for a video thumbnail's bottom row: Queued, Saved, playlist
+ * membership (glyph + playlist name), and the memo count (latest memo in the
+ * tooltip). State renders here — next to the
  * duration badge, in the metadata zone — never as a lingering overlay button.
  * Each pill navigates to its collection (queue / saved / that playlist), so
  * hosts must place this row *outside* any wrapping link. Reads shared
@@ -56,7 +72,8 @@ export function VideoStatusPills({
     membership.playlistName,
   );
   const showSave = save.active && !effectiveOmit.includes("saved");
-  if (!showSave && !queued) return null;
+  const memos = useMemoCount(videoId);
+  if (!showSave && !queued && !memos) return null;
 
   const sizeClass =
     size === "sm"
@@ -112,6 +129,16 @@ export function VideoStatusPills({
                 ? "Saved — go to saved videos"
                 : `In playlist: ${membership.playlistName ?? ""} — open playlist`,
               className: "max-w-[10rem]",
+            },
+          )
+        : null}
+      {memos && videoId
+        ? pill(
+            String(memos.count),
+            <MemoIcon className={iconClass} />,
+            watchHref(videoId),
+            {
+              title: `${memos.count === 1 ? "1 memo" : `${memos.count} memos`} — latest: ${memoPreview(memos.latestText)}`,
             },
           )
         : null}

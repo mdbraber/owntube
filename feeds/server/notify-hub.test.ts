@@ -8,7 +8,11 @@ const BOB_TOKEN = "b".repeat(32);
 
 test("hubTopicUrls builds the secret address for each variant, no username", () => {
   assert.deepEqual(
-    hubTopicUrls(PUBLIC, { owner: "m@example.com", kind: "playlist", slug: "tech talks" }, ALICE_TOKEN),
+    hubTopicUrls(
+      PUBLIC,
+      { owner: "m@example.com", kind: "playlist", slug: "tech talks" },
+      ALICE_TOKEN,
+    ),
     [
       `https://owntube.example/rss/${ALICE_TOKEN}/playlist/tech%20talks.audio.xml`,
       `https://owntube.example/rss/${ALICE_TOKEN}/playlist/tech%20talks.video.xml`,
@@ -30,12 +34,19 @@ test("notifyHub posts one hub.url per variant of each changed feed", async () =>
   );
   assert.equal(calls.length, 1);
   assert.equal(calls[0].url, "http://hub:8080/");
-  assert.equal((calls[0].init.headers as Record<string, string>).authorization, "Bearer tok");
+  assert.equal(
+    (calls[0].init.headers as Record<string, string>).authorization,
+    "Bearer tok",
+  );
   const body = new URLSearchParams(String(calls[0].init.body));
   assert.equal(body.get("hub.mode"), "publish");
   assert.deepEqual(
     body.getAll("hub.url"),
-    hubTopicUrls(PUBLIC, { owner: "alice", kind: "queue", slug: "queue" }, ALICE_TOKEN),
+    hubTopicUrls(
+      PUBLIC,
+      { owner: "alice", kind: "queue", slug: "queue" },
+      ALICE_TOKEN,
+    ),
   );
 });
 
@@ -59,7 +70,11 @@ test("notifyHub skips feeds whose owner has no token", async () => {
   const body = new URLSearchParams(String(calls[0].init.body));
   assert.deepEqual(
     body.getAll("hub.url"),
-    hubTopicUrls(PUBLIC, { owner: "alice", kind: "queue", slug: "queue" }, ALICE_TOKEN),
+    hubTopicUrls(
+      PUBLIC,
+      { owner: "alice", kind: "queue", slug: "queue" },
+      ALICE_TOKEN,
+    ),
   );
 });
 
@@ -89,12 +104,21 @@ test("notifyHub chunks announcements into POSTs of at most 100 hub.url values", 
     kind: "playlist",
     slug: `list-${i}`,
   }));
-  await notifyHub({ publicUrl: PUBLIC, publishUrl: "http://hub/", token: "tok" }, feeds, () => ALICE_TOKEN, fakeFetch);
+  await notifyHub(
+    { publicUrl: PUBLIC, publishUrl: "http://hub/", token: "tok" },
+    feeds,
+    () => ALICE_TOKEN,
+    fakeFetch,
+  );
   assert.equal(calls.length, 2);
-  const urlsPerCall = calls.map((c) => new URLSearchParams(String(c.init.body)).getAll("hub.url"));
+  const urlsPerCall = calls.map((c) =>
+    new URLSearchParams(String(c.init.body)).getAll("hub.url"),
+  );
   assert.equal(urlsPerCall[0].length, 100);
   assert.equal(urlsPerCall[1].length, 20);
-  const allUrls = feeds.flatMap((feed) => hubTopicUrls(PUBLIC, feed, ALICE_TOKEN));
+  const allUrls = feeds.flatMap((feed) =>
+    hubTopicUrls(PUBLIC, feed, ALICE_TOKEN),
+  );
   assert.deepEqual([...urlsPerCall[0], ...urlsPerCall[1]], allUrls);
 });
 
@@ -104,10 +128,16 @@ test("notifyHub sends nothing for no changes and throws on hub errors", async ()
     called = true;
     return new Response("", { status: 202 });
   }) as unknown as typeof fetch;
-  await notifyHub({ publicUrl: PUBLIC, publishUrl: "http://hub/", token: "t" }, [], () => ALICE_TOKEN, ok);
+  await notifyHub(
+    { publicUrl: PUBLIC, publishUrl: "http://hub/", token: "t" },
+    [],
+    () => ALICE_TOKEN,
+    ok,
+  );
   assert.equal(called, false);
 
-  const failing = (async () => new Response("no", { status: 500 })) as unknown as typeof fetch;
+  const failing = (async () =>
+    new Response("no", { status: 500 })) as unknown as typeof fetch;
   await assert.rejects(
     notifyHub(
       { publicUrl: PUBLIC, publishUrl: "http://hub/", token: "t" },

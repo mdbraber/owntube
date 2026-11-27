@@ -19,6 +19,7 @@ import { WatchCommentsSection } from "@/components/watch/watch-comments-section"
 import { WatchContentTabs } from "@/components/watch/watch-content-tabs";
 import { WatchDescription } from "@/components/watch/watch-description";
 import { WatchHashStartTime } from "@/components/watch/watch-hash-start-time";
+import { WatchMemos } from "@/components/watch/watch-memos";
 import { WatchPageGrid } from "@/components/watch/watch-page-grid";
 import { WatchPlayerMount } from "@/components/watch/watch-player-mount";
 import { WatchUpcomingLive } from "@/components/watch/watch-upcoming-live";
@@ -468,6 +469,14 @@ export default async function WatchPage({ searchParams }: WatchPageProps) {
                   <p className="text-sm text-amber-600">{detail.warning}</p>
                 ) : null}
               </div>
+              {isAuthed && detail ? (
+                <WatchMemos
+                  videoId={detail.videoId}
+                  channelId={detail.channelId}
+                  videoTitle={detail.title}
+                  channelName={detail.channelName ?? undefined}
+                />
+              ) : null}
               {isAuthed && detail && !isUpcoming ? (
                 <WatchTracker
                   videoId={detail.videoId}

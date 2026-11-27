@@ -932,3 +932,53 @@ html[data-native-app] .ot-app-scroll {
   padding-top: env(safe-area-inset-top);
   padding-bottom: env(safe-area-inset-bottom);
 }
+
+/* Memos: pale yellow sticky notes on the watch page; a muted amber in dark. */
+:root,
+:root.light {
+  --memo-from: 50 100% 93%;
+  --memo-to: 48 96% 86%;
+  --memo-border: 46 70% 76%;
+  --memo-foreground: 40 45% 16%;
+  --memo-muted: 38 30% 38%;
+  --memo-shadow:
+    0 1px 2px rgb(120 90 0 / 0.12), 0 4px 12px rgb(120 90 0 / 0.08);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    --memo-from: 42 32% 17%;
+    --memo-to: 40 30% 14%;
+    --memo-border: 42 30% 24%;
+    --memo-foreground: 45 45% 85%;
+    --memo-muted: 42 22% 62%;
+    --memo-shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 4px 12px rgb(0 0 0 / 0.25);
+  }
+}
+
+:root.dark {
+  --memo-from: 42 32% 17%;
+  --memo-to: 40 30% 14%;
+  --memo-border: 42 30% 24%;
+  --memo-foreground: 45 45% 85%;
+  --memo-muted: 42 22% 62%;
+  --memo-shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 4px 12px rgb(0 0 0 / 0.25);
+}
+
+.ot-memo-card {
+  background: linear-gradient(
+    180deg,
+    hsl(var(--memo-from)),
+    hsl(var(--memo-to))
+  );
+  border: 1px solid hsl(var(--memo-border));
+  color: hsl(var(--memo-foreground));
+  box-shadow: var(--memo-shadow);
+}
+
+/* Editing (or tabbing through) a memo: a ring in the note's own colour. */
+.ot-memo-card:focus-within {
+  box-shadow:
+    var(--memo-shadow),
+    0 0 0 2px hsl(var(--memo-border));
+}

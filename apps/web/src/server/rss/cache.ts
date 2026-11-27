@@ -15,7 +15,7 @@ import {
 } from "@/server/cache/video-cache";
 import type { UnifiedVideo } from "@/server/catalog/types";
 import type { AppDb } from "@/server/db/client";
-import { websubPushed } from "@/server/db/schema";
+import { videoCache, websubPushed } from "@/server/db/schema";
 import { isWebSubCovered } from "@/server/websub/health";
 
 /**
@@ -289,6 +289,27 @@ export function mergeWebSubPushes(
   return [...added, ...entries]
     .filter((e) => !tombstoned.has(e.videoId))
     .sort((a, b) => (b.publishedAt ?? 0) - (a.publishedAt ?? 0));
+}
+
+/**
+ * Every uploads RSS entry cached for these channels, fresh or stale, without
+ * fetching anything (library search reads what OwnTube already has).
+ */
+export function cachedRssEntries(
+  db: AppDb,
+  channelIds: readonly string[],
+): RssEntry[] {
+  const keys = [...new Set(channelIds)].map(rssCacheKey);
+  const out: RssEntry[] = [];
+  for (let i = 0; i < keys.length; i += 500) {
+    const rows = db
+      .select({ payloadJson: videoCache.payloadJson })
+      .from(videoCache)
+      .where(inArray(videoCache.cacheKey, keys.slice(i, i + 500)))
+      .all();
+    for (const row of rows) out.push(...(parseRssRow(row.payloadJson) ?? []));
+  }
+  return out;
 }
 
 function parseRssRow(payloadJson: string): RssEntry[] | null {

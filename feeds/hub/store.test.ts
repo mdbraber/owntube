@@ -15,7 +15,9 @@ function fresh(): SubscriptionStore {
   );
 }
 
-function sub(overrides: Partial<Parameters<SubscriptionStore["upsert"]>[0]> = {}) {
+function sub(
+  overrides: Partial<Parameters<SubscriptionStore["upsert"]>[0]> = {},
+) {
   return {
     callback: "https://pc.example/websub/1",
     topic: TOPIC,
@@ -48,7 +50,10 @@ test("remove matches regardless of password", () => {
   const store = fresh();
   store.upsert(sub());
   assert.equal(
-    store.remove(sub().callback, "https://alice:other@owntube.example/rss/queue/queue.audio.xml"),
+    store.remove(
+      sub().callback,
+      "https://alice:other@owntube.example/rss/queue/queue.audio.xml",
+    ),
     true,
   );
   assert.equal(store.active(KEY, 0).length, 0);

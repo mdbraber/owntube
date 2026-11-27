@@ -8,6 +8,7 @@ import { feedRouter } from "@/server/trpc/routers/feed";
 import { historyRouter } from "@/server/trpc/routers/history";
 import { interactionsRouter } from "@/server/trpc/routers/interactions";
 import { liveRouter } from "@/server/trpc/routers/live";
+import { memosRouter } from "@/server/trpc/routers/memos";
 import { playlistsRouter } from "@/server/trpc/routers/playlists";
 import { queueRouter } from "@/server/trpc/routers/queue";
 import { remoteRouter } from "@/server/trpc/routers/remote";
@@ -31,6 +32,7 @@ export const appRouter = router({
   feed: feedRouter,
   history: historyRouter,
   interactions: interactionsRouter,
+  memos: memosRouter,
   playlists: playlistsRouter,
   queue: queueRouter,
   remote: remoteRouter,

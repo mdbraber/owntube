@@ -57,7 +57,14 @@ export class SubscriptionStore {
            topic = excluded.topic, secret = excluded.secret,
            lease_seconds = excluded.lease_seconds, expires_at = excluded.expires_at`,
       )
-      .run(sub.callback, key, sub.topic, sub.secret, sub.leaseSeconds, sub.expiresAt);
+      .run(
+        sub.callback,
+        key,
+        sub.topic,
+        sub.secret,
+        sub.leaseSeconds,
+        sub.expiresAt,
+      );
   }
 
   remove(callback: string, topic: string): boolean {
@@ -65,7 +72,9 @@ export class SubscriptionStore {
     if (!key) return false;
     return (
       this.db
-        .prepare("DELETE FROM subscriptions WHERE callback = ? AND topic_key = ?")
+        .prepare(
+          "DELETE FROM subscriptions WHERE callback = ? AND topic_key = ?",
+        )
         .run(callback, key).changes > 0
     );
   }
