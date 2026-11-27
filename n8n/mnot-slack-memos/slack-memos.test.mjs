@@ -109,3 +109,29 @@ test("memoInputs: one memo per message and video, no DMs, no repeats", () => {
 test("searchAfter steps back whole days", () => {
   assert.equal(s.searchAfter("2026-11-27T12:00:00Z", 3), "2026-11-24");
 });
+
+test("works without a URL global, as in n8n's Code node sandbox", () => {
+  const saved = globalThis.URL;
+  globalThis.URL = undefined;
+  try {
+    assert.equal(
+      s.youtubeVideoId("https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
+      "dQw4w9WgXcQ",
+    );
+    const inputs = s.memoInputs(
+      [
+        {
+          ts: "1",
+          text: "<https://youtu.be/dQw4w9WgXcQ>",
+          permalink: "https://s/p",
+          channel: { name: "x" },
+        },
+      ],
+      {},
+      { workspace: "w", playlistName: "p" },
+    );
+    assert.equal(inputs.length, 1);
+  } finally {
+    globalThis.URL = saved;
+  }
+});

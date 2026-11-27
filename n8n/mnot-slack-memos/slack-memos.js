@@ -4,23 +4,29 @@
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 const MEMO_TEXT_BUDGET = 4500; // OwnTube accepts 5000; leave room for the link
 
-/** The YouTube video id a URL points at, or null. */
+/**
+ * The YouTube video id a URL points at, or null. Parsed by hand: n8n's Code
+ * node sandbox has no URL global (new URL() throws there).
+ */
 function youtubeVideoId(raw) {
-  let url;
-  try {
-    url = new URL(raw.replace(/&amp;/g, "&"));
-  } catch {
-    return null;
-  }
-  const host = url.hostname.replace(/^(www|m|music)\./, "");
+  const m = String(raw)
+    .replace(/&amp;/g, "&")
+    .match(/^https?:\/\/([^/?#:]+)(?::\d+)?([^?#]*)(\?[^#]*)?/i);
+  if (!m) return null;
+  const host = m[1].toLowerCase().replace(/^(www|m|music)\./, "");
+  const path = m[2] ?? "";
+  const query = m[3] ?? "";
   let id = null;
   if (host === "youtu.be") {
-    id = url.pathname.split("/")[1] ?? null;
+    id = path.split("/")[1] ?? null;
   } else if (host === "youtube.com" || host === "youtube-nocookie.com") {
-    const parts = url.pathname.split("/").filter(Boolean);
-    if (parts[0] === "watch") id = url.searchParams.get("v");
-    else if (["shorts", "live", "embed", "v"].includes(parts[0]))
+    const parts = path.split("/").filter(Boolean);
+    if (parts[0] === "watch") {
+      const v = query.match(/[?&]v=([^&]+)/);
+      id = v ? v[1] : null;
+    } else if (["shorts", "live", "embed", "v"].includes(parts[0])) {
       id = parts[1] ?? null;
+    }
   }
   return id && VIDEO_ID.test(id) ? id : null;
 }
