@@ -4,7 +4,6 @@ import { hubTopicUrls, notifyHub } from "./notify-hub.ts";
 
 const PUBLIC = "https://owntube.example";
 const ALICE_TOKEN = "a".repeat(32);
-const BOB_TOKEN = "b".repeat(32);
 
 test("hubTopicUrls builds the secret address for each variant, no username", () => {
   assert.deepEqual(

@@ -1,13 +1,13 @@
 /**
- * SQLite store for published feed snapshots and the per-user credentials that
+ * SQLite store for published feed snapshots and the per-user feed tokens that
  * unlock them. One feed row per (owner, kind, slug); the JSON column holds the
  * whole snapshot the publisher pushed. `replaceAll` mirrors the publisher's
  * full-set semantics: after a publish the store contains exactly the feeds and
  * users in that payload — anything absent (deleted playlist, dropped
  * subscription, removed account) is pruned.
  *
- * Credentials arrive and are stored as SHA-256 hex digests; the plaintext
- * password never leaves the home OwnTube.
+ * Feeds, users and chapters are a cache of what home publishes; only the
+ * WebSub tables hold state of their own.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -26,14 +26,12 @@ export type FeedRow = {
 
 export type UserCredential = {
   username: string;
-  /** SHA-256 hex of the user's RSS password. */
-  passSha256: string;
-  /** Opaque token unlocking this user's secret feed URLs, when issued. */
-  feedToken?: string;
+  /** Opaque token unlocking this user's secret feed URLs. */
+  feedToken: string;
 };
 
-/** A feed token is a 32-char lowercase hex string. */
-const FEED_TOKEN_RE = /^[0-9a-f]{32}$/;
+/** `PRAGMA user_version`. Version 2 dropped the users' password hashes. */
+const SCHEMA_VERSION = 2;
 
 export type FeedKey = { owner: string; kind: string; slug: string };
 
@@ -77,22 +75,12 @@ export class FeedStore {
 
   constructor(dataDir: string) {
     fs.mkdirSync(dataDir, { recursive: true });
-    // Renamed from `companion.db`. A deployed server has the old file in its
-    // volume, and starting from an empty database would drop every published
-    // snapshot and per-user feed credential until the next push — so adopt it
-    // in place rather than ignoring it. One-way and one-time: after the move
-    // there is nothing left to find.
     const dbPath = path.join(dataDir, "feeds.db");
-    const legacyPath = path.join(dataDir, "companion.db");
-    if (!fs.existsSync(dbPath) && fs.existsSync(legacyPath)) {
-      for (const suffix of ["", "-wal", "-shm"]) {
-        if (fs.existsSync(legacyPath + suffix)) {
-          fs.renameSync(legacyPath + suffix, dbPath + suffix);
-        }
-      }
-    }
     this.db = new Database(dbPath);
     this.db.pragma("journal_mode = WAL");
+    if ((this.db.pragma("user_version", { simple: true }) as number) < 2) {
+      this.dropPasswordHashes();
+    }
     this.db.exec(
       `CREATE TABLE IF NOT EXISTS feeds (
         owner TEXT NOT NULL DEFAULT '',
@@ -105,7 +93,7 @@ export class FeedStore {
       );
       CREATE TABLE IF NOT EXISTS users (
         username TEXT PRIMARY KEY,
-        pass_sha256 TEXT NOT NULL,
+        feed_token TEXT NOT NULL UNIQUE,
         updated_at INTEGER NOT NULL
       );
       CREATE TABLE IF NOT EXISTS video_chapters (
@@ -137,49 +125,32 @@ export class FeedStore {
       CREATE UNIQUE INDEX IF NOT EXISTS websub_events_dedupe
         ON websub_events (video_id, deleted, IFNULL(updated_at, 0))`,
     );
-    this.migrateOwnerColumn();
-    this.migrateFeedTokenColumn();
+    this.db.pragma(`user_version = ${SCHEMA_VERSION}`);
   }
 
-  /**
-   * A pre-per-user database has a feeds table keyed (kind, slug) with no owner.
-   * Rebuild with the new key; the orphaned owner='' rows are unreachable (no
-   * matching credential) and vanish at the first publish.
-   */
-  private migrateOwnerColumn(): void {
-    const cols = this.db.prepare("PRAGMA table_info(feeds)").all() as {
-      name: string;
-    }[];
-    if (cols.some((c) => c.name === "owner")) return;
-    this.db.exec(
-      `ALTER TABLE feeds RENAME TO feeds_old;
-      CREATE TABLE feeds (
-        owner TEXT NOT NULL DEFAULT '',
-        kind TEXT NOT NULL,
-        slug TEXT NOT NULL,
-        title TEXT NOT NULL,
-        json TEXT NOT NULL,
-        updated_at INTEGER NOT NULL,
-        PRIMARY KEY (owner, kind, slug)
+  /** Version 2: rebuild users without pass_sha256, keeping the tokens so every
+   * secret address keeps working through the upgrade. */
+  private dropPasswordHashes(): void {
+    this.db.transaction(() => {
+      this.db.exec(
+        `CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY);
+        ALTER TABLE users RENAME TO users_v1`,
       );
-      INSERT INTO feeds (owner, kind, slug, title, json, updated_at)
-        SELECT '', kind, slug, title, json, updated_at FROM feeds_old;
-      DROP TABLE feeds_old`,
-    );
-  }
-
-  /** A pre-secret-feed-urls database has a users table with no feed_token
-   * column. Add it in place, like `migrateOwnerColumn`. */
-  private migrateFeedTokenColumn(): void {
-    const cols = this.db.prepare("PRAGMA table_info(users)").all() as {
-      name: string;
-    }[];
-    if (!cols.some((c) => c.name === "feed_token")) {
-      this.db.exec("ALTER TABLE users ADD COLUMN feed_token TEXT");
-    }
-    this.db.exec(
-      "CREATE UNIQUE INDEX IF NOT EXISTS users_feed_token ON users(feed_token) WHERE feed_token IS NOT NULL",
-    );
+      const hasToken = (
+        this.db.prepare("PRAGMA table_info(users_v1)").all() as {
+          name: string;
+        }[]
+      ).some((c) => c.name === "feed_token");
+      this.db.exec(
+        `CREATE TABLE users (
+          username TEXT PRIMARY KEY,
+          feed_token TEXT NOT NULL UNIQUE,
+          updated_at INTEGER NOT NULL
+        );
+        ${hasToken ? "INSERT INTO users SELECT username, feed_token, updated_at FROM users_v1 WHERE feed_token IS NOT NULL;" : ""}
+        DROP TABLE users_v1`,
+      );
+    })();
   }
 
   /** Replace the entire published set (feeds and users), atomically. Returns
@@ -196,11 +167,10 @@ export class FeedStore {
          title = excluded.title, json = excluded.json, updated_at = excluded.updated_at`,
     );
     const upsertUser = this.db.prepare(
-      `INSERT INTO users (username, pass_sha256, feed_token, updated_at)
-       VALUES (@username, @passSha256, @feedToken, unixepoch())
+      `INSERT INTO users (username, feed_token, updated_at)
+       VALUES (?, ?, unixepoch())
        ON CONFLICT(username) DO UPDATE SET
-         pass_sha256 = excluded.pass_sha256, feed_token = excluded.feed_token,
-         updated_at = excluded.updated_at`,
+         feed_token = excluded.feed_token, updated_at = excluded.updated_at`,
     );
     const readJson = this.db.prepare(
       "SELECT json FROM feeds WHERE owner = ? AND kind = ? AND slug = ?",
@@ -245,7 +215,7 @@ export class FeedStore {
           }
         }
         for (const c of creds) {
-          upsertUser.run({ ...c, feedToken: c.feedToken ?? null });
+          upsertUser.run(c.username, c.feedToken);
         }
         const usernames = new Set(creds.map((c) => c.username));
         const existingUsers = this.db
@@ -532,24 +502,13 @@ export class FeedStore {
     };
   }
 
-  /** Look a user up by their feed token. Rejects malformed tokens without
-   * querying, so an obviously-invalid URL never touches the database. */
+  /** The user a feed token belongs to. Callers pass only well-formed tokens
+   * (`parseSecretPath`). */
   getUserByToken(token: string): UserCredential | null {
-    if (!FEED_TOKEN_RE.test(token)) return null;
     const row = this.db
-      .prepare(
-        "SELECT username, pass_sha256, feed_token FROM users WHERE feed_token = ?",
-      )
-      .get(token) as
-      | { username: string; pass_sha256: string; feed_token: string }
-      | undefined;
-    return row
-      ? {
-          username: row.username,
-          passSha256: row.pass_sha256,
-          feedToken: row.feed_token,
-        }
-      : null;
+      .prepare("SELECT username, feed_token FROM users WHERE feed_token = ?")
+      .get(token) as { username: string; feed_token: string } | undefined;
+    return row ? { username: row.username, feedToken: row.feed_token } : null;
   }
 
   tokenFor(username: string): string | null {
@@ -586,13 +545,24 @@ export class FeedStore {
       json: string;
       updated_at: number;
     }[];
-    return rows.map((r) => ({
-      owner: r.owner,
-      kind: r.kind,
-      slug: r.slug,
-      title: r.title,
-      updatedAt: r.updated_at,
-      feed: JSON.parse(r.json) as FeedSnapshot,
-    }));
+    // An unreadable row is skipped, as `get` does, rather than failing the
+    // whole index.
+    return rows.flatMap((r) => {
+      try {
+        const feed = JSON.parse(r.json) as FeedSnapshot;
+        return [
+          {
+            owner: r.owner,
+            kind: r.kind,
+            slug: r.slug,
+            title: r.title,
+            updatedAt: r.updated_at,
+            feed,
+          },
+        ];
+      } catch {
+        return [];
+      }
+    });
   }
 }

@@ -1,12 +1,10 @@
 /**
  * Topic URLs, as this hub sees them.
  *
- * OwnTube's feeds are per user but share paths — every user has
- * /rss/queue/queue.audio.xml — so a feed's topic URL carries the user's
- * credentials (https://user:pass@host/rss/...). That makes each topic unique
- * per user and lets the hub fetch it. The publisher (the feeds server) only
- * knows the username, never the plaintext password, so matching ignores the
- * password and normalises the encodings clients are known to vary.
+ * OwnTube's feeds live at per-user secret addresses
+ * (https://host/rss/<token>/<kind>/<slug>.<variant>.xml), so the URL alone
+ * identifies a user's feed and the hub fetches it as is. Matching normalises
+ * the encodings clients are known to vary. URLs with credentials are refused.
  */
 
 function decodeOr(value: string): string {
@@ -24,7 +22,8 @@ function parseHttp(topic: string): URL | null {
   } catch {
     return null;
   }
-  return url.protocol === "https:" || url.protocol === "http:" ? url : null;
+  if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+  return url.username || url.password ? null : url;
 }
 
 /** The key subscriptions and announcements are matched on, or null for a
@@ -36,39 +35,17 @@ export function topicKey(topic: string): string | null {
     .split("/")
     .map((segment) => encodeURIComponent(decodeOr(segment)))
     .join("/");
-  return `${decodeOr(url.username)}@${url.host}${path}${url.search}`;
+  return `${url.host}${path}${url.search}`;
 }
 
 export function topicHostname(topic: string): string | null {
   return parseHttp(topic)?.hostname ?? null;
 }
 
-/** `fetch` rejects URLs with credentials, so split them into a header. */
-export function fetchTarget(topic: string): {
-  url: string;
-  authorization?: string;
-} {
-  const url = new URL(topic);
-  const user = decodeOr(url.username);
-  const pass = decodeOr(url.password);
-  url.username = "";
-  url.password = "";
-  if (!user && !pass) return { url: url.toString() };
-  return {
-    url: url.toString(),
-    authorization: `Basic ${Buffer.from(`${user}:${pass}`).toString("base64")}`,
-  };
-}
-
+/** Safe-to-log form of a topic: a secret-address token shows only its start. */
 export function redact(topic: string): string {
-  const url = parseHttp(topic);
-  if (!url) return topic;
-  const hadPassword = Boolean(url.password);
-  if (hadPassword) url.password = "***";
-  const withPasswordMasked = url.toString();
-  const masked = withPasswordMasked.replace(
+  return topic.replace(
     /(:\/\/[^/]*\/rss\/)([0-9a-f]{32})(?=\/|$)/,
     (_, prefix: string, token: string) => `${prefix}${token.slice(0, 6)}…`,
   );
-  return hadPassword || masked !== withPasswordMasked ? masked : topic;
 }

@@ -17,7 +17,7 @@ export type RssFeedKind =
 export type RssFeedVariant = "audio" | "video";
 
 /**
- * Copy a feed's secret companion address to the clipboard, in the chosen
+ * Copy a feed's secret address to the clipboard, in the chosen
  * enclosure variant. The URL comes from the slugs the publisher recorded on
  * its last run, so a brand-new or still-empty feed reports "not published
  * yet" instead.

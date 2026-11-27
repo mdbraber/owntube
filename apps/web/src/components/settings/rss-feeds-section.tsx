@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { trpc } from "@/trpc/react";
 
 /**
- * Secret addresses for the companion's podcast feeds: anyone with a feed's
+ * Secret addresses for the podcast feeds: anyone with a feed's
  * URL can read it, no password required, so treat them like the private
  * links they are. Regenerating creates a whole new set of addresses (derived
  * from a password rotated behind the scenes) and takes effect at the next

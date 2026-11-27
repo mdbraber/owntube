@@ -1,7 +1,6 @@
 /**
  * SQLite store of verified subscriptions. One row per (callback, topic key):
- * resubscribing — including after a password change, which changes the topic
- * URL but not its key — refreshes the row instead of adding a second one.
+ * resubscribing refreshes the row instead of adding a second one.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -10,7 +9,7 @@ import { topicKey } from "./topic.ts";
 
 export type Subscription = {
   callback: string;
-  /** Topic URL exactly as the subscriber gave it, credentials included. */
+  /** Topic URL exactly as the subscriber gave it. */
   topic: string;
   secret: string | null;
   leaseSeconds: number;
@@ -44,6 +43,16 @@ export class SubscriptionStore {
         PRIMARY KEY (callback, topic_key)
       )`,
     );
+    if ((this.db.pragma("user_version", { simple: true }) as number) < 1) {
+      // Keys used to start with the topic's username ("alice@host/…", or
+      // "@host/…" for a secret address). Feeds with credentials are gone, so
+      // drop those subscriptions and strip the "@" from the rest.
+      this.db.exec(
+        `DELETE FROM subscriptions WHERE topic_key NOT LIKE '@%';
+        UPDATE subscriptions SET topic_key = substr(topic_key, 2);
+        PRAGMA user_version = 1`,
+      );
+    }
   }
 
   upsert(sub: Subscription): void {

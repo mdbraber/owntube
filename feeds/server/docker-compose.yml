@@ -13,13 +13,9 @@ services:
     restart: unless-stopped
     environment:
       PORT: "8080"
+      TZ: Europe/Amsterdam
       DATA_DIR: /data
       PUBLISH_SECRET: ${PUBLISH_SECRET:?set PUBLISH_SECRET in .env}
-      # Feed Basic Auth is per user: credentials arrive with each publish
-      # (username + SHA-256 of the RSS pass from OwnTube's user settings).
-      # Optional /publish IP allow-list (defense-in-depth atop PUBLISH_SECRET).
-      PUBLISH_ALLOW_HOSTS: ${PUBLISH_ALLOW_HOSTS:-}
-      PUBLISH_ALLOW_IPS: ${PUBLISH_ALLOW_IPS:-}
       # WebSub hub (optional; on when all three are set). See ../hub/README.md.
       HUB_URL: ${HUB_URL:-}
       HUB_PUBLISH_URL: ${HUB_PUBLISH_URL:-}
@@ -45,10 +41,11 @@ services:
       - caddy
     labels:
       # caddy-docker-proxy (spiff): join the external `caddy` network, no authelia
-      # import — the feeds server does its own HTTP Basic Auth (an auth portal
-      # would break podcast-client credentials).
+      # import — feeds are unlocked by their secret per-user address, and an
+      # auth portal would break podcast clients.
       caddy: "owntube.nedworks.org"
       caddy.reverse_proxy: "* {{upstreams 8080}}"
+      caddy.9_import: security-txt
 
 networks:
   caddy:

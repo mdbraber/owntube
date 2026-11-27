@@ -28,8 +28,8 @@ test("feeds are scoped per owner; same slug can exist twice", () => {
   store.replaceAll(
     [snap("alice", "queue", "queue"), snap("bob", "queue", "queue")],
     [
-      { username: "alice", passSha256: "a".repeat(64) },
-      { username: "bob", passSha256: "b".repeat(64) },
+      { username: "alice", feedToken: "a".repeat(32) },
+      { username: "bob", feedToken: "b".repeat(32) },
     ],
   );
   assert.equal(store.get("alice", "queue", "queue")?.title, "alice's queue");
@@ -43,48 +43,18 @@ test("replaceAll prunes feeds and users absent from the payload", () => {
   const token = "1".repeat(32);
   store.replaceAll(
     [snap("alice", "queue", "queue"), snap("alice", "playlist", "tech")],
-    [{ username: "alice", passSha256: "a".repeat(64), feedToken: token }],
+    [{ username: "alice", feedToken: token }],
   );
   store.replaceAll(
     [snap("alice", "queue", "queue")],
-    [{ username: "alice", passSha256: "c".repeat(64), feedToken: token }],
+    [{ username: "alice", feedToken: token }],
   );
   assert.equal(store.get("alice", "playlist", "tech"), null);
-  assert.equal(store.getUserByToken(token)?.passSha256, "c".repeat(64));
+  assert.equal(store.getUserByToken(token)?.username, "alice");
 
   store.replaceAll([], []);
   assert.equal(store.list("alice").length, 0);
   assert.equal(store.getUserByToken(token), null);
-});
-
-test("legacy ownerless table is migrated and orphans pruned on publish", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "feeds-server-store-"));
-  {
-    // Simulate a pre-per-user database. The filename is the pre-rename one, so
-    // this also exercises the `companion.db` -> `feeds.db` adoption in Store.
-    const db = new Database(path.join(dir, "companion.db"));
-    db.exec(
-      `CREATE TABLE feeds (
-        kind TEXT NOT NULL, slug TEXT NOT NULL, title TEXT NOT NULL,
-        json TEXT NOT NULL, updated_at INTEGER NOT NULL,
-        PRIMARY KEY (kind, slug)
-      )`,
-    );
-    db.prepare(
-      "INSERT INTO feeds (kind, slug, title, json, updated_at) VALUES (?, ?, ?, ?, ?)",
-    ).run("queue", "queue", "Queue", "{}", 1);
-    db.close();
-  }
-  const store = new FeedStore(dir);
-  // Legacy row survives the migration under owner '' (unreachable via auth)…
-  assert.equal(store.list("").length, 1);
-  // …and the first publish prunes it.
-  store.replaceAll(
-    [snap("alice", "queue", "queue")],
-    [{ username: "alice", passSha256: "a".repeat(64) }],
-  );
-  assert.equal(store.list("").length, 0);
-  assert.equal(store.list("alice").length, 1);
 });
 
 test("chapters index rebuilds from pushed items", () => {
@@ -106,7 +76,7 @@ test("chapters index rebuilds from pushed items", () => {
   };
   store.replaceAll(
     [withChapters],
-    [{ username: "alice", passSha256: "a".repeat(64) }],
+    [{ username: "alice", feedToken: "a".repeat(32) }],
   );
   assert.deepEqual(store.chaptersFor("vidWITHchap"), [
     { startSeconds: 0, title: "Intro" },
@@ -117,33 +87,9 @@ test("chapters index rebuilds from pushed items", () => {
   // Next publish without that item prunes its chapters.
   store.replaceAll(
     [snap("alice", "queue", "queue")],
-    [{ username: "alice", passSha256: "a".repeat(64) }],
+    [{ username: "alice", feedToken: "a".repeat(32) }],
   );
   assert.equal(store.chaptersFor("vidWITHchap"), null);
-});
-
-test("a legacy companion.db is adopted rather than left behind", () => {
-  // A deployed server has the old file in its volume. Starting from an empty
-  // database would drop every published snapshot and per-user credential until
-  // the next push, so the old name is taken over in place.
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "feeds-server-store-"));
-  {
-    const db = new Database(path.join(dir, "companion.db"));
-    db.exec("CREATE TABLE marker (id INTEGER PRIMARY KEY)");
-    db.prepare("INSERT INTO marker (id) VALUES (1)").run();
-    db.close();
-  }
-
-  new FeedStore(dir);
-  assert.equal(fs.existsSync(path.join(dir, "feeds.db")), true);
-  assert.equal(fs.existsSync(path.join(dir, "companion.db")), false);
-  // The adopted file is the same one, not a fresh database beside it.
-  const reopened = new Database(path.join(dir, "feeds.db"));
-  const rows = reopened.prepare("SELECT id FROM marker").all() as {
-    id: number;
-  }[];
-  reopened.close();
-  assert.deepEqual(rows, [{ id: 1 }]);
 });
 
 test("a fresh data dir just starts a new database", () => {
@@ -155,7 +101,7 @@ test("a fresh data dir just starts a new database", () => {
 
 test("replaceAll reports feeds whose content changed, ignoring updatedAt", () => {
   const { store } = freshStore();
-  const users = [{ username: "alice", passSha256: "a".repeat(64) }];
+  const users = [{ username: "alice", feedToken: "a".repeat(32) }];
   const queue = snap("alice", "queue", "queue");
   const tech = snap("alice", "playlist", "tech");
 
@@ -186,15 +132,12 @@ test("replaceAll reports feeds whose content changed, ignoring updatedAt", () =>
   ]);
 });
 
-test("feed tokens are stored with the credentials and looked up exactly", () => {
+test("feed tokens are stored and looked up exactly", () => {
   const { store } = freshStore();
   const tokA = "a".repeat(32);
   store.replaceAll(
     [snap("alice", "queue", "queue")],
-    [
-      { username: "alice", passSha256: "a".repeat(64), feedToken: tokA },
-      { username: "bob", passSha256: "b".repeat(64) },
-    ],
+    [{ username: "alice", feedToken: tokA }],
   );
   assert.equal(store.getUserByToken(tokA)?.username, "alice");
   assert.equal(store.tokenFor("alice"), tokA);
@@ -204,34 +147,56 @@ test("feed tokens are stored with the credentials and looked up exactly", () => 
   assert.equal(store.getUserByToken("b".repeat(32)), null);
 });
 
-test("a new token replaces the old one; a publish without tokens clears them", () => {
+test("a new token replaces the old one", () => {
   const { store } = freshStore();
-  const users = (feedToken?: string) => [
-    { username: "alice", passSha256: "a".repeat(64), feedToken },
-  ];
+  const users = (feedToken: string) => [{ username: "alice", feedToken }];
   store.replaceAll([], users("1".repeat(32)));
   store.replaceAll([], users("2".repeat(32)));
   assert.equal(store.getUserByToken("1".repeat(32)), null);
   assert.equal(store.getUserByToken("2".repeat(32))?.username, "alice");
-  store.replaceAll([], users(undefined));
-  assert.equal(store.tokenFor("alice"), null);
 });
 
-test("an existing users table without feed_token is migrated in place", () => {
+test("upgrading drops the password hashes and keeps the tokens", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "feeds-server-store-"));
-  const db = new Database(path.join(dir, "feeds.db"));
-  db.exec(
-    "CREATE TABLE users (username TEXT PRIMARY KEY, pass_sha256 TEXT NOT NULL, updated_at INTEGER NOT NULL); INSERT INTO users VALUES ('alice', '" +
-      "a".repeat(64) +
-      "', 1)",
-  );
-  db.close();
+  {
+    // The version 1 users table, as deployed before.
+    const db = new Database(path.join(dir, "feeds.db"));
+    db.exec(
+      `CREATE TABLE users (username TEXT PRIMARY KEY, pass_sha256 TEXT NOT NULL,
+         updated_at INTEGER NOT NULL, feed_token TEXT);
+       CREATE UNIQUE INDEX users_feed_token ON users(feed_token) WHERE feed_token IS NOT NULL;
+       INSERT INTO users VALUES ('alice', '${"a".repeat(64)}', 1, '${"1".repeat(32)}');
+       INSERT INTO users VALUES ('bob', '${"b".repeat(64)}', 1, NULL);`,
+    );
+    db.close();
+  }
   const store = new FeedStore(dir);
-  assert.equal(store.tokenFor("alice"), null);
+  assert.equal(store.getUserByToken("1".repeat(32))?.username, "alice");
+  assert.equal(store.tokenFor("bob"), null);
   const check = new Database(path.join(dir, "feeds.db"));
-  const row = check
-    .prepare("SELECT pass_sha256 FROM users WHERE username = ?")
-    .get("alice") as { pass_sha256: string };
+  const cols = check.prepare("PRAGMA table_info(users)").all() as {
+    name: string;
+  }[];
   check.close();
-  assert.equal(row.pass_sha256, "a".repeat(64));
+  assert.deepEqual(
+    cols.map((c) => c.name),
+    ["username", "feed_token", "updated_at"],
+  );
+  // Opening again is a no-op.
+  assert.equal(new FeedStore(dir).tokenFor("alice"), "1".repeat(32));
+});
+
+test("an unreadable stored feed is left out of the list", () => {
+  const { store, dir } = freshStore();
+  store.replaceAll(
+    [snap("alice", "queue", "queue"), snap("alice", "saved", "saved")],
+    [{ username: "alice", feedToken: "a".repeat(32) }],
+  );
+  const db = new Database(path.join(dir, "feeds.db"));
+  db.prepare("UPDATE feeds SET json = '{' WHERE kind = 'saved'").run();
+  db.close();
+  assert.deepEqual(
+    store.list("alice").map((r) => r.kind),
+    ["queue"],
+  );
 });

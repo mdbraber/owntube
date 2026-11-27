@@ -152,7 +152,6 @@ export type RenderOptions = {
   selfUrl?: string;
   /** WebSub hub to advertise (`<atom:link rel="hub">`). */
   hubUrl?: string;
-  author?: string;
 };
 
 export function renderRss(
@@ -160,7 +159,6 @@ export function renderRss(
   variant: Variant,
   options: RenderOptions = {},
 ): string {
-  const author = options.author ?? "OwnTube";
   const title = `${feed.title}${variant === "audio" ? "" : " (Video)"}`;
   const head = [
     '<?xml version="1.0" encoding="UTF-8"?>',
@@ -173,7 +171,7 @@ export function renderRss(
       : "    <link>about:blank</link>",
     "    <language>en</language>",
     `    <lastBuildDate>${rfc822(feed.updatedAt)}</lastBuildDate>`,
-    `    <itunes:author>${xmlEscape(author)}</itunes:author>`,
+    "    <itunes:author>OwnTube</itunes:author>",
     "    <itunes:explicit>false</itunes:explicit>",
     '    <itunes:category text="TV &amp; Film"/>',
   ];
@@ -195,11 +193,9 @@ export function renderRss(
       /* relative/odd self URL — items simply omit chapters */
     }
   }
-  // Fall back to the permanent /icon.png this server already publishes
-  // unauthenticated. Without a channel image a feed has no cover art at all:
-  // podcast platforms fetch artwork server-side, off the LAN and without the
-  // feed's credentials, so anything private is unreachable to them and they
-  // store the podcast with no image. That is why the OwnTube logo was missing.
+  // Fall back to the permanent public /icon.png. Podcast platforms fetch
+  // artwork server-side, off the LAN, so anything private is unreachable to
+  // them and they store the podcast with no image.
   const image =
     feed.image ?? (publicBase ? `${publicBase}/icon.png` : undefined);
   if (image) {
@@ -210,7 +206,6 @@ export function renderRss(
     if (feed.link) head.push(`      <link>${xmlEscape(feed.link)}</link>`);
     head.push("    </image>");
   }
-  const chaptersBase = publicBase;
-  const items = feed.items.map((it) => renderItem(it, variant, chaptersBase));
+  const items = feed.items.map((it) => renderItem(it, variant, publicBase));
   return `${head.join("\n")}\n${items.join("\n")}\n  </channel>\n</rss>\n`;
 }

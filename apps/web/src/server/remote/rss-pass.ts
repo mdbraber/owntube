@@ -4,11 +4,8 @@ import type { AppDb } from "@/server/db/client";
 import { users } from "@/server/db/schema";
 
 /**
- * Per-user credentials for the companion's RSS feeds. The username is the
- * account's full email (URL-encoded inside feed URLs); the password is
- * generated here and stored plaintext (the settings UI has to display it),
- * but only its SHA-256 ever leaves home — the publisher pushes hashes, the
- * companion stores hashes.
+ * The per-user RSS password. It never leaves home: only the feed token
+ * derived from it is published, and regenerating it rotates the token.
  */
 
 export function sha256Hex(value: string): string {
@@ -27,6 +24,17 @@ function generateRssPass(): string {
  */
 export function feedToken(rssPass: string): string {
   return sha256Hex(`owntube-feed-token:${rssPass}`).slice(0, 32);
+}
+
+/**
+ * The base of a user's secret feed addresses on the feeds server
+ * (`<target>/rss/<token>`), or null when no feeds server is configured.
+ * A feed lives at `<base>/<kind>/<slug>.{audio,video}.xml`.
+ */
+export function secretFeedBase(db: AppDb, userId: number): string | null {
+  const target = process.env.OWNTUBE_PUBLISH_TARGET?.trim().replace(/\/+$/, "");
+  if (!target) return null;
+  return `${target}/rss/${feedToken(ensureRssPass(db, userId))}`;
 }
 
 /** The user's RSS password, generated and persisted on first use. */
