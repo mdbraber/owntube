@@ -975,3 +975,10 @@ html[data-native-app] .ot-app-scroll {
   color: hsl(var(--memo-foreground));
   box-shadow: var(--memo-shadow);
 }
+
+/* Editing (or tabbing through) a memo: a ring in the note's own colour. */
+.ot-memo-card:focus-within {
+  box-shadow:
+    var(--memo-shadow),
+    0 0 0 2px hsl(var(--memo-border));
+}
