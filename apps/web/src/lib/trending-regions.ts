@@ -1,4 +1,4 @@
-/** ISO 3166-1 alpha-2 codes supported for Piped/Invidious trending `region` param. */
+/** ISO 3166-1 alpha-2 codes offered for the region setting (Shorts discovery). */
 export const TRENDING_REGION_OPTIONS: { code: string; label: string }[] = [
   { code: "US", label: "United States" },
   { code: "GB", label: "United Kingdom" },

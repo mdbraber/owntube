@@ -57,7 +57,7 @@ function extractLongestUcRun(s: string): string | null {
 }
 
 /**
- * Returns a plausible channel id for Invidious/Piped, or the trimmed input if
+ * Returns a plausible YouTube channel id, or the trimmed input if
  * nothing looks like a `UC…` id (e.g. `@handle` kept as-is).
  */
 export function normalizeYoutubeChannelId(raw: string): string {

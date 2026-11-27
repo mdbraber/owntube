@@ -23,7 +23,7 @@ describe("feed.home materialized stream", () => {
     db.insert(videoCache)
       .values({
         cacheKey: `home-feed:v1:${user.id}:US:1`,
-        source: "invidious",
+        source: "owntube",
         kind: "home",
         payloadJson: JSON.stringify([
           { videoId: "abcdefghijk", title: "Cached pick" },
@@ -65,7 +65,7 @@ describe("feed.home materialized stream", () => {
     db.insert(videoCache)
       .values({
         cacheKey: `home-feed:v1:${user.id}:US:1`,
-        source: "invidious",
+        source: "owntube",
         kind: "home",
         payloadJson: JSON.stringify([
           { videoId: "keepkeep001", title: "Keep", channelId: "UCok" },

@@ -33,11 +33,10 @@ import { cn } from "@/lib/utils";
 import type { VideoChapter } from "@/lib/video-chapters";
 
 /**
- * Plays OwnTube's server-generated VOD HLS (`/hls/<id>/master.m3u8`) on a plain
- * `<video>`: native HLS on Safari/iOS (hardware-decoded, reliable seeking) and
- * hls.js everywhere else, both driven by `useHlsVodPlayback`. Segments already
- * resolve to the same-origin `/invidious/videoplayback` companion proxy, so no
- * googlevideo URL reaches the browser.
+ * Plays the gateway's signed VOD manifests on a plain `<video>`: DASH on
+ * dash.js where MSE does better, else HLS — native on Safari/iOS
+ * (hardware-decoded, reliable seeking), hls.js everywhere else. Every segment
+ * is the gateway's (same origin), so no googlevideo URL reaches the browser.
  *
  * Modeled on `NativeMuxedBlock`; the source is attached by the hook (never via
  * a `src` attribute), and `useNativeAdapter` drives OwnTube's `PlayerChrome`.

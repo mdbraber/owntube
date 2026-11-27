@@ -17,7 +17,7 @@ import { toImages } from "./images.ts";
 import { collaboratorsFrom, collectItems, findContinuation } from "./items.ts";
 import { exactCount, parseCount } from "./text.ts";
 
-/** YouTube's "Live" destination channel: what OwnTube calls Live (Invidious served it as "trending"). */
+/** YouTube's "Live" destination channel: OwnTube's Live page. */
 export const LIVE_CHANNEL = "UC4R8DWoMoI7CAwX8_LjQHig";
 
 const TAB_NAMES: Record<string, ChannelTab> = {

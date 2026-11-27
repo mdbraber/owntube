@@ -37,7 +37,6 @@ export function Providers({
   dehydratedState,
 }: {
   children: React.ReactNode;
-  /** Server-computed Invidious origins (from INVIDIOUS_BASE_URL) for browser image URLs. */
   /** App-wide SSR-prefetched queries (settings, sidebar subs) to hydrate once. */
   dehydratedState?: DehydratedState;
 }) {

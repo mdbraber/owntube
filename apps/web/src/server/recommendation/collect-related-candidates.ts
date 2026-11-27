@@ -101,7 +101,7 @@ export type CollectRelatedVideoCandidatesOpts = RelatedCollectionLimits & {
 };
 
 /**
- * Fetches upstream related videos for high-scoring seeds (Piped/Invidious via proxy cache).
+ * Fetches YouTube's related videos (through the gateway) for high-scoring seeds.
  */
 export async function collectRelatedVideoCandidates(
   seeds: RelatedSeed[],

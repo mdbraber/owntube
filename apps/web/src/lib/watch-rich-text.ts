@@ -5,18 +5,6 @@ export type RichTextPart =
 
 const URL_RE = /https?:\/\/[^\s<>"')]+/gi;
 const TIME_RE = /\b(?:(\d{1,2}):)?([0-5]?\d):([0-5]\d)\b/g;
-const ANCHOR_RE =
-  /<a\s+[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
-
-export function decodeHtmlEntities(value: string): string {
-  return value
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, " ");
-}
 
 export function parseTimeToSeconds(raw: string): number | null {
   const bits = raw.split(":");
@@ -41,7 +29,7 @@ export function parseTimeToSeconds(raw: string): number | null {
 }
 
 export function youtubeTimestampFromUrl(url: string): number | null {
-  const normalized = decodeHtmlEntities(url.trim());
+  const normalized = url.trim();
   if (!normalized) return null;
   try {
     const u = new URL(normalized);
@@ -91,10 +79,6 @@ function parseYoutubeTimeParam(raw: string): number | null {
   return parseTimeToSeconds(t);
 }
 
-function stripHtmlTags(value: string): string {
-  return decodeHtmlEntities(value.replace(/<[^>]+>/g, ""));
-}
-
 function splitTimestamps(text: string): RichTextPart[] {
   const out: RichTextPart[] = [];
   let last = 0;
@@ -113,7 +97,7 @@ function splitTimestamps(text: string): RichTextPart[] {
 }
 
 function splitPlainSegment(segment: string): RichTextPart[] {
-  const plain = stripHtmlTags(segment);
+  const plain = segment;
   if (!plain) return [];
   const out: RichTextPart[] = [];
   let last = 0;
@@ -134,46 +118,9 @@ function splitPlainSegment(segment: string): RichTextPart[] {
   return out;
 }
 
-function parseHtmlRichText(raw: string): RichTextPart[] {
-  const parts: RichTextPart[] = [];
-  let last = 0;
-  ANCHOR_RE.lastIndex = 0;
-  for (const m of raw.matchAll(ANCHOR_RE)) {
-    const idx = m.index ?? 0;
-    if (idx > last) parts.push(...splitPlainSegment(raw.slice(last, idx)));
-    const href = decodeHtmlEntities(m[1] ?? "");
-    const label = stripHtmlTags(m[2] ?? "").trim();
-    const seconds = youtubeTimestampFromUrl(href);
-    if (seconds != null) {
-      parts.push({
-        kind: "time",
-        value: label || formatSecondsClock(seconds),
-        seconds,
-      });
-    } else if (href) {
-      parts.push({ kind: "url", value: href, label: label || undefined });
-    }
-    last = idx + (m[0]?.length ?? 0);
-  }
-  if (last < raw.length) parts.push(...splitPlainSegment(raw.slice(last)));
-  return parts;
-}
-
-function formatSecondsClock(totalSeconds: number): string {
-  const s = Math.max(0, Math.floor(totalSeconds));
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = s % 60;
-  if (h > 0) {
-    return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
-  }
-  return `${m}:${String(sec).padStart(2, "0")}`;
-}
-
-/** Parse plain text, URLs, timestamps, and Invidious-style HTML anchors. */
+/** Parse plain text into text, URLs and timestamps. */
 export function parseRichText(raw: string): RichTextPart[] {
   if (!raw.trim()) return [];
-  if (/<a\s/i.test(raw)) return parseHtmlRichText(raw);
   return splitPlainSegment(raw);
 }
 

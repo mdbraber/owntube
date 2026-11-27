@@ -30,13 +30,13 @@ In scope:
 
 - Authentication and session handling (`src/server/auth.ts`, Auth.js usage)
 - tRPC endpoints, especially anything that mutates user data
-- The Piped/Invidious proxy (`src/server/services/proxy.ts`) and rate limiter
+- The YouTube gateway (`apps/gateway`): its catalogue API (bearer key) and the signed playback URLs under `/media/*`
 - SQL handling (Drizzle, raw SQL in migrations)
 - The Docker image and `docker-compose.yml`
 
 Out of scope:
 
-- Issues that only affect public Piped/Invidious instances themselves (please report those upstream)
+- Issues in YouTube itself, or in youtubei.js / googlevideo (please report those upstream)
 - Brute-force or rate-limit issues without a working PoC
 - Self-XSS that requires the user to paste hostile JS in DevTools
 - Deprecated dependencies that have no known exploit
@@ -48,4 +48,4 @@ A few notes for operators:
 - **Always** set a strong `AUTH_SECRET`. The default value in `.env.example` is intentionally invalid for production.
 - Put OwnTube behind a reverse proxy with TLS (Caddy, nginx, Traefik, …). Don't expose port 3000 directly to the internet.
 - Back up `data/owntube.db` regularly — see [docs/SELF-HOSTING.md](docs/SELF-HOSTING.md).
-- Pin a known-good Piped/Invidious instance, ideally one you self-host. Public instances change often.
+- Set a long random `GATEWAY_SIGNING_KEY` and keep the gateway's port (8080) internal: only `/media/*` should reach it, through your reverse proxy.

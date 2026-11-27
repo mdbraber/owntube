@@ -112,7 +112,7 @@ export function findVideoId(
 
 const MRBEAST = "UCX6OQ3DkcsbYNE6H8uQQuVA";
 const LINUS_TECH_TIPS = "UCXuqSBlHAE6Xw-yeJA0Tunw";
-/** YouTube's "Live" destination channel; what Invidious served as "trending". */
+/** YouTube's "Live" destination channel (OwnTube's Live page). */
 const YOUTUBE_LIVE = "UC4R8DWoMoI7CAwX8_LjQHig";
 
 /**
@@ -448,8 +448,7 @@ export const CORPUS: readonly CorpusEntry[] = [
   },
   {
     id: "live-page",
-    description:
-      "YouTube's Live page (OwnTube's Live section; Invidious's 'trending')",
+    description: "YouTube's Live page (OwnTube's Live section)",
     run: async ({ yt }) => {
       const live = await yt.getChannel(YOUTUBE_LIVE);
       return {

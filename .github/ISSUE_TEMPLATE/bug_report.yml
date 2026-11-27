@@ -38,31 +38,29 @@ body:
     id: node
     attributes:
       label: Node.js version
-      placeholder: v22.x
+      placeholder: v24.x
     validations:
       required: true
 
   - type: dropdown
-    id: source
+    id: egress
     attributes:
-      label: Video source
+      label: Gateway egress
+      description: GATEWAY_EGRESS_FAMILY (how the gateway reaches YouTube).
       options:
-        - Public Piped instance
-        - Public Invidious instance
-        - Self-hosted Invidious
-        - Self-hosted Piped
-        - Both Piped and Invidious
+        - ipv4
+        - ipv6
+        - auto
+        - Through a proxy (GATEWAY_PROXY_URL)
     validations:
       required: true
 
   - type: textarea
-    id: env
+    id: gateway-log
     attributes:
-      label: PIPED_BASE_URL / INVIDIOUS_BASE_URL
-      description: Just the URLs you're using (no secrets).
-      placeholder: |
-        PIPED_BASE_URL=disabled
-        INVIDIOUS_BASE_URL=http://localhost:3001
+      label: Gateway log
+      description: The gateway's output around the failure (`docker logs owntube-gateway`), no secrets.
+      render: shell
 
   - type: textarea
     id: logs

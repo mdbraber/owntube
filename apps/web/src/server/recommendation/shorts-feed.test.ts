@@ -15,7 +15,7 @@ import { createTestDb } from "@/test/db";
 describe("parseShortsRecPage", () => {
   it("returns null for first page", () => {
     expect(parseShortsRecPage(undefined)).toBeNull();
-    expect(parseShortsRecPage("piped:search")).toBeNull();
+    expect(parseShortsRecPage("s:TOKEN")).toBeNull();
   });
 
   it("parses recommendation pagination", () => {

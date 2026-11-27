@@ -71,8 +71,6 @@ export default async function RootLayout({
   // request, so the web chrome is left out of the first render, not hidden
   // after hydration.
   const nativeApp = isNativeAppUserAgent((await headers()).get("user-agent"));
-  // Computed server-side from INVIDIOUS_BASE_URL and handed to the browser via
-  // context so client image URLs match SSR without any client-side env var.
 
   // Hydrate the app-shell queries once, app-wide, so the sidebar subscriptions
   // and settings don't re-fetch on every page load (they fired on every route

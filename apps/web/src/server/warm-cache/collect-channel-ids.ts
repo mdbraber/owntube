@@ -4,8 +4,8 @@ import { subscriptions, watchHistory } from "@/server/db/schema";
 
 export const DEFAULT_WARM_HISTORY_CHANNELS = 32;
 /**
- * Cap on subscriptions for the Invidious-backed warms (meta, channel pages) —
- * large libraries would otherwise hammer upstream for hours. Uploads RSS is not
+ * Cap on subscriptions for the gateway-backed warms (meta, channel pages) —
+ * large libraries would otherwise hammer YouTube for hours. Uploads RSS is not
  * capped: see `collectRssWarmChannelIds`.
  */
 export const DEFAULT_WARM_SUBSCRIPTION_CHANNELS = 64;

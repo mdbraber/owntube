@@ -17,7 +17,7 @@ pnpm run db:migrate
 pnpm dev
 ```
 
-If public Piped/Invidious instances are flaky, run `bash scripts/setup-invidious.sh` for a fully local backend.
+Run the gateway next to the web app (`pnpm dev:gateway`); it is the only part that talks to YouTube.
 
 ## Workflow
 
@@ -66,7 +66,7 @@ If public Piped/Invidious instances are flaky, run `bash scripts/setup-invidious
 Please include:
 - OwnTube commit / version
 - Node version, pnpm version
-- The values of `PIPED_BASE_URL` and `INVIDIOUS_BASE_URL` you're using (no secrets needed)
+- Your `GATEWAY_EGRESS_FAMILY` and the gateway's log around the failure (no secrets)
 - Steps to reproduce
 - Relevant logs (`LOG_LEVEL=debug` is helpful)
 

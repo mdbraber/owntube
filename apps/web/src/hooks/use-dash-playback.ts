@@ -87,15 +87,12 @@ function videoRepresentationPlayable(rep: RepresentationLike): boolean {
  * Attach dash.js to a plain `<video>` element for VOD playback via MSE.
  *
  * YouTube exposes >1080p only as VP9 (WebM) or AV1 video-only streams, which
- * the synthesized HLS manifest cannot carry (hls.js doesn't demux WebM). Our
- * synthesized MPD (`/dash/<id>/manifest.mpd`) lists the full ladder of one
- * codec family; dash.js plays it as a single MSE pipeline, so scrubbing and
- * quality both work — the same engine Invidious's own player uses.
+ * HLS cannot carry (hls.js doesn't demux WebM). The gateway's signed MPD lists
+ * the full ladder of one codec family (`&family=`); dash.js plays it as a
+ * single MSE pipeline, so scrubbing and quality both work.
  *
- * The MPD and its segment URLs are same-origin (`/dash/...`,
- * `/invidious/videoplayback...`), so dash.js never touches googlevideo
- * cross-origin. The fetch guard is a belt-and-suspenders fallback for any
- * stray absolute URL.
+ * The MPD and its segments are the gateway's, on this origin, so dash.js
+ * never touches googlevideo.
  */
 export type DashQualityState = {
   /**
@@ -217,14 +214,11 @@ export function useDashPlayback(
       player.registerCustomCapabilitiesFilter(videoRepresentationPlayable);
       player.updateSettings({
         streaming: {
-          // dash.js's default (20s) is shorter than our own proxy's resilience
-          // budget for a stalled Invidious/googlevideo fetch (up to ~45s across
-          // fetchUpstreamWithRetry's 3 attempts, more for a multi-chunk segment
-          // via chunkedMediaBody's resume logic — see /invidious route). When
-          // the client times out first it aborts and restarts the segment from
-          // scratch, which is the visible stutter — even though the proxy was
-          // likely about to deliver it. Give the client enough patience for the
-          // proxy's own retries to land instead of racing them.
+          // dash.js's default (20s) is shorter than the gateway's budget for
+          // a slow googlevideo read (it replaces a revoked URL set or steps
+          // down to SABR inside the request). When the client times out first
+          // it aborts and restarts the segment from scratch, which is the
+          // visible stutter, though the gateway was about to deliver it.
           fragmentRequestTimeout: 35_000,
           // ABR is portal-capped via maxBitrate (see portalCapKbps below), not
           // limitBitrateByPortal: the built-in limit allows only rungs that FIT
@@ -272,11 +266,10 @@ export function useDashPlayback(
         },
       });
       player.on("error", (e: DashErrorEvent) => {
-        // Caption tracks routinely 404 (self-hosted Invidious behind a
-        // residential IP gets blocked fetching YouTube's timedtext — see
-        // captions/[videoId]/route.ts) and the web player doesn't even render
-        // dash.js's own text tracks (defaultEnabled: false above; captions
-        // come from <track> instead). A failed "cc" track must not tear down
+        // A caption track can fail (YouTube's timedtext refuses now and
+        // then), and the web player doesn't even render dash.js's own text
+        // tracks (defaultEnabled: false above; captions come from <track>
+        // instead). A failed "cc" track must not tear down
         // an otherwise-healthy video/audio pipeline.
         if (e.error === "cc") return;
         // Say what failed (console and stats for nerds): the fallback that

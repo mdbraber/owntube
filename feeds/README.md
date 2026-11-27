@@ -32,7 +32,3 @@ also a WebSub *subscriber* for YouTube uploads — Google's hub can only push to
 public URL — and queues the notifications; the in-app publisher drains the queue
 about once a minute with one outbound `POST /websub/sync` and folds the uploads
 into the home RSS cache (`OWNTUBE_WEBSUB=false` on the web app turns that off). See `server/README.md` and `apps/web/src/server/websub/sync.ts`.
-
-Not to be confused with **invidious-companion**, an unrelated third-party
-service this repo also talks to (media and captions). The word "companion" in
-`docs/` and `apps/` refers to that one.

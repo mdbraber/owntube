@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nativeHlsSrc, prefersNativeHls } from "@/lib/native-hls";
+import { prefersNativeHls } from "@/lib/native-hls";
 
 describe("prefersNativeHls", () => {
   it("plays natively on an iPhone (no real Media Source)", () => {
@@ -47,34 +47,5 @@ describe("prefersNativeHls", () => {
         iosLike: true,
       }),
     ).toBe(false);
-  });
-});
-
-describe("nativeHlsSrc", () => {
-  it("asks the master for the playlist native players take", () => {
-    expect(
-      nativeHlsSrc(
-        "https://owntube-media.example.org/hls/Em6tbhj9o6A/master.m3u8",
-      ),
-    ).toBe(
-      "https://owntube-media.example.org/hls/Em6tbhj9o6A/master.m3u8?for=cast",
-    );
-  });
-
-  it("keeps a relative master relative", () => {
-    expect(nativeHlsSrc("/hls/Em6tbhj9o6A/master.m3u8")).toBe(
-      "/hls/Em6tbhj9o6A/master.m3u8?for=cast",
-    );
-  });
-
-  it("does not add the parameter twice", () => {
-    expect(
-      nativeHlsSrc("https://m.example.org/hls/abc123/master.m3u8?for=cast"),
-    ).toBe("https://m.example.org/hls/abc123/master.m3u8?for=cast");
-  });
-
-  it("leaves other sources alone", () => {
-    const other = "https://m.example.org/live/abc123/index.m3u8";
-    expect(nativeHlsSrc(other)).toBe(other);
   });
 });

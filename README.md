@@ -1,8 +1,8 @@
 # OwnTube
 
-Self-hosted, privacy-first YouTube frontend. No Google APIs, no tracking, no telemetry. Video metadata and streams come from **Piped** and/or **Invidious**, and a small content-based recommender runs on top of your own watch history (stored locally in SQLite).
+Self-hosted, privacy-first YouTube frontend. No Google APIs, no tracking, no telemetry. Video metadata and streams come from OwnTube's own **YouTube gateway** (`apps/gateway`, the only process that talks to YouTube), and a small content-based recommender runs on top of your own watch history (stored locally in SQLite).
 
-It's a solo side-project. Code is meant to stay maintainable by one person, so the stack is intentionally small and boring: Next.js 15 + TypeScript + tRPC + Drizzle + SQLite.
+It's a solo side-project. Code is meant to stay maintainable by one person, so the stack is intentionally small and boring: Next.js 15 + TypeScript + tRPC + Drizzle + SQLite for the app, Node + Hono + youtubei.js for the gateway.
 
 ![OwnTube — the customizable modular home, with color-coded blocks and per-block tag filters](docs/screenshots/home.png)
 
@@ -11,15 +11,15 @@ It's a solo side-project. Code is meant to stay maintainable by one person, so t
 - **Customizable modular home** — reorderable blocks (subscriptions, recommended, explore, history, queue, saved, playlists) with per-block layout, size, tag filters, and color-coded headers
 - Search, watch, history, like / dislike / save
 - Personal recommendation feed (TF-IDF + MMR diversification, no collaborative filtering) with a local **Algorithm** dashboard, keyword refinement, and an option to keep already-subscribed channels out of recommendations
-- Trending ("Explore") page, channel pages, subscriptions with merged feed and tri-state tag filters
+- Live page (YouTube's live streams), channel pages, subscriptions with merged feed and tri-state tag filters
 - **Subscriptions tabs** — *Everything* (merged uploads), *By tag* (a lazily loaded row per channel tag) and *Channels*, with one tag filter and a "hide watched" toggle shared across tabs
 - **Podcast feeds** — playlists, queue, saved, subscriptions, every subscribed channel and every channel tag are published as audio and video podcast RSS (with chapters) to a small public [feeds server](feeds/README.md), at an unguessable per-user secret address; *Copy RSS URL* on those pages and in their ⋯ menus
 - **WebSub push** — new uploads from subscribed channels arrive via YouTube's hub within about a minute instead of on the next poll, and changed feeds are announced to podcast apps through OwnTube's own WebSub hub
 - **API tokens** — revocable, scoped `ot_…` tokens for services that act on your behalf (e.g. syncing playback with a podcast app), created and revoked under Settings
-- **SABR VOD (optional)** — play regular videos through invidious-companion's SABR→DASH connector (the path live streams already use), as a fallback or first choice (both the DASH manifest and the synthesized HLS playlist), for when byte-range stream URLs stop working; set `INVIDIOUS_COMPANION_SABR_VOD=fallback` or `always` (default `off`, needs the patched companion)
+- **One playback path** — the gateway serves signed DASH and HLS manifests for every video (VOD, live and DVR), up to 4K and with every dubbed audio track; it picks the transport itself (byte ranges, or SABR when YouTube refuses those) so the players don't have to
 - **Captions everywhere** — a per-account default subtitle language, captions in Picture-in-Picture and native fullscreen, and caption tracks in the HLS stream for native players
 - Auth.js (credentials + bcrypt), multi-user accounts
-- Theme switcher, per-user Piped/Invidious overrides, JSON export/import
+- Theme switcher, JSON export/import
 - PiP and keyboard shortcuts in the player (Vidstack)
 - **Android TV / Fire TV app** ([`apps/tv`](apps/tv/README.md)) — lean-back client with device pairing, profiles, the web home's rows and a D-pad player; *Play on TV* on the watch page sends a video to a paired TV
 - Local playlists, dashboard stats, YouTube Takeout history import
@@ -39,14 +39,15 @@ It's a solo side-project. Code is meant to stay maintainable by one person, so t
 
 ## Requirements
 
-- Node.js 22+
+- Node.js 24+
 - [corepack](https://nodejs.org/api/corepack.html) (ships with Node) for pnpm
-- A reachable Piped or Invidious instance — public or self-hosted (see [docs/SELF-HOSTING.md](docs/SELF-HOSTING.md))
+- An IPv4 address YouTube doesn't block (the gateway reaches YouTube itself; whole IPv6 /64s get flagged faster)
 
-This is a pnpm workspace: the web app lives in `apps/web/`, the Android TV / Fire TV client in
+This is a pnpm workspace: the web app lives in `apps/web/`, the YouTube gateway in `apps/gateway/`
+(with `packages/youtube`, `packages/playback` and `packages/contracts`), the Android TV / Fire TV client in
 `apps/tv/`, and a thin native iOS shell in [`apps/ios/`](apps/ios/README.md) — a WKWebView wrapper
 that restores Picture-in-Picture and background audio, which iOS denies to the installed PWA.
-Self-hosting only ever needs `apps/web/`; the Docker image never contains TV or iOS code. The
+Self-hosting needs `apps/web/` and `apps/gateway/`; the Docker images never contain TV or iOS code. The
 root scripts below delegate to the web app via `pnpm --filter web`.
 
 ## Quick start
@@ -56,6 +57,7 @@ cp apps/web/.env.example apps/web/.env
 corepack enable && corepack prepare pnpm@9.15.9 --activate
 pnpm install
 pnpm run db:migrate
+pnpm dev:gateway   # in a second terminal: the gateway on :8080
 pnpm dev
 ```
 
@@ -67,28 +69,26 @@ Open <http://localhost:3000>. Register an account on `/register` and you're in.
 docker compose up --build
 ```
 
-Set `PIPED_BASE_URL`, `INVIDIOUS_BASE_URL` and `AUTH_SECRET` in `.env` (or in the compose `environment:` block). The SQLite database is persisted in the named volume `owntube-data`.
+Set `GATEWAY_SIGNING_KEY` and `AUTH_SECRET` in `.env` (compose runs the web app and the gateway). The SQLite database is persisted in the named volume `owntube-data`, the gateway's caches in `owntube-gateway`. Behind a reverse proxy, route `/media/*` to the gateway (port 8080); without one the web app forwards it.
 
 For Unraid deployment, use `docker-compose.unraid.yml` + `.env.unraid` and follow [docs/UNRAID-DEPLOYMENT.md](docs/UNRAID-DEPLOYMENT.md).
-
-For a fully local setup with a self-hosted Invidious, run `bash scripts/setup-invidious.sh` and follow [docs/SELF-HOSTING.md](docs/SELF-HOSTING.md).
 
 ## Routes
 
 | Route                   | What                                              |
 | ----------------------- | ------------------------------------------------- |
 | `/`                     | Customizable modular home (signed-out → `/recommended`) |
-| `/recommended`          | Personalized recommendation feed (falls back to trending) |
-| `/trending`             | Regional trending ("Explore")                     |
+| `/recommended`          | Personalized recommendation feed (falls back to Live) |
+| `/live`                 | YouTube's live streams (`/trending` redirects here) |
 | `/subscriptions`        | Subscribed channels + merged latest uploads       |
 | `/channel/:channelId`   | Channel profile and videos                        |
 | `/search`               | Video search                                      |
-| `/watch/:videoId`       | Player + related videos                           |
+| `/watch?v=:videoId`     | Player + related videos                           |
 | `/history`              | Watch history (signed-in)                         |
 | `/playlists`            | Local playlists                                   |
 | `/queue`, `/saved`      | Watch queue and saved videos                      |
 | `/dashboard`            | Algorithm — recommender insights, keywords, settings |
-| `/settings`             | Theme, source instances, API tokens, JSON export/import |
+| `/settings`             | Theme, API tokens, JSON export/import             |
 | `/login`, `/register`   | Credentials auth                                  |
 
 ## Scripts
@@ -110,38 +110,31 @@ For a fully local setup with a self-hosted Invidious, run `bash scripts/setup-in
 
 ## Environment
 
-All variables are documented in [.env.example](.env.example). The most important ones:
+All variables are documented in [apps/web/.env.example](apps/web/.env.example). The most important ones:
 
 - `DATABASE_PATH` — SQLite file (default `./data/owntube.db`)
-- `PIPED_BASE_URL` — Piped API base, or `disabled` to skip Piped entirely
-- `INVIDIOUS_BASE_URL` — Invidious API base (used as fallback, or as the only source if Piped is disabled)
+- `GATEWAY_URL` — the gateway's internal address (default `http://localhost:8080`)
+- `GATEWAY_SIGNING_KEY` — shared by the web app and the gateway (API key and playback URL signatures)
+- `GATEWAY_EGRESS_FAMILY` — on the gateway: `ipv4` (recommended), `ipv6` or `auto`
 - `AUTH_SECRET` — Auth.js JWT secret (**must** be set in production)
 - `LOG_LEVEL` — `debug` / `info` / `warn` / `error`
 
 ## Project layout
 
 ```
-src/
-  app/                 Next.js App Router (pages, route handlers, providers)
-  components/          UI by feature (player, search, channel, settings, …)
-  lib/                 Pure utilities (proxies, parsers, formatters, helpers)
-  server/
-    auth.ts            Auth.js v5 setup
-    db/                Drizzle schema + SQL migrations
-    errors/            Typed error classes
-    recommendation/    Reco engine: signals, TF-IDF, scoring, MMR, cold-start
-    services/          Piped/Invidious proxy + rate limiter
-    settings/          User profile / settings logic
-    subscriptions/     Channel-id reconciliation helpers
-    trpc/              tRPC routers, context, root
-  stores/              Zustand stores (theme, …)
-  trpc/                Client-side tRPC + React Query setup
-docs/
-  SELF-HOSTING.md      Self-hosted Invidious / Piped guide + backup cron
-  LIVE-AND-DVR-PLAYBACK.md  How live and post-live DVR streams play (via invidious-companion)
+apps/
+  web/                 Next.js app (users, feeds, recommendations, the player)
+    src/server/catalog/    YouTube's catalogue, read from the gateway
+    src/server/recommendation/  Reco engine: signals, TF-IDF, scoring, MMR
+    src/server/db/         Drizzle schema + SQL migrations
+  gateway/             Hono service: catalogue API (/api/*) and media (/media/*)
+  tv/, ios/            Android TV / tvOS and iOS clients
+packages/
+  youtube/             InnerTube clients, sessions, SABR, catalogue parsing
+  playback/            Track model, DASH/HLS writers, MP4/WebM indexes
+  contracts/           The shared domain model, gateway client, URL signing
 feeds/                 Public podcast feeds server + WebSub hub (see feeds/README.md)
-e2e/                   Playwright tests
-scripts/               Setup + migration scripts
+docs/                  Plans and design notes (MONOREPO-PLAN.md: how this came to be)
 ```
 
 ## Tech stack

@@ -9,9 +9,9 @@ describe("isSameOriginMediaSrc", () => {
   });
 
   it("accepts same-origin proxy URLs", () => {
-    expect(
-      isSameOriginMediaSrc(`${ORIGIN}/invidious/videoplayback?id=1`, ORIGIN),
-    ).toBe(true);
+    expect(isSameOriginMediaSrc(`${ORIGIN}/media/s/abc/t/v137`, ORIGIN)).toBe(
+      true,
+    );
     expect(isSameOriginMediaSrc("/yt-hls?url=x", ORIGIN)).toBe(true);
   });
 

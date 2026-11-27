@@ -579,7 +579,7 @@ const REFRESH_PER_CHANNEL_TIMEOUT_MS = 6000;
  * page 1 of each channel, bounded to `REFRESH_CONCURRENCY` at a time and capped
  * at `REFRESH_PER_CHANNEL_TIMEOUT_MS` each. Failures/timeouts are swallowed — the
  * feed just serves whatever landed in cache. This is the only subscription path
- * that talks to Invidious live; normal feed loads are cache-only.
+ * that asks the gateway to go to YouTube; normal feed loads are cache-only.
  */
 async function refreshChannelPageCache(
   channelIds: string[],

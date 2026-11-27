@@ -49,7 +49,7 @@ describe("youtubeImageViaInstance", () => {
   it("leaves other URLs alone", () => {
     for (const url of [
       "/media/img/yti/vi/dQw4w9WgXcQ/hq720.jpg",
-      "https://invidious.example/vi/dQw4w9WgXcQ/maxres.jpg",
+      "https://images.example/vi/dQw4w9WgXcQ/maxres.jpg",
       "https://evilytimg.com/vi/dQw4w9WgXcQ/0.jpg",
       "http://i.ytimg.com/vi/dQw4w9WgXcQ/0.jpg",
       "not a url",

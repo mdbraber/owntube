@@ -117,7 +117,7 @@ const channelPagePrefsSchema = feedPagePrefsObject(false).default(
 export const appSettingsSchema = z.object({
   theme: themeSchema.default("system"),
   visualTheme: visualThemeSchema.default("default"),
-  /** ISO 3166-1 alpha-2 trending region (Piped / Invidious). */
+  /** ISO 3166-1 alpha-2 region (Shorts discovery). */
   trendingRegion: z.string().length(2).default("US"),
   /** Topics / phrases used to bias the recommendation title similarity corpus. */
   tasteKeywords: z.array(tasteKeywordSchema).max(96).default([]),

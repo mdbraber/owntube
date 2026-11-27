@@ -6,9 +6,9 @@ import {
 } from "@/lib/audio-track-label";
 
 /**
- * Real `adaptiveFormats[].audioTrack` values from Invidious for `0e3GPea1Tyg`,
- * a 24-language upload. `language` is what `mappers/invidious.ts` derives from
- * `audioTrack.id` (tag with the `.N` discriminator stripped).
+ * Real `adaptiveFormats[].audioTrack` values from YouTube for `0e3GPea1Tyg`,
+ * a 24-language upload. `language` is `audioTrack.id` with the `.N`
+ * discriminator stripped, as the gateway lists it.
  */
 const UPSTREAM = {
   englishOriginal: { language: "en-US", displayName: "English (US) original" },
@@ -61,7 +61,7 @@ describe("languageFirstAudioMenuLabel", () => {
   });
 
   it("ignores a bitrate suffix on a DASH manifest label", () => {
-    // Invidious' own DASH manifest labels tracks "<displayName> [<bitrate>k]".
+    // Some DASH manifests label tracks "<displayName> [<bitrate>k]".
     expect(
       languageFirstAudioMenuLabel({
         language: "fr",

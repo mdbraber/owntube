@@ -17,7 +17,7 @@
 <!--
   Examples:
   - `pnpm test` (added X new tests)
-  - Manually verified on /watch with PIPED_BASE_URL=disabled
+  - Manually verified on /watch against a local gateway (`pnpm dev:gateway`)
   - Playwright smoke still passes
 -->
 

@@ -307,8 +307,8 @@ export function ShortsFeedClient({
     }
   }, [items.length, feed.hasNextPage, feed.isFetchingNextPage, loadMore]);
 
-  // Resolve stream URLs (the dominant per-short latency — an upstream
-  // Piped/Invidious resolve) for the next few shorts so scrolling forward,
+  // Fetch the video pages (with their signed playback URLs) for the next few
+  // shorts so scrolling forward,
   // including a quick double-swipe past the immediate next slide, starts
   // playback without waiting. Detail queries still fresh in cache are reused,
   // so re-running this on every active-index change is cheap.

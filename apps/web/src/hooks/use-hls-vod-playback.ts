@@ -55,8 +55,8 @@ function nativeAudioTracksOf(
  * hardware-decoded, no MSE, and castable over AirPlay (see `prefersNativeHls`).
  * MSE engines (dash.js, hls.js-on-ManagedMediaSource) also stall the video
  * track on iOS while audio keeps playing. Everywhere else we use hls.js.
- * Segments are already same-origin (`/invidious/videoplayback`), so no
- * cross-origin proxying is needed.
+ * Segments are the gateway's, on this origin, so no cross-origin proxying is
+ * needed.
  *
  * Returns the audio-language state for the in-player picker, sourced from
  * hls.js's audio-track API or, on the native path, WebKit's `audioTracks`,

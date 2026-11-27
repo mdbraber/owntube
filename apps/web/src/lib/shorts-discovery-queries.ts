@@ -1,4 +1,4 @@
-/** Regionalized Piped/Invidious search queries for Shorts discovery (ISO 3166-1 alpha-2). */
+/** Regionalized YouTube search queries for Shorts discovery (ISO 3166-1 alpha-2). */
 
 const DEFAULT_SHORTS_QUERIES = ["#shorts", "shorts", "youtube shorts"] as const;
 

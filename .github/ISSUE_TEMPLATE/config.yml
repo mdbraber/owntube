@@ -2,7 +2,7 @@ blank_issues_enabled: false
 contact_links:
   - name: Self-hosting questions
     url: https://github.com/mdbraber/owntube/blob/main/docs/SELF-HOSTING.md
-    about: Most setup problems (Piped/Invidious instances, Docker, backups) are answered here.
+    about: Most setup problems (the gateway, Docker, backups) are answered here.
   - name: Security report
     url: https://github.com/mdbraber/owntube/security/advisories/new
     about: Please use private vulnerability reporting instead of opening a public issue.

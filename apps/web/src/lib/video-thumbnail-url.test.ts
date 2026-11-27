@@ -1,142 +1,67 @@
 import { describe, expect, it } from "vitest";
 import {
   applyVideoThumbnailImgError,
-  isLowerTierVideoThumbnailFilename,
   nextFallbackVideoThumbnailUrl,
   preferHeroVideoThumbnailUrl,
   preferHighResVideoThumbnailUrl,
   preferShortVideoThumbnailUrl,
 } from "@/lib/video-thumbnail-url";
 
+const still = (id: string, name: string) => `/media/img/yti/vi/${id}/${name}`;
+
 describe("video-thumbnail-url", () => {
-  it("does not upgrade signed Piped hq720 thumbs (rs is tier-specific)", () => {
-    const raw =
-      "http://192.168.1.11:8092/vi/abc123/hq720.jpg?host=i.ytimg.com&rs=sig";
-    expect(preferHighResVideoThumbnailUrl(raw, "abc123")).toBe(raw);
+  it("upgrades an unsigned lower still to maxres", () => {
+    expect(
+      preferHighResVideoThumbnailUrl(still("abc123", "hqdefault.jpg")),
+    ).toBe(still("abc123", "maxresdefault.jpg"));
   });
 
-  it("does not upgrade unsigned Piped instance thumbs", () => {
-    const raw = "https://piped.test/vi/abcdefghijk/hqdefault.jpg";
-    expect(preferHighResVideoThumbnailUrl(raw, "abcdefghijk")).toBe(raw);
+  it("keeps signed stills as they are (the name is tied to the signature)", () => {
+    const signed = `${still("abc123", "hq720.jpg")}?sqp=x&rs=y`;
+    expect(preferHighResVideoThumbnailUrl(signed)).toBe(signed);
+    expect(preferShortVideoThumbnailUrl(signed, "abc123")).toBe(signed);
   });
 
-  it("upgrades direct YouTube hq720 to maxresdefault", () => {
-    const raw = "https://i.ytimg.com/vi/abc123/hq720.jpg";
-    expect(preferHighResVideoThumbnailUrl(raw, "abc123")).toBe(
-      "https://i.ytimg.com/vi/abc123/maxresdefault.jpg",
-    );
-  });
-
-  it("defaults videoId-only thumbs to hqdefault", () => {
+  it("falls back to hqdefault by id when there is no still", () => {
     expect(preferHighResVideoThumbnailUrl(undefined, "abc123")).toBe(
-      "https://i.ytimg.com/vi/abc123/hqdefault.jpg",
+      still("abc123", "hqdefault.jpg"),
+    );
+    expect(preferHighResVideoThumbnailUrl(undefined)).toBeUndefined();
+  });
+
+  it("uses maxres by id for heroes", () => {
+    expect(preferHeroVideoThumbnailUrl(undefined, "abc123")).toBe(
+      still("abc123", "maxresdefault.jpg"),
     );
   });
 
-  it("leaves maxres URLs unchanged", () => {
-    const raw =
-      "http://192.168.1.11:8092/bp/abc123/maxresdefault.webp?host=i.ytimg.com";
-    expect(preferHighResVideoThumbnailUrl(raw)).toBe(raw);
-  });
-
-  it("detects lower-tier filenames", () => {
-    expect(isLowerTierVideoThumbnailFilename("hq720.jpg")).toBe(true);
-    expect(isLowerTierVideoThumbnailFilename("maxresdefault.jpg")).toBe(false);
-  });
-
-  it("falls back from maxres to hqdefault on img error", () => {
-    const raw = "https://i.ytimg.com/vi/x/maxresdefault.jpg";
-    expect(nextFallbackVideoThumbnailUrl(raw)).toBe(
-      "https://i.ytimg.com/vi/x/hqdefault.jpg",
-    );
-  });
-
-  it("falls back signed Piped maxres to YouTube hqdefault (drops invalid rs)", () => {
-    const raw =
-      "http://192.168.1.11:8092/vi/abc123/maxresdefault.jpg?host=i.ytimg.com&rs=sig";
-    expect(nextFallbackVideoThumbnailUrl(raw)).toBe(
-      "https://i.ytimg.com/vi/abc123/hqdefault.jpg",
-    );
-  });
-
-  it("falls back unsigned Piped thumbs on same origin without query", () => {
-    const raw = "https://piped.test/vi/abc123/maxresdefault.jpg";
-    expect(nextFallbackVideoThumbnailUrl(raw)).toBe(
-      "https://piped.test/vi/abc123/hqdefault.jpg",
-    );
-  });
-
-  it("chains fallbacks through sddefault to default.jpg", () => {
-    const chain = [
-      "https://i.ytimg.com/vi/x/maxresdefault.jpg",
-      "https://i.ytimg.com/vi/x/hqdefault.jpg",
-      "https://i.ytimg.com/vi/x/mqdefault.jpg",
-      "https://i.ytimg.com/vi/x/sddefault.jpg",
-      "https://i.ytimg.com/vi/x/default.jpg",
-    ] as const;
-    for (let i = 0; i < chain.length - 1; i++) {
-      expect(nextFallbackVideoThumbnailUrl(chain[i])).toBe(chain[i + 1]);
-    }
+  it("prefers a Short's vertical still", () => {
     expect(
-      nextFallbackVideoThumbnailUrl(chain[chain.length - 1]),
-    ).toBeUndefined();
-  });
-
-  it("falls back maxres webp to hqdefault webp", () => {
-    const raw = "https://i.ytimg.com/vi/x/maxresdefault.webp";
-    expect(nextFallbackVideoThumbnailUrl(raw)).toBe(
-      "https://i.ytimg.com/vi/x/hqdefault.webp",
+      preferShortVideoThumbnailUrl(still("abc123", "maxresdefault.jpg")),
+    ).toBe(still("abc123", "oar2.jpg"));
+    expect(preferShortVideoThumbnailUrl(still("abc123", "oar2.jpg"))).toBe(
+      still("abc123", "oar2.jpg"),
     );
   });
 
-  it("prefers maxres on YouTube CDN for hero when videoId is known", () => {
-    const piped =
-      "http://192.168.1.11:8092/vi/abc123/hq720.jpg?host=i.ytimg.com&rs=sig";
-    expect(preferHeroVideoThumbnailUrl(piped, "abc123")).toBe(
-      "https://i.ytimg.com/vi/abc123/maxresdefault.jpg",
-    );
-  });
-
-  it("hero falls back to hqdefault when videoId is missing", () => {
+  it("steps down the chain, signed or not, then stops", () => {
     expect(
-      preferHeroVideoThumbnailUrl("https://i.ytimg.com/vi/x/hq720.jpg"),
-    ).toBe("https://i.ytimg.com/vi/x/maxresdefault.jpg");
-  });
-
-  it("prefers oar2 for Shorts when only videoId is known", () => {
-    expect(preferShortVideoThumbnailUrl(undefined, "abc123")).toBe(
-      "https://i.ytimg.com/vi/abc123/oar2.jpg",
+      nextFallbackVideoThumbnailUrl(`${still("x", "hq720.jpg")}?sqp=a&rs=b`),
+    ).toBe(still("x", "hqdefault.jpg"));
+    expect(nextFallbackVideoThumbnailUrl(still("x", "oar2.jpg"))).toBe(
+      still("x", "oardefault.jpg"),
+    );
+    expect(nextFallbackVideoThumbnailUrl(still("x", "default.jpg"))).toBe(
+      undefined,
+    );
+    expect(nextFallbackVideoThumbnailUrl("https://example.com/a.jpg")).toBe(
+      undefined,
     );
   });
 
-  it("keeps signed Piped Short thumbs unchanged", () => {
-    const raw =
-      "http://192.168.1.11:8092/vi/abc123/hq720.jpg?host=i.ytimg.com&rs=sig";
-    expect(preferShortVideoThumbnailUrl(raw, "abc123")).toBe(raw);
-  });
-
-  it("keeps same-origin proxied Short thumbs unchanged", () => {
-    const raw = "/invidious/vi/abc123/oar2.jpg";
-    expect(preferShortVideoThumbnailUrl(raw, "abc123")).toBe(raw);
-  });
-
-  it("falls back oar2 to oardefault for Short variant", () => {
-    const raw = "https://i.ytimg.com/vi/x/oar2.jpg";
-    expect(nextFallbackVideoThumbnailUrl(raw, { variant: "short" })).toBe(
-      "https://i.ytimg.com/vi/x/oardefault.jpg",
-    );
-  });
-
-  it("falls back oardefault to maxres for Short variant", () => {
-    const raw = "https://i.ytimg.com/vi/x/oardefault.jpg";
-    expect(nextFallbackVideoThumbnailUrl(raw, { variant: "short" })).toBe(
-      "https://i.ytimg.com/vi/x/maxresdefault.jpg",
-    );
-  });
-
-  it("applyVideoThumbnailImgError steps down through this instance until exhausted", () => {
+  it("applyVideoThumbnailImgError steps down a few times at most", () => {
     // Like a real <img>: `src` reads back absolute, on the page's origin.
-    let src = "https://i.ytimg.com/vi/x/maxresdefault.jpg";
+    let src = `https://owntube.test${still("x", "maxresdefault.jpg")}`;
     const el = {
       get src() {
         return src;
@@ -148,25 +73,12 @@ describe("video-thumbnail-url", () => {
     } as HTMLImageElement;
 
     applyVideoThumbnailImgError(el);
-    expect(el.src).toBe(
-      "https://owntube.test/media/img/yti/vi/x/hqdefault.jpg",
-    );
+    expect(el.src).toBe(`https://owntube.test${still("x", "hqdefault.jpg")}`);
     expect(el.dataset.fallbackSteps).toBe("1");
-
     applyVideoThumbnailImgError(el);
-    expect(el.src).toBe(
-      "https://owntube.test/media/img/yti/vi/x/mqdefault.jpg",
-    );
-    expect(el.dataset.fallbackSteps).toBe("2");
-
     applyVideoThumbnailImgError(el);
-    expect(el.src).toBe(
-      "https://owntube.test/media/img/yti/vi/x/sddefault.jpg",
-    );
     applyVideoThumbnailImgError(el);
-    expect(el.src).toBe("https://owntube.test/media/img/yti/vi/x/default.jpg");
-    applyVideoThumbnailImgError(el);
-    expect(el.src).toBe("https://owntube.test/media/img/yti/vi/x/default.jpg");
+    expect(el.src).toBe(`https://owntube.test${still("x", "default.jpg")}`);
     applyVideoThumbnailImgError(el);
     expect(el.dataset.fallbackSteps).toBe("4");
   });

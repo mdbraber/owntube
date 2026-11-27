@@ -1,25 +1,24 @@
 /**
  * Labelling and grouping for audio tracks.
  *
- * The language data itself comes from upstream: Invidious emits
- * `adaptiveFormats[].audioTrack.{id,displayName,audioIsDefault}` (see
- * `mappers/invidious.ts`), and HLS/DASH manifests carry their own per-track
- * language and label. This module only turns that into something a picker can
+ * The language data itself comes from YouTube: its player response carries
+ * `adaptiveFormats[].audioTrack.{id,displayName,audioIsDefault}`, which the
+ * gateway lists on the video page (`audioLanguages`) and writes into its
+ * HLS/DASH manifests as each track's language and label. This module only turns that into something a picker can
  * show, which is a presentation concern and belongs here rather than upstream —
  * not least because upstream `displayName` is always English while these labels
  * are localised.
  *
- * Nothing here parses stream URLs. It used to: before Invidious exposed
- * `audioTrack`, language had to be scraped out of googlevideo query strings
- * (`lang=`, `xtags=acont%3Ddubbed%3Alang%3Dfr`, `audioTrackId=.fr.4`), which was
- * undocumented and failed silently whenever YouTube changed it.
+ * Nothing here parses stream URLs: scraping language out of googlevideo query
+ * strings (`xtags=acont%3Ddubbed%3Alang%3Dfr`) is undocumented and fails
+ * silently whenever YouTube changes it.
  */
 
 /**
  * Reduce an upstream language id to a BCP-47 tag `Intl` will accept.
  *
- * Upstream ids are *not* plain tags: Invidious passes YouTube's
- * `audioTrack.id`, which appends a track discriminator (`en-US.4`, `.fr.3`).
+ * Upstream ids are *not* plain tags: YouTube's `audioTrack.id` appends a
+ * track discriminator (`en-US.4`, `.fr.3`).
  * Left in place that suffix makes `Intl.DisplayNames` throw `RangeError`, so it
  * has to go, along with a leading dot and any underscore separator.
  *
@@ -89,8 +88,8 @@ function letterWords(value: string): Set<string> {
  * does not already say.
  *
  * Most upstream labels are pure restatements of the language, in a handful of
- * shapes: Invidious' API gives "English (US) original" and "Chinese
- * (Simplified)"; its DASH manifest gives "French [131k]". Appending those
+ * shapes: YouTube's track names are "English (US) original" and "Chinese
+ * (Simplified)"; some DASH manifests add a bitrate, "French [131k]". Appending those
  * produces "Simplified Chinese (Chinese (Simplified))". But some labels are
  * genuinely extra — "Commentary", "Descriptions", a director's track — and
  * dropping those would lose the only thing distinguishing two tracks of the

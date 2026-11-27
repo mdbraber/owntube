@@ -58,16 +58,6 @@ CHAPTERS
     expect(parseChaptersFromDescription(description, 120)).toEqual([]);
   });
 
-  it("parses chapters from Piped HTML description with timestamp links", () => {
-    const description =
-      'Chapters<br><a href="https://www.youtube.com/watch?v=abc&t=0">0:00 Intro</a><br><a href="https://www.youtube.com/watch?v=abc&t=65">1:05 Middle</a><br><a href="https://www.youtube.com/watch?v=abc&t=130">2:10 Outro</a>';
-    expect(parseChaptersFromDescription(description)).toEqual([
-      { startSeconds: 0, title: "Intro" },
-      { startSeconds: 65, title: "Middle" },
-      { startSeconds: 130, title: "Outro" },
-    ]);
-  });
-
   it("parses chapters with dash separator", () => {
     const description = "0:00 - Intro\n1:30 - Main topic";
     expect(parseChaptersFromDescription(description)).toEqual([

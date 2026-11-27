@@ -1,8 +1,3 @@
-import {
-  looksLikeHtmlDescription,
-  normalizeUpstreamDescription,
-} from "@/lib/normalize-video-description";
-
 export type VideoChapter = {
   startSeconds: number;
   title: string;
@@ -31,11 +26,7 @@ export function parseChaptersFromDescription(
 ): VideoChapter[] {
   if (!description) return [];
 
-  const plain = looksLikeHtmlDescription(description)
-    ? normalizeUpstreamDescription(description)
-    : description;
-
-  const lines = plain
+  const lines = description
     .split(/\r?\n/)
     .map((line) => normalizeChapterLine(line.trim()))
     .filter((line) => line.length > 0);

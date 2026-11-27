@@ -123,7 +123,7 @@ export function formatPublishedDebugTitle(
   return null;
 }
 
-/** Upstream relative date string (e.g. Invidious `publishedText`). */
+/** YouTube's relative date string (e.g. "3 days ago"). */
 export function formatPublishedLabel(
   publishedText: string | undefined,
   publishedAt?: number,

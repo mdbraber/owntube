@@ -1,25 +1,4 @@
 /**
- * The manifest a native HLS player gets: the same master with `for=cast`,
- * which is always the SABR connector's numbered fMP4 segments (see
- * `castMasterPlaylist` in the /hls route). Native players, including an
- * AirPlay receiver fetching it on its own, take that one whatever
- * `INVIDIOUS_COMPANION_SABR_VOD` says; the macOS media stack (an iPad in
- * desktop mode) rejects the byte-range fallback.
- */
-export function nativeHlsSrc(src: string): string {
-  try {
-    const url = new URL(src, "http://placeholder.invalid");
-    if (!/^\/hls\/[^/]+\/master\.m3u8$/.test(url.pathname)) return src;
-    url.searchParams.set("for", "cast");
-    return url.origin === "http://placeholder.invalid"
-      ? `${url.pathname}${url.search}`
-      : url.toString();
-  } catch {
-    return src;
-  }
-}
-
-/**
  * Whether to play our HLS natively instead of through hls.js.
  *
  * On iPhone and iPad always: native playback is hardware-decoded and is the

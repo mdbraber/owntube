@@ -1,4 +1,4 @@
-/** Parse human-readable subscriber counts (Invidious `subCountText`, etc.). */
+/** Parse human-readable subscriber counts ("1.2M subscribers"). */
 export function parseSubscriberCountText(text: string): number | null {
   const t = text.trim().toLowerCase().replace(/,/g, "");
   if (!t || t.includes("hidden")) return null;

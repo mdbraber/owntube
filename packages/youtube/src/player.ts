@@ -86,7 +86,7 @@ export interface PlayerRequest {
   poToken?: string;
   /**
    * The token of a SABR reload demand. The next player request must echo it,
-   * or the server keeps demanding reloads (companion, 2026-11-20: ten in a row
+   * or the server keeps demanding reloads (seen 2026-11-20: ten in a row
    * on mjsMqasGhKU until the pull gave up).
    */
   reloadToken?: string;
