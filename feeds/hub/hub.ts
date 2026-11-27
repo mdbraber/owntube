@@ -5,13 +5,13 @@
  * intent is verified by calling the callback back with a challenge before
  * anything is stored. The publisher (the OwnTube feeds server) POSTs
  * hub.mode=publish with a bearer token and one hub.url per changed feed; the
- * hub then fetches each matching subscription's topic — with that
- * subscription's own credentials, since feeds are per user — and delivers the
- * body to its callback, signed when the subscriber supplied a secret.
+ * hub then fetches each matching subscription's topic (a per-user secret
+ * address) and delivers the body to its callback, signed when the subscriber
+ * supplied a secret.
  */
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { Subscription, SubscriptionStore } from "./store.ts";
-import { fetchTarget, redact, topicHostname, topicKey } from "./topic.ts";
+import { redact, topicHostname, topicKey } from "./topic.ts";
 
 export const DEFAULT_LEASE_SECONDS = 10 * 86400;
 export const MIN_LEASE_SECONDS = 3600;
@@ -107,7 +107,10 @@ export class Hub {
     const topic = form.get("hub.topic") ?? "";
     const host = topicHostname(topic);
     if (!host || !topicKey(topic)) {
-      return { status: 400, body: "hub.topic must be an http(s) URL\n" };
+      return {
+        status: 400,
+        body: "hub.topic must be an http(s) URL without credentials\n",
+      };
     }
     if (!this.opts.topicHosts.includes(host)) {
       return { status: 400, body: "topic not served by this hub\n" };
@@ -213,14 +216,10 @@ export class Hub {
       this.log(`skip ${sub.callback}: no longer a public address`);
       return;
     }
-    const target = fetchTarget(sub.topic);
     let body: Buffer;
     let contentType: string;
     try {
-      const res = await this.topicFetch(target.url, {
-        headers: target.authorization
-          ? { authorization: target.authorization }
-          : {},
+      const res = await this.topicFetch(sub.topic, {
         redirect: "error",
         signal: AbortSignal.timeout(30_000),
       });

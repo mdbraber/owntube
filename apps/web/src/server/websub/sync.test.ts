@@ -4,7 +4,12 @@ import { subscriptions, users, websubPushed } from "@/server/db/schema";
 import { clearRssInFlight, getChannelRssEntries } from "@/server/rss/cache";
 import { warmVideo } from "@/server/warm-cache/warm-video";
 import { createTestDb } from "@/test/db";
-import { syncWebSub, type WebSubEvent } from "./sync";
+import {
+  clearRecentPushes,
+  freshEvents,
+  syncWebSub,
+  type WebSubEvent,
+} from "./sync";
 
 vi.mock("@/server/warm-cache/warm-video", () => ({
   warmVideo: vi.fn(async () => true),
@@ -75,6 +80,7 @@ function stubFetch(opts: {
 describe("syncWebSub", () => {
   beforeEach(() => {
     clearRssInFlight();
+    clearRecentPushes();
     vi.mocked(warmVideo).mockClear();
   });
   afterEach(() => vi.unstubAllGlobals());
@@ -202,5 +208,35 @@ describe("syncWebSub", () => {
       syncWebSub(db, { target: TARGET, secret: "s" }),
     ).rejects.toThrow(/401/);
     sqlite.close();
+  });
+});
+
+describe("freshEvents", () => {
+  beforeEach(() => clearRecentPushes());
+  const push = (id: number, videoId: string, deleted = false): WebSubEvent => ({
+    id,
+    channelId: CHANNEL,
+    videoId,
+    deleted,
+  });
+
+  it("skips a video pushed again within the hour, then lets it through", () => {
+    expect(freshEvents([push(1, "live0000001")], 1_000)).toHaveLength(1);
+    expect(freshEvents([push(2, "live0000001")], 1_300)).toHaveLength(0);
+    expect(
+      freshEvents([push(3, "live0000001"), push(4, "live0000001")], 1_400),
+    ).toHaveLength(0);
+    expect(freshEvents([push(5, "live0000001")], 4_600)).toHaveLength(1);
+  });
+
+  it("keeps a deletion that follows an upload push", () => {
+    freshEvents([push(1, "oops0000001")], 1_000);
+    expect(freshEvents([push(2, "oops0000001", true)], 1_010)).toHaveLength(1);
+  });
+
+  it("collapses duplicates within one batch", () => {
+    expect(
+      freshEvents([push(1, "dup00000001"), push(2, "dup00000001")], 1_000),
+    ).toEqual([push(1, "dup00000001")]);
   });
 });

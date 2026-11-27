@@ -61,16 +61,19 @@ function subscriber(deliveryStatus = 200) {
   });
 }
 
-/** A feeds server with per-user content behind Basic Auth. */
+const TOKENS = { alice: "a".repeat(32), bob: "b".repeat(32) };
+/** A user's queue feed path on the feeds server. */
+const feedOf = (user: keyof typeof TOKENS) =>
+  `/rss/${TOKENS[user]}/queue/queue.audio.xml`;
+
+/** A feeds server with per-user content at secret addresses. */
 function topicServer() {
-  const users: Record<string, string> = { alice: "pw-a", bob: "pw-b" };
   return listen((r, res) => {
-    const m = (r.headers.authorization ?? "").match(/^Basic (.+)$/);
-    const [user, pass] = m
-      ? Buffer.from(m[1], "base64").toString("utf8").split(":")
-      : [];
-    if (!user || users[user] !== pass) {
-      res.writeHead(401);
+    const user = Object.entries(TOKENS).find(
+      ([, t]) => r.url === `/rss/${t}/queue/queue.audio.xml`,
+    )?.[0];
+    if (!user) {
+      res.writeHead(404);
       res.end();
       return;
     }
@@ -120,12 +123,12 @@ async function settle(result: HubResult): Promise<HubResult> {
   return result;
 }
 
-const FEED = "/rss/queue/queue.audio.xml";
+const FEED = feedOf("alice");
 
 test("a verified subscribe is stored with a clamped lease", async () => {
   const sub = await subscriber();
   const { hub, store, now } = freshHub();
-  const topic = `http://alice:pw-a@127.0.0.1:1${FEED}`;
+  const topic = `http://127.0.0.1:1${FEED}`;
   const result = await settle(
     await hub.handle(
       form({
@@ -154,7 +157,7 @@ test("a subscriber that does not echo the challenge is not stored", async () => 
     res.end("nope");
   });
   const { hub, store, now } = freshHub();
-  const topic = `http://alice:pw-a@127.0.0.1:1${FEED}`;
+  const topic = `http://127.0.0.1:1${FEED}`;
   await settle(
     await hub.handle(
       form({
@@ -203,17 +206,17 @@ test("subscribe is refused for foreign topics, private callbacks and long secret
 test("publish needs the bearer token", async () => {
   const { hub } = freshHub();
   const res = await hub.handle(
-    form({ "hub.mode": "publish", "hub.url": `http://alice@127.0.0.1${FEED}` }),
+    form({ "hub.mode": "publish", "hub.url": `http://127.0.0.1${FEED}` }),
     "Bearer wrong",
   );
   assert.equal(res.status, 401);
 });
 
-test("publish delivers the feed fetched with the subscriber's credentials, signed", async () => {
+test("publish delivers the fetched feed, signed", async () => {
   const feeds = await topicServer();
   const sub = await subscriber();
   const { hub } = freshHub();
-  const topic = `http://alice:pw-a@127.0.0.1:${feeds.port}${FEED}`;
+  const topic = `http://127.0.0.1:${feeds.port}${FEED}`;
   await settle(
     await hub.handle(
       form({
@@ -228,7 +231,7 @@ test("publish delivers the feed fetched with the subscriber's credentials, signe
     await hub.handle(
       form({
         "hub.mode": "publish",
-        "hub.url": `http://alice@127.0.0.1:${feeds.port}${FEED}`,
+        "hub.url": `http://127.0.0.1:${feeds.port}${FEED}`,
       }),
       "Bearer tok",
     ),
@@ -261,7 +264,7 @@ test("the topic is fetched with topicFetch, not fetch", async () => {
     },
     topicFetch: fetch,
   });
-  const topic = `http://alice:pw-a@127.0.0.1:${feeds.port}${FEED}`;
+  const topic = `http://127.0.0.1:${feeds.port}${FEED}`;
   await settle(
     await hub.handle(
       form({
@@ -275,7 +278,7 @@ test("the topic is fetched with topicFetch, not fetch", async () => {
     await hub.handle(
       form({
         "hub.mode": "publish",
-        "hub.url": `http://alice@127.0.0.1:${feeds.port}${FEED}`,
+        "hub.url": `http://127.0.0.1:${feeds.port}${FEED}`,
       }),
       "Bearer tok",
     ),
@@ -291,16 +294,16 @@ test("announcing one user's feed never reaches another user's subscriber", async
   const alice = await subscriber();
   const bob = await subscriber();
   const { hub } = freshHub();
-  for (const [s, cred] of [
-    [alice, "alice:pw-a"],
-    [bob, "bob:pw-b"],
+  for (const [s, user] of [
+    [alice, "alice"],
+    [bob, "bob"],
   ] as const) {
     await settle(
       await hub.handle(
         form({
           "hub.mode": "subscribe",
           "hub.callback": `${s.base}/cb`,
-          "hub.topic": `http://${cred}@127.0.0.1:${feeds.port}${FEED}`,
+          "hub.topic": `http://127.0.0.1:${feeds.port}${feedOf(user)}`,
         }),
       ),
     );
@@ -309,7 +312,7 @@ test("announcing one user's feed never reaches another user's subscriber", async
     await hub.handle(
       form({
         "hub.mode": "publish",
-        "hub.url": `http://alice@127.0.0.1:${feeds.port}${FEED}`,
+        "hub.url": `http://127.0.0.1:${feeds.port}${FEED}`,
       }),
       "Bearer tok",
     ),
@@ -325,7 +328,7 @@ test("a callback answering 410 Gone is unsubscribed; failures retry then give up
   const gone = await subscriber(410);
   const failing = await subscriber(500);
   const { hub, store, now } = freshHub();
-  const topic = `http://alice:pw-a@127.0.0.1:${feeds.port}${FEED}`;
+  const topic = `http://127.0.0.1:${feeds.port}${FEED}`;
   for (const s of [gone, failing]) {
     await settle(
       await hub.handle(
@@ -341,7 +344,7 @@ test("a callback answering 410 Gone is unsubscribed; failures retry then give up
     await hub.handle(
       form({
         "hub.mode": "publish",
-        "hub.url": `http://alice@127.0.0.1:${feeds.port}${FEED}`,
+        "hub.url": `http://127.0.0.1:${feeds.port}${FEED}`,
       }),
       "Bearer tok",
     ),
@@ -360,7 +363,7 @@ test("expired subscriptions and callbacks that turned private get nothing", asyn
   const sub = await subscriber();
   let allow = true;
   const { hub, advance } = freshHub({ isCallbackAllowed: async () => allow });
-  const topic = `http://alice:pw-a@127.0.0.1:${feeds.port}${FEED}`;
+  const topic = `http://127.0.0.1:${feeds.port}${FEED}`;
   await settle(
     await hub.handle(
       form({
@@ -375,7 +378,7 @@ test("expired subscriptions and callbacks that turned private get nothing", asyn
     hub.handle(
       form({
         "hub.mode": "publish",
-        "hub.url": `http://alice@127.0.0.1:${feeds.port}${FEED}`,
+        "hub.url": `http://127.0.0.1:${feeds.port}${FEED}`,
       }),
       "Bearer tok",
     );
@@ -392,7 +395,7 @@ test("expired subscriptions and callbacks that turned private get nothing", asyn
 test("a verified unsubscribe removes the subscription", async () => {
   const sub = await subscriber();
   const { hub, store, now } = freshHub();
-  const topic = `http://alice:pw-a@127.0.0.1:1${FEED}`;
+  const topic = `http://127.0.0.1:1${FEED}`;
   for (const mode of ["subscribe", "unsubscribe"]) {
     await settle(
       await hub.handle(

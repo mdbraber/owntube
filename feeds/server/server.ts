@@ -1,7 +1,7 @@
 /**
  * OwnTube feeds server — the public RSS mirror.
  *
- *   POST /publish                              push feed snapshots + user credentials (Bearer PUBLISH_SECRET)
+ *   POST /publish                              push feed snapshots + feed tokens (Bearer PUBLISH_SECRET)
  *   GET  /rss/<token>/<kind>/<slug>.audio.xml  podcast RSS, audio enclosures (secret address)
  *   GET  /rss/<token>/<kind>/<slug>.video.xml  podcast RSS, video enclosures (secret address)
  *   GET  /rss/<token>/                         HTML index of that user's feeds (secret address)
@@ -24,12 +24,10 @@
  * the WebSub topic the hub fetches, so it must be exact.
  */
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { promises as dns } from "node:dns";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { isIpAllowed } from "./ip-allow.ts";
 import { type HubConfig, notifyHub } from "./notify-hub.ts";
 import {
   type FeedSnapshot,
@@ -57,20 +55,6 @@ const PORT = Number.parseInt(process.env.PORT ?? "8080", 10);
 const DATA_DIR = process.env.DATA_DIR ?? "/data";
 const PUBLISH_SECRET = process.env.PUBLISH_SECRET ?? "";
 const MAX_BODY_BYTES = 32 * 1024 * 1024;
-
-// Optional IP allow-list for /publish — defense-in-depth atop the Bearer secret.
-// Hostnames are re-resolved periodically so a DDNS home IP keeps working; if
-// neither var is set the check is disabled (Bearer only).
-const PUBLISH_ALLOW_HOSTS = (process.env.PUBLISH_ALLOW_HOSTS ?? "")
-  .split(",")
-  .map((s) => s.trim())
-  .filter(Boolean);
-const PUBLISH_ALLOW_IPS = (process.env.PUBLISH_ALLOW_IPS ?? "")
-  .split(",")
-  .map((s) => s.trim())
-  .filter(Boolean);
-const IP_ALLOWLIST_ON =
-  PUBLISH_ALLOW_HOSTS.length > 0 || PUBLISH_ALLOW_IPS.length > 0;
 
 // WebSub: on only when all three are set. HUB_URL is advertised in every feed;
 // HUB_PUBLISH_URL is where announcements go (the hub's internal address on the
@@ -162,33 +146,6 @@ function clientIp(req: http.IncomingMessage): string {
   return req.socket.remoteAddress ?? "";
 }
 
-let allowCache: { at: number; ips: string[] } = { at: 0, ips: [] };
-const ALLOW_RESOLVE_TTL_MS = 60_000;
-
-/**
- * Static IP/CIDR rules plus freshly-resolved hostname IPs (A+AAAA), cached ~60s
- * so a DDNS home IP is tracked without hammering DNS. On resolver failure the
- * last good resolution is reused rather than locking the publisher out.
- */
-async function currentAllowRules(): Promise<string[]> {
-  if (PUBLISH_ALLOW_HOSTS.length === 0) return PUBLISH_ALLOW_IPS;
-  const now = Date.now();
-  if (now - allowCache.at < ALLOW_RESOLVE_TTL_MS && allowCache.ips.length) {
-    return [...PUBLISH_ALLOW_IPS, ...allowCache.ips];
-  }
-  const ips: string[] = [];
-  for (const host of PUBLISH_ALLOW_HOSTS) {
-    try {
-      const recs = await dns.lookup(host, { all: true });
-      for (const r of recs) ips.push(r.address);
-    } catch {
-      /* skip this host; fall back to cached ips below */
-    }
-  }
-  if (ips.length) allowCache = { at: now, ips };
-  return [...PUBLISH_ALLOW_IPS, ...(ips.length ? ips : allowCache.ips)];
-}
-
 function safeEqual(a: string, b: string): boolean {
   const ab = Buffer.from(a);
   const bb = Buffer.from(b);
@@ -243,10 +200,8 @@ function isUserCredential(v: unknown): v is UserCredential {
   return (
     typeof c.username === "string" &&
     c.username.length > 0 &&
-    typeof c.passSha256 === "string" &&
-    /^[0-9a-f]{64}$/.test(c.passSha256) &&
-    (c.feedToken === undefined ||
-      (typeof c.feedToken === "string" && TOKEN_RE.test(c.feedToken)))
+    typeof c.feedToken === "string" &&
+    TOKEN_RE.test(c.feedToken)
   );
 }
 
@@ -265,30 +220,19 @@ function originOf(req: http.IncomingMessage): string {
 function sendXml(res: http.ServerResponse, body: string, status = 200): void {
   res.writeHead(status, {
     "content-type": "application/rss+xml; charset=utf-8",
-    // Per-user content on a shared path (and, with a hub, a body that embeds
-    // the requester's own password in the self link): never cacheable by a
+    // Per-user content behind a secret address: never cacheable by a
     // shared/intermediate cache, only by the requesting client itself.
     "cache-control": "private, max-age=300",
   });
   res.end(body);
 }
 
-/** The home publisher's routes: IP allow-list (when on) plus Bearer secret.
- * Writes the rejection and returns false when either fails. */
+/** The home publisher's routes: Bearer secret. Writes the rejection and
+ * returns false when it fails. */
 async function authorizePublisher(
   req: http.IncomingMessage,
   res: http.ServerResponse,
 ): Promise<boolean> {
-  if (IP_ALLOWLIST_ON) {
-    const ip = clientIp(req);
-    const rules = await currentAllowRules();
-    if (!isIpAllowed(ip, rules)) {
-      logLine(`${req.url} DENIED: ${ip} not in allow-list`);
-      res.writeHead(403, { "content-type": "text/plain" });
-      res.end("forbidden\n");
-      return false;
-    }
-  }
   if (!checkBearer(req)) {
     res.writeHead(401, { "content-type": "text/plain" });
     res.end("unauthorized\n");
@@ -571,8 +515,8 @@ const server = http.createServer((req, res) => {
       return;
     }
 
-    // Permanent podcast cover art. Unauthenticated: podcast platforms fetch
-    // cover art server-side without the feed's credentials.
+    // Permanent podcast cover art. Public: podcast platforms fetch cover art
+    // server-side, without the feed's secret address.
     if ((method === "GET" || method === "HEAD") && pathname === "/icon.png") {
       if (!iconPng) {
         res.writeHead(404, { "content-type": "text/plain" });
@@ -589,8 +533,7 @@ const server = http.createServer((req, res) => {
     }
 
     // Podcasting 2.0 JSON chapters, referenced from feed items. Deliberately
-    // unauthenticated: podcast apps fetch this URL bare (feed credentials are
-    // not applied to linked resources), and the content is YouTube's public
+    // public: podcast apps fetch this URL bare, and the content is YouTube's public
     // chapter data keyed by public video id — nothing about the user in it.
     if (method === "GET" || method === "HEAD") {
       const chapters = pathname.match(
@@ -716,13 +659,6 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, () => {
   logLine(`feeds-server listening on :${PORT} (data: ${DATA_DIR})`);
-  if (IP_ALLOWLIST_ON) {
-    logLine(
-      `feeds-server: /publish IP allow-list ON — hosts=[${PUBLISH_ALLOW_HOSTS.join(", ")}] ips=[${PUBLISH_ALLOW_IPS.join(", ")}]`,
-    );
-  } else {
-    logLine("feeds-server: /publish IP allow-list off (Bearer only)");
-  }
   logLine(
     hub
       ? `feeds-server: WebSub hub ${HUB_URL}`

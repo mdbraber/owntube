@@ -2,8 +2,7 @@
  * WebSub announcements. Announcements use each feed's secret address (see
  * secret-urls.ts): the hub fetches whatever it is told to subscribe to, and
  * a secret address carries no password to hand it. A feed whose owner has no
- * token yet (none issued) is skipped — there is no secret address to
- * announce.
+ * token in the store is skipped: there is no address to announce.
  */
 import { secretFeedPath } from "./secret-urls.ts";
 import type { FeedKey } from "./store.ts";

@@ -4,7 +4,7 @@ Podcast feeds for OwnTube, in two halves that talk over one HTTP call.
 
 ```
 web app (home) ──POST /publish (Bearer)──▶ server (public: owntube.nedworks.org)
-                                               │  ├── /rss/<token>/<feed>.rss  secret address, per user
+                                               │  ├── /rss/<token>/…           secret address, per user
                                                │  ├── /chapters/<id>.json public
                                                │  └── /icon.png          public (cover art)
                                                │

@@ -38,6 +38,10 @@ const REFRESH_CONCURRENCY = 5;
 const MAX_WARM_PER_RUN = 12;
 const WARM_CONCURRENCY = 3;
 const MAX_ROUNDS = 10;
+/** A video pushed again within this long is skipped. The hub re-sends some
+ * videos (live streams, premieres) every few minutes, and each push would
+ * re-fetch the channel and re-warm the video for nothing. */
+const REPEAT_QUIET_SEC = 3_600;
 
 const CHANNEL_ID_RE = /^UC[0-9A-Za-z_-]{22}$/;
 
@@ -80,6 +84,32 @@ export type SyncWebSubResult =
       warmed: number;
       stats: SyncResponse["stats"];
     };
+
+/** When each video (and whether it was deleted) was last applied. In memory:
+ * a restart only lets one repeat through. */
+const lastApplied = new Map<string, number>();
+
+/** Test hook. */
+export function clearRecentPushes(): void {
+  lastApplied.clear();
+}
+
+/** The events not applied within the last `REPEAT_QUIET_SEC`, marked applied.
+ * A deletion of a video pushed just before still goes through. */
+export function freshEvents(
+  events: WebSubEvent[],
+  now = nowUnix(),
+): WebSubEvent[] {
+  for (const [key, at] of lastApplied) {
+    if (at <= now - REPEAT_QUIET_SEC) lastApplied.delete(key);
+  }
+  return events.filter((e) => {
+    const key = `${e.videoId}:${e.deleted ? 1 : 0}`;
+    if (lastApplied.has(key)) return false;
+    lastApplied.set(key, now);
+    return true;
+  });
+}
 
 function subscribedChannelIds(db: AppDb): string[] {
   const rows = db
@@ -219,14 +249,15 @@ export async function syncWebSub(
     if (!res) return { enabled: false };
     stats = res.stats;
     if (res.events.length === 0) break;
-    const recorded = recordWebSubEvents(db, res.events);
+    const fresh = freshEvents(res.events);
+    const recorded = recordWebSubEvents(db, fresh);
     await refreshChannels(
       db,
       [...recorded.channels].filter((c) => !refreshed.has(c)),
     );
     for (const c of recorded.channels) refreshed.add(c);
     for (const v of recorded.uploads) uploads.add(v);
-    events += res.events.length;
+    events += fresh.length;
     // Acked by the next call — which also fetches whatever is left.
     ack = Math.max(...res.events.map((e) => e.id));
   }

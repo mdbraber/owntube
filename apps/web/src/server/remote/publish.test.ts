@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { writeCache } from "@/server/cache/video-cache";
 import type { UnifiedVideo } from "@/server/catalog/types";
-import { subscriptions, users } from "@/server/db/schema";
+import { playlists, subscriptions, users } from "@/server/db/schema";
 import {
   buildAllFeeds,
   createVideoFactsResolver,
@@ -137,5 +137,31 @@ describe("buildAllFeeds channel items", () => {
         /^http:\/\/x\/media\/v\/longInWindow\/audio\.m4a\?exp=\d+&sig=/,
       );
     }
+  });
+});
+
+describe("buildAllFeeds empty lists", () => {
+  it("still publishes an empty playlist, queue and saved inbox", async () => {
+    const { db } = createTestDb();
+    const user = db
+      .insert(users)
+      .values({
+        email: "a@example.com",
+        passwordHash: "x",
+        createdAt: 0,
+        updatedAt: 0,
+      })
+      .returning()
+      .get();
+    db.insert(playlists)
+      .values({ userId: user.id, name: "Later", createdAt: 0, updatedAt: 0 })
+      .run();
+
+    const { feeds } = await buildAllFeeds(db, { appOrigin: "http://x" });
+    const byKind = Object.fromEntries(feeds.map((f) => [f.kind, f]));
+    for (const kind of ["playlist", "queue", "saved"]) {
+      expect(byKind[kind]?.items).toEqual([]);
+    }
+    expect(byKind.playlist?.slug).toBe("later");
   });
 });

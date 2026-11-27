@@ -2,21 +2,21 @@
 
 A tiny public RSS mirror for a LAN-only OwnTube. The home OwnTube **pushes**
 self-contained feed snapshots here; this service stores them and renders podcast
-RSS. Every `<enclosure>` URL points back at the LAN media origin
-(`/media/<id>.m4a` / `.mp4`), so the feed *metadata* is public (behind an
+RSS. Every `<enclosure>` URL is a signed URL on the LAN media gateway
+(`/media/v/<id>/…`), so the feed *metadata* is public (behind an
 unguessable per-user secret address) while the media only streams on the LAN.
 
 ```
 web app      ──POST /publish (Bearer)──▶ feeds server (spiff, owntube.nedworks.org)
                                           └ GET /rss/<token>/<kind>/<slug>.{audio,video}.xml
-podcast app ──(LAN/VPN)──▶ owntube /media/<id>   ◀── enclosure URLs
+podcast app ──(LAN/VPN)──▶ owntube /media/v/<id>/…  ◀── enclosure URLs
 ```
 
 ## Endpoints
 
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
-| POST | `/publish` | Bearer `PUBLISH_SECRET` + IP allow-list | Replace the full feed + credential set with the pushed payload |
+| POST | `/publish` | Bearer `PUBLISH_SECRET` | Replace the full feed and token set with the pushed payload |
 | GET | `/rss/<token>/<kind>/<slug>.audio.xml` | secret token | Podcast RSS, m4a enclosures |
 | GET | `/rss/<token>/<kind>/<slug>.video.xml` | secret token | Podcast RSS, mp4 enclosures |
 | GET | `/rss/<token>/` | secret token | HTML index of that user's feeds |
@@ -26,7 +26,7 @@ podcast app ──(LAN/VPN)──▶ owntube /media/<id>   ◀── enclosure U
 | GET | `/health` | none | Liveness |
 | GET | `/websub/callback` | none | WebSub hub verification (only when `WEBSUB_CALLBACK_URL` is set) |
 | POST | `/websub/callback` | hub HMAC signature | WebSub upload notification |
-| POST | `/websub/sync` | Bearer `PUBLISH_SECRET` + IP allow-list | Home hands over its subscribed channels and drains queued notifications |
+| POST | `/websub/sync` | Bearer `PUBLISH_SECRET` | Home hands over its subscribed channels and drains queued notifications |
 
 Feed `kind` ∈ `playlist`, `queue`, `saved`, `subscriptions`, `tag`, `channel`.
 
@@ -35,10 +35,9 @@ Feed `kind` ∈ `playlist`, `queue`, `saved`, `subscriptions`, `tag`, `channel`.
 Each user is issued an opaque per-user token (32 lowercase hex chars) that
 unlocks their feeds with no password at all: `/rss/<token>/<kind>/<slug>.{audio,video}.xml`
 for a feed, `/rss/<token>/` for the HTML index, `/rss/<token>/opml.xml` for
-OPML. The token is generated and pushed by the publisher (home OwnTube)
-alongside a user's `username`/`passSha256` in the `/publish` payload
-(`UserCredential.feedToken`); this server only stores and serves it — it never
-mints one.
+OPML. The token is generated and pushed by the publisher (home OwnTube) with
+each user's `username` in the `/publish` payload (`users: [{ username,
+feedToken }]`); this server only stores and serves it — it never mints one.
 
 A request for an unrecognized or malformed token gets a bare `404`, without
 touching the database for anything that doesn't look like a token
@@ -64,8 +63,6 @@ all.
 | Var | Required | Default | |
 | --- | --- | --- | --- |
 | `PUBLISH_SECRET` | yes | — | Must match the home side's `OWNTUBE_PUBLISH_SECRET` |
-| `PUBLISH_ALLOW_HOSTS` | no | — | Comma-separated hostnames allowed to POST `/publish`; re-resolved ~60s (DDNS-safe) |
-| `PUBLISH_ALLOW_IPS` | no | — | Comma-separated extra IPs/CIDRs allowed to POST `/publish` |
 | `HUB_URL` | no | — | Public URL of our WebSub hub (`feeds/hub`), advertised in every feed; needs the next two |
 | `HUB_PUBLISH_TOKEN` | with `HUB_URL` | — | Bearer token for announcing changed feeds to the hub |
 | `PUBLIC_URL` | with `HUB_URL` | — | This server's public origin (no path), used for the feeds' self links / hub topics |
@@ -76,10 +73,8 @@ all.
 | `PORT` | no | `8080` | |
 | `DATA_DIR` | no | `/data` | SQLite location |
 
-`/publish` accepts a request only when it passes **both** the Bearer secret and
-(if either `PUBLISH_ALLOW_*` is set) the IP allow-list. Client IP is taken from
-the rightmost `X-Forwarded-For` value (Caddy-set). With neither var configured
-the IP check is off.
+`/publish` and `/websub/sync` accept a request only with the Bearer secret.
+Keep it long and random (`openssl rand -hex 32`): it is the only gate.
 
 ## YouTube WebSub subscriber (push for new uploads)
 

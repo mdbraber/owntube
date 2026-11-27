@@ -11,11 +11,7 @@ import {
   watchHistory,
 } from "@/server/db/schema";
 import { clearRecommendationCachesForUser } from "@/server/recommendation/engine";
-import {
-  ensureRssPass,
-  feedToken,
-  regenerateRssPass,
-} from "@/server/remote/rss-pass";
+import { regenerateRssPass, secretFeedBase } from "@/server/remote/rss-pass";
 import {
   appSettingsSchema,
   getUserSettings,
@@ -122,16 +118,13 @@ export const settingsRouter = router({
 
   /** The account's secret feed addresses. */
   rssFeeds: protectedProcedure.query(({ ctx }) => {
-    const pass = ensureRssPass(ctx.db, ctx.userId);
-    const base = process.env.OWNTUBE_PUBLISH_TARGET?.trim().replace(/\/+$/, "");
-    const token = feedToken(pass);
+    const base = secretFeedBase(ctx.db, ctx.userId);
     return {
-      companionUrl: process.env.OWNTUBE_PUBLISH_TARGET?.trim() || null,
-      feedsUrl: base ? `${base}/rss/${token}/` : null,
+      feedsUrl: base ? `${base}/` : null,
       queueUrls: base
         ? {
-            audio: `${base}/rss/${token}/queue/queue.audio.xml`,
-            video: `${base}/rss/${token}/queue/queue.video.xml`,
+            audio: `${base}/queue/queue.audio.xml`,
+            video: `${base}/queue/queue.video.xml`,
           }
         : null,
     };
@@ -145,8 +138,8 @@ export const settingsRouter = router({
   }),
 
   /**
-   * The secret companion address for one feed, resolved through the slugs
-   * the publisher recorded on its last run. `url` is null when no companion
+   * The secret address for one feed, resolved through the slugs the
+   * publisher recorded on its last run. `url` is null when no feeds server
    * is configured or the feed hasn't been published yet (empty, or created
    * since the last publish cycle).
    */
@@ -165,16 +158,13 @@ export const settingsRouter = router({
       }),
     )
     .query(({ ctx, input }) => {
-      const none = (reason: "no-companion" | "not-published") => ({
+      const none = (reason: "no-feeds-server" | "not-published") => ({
         audioUrl: null,
         videoUrl: null,
         reason,
       });
-      const base = process.env.OWNTUBE_PUBLISH_TARGET?.trim().replace(
-        /\/+$/,
-        "",
-      );
-      if (!base) return none("no-companion");
+      const base = secretFeedBase(ctx.db, ctx.userId);
+      if (!base) return none("no-feeds-server");
       const row = ctx.db
         .select({ slug: publishedFeeds.slug })
         .from(publishedFeeds)
@@ -187,8 +177,7 @@ export const settingsRouter = router({
         )
         .get();
       if (!row) return none("not-published");
-      const token = feedToken(ensureRssPass(ctx.db, ctx.userId));
-      const feed = `${base}/rss/${token}/${encodeURIComponent(input.kind)}/${encodeURIComponent(row.slug)}`;
+      const feed = `${base}/${encodeURIComponent(input.kind)}/${encodeURIComponent(row.slug)}`;
       return {
         audioUrl: `${feed}.audio.xml`,
         videoUrl: `${feed}.video.xml`,

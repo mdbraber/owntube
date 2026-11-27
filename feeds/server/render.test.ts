@@ -104,9 +104,8 @@ test("items with chapters reference the JSON chapters endpoint", () => {
 
 test("channel artwork falls back to the public icon when the feed has none", () => {
   // A feed with no image of its own must still advertise cover art. Podcast
-  // platforms fetch artwork server-side — off the LAN, and without the feed's
-  // credentials — so a private URL leaves them storing the podcast with no
-  // image at all, which is exactly how the OwnTube logo went missing.
+  // platforms fetch artwork server-side, off the LAN, so a private URL leaves
+  // them storing the podcast with no image at all.
   const { image: _dropped, ...noImage } = sample;
   const xml = renderRss(noImage, "video", {
     selfUrl: "https://owntube.example.org/queue.rss",
@@ -137,20 +136,19 @@ test("no self URL means no invented artwork", () => {
   assert.ok(!xml.includes("/icon.png"));
 });
 
-test("hub link is advertised when configured; credentials stay out of derived URLs", () => {
+test("hub and self links are advertised when configured", () => {
+  const self = `https://pub.example/rss/${"a".repeat(32)}/playlist/cooking.audio.xml`;
   const xml = renderRss(sample, "audio", {
-    selfUrl: "https://alice:pw@pub.example/rss/playlist/cooking.audio.xml",
+    selfUrl: self,
     hubUrl: "https://websub.example/",
   });
-  assert.match(
-    xml,
-    /<atom:link href="https:\/\/websub\.example\/" rel="hub"\/>/,
+  assert.ok(
+    xml.includes('<atom:link href="https://websub.example/" rel="hub"/>'),
   );
-  assert.match(
-    xml,
-    /<atom:link href="https:\/\/alice:pw@pub\.example\/rss\/playlist\/cooking\.audio\.xml" rel="self"/,
+  assert.ok(
+    xml.includes(
+      `<atom:link href="${self}" rel="self" type="application/rss+xml"/>`,
+    ),
   );
-  // sample sets its own image, so only the self link's href carries credentials.
-  assert.equal((xml.match(/alice:pw@/g) ?? []).length, 1);
   assert.doesNotMatch(renderRss(sample, "audio"), /rel="hub"/);
 });

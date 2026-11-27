@@ -24,27 +24,24 @@ import {
 } from "@/server/db/schema";
 import { signedEnclosures } from "@/server/gateway/playback";
 import { memosByVideo, withMemoPreamble } from "@/server/memos/feed-memos";
-import { ensureRssPass, feedToken, sha256Hex } from "@/server/remote/rss-pass";
+import { ensureRssPass, feedToken } from "@/server/remote/rss-pass";
 import { getChannelRssEntries, getLongFormWindows } from "@/server/rss/cache";
 import { getUserSettings } from "@/server/settings/profile";
 
 /**
- * Remote-control publisher: turns each user's local library (playlists, queue,
- * saved inbox) and subscription uploads into self-contained feed snapshots and
- * pushes them to the public companion (see `companion/`). The companion stores
- * and renders them as podcast RSS; every `<enclosure>` points back at the LAN
- * media origin (`/enclosure/<id>.{m4a,mp4}`), so metadata is public-behind-basic-auth
- * while the media itself only streams on the LAN.
+ * Feed publisher: turns each user's library (playlists, queue, saved inbox)
+ * and subscription uploads into self-contained feed snapshots and pushes them
+ * to the public feeds server (`feeds/server`), which stores them and renders
+ * podcast RSS. Every `<enclosure>` is a signed URL on the LAN media gateway
+ * (`/media/v/<id>/…`), so feed metadata is public behind each user's
+ * secret address while the media itself only streams on the LAN.
  *
- * Nothing here is opt-in: we publish everything. The companion replaces its full
- * set each cycle, so deleting a playlist / unsubscribing prunes the feed.
+ * Nothing here is opt-in: we publish everything. The feeds server replaces its
+ * full set each cycle, so deleting a playlist or unsubscribing prunes the feed.
  *
- * Access is per user: each snapshot carries its owner's Basic-Auth username
- * (the full account email — URL-encoded by clients inside feed URLs) and the
- * payload includes every user's credential as a SHA-256 — the plaintext RSS
- * password never leaves home. The companion scopes every feed route to the
- * authenticated owner, which also makes slug prefixing unnecessary: two users
- * can both have `queue`.
+ * Each snapshot carries its owner (the account email) and the payload carries
+ * every owner's feed token, the secret path segment that unlocks their feeds.
+ * Feeds are scoped per owner, so two users can both have `queue`.
  */
 
 export type FeedKind =
@@ -65,20 +62,21 @@ export type FeedItem = {
   channelName?: string;
   enclosureAudio: string;
   enclosureVideo: string;
-  /** YouTube-style chapters parsed from the description; the companion serves
-   * them as Podcasting 2.0 JSON chapters. Absent when none were found. */
+  /** YouTube-style chapters parsed from the description; the feeds server
+   * serves them as Podcasting 2.0 JSON chapters. Absent when none were found. */
   chapters?: { startSeconds: number; title: string }[];
 };
 
 export type FeedSnapshot = {
   kind: FeedKind;
-  /** Basic-Auth username whose credentials unlock this feed on the companion. */
+  /** The account (email) whose feed token unlocks this feed. */
   owner: string;
-  /** Readable, kind-namespaced on the companion (`/rss/<kind>/<slug>.*`). */
+  /** Readable, unique per owner and kind (`/rss/<token>/<kind>/<slug>.*`). */
   slug: string;
   title: string;
   description?: string;
   link?: string;
+  /** Cover art; absent means the feeds server's own OwnTube icon. */
   image?: string;
   updatedAt: number;
   items: FeedItem[];
@@ -87,10 +85,6 @@ export type FeedSnapshot = {
 export type PublishOptions = {
   /** Absolute origin used to build enclosure/link URLs. */
   appOrigin: string;
-  /** Stable podcast cover art for the library feeds (queue, playlists, …).
-   * Defaults to the companion's own /icon.png; channel feeds keep their
-   * channel avatar. Item thumbnails are unaffected. */
-  iconUrl?: string;
   /** Newest N uploads to keep per channel-based feed. */
   channelFeedLimit?: number;
   /** Newest N videos to keep in the merged subscriptions/tag feeds. */
@@ -455,7 +449,9 @@ async function buildFeedsForUser(
       .where(eq(playlistItems.playlistId, pl.id))
       .orderBy(asc(playlistItems.position), asc(playlistItems.addedAt))
       .all();
-    if (itemRows.length === 0) continue;
+    // Empty playlists, queue and saved inbox are still published (with no
+    // items): dropping them would delete the feed on the server, and a podcast
+    // app subscribed to it would get a 404 until something is added again.
     const items = await listItems(itemRows);
     pushFeed(
       {
@@ -468,7 +464,6 @@ async function buildFeedsForUser(
         title: pl.name,
         description: pl.description ?? undefined,
         link: `${appOrigin}/playlist?list=${pl.id}`,
-        image: opts.iconUrl || items[0]?.thumbnailUrl,
         updatedAt: pl.updatedAt ?? now,
         items,
       },
@@ -483,23 +478,20 @@ async function buildFeedsForUser(
     .where(eq(watchQueue.userId, userId))
     .orderBy(asc(watchQueue.position))
     .all();
-  if (queueRows.length > 0) {
-    const items = await listItems(queueRows);
-    pushFeed(
-      {
-        kind: "queue",
-        owner,
-        slug: "queue",
-        title: "Queue",
-        description: "OwnTube watch queue",
-        link: `${appOrigin}/`,
-        image: opts.iconUrl || items[0]?.thumbnailUrl,
-        updatedAt: now,
-        items,
-      },
-      "queue",
-    );
-  }
+  const queueItems = await listItems(queueRows);
+  pushFeed(
+    {
+      kind: "queue",
+      owner,
+      slug: "queue",
+      title: "Queue",
+      description: "OwnTube watch queue",
+      link: `${appOrigin}/`,
+      updatedAt: now,
+      items: queueItems,
+    },
+    "queue",
+  );
 
   // --- Saved inbox ---
   const savedRows = db
@@ -508,23 +500,20 @@ async function buildFeedsForUser(
     .where(and(eq(interactions.userId, userId), eq(interactions.type, "save")))
     .orderBy(desc(interactions.createdAt))
     .all();
-  if (savedRows.length > 0) {
-    const items = await listItems(savedRows);
-    pushFeed(
-      {
-        kind: "saved",
-        owner,
-        slug: "saved",
-        title: "Saved",
-        description: "OwnTube saved videos",
-        link: `${appOrigin}/`,
-        image: opts.iconUrl || items[0]?.thumbnailUrl,
-        updatedAt: now,
-        items,
-      },
-      "saved",
-    );
-  }
+  const savedItems = await listItems(savedRows);
+  pushFeed(
+    {
+      kind: "saved",
+      owner,
+      slug: "saved",
+      title: "Saved",
+      description: "OwnTube saved videos",
+      link: `${appOrigin}/`,
+      updatedAt: now,
+      items: savedItems,
+    },
+    "saved",
+  );
 
   // --- Subscription-derived channel feeds (subscribed channels only) ---
   const subRows = db
@@ -553,7 +542,6 @@ async function buildFeedsForUser(
         title: "Subscriptions",
         description: "Latest uploads from all subscribed channels",
         link: `${appOrigin}/subscriptions`,
-        image: opts.iconUrl || items[0]?.thumbnailUrl,
         updatedAt: now,
         items,
       },
@@ -592,7 +580,6 @@ async function buildFeedsForUser(
         title: `#${tag}`,
         description: `Latest uploads from channels tagged "${tag}"`,
         link: `${appOrigin}/subscriptions`,
-        image: opts.iconUrl || items[0]?.thumbnailUrl,
         updatedAt: now,
         items,
       },
@@ -621,7 +608,7 @@ async function buildFeedsForUser(
         title,
         description: `Latest uploads from ${title}`,
         link: `${appOrigin}/channel/${channelId}`,
-        image: meta?.avatarUrl ?? (opts.iconUrl || items[0]?.thumbnailUrl),
+        image: meta?.avatarUrl,
         updatedAt: now,
         items,
       },
@@ -634,20 +621,17 @@ async function buildFeedsForUser(
 
 export type FeedOwnerCredential = {
   username: string;
-  /** SHA-256 hex of the user's RSS password — the plaintext never leaves home. */
-  passSha256: string;
   /** Secret feed-URL path segment derived from the RSS password. */
   feedToken: string;
 };
 
-/** Build every user's feed snapshots plus the credential set that unlocks them. */
+/** Build every user's feed snapshots plus the tokens that unlock them. */
 export async function buildAllFeeds(
   db: AppDb,
   options: PublishOptions,
 ): Promise<{ feeds: FeedSnapshot[]; users: FeedOwnerCredential[] }> {
   const opts = {
     appOrigin: options.appOrigin,
-    iconUrl: options.iconUrl ?? "",
     channelFeedLimit: options.channelFeedLimit ?? DEFAULT_CHANNEL_LIMIT,
     mergedFeedLimit: options.mergedFeedLimit ?? DEFAULT_MERGED_LIMIT,
     concurrency: options.concurrency ?? DEFAULT_CONCURRENCY,
@@ -664,11 +648,7 @@ export async function buildAllFeeds(
     // The full email — unique by schema, so usernames can't collide.
     const username = u.email;
     const pass = ensureRssPass(db, u.id);
-    creds.push({
-      username,
-      passSha256: sha256Hex(pass),
-      feedToken: feedToken(pass),
-    });
+    creds.push({ username, feedToken: feedToken(pass) });
     const { feeds, refs } = await buildFeedsForUser(
       db,
       u.id,
@@ -707,18 +687,13 @@ function recordPublishedFeeds(
   }
 }
 
-/** Build all feeds and POST them (with the credential set) to the companion. */
+/** Build all feeds and POST them (with the feed tokens) to the feeds server. */
 export async function publishFeeds(
   db: AppDb,
   options: PublishOptions & { target: string; secret: string },
 ): Promise<{ feedCount: number; itemCount: number }> {
   const base = options.target.replace(/\/+$/, "");
-  const { feeds, users: feedUsers } = await buildAllFeeds(db, {
-    ...options,
-    // The companion serves the OwnTube icon itself — a stable cover that,
-    // unlike a first-item thumbnail, never changes when the queue does.
-    iconUrl: options.iconUrl ?? `${base}/icon.png`,
-  });
+  const { feeds, users: feedUsers } = await buildAllFeeds(db, options);
   const itemCount = feeds.reduce((n, f) => n + f.items.length, 0);
   const url = `${base}/publish`;
   const res = await fetch(url, {
@@ -732,7 +707,7 @@ export async function publishFeeds(
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new Error(`companion ${res.status}: ${body.slice(0, 200)}`);
+    throw new Error(`feeds server ${res.status}: ${body.slice(0, 200)}`);
   }
   return { feedCount: feeds.length, itemCount };
 }

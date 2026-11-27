@@ -1,8 +1,7 @@
 /**
  * Secret feed addresses: a per-user token unlocks that user's feeds without a
  * password (see server.ts's `/rss/<token>/...` routes). Pure path helpers,
- * no I/O — kept separate so hub announcements (a later task) can build the
- * same paths without importing the whole server.
+ * no I/O, shared by the routes and the hub announcements.
  */
 
 /** A feed token is a 32-char lowercase hex string. */
@@ -34,33 +33,28 @@ export function secretFeedPath(
 
 /**
  * Parse a request path as a secret address: a feed, the per-user index, or
- * its OPML. Returns null for anything else, including a malformed token (so
- * the protected `/rss/<kind>/<slug>...` routes are never mistaken for these).
+ * its OPML. Returns null for anything else, including a malformed token.
  */
 export function parseSecretPath(
   pathname: string,
 ): SecretFeedTarget | SecretPageTarget | null {
-  const feed = pathname.match(
-    /^\/rss\/([0-9a-f]{32})\/([^/]+)\/(.+)\.(audio|video)\.xml$/,
-  );
-  if (feed) {
-    const [, token, kind, slug, variant] = feed;
-    try {
-      return {
-        token,
-        kind: decodeURIComponent(kind),
-        slug: decodeURIComponent(slug),
-        variant: variant as Variant,
-      };
-    } catch {
-      return null;
-    }
+  const m = pathname.match(/^\/rss\/([0-9a-f]{32})\/(.*)$/);
+  if (!m) return null;
+  const [, token, rest] = m;
+  if (rest === "") return { token, page: "index" };
+  if (rest === "opml.xml") return { token, page: "opml" };
+  const feed = rest.match(/^([^/]+)\/(.+)\.(audio|video)\.xml$/);
+  if (!feed) return null;
+  try {
+    return {
+      token,
+      kind: decodeURIComponent(feed[1]),
+      slug: decodeURIComponent(feed[2]),
+      variant: feed[3] as Variant,
+    };
+  } catch {
+    return null;
   }
-  const index = pathname.match(/^\/rss\/([0-9a-f]{32})\/$/);
-  if (index) return { token: index[1], page: "index" };
-  const opml = pathname.match(/^\/rss\/([0-9a-f]{32})\/opml\.xml$/);
-  if (opml) return { token: opml[1], page: "opml" };
-  return null;
 }
 
 /** Safe-to-log form of a token: never the full value. */
