@@ -795,27 +795,25 @@ function ServerRows() {
   });
 
   return (
-    <>
-      <SettingRow
-        title="Cache"
-        description={
-          cacheMessage ??
-          "Clear OwnTube's own caches (home feed, RSS, SponsorBlock) after big imports."
-        }
+    <SettingRow
+      title="Cache"
+      description={
+        cacheMessage ??
+        "Clear OwnTube's own caches (home feed, RSS, SponsorBlock) after big imports."
+      }
+    >
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => {
+          setCacheMessage(null);
+          clearCaches.mutate();
+        }}
+        disabled={clearCaches.isPending}
       >
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            setCacheMessage(null);
-            clearCaches.mutate();
-          }}
-          disabled={clearCaches.isPending}
-        >
-          {clearCaches.isPending ? "Clearing…" : "Clear cache"}
-        </Button>
-      </SettingRow>
-    </>
+        {clearCaches.isPending ? "Clearing…" : "Clear cache"}
+      </Button>
+    </SettingRow>
   );
 }
