@@ -338,6 +338,12 @@ export function SettingsPanel({ initial }: SettingsPanelProps) {
 
         <SettingsSection id="integrations" title={sectionTitle("integrations")}>
           <RssFeedsSection />
+          <ToggleRow
+            title="Include memos in podcast feeds"
+            description="Episode descriptions in your playlist, queue and saved feeds start with your memos on that video: who, when, the text and its link. Memos are private, so this is off unless you turn it on."
+            checked={s.includeMemosInFeeds}
+            onChange={(v) => set({ includeMemosInFeeds: v })}
+          />
           <ApiTokensSection />
         </SettingsSection>
 
