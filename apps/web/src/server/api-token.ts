@@ -23,6 +23,12 @@ export const API_TOKEN_SCOPES = {
       "Record watch progress and remove archived videos from the queue, saved or a playlist — what the Pocket Casts playback mesh needs.",
     procedures: ["history.upsertEvent", "remote.archiveFromFeed"],
   },
+  memos: {
+    label: "Add memos",
+    description:
+      "Add memos to videos and add those videos to a playlist — what the Slack workflow needs.",
+    procedures: ["memos.add"],
+  },
 } as const satisfies Record<
   string,
   { label: string; description: string; procedures: readonly string[] }

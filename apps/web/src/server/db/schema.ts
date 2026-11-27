@@ -354,3 +354,42 @@ export const publishedFeeds = sqliteTable(
     ),
   ],
 );
+
+/**
+ * Private notes on a video: typed in OwnTube (`direct`) or added by an
+ * automation through the API (`slack`, `link`), with where and when they were
+ * said. A source memo is a quote and stays read-only. `source_url` is unique
+ * per user, so an automation that retries the same Slack message stores it
+ * once. Title and channel name are denormalized at write time (like
+ * watch_history) so library search finds memo videos no other table knows.
+ */
+export const videoMemos = sqliteTable(
+  "video_memos",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    videoId: text("video_id").notNull(),
+    channelId: text("channel_id"),
+    text: text("text").notNull(),
+    /** Unix seconds the memo was said (Slack post time, or when it was typed). */
+    occurredAt: integer("occurred_at").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+    /** `direct` | `slack` | `link` (MEMO_SOURCE_KINDS). */
+    sourceKind: text("source_kind").notNull(),
+    sourceUrl: text("source_url"),
+    sourceLabel: text("source_label"),
+    sourceAuthor: text("source_author"),
+    sourceWorkspace: text("source_workspace"),
+    videoTitle: text("video_title"),
+    channelName: text("channel_name"),
+  },
+  (t) => [
+    index("video_memos_user_video_idx").on(t.userId, t.videoId),
+    uniqueIndex("video_memos_user_source_url_uidx")
+      .on(t.userId, t.sourceUrl)
+      .where(sql`source_url IS NOT NULL`),
+  ],
+);

@@ -17,6 +17,7 @@ import { SponsorBlockSync } from "@/components/settings/sponsorblock-sync";
 import { ThemeSync } from "@/components/settings/theme-sync";
 import { ActionToastProvider } from "@/components/videos/action-toast";
 import { IgnoredVideosProvider } from "@/components/videos/ignored-videos-context";
+import { MemoCountsProvider } from "@/components/videos/memo-counts-context";
 import { VideoMembershipProvider } from "@/components/videos/video-membership-context";
 import { restoreQueryCache, startQueryCachePersist } from "@/lib/query-persist";
 import { isTransientNetworkError } from "@/lib/query-retry";
@@ -134,7 +135,9 @@ export function Providers({
           <ActionToastProvider>
             <IgnoredVideosProvider>
               <VideoMembershipProvider>
-                <PlayerProvider>{children}</PlayerProvider>
+                <MemoCountsProvider>
+                  <PlayerProvider>{children}</PlayerProvider>
+                </MemoCountsProvider>
               </VideoMembershipProvider>
             </IgnoredVideosProvider>
           </ActionToastProvider>

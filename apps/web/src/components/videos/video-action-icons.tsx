@@ -283,3 +283,40 @@ export function DragHandleIcon(props: IconProps) {
     </svg>
   );
 }
+
+/** Memo = a sticky note with a folded corner and two lines of text. */
+export function MemoIcon(props: IconProps) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...base(props)}
+    >
+      <path d="M5 4h14v10l-6 6H5z" />
+      <path d="M13 20v-6h6" />
+      <path d="M8.5 8.5h7M8.5 12h4" />
+    </svg>
+  );
+}
+
+export function TrashIcon(props: IconProps) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...base(props)}
+    >
+      <path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3" />
+    </svg>
+  );
+}
