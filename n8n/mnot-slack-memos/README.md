@@ -71,6 +71,7 @@ Edit `build.py` / `slack-memos.js`, then:
 ```sh
 node --test slack-memos.test.mjs
 python3 build.py > workflow.json
+pnpm exec biome format --write workflow.json
 ```
 
 Deploy on spiff (docker needs root): export the live workflow first and diff
