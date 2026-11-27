@@ -84,13 +84,19 @@ export class Hub {
     this.retryDelaysMs = opts.retryDelaysMs ?? [5_000, 30_000, 120_000];
   }
 
-  async handle(form: URLSearchParams, authorization?: string): Promise<HubResult> {
+  async handle(
+    form: URLSearchParams,
+    authorization?: string,
+  ): Promise<HubResult> {
     const mode = form.get("hub.mode");
     if (mode === "subscribe" || mode === "unsubscribe") {
       return this.handleSubscription(mode, form);
     }
     if (mode === "publish") return this.handlePublish(form, authorization);
-    return { status: 400, body: "hub.mode must be subscribe, unsubscribe or publish\n" };
+    return {
+      status: 400,
+      body: "hub.mode must be subscribe, unsubscribe or publish\n",
+    };
   }
 
   private async handleSubscription(
@@ -107,7 +113,10 @@ export class Hub {
       return { status: 400, body: "topic not served by this hub\n" };
     }
     if (!(await this.opts.isCallbackAllowed(callback))) {
-      return { status: 400, body: "hub.callback must be a public http(s) URL\n" };
+      return {
+        status: 400,
+        body: "hub.callback must be a public http(s) URL\n",
+      };
     }
     const secret = form.get("hub.secret");
     if (secret !== null && Buffer.byteLength(secret) >= 200) {
@@ -120,7 +129,8 @@ export class Hub {
     return {
       status: 202,
       body: "accepted\n",
-      after: () => this.verifyIntent(mode, callback, topic, secret || null, lease),
+      after: () =>
+        this.verifyIntent(mode, callback, topic, secret || null, lease),
     };
   }
 
@@ -136,7 +146,8 @@ export class Hub {
     url.searchParams.set("hub.mode", mode);
     url.searchParams.set("hub.topic", topic);
     url.searchParams.set("hub.challenge", challenge);
-    if (mode === "subscribe") url.searchParams.set("hub.lease_seconds", String(lease));
+    if (mode === "subscribe")
+      url.searchParams.set("hub.lease_seconds", String(lease));
     let confirmed = false;
     try {
       const res = await this.fetch(url, {
@@ -145,7 +156,9 @@ export class Hub {
       });
       confirmed = res.ok && (await res.text()).trim() === challenge;
     } catch (error) {
-      this.log(`${mode} verification failed for ${callback}: ${message(error)}`);
+      this.log(
+        `${mode} verification failed for ${callback}: ${message(error)}`,
+      );
     }
     if (!confirmed) {
       this.log(`${mode} NOT confirmed: ${callback} → ${redact(topic)}`);
@@ -165,14 +178,20 @@ export class Hub {
     this.log(`${mode} confirmed: ${callback} → ${redact(topic)}`);
   }
 
-  private handlePublish(form: URLSearchParams, authorization?: string): HubResult {
+  private handlePublish(
+    form: URLSearchParams,
+    authorization?: string,
+  ): HubResult {
     if (!bearerMatches(authorization, this.opts.publishToken)) {
       return { status: 401, body: "unauthorized\n" };
     }
     const urls = [...form.getAll("hub.url"), ...form.getAll("hub.topic")];
     const keys = urls.map(topicKey);
     if (urls.length === 0 || keys.some((k) => k === null)) {
-      return { status: 400, body: "hub.url must be one or more http(s) URLs\n" };
+      return {
+        status: 400,
+        body: "hub.url must be one or more http(s) URLs\n",
+      };
     }
     return {
       status: 202,
@@ -199,7 +218,9 @@ export class Hub {
     let contentType: string;
     try {
       const res = await this.topicFetch(target.url, {
-        headers: target.authorization ? { authorization: target.authorization } : {},
+        headers: target.authorization
+          ? { authorization: target.authorization }
+          : {},
         redirect: "error",
         signal: AbortSignal.timeout(30_000),
       });

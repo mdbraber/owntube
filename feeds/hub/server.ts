@@ -69,7 +69,11 @@ function readBody(req: http.IncomingMessage): Promise<ReadBodyResult> {
       chunks.push(c);
     });
     req.on("end", () => {
-      resolve(tooLarge ? { tooLarge: true } : { tooLarge: false, body: Buffer.concat(chunks).toString("utf8") });
+      resolve(
+        tooLarge
+          ? { tooLarge: true }
+          : { tooLarge: false, body: Buffer.concat(chunks).toString("utf8") },
+      );
     });
     req.on("error", reject);
   });
@@ -86,7 +90,9 @@ const server = http.createServer((req, res) => {
     }
     if (method === "GET" && pathname === "/") {
       res.writeHead(200, { "content-type": "text/plain" });
-      res.end("WebSub hub (https://www.w3.org/TR/websub/). POST hub.mode=subscribe here.\n");
+      res.end(
+        "WebSub hub (https://www.w3.org/TR/websub/). POST hub.mode=subscribe here.\n",
+      );
       return;
     }
     if (method === "POST" && pathname === "/") {
@@ -102,7 +108,9 @@ const server = http.createServer((req, res) => {
       res.end(result.body);
       if (result.after) {
         result.after().catch((error: unknown) => {
-          logLine(`background work failed: ${error instanceof Error ? error.message : String(error)}`);
+          logLine(
+            `background work failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
         });
       }
       return;
@@ -119,5 +127,7 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, () => {
-  logLine(`websub-hub listening on :${PORT} as ${HUB_URL} (topics: ${TOPIC_HOSTS.join(", ")})`);
+  logLine(
+    `websub-hub listening on :${PORT} as ${HUB_URL} (topics: ${TOPIC_HOSTS.join(", ")})`,
+  );
 });

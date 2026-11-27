@@ -5,7 +5,7 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { type HubResult, Hub } from "./hub.ts";
+import { Hub, type HubResult } from "./hub.ts";
 import { SubscriptionStore } from "./store.ts";
 import { topicKey } from "./topic.ts";
 
@@ -79,7 +79,9 @@ function topicServer() {
   });
 }
 
-function freshHub(overrides: Partial<ConstructorParameters<typeof Hub>[0]> = {}) {
+function freshHub(
+  overrides: Partial<ConstructorParameters<typeof Hub>[0]> = {},
+) {
   const store = new SubscriptionStore(
     fs.mkdtempSync(path.join(os.tmpdir(), "websub-hub-")),
   );
@@ -95,7 +97,14 @@ function freshHub(overrides: Partial<ConstructorParameters<typeof Hub>[0]> = {})
     log: () => {},
     ...overrides,
   });
-  return { hub, store, now: () => now, advance: (s: number) => { now += s; } };
+  return {
+    hub,
+    store,
+    now: () => now,
+    advance: (s: number) => {
+      now += s;
+    },
+  };
 }
 
 function form(fields: Record<string, string | string[]>): URLSearchParams {
@@ -148,7 +157,11 @@ test("a subscriber that does not echo the challenge is not stored", async () => 
   const topic = `http://alice:pw-a@127.0.0.1:1${FEED}`;
   await settle(
     await hub.handle(
-      form({ "hub.mode": "subscribe", "hub.callback": `${sub.base}/cb`, "hub.topic": topic }),
+      form({
+        "hub.mode": "subscribe",
+        "hub.callback": `${sub.base}/cb`,
+        "hub.topic": topic,
+      }),
     ),
   );
   assert.equal(store.active(topicKey(topic) as string, now()).length, 0);
@@ -159,15 +172,28 @@ test("subscribe is refused for foreign topics, private callbacks and long secret
   const { hub } = freshHub({
     isCallbackAllowed: async (cb) => !cb.includes("10.0.0.1"),
   });
-  const base = { "hub.mode": "subscribe", "hub.callback": "https://pc.example/cb" };
-  const foreign = await hub.handle(form({ ...base, "hub.topic": "https://evil.example/feed" }));
+  const base = {
+    "hub.mode": "subscribe",
+    "hub.callback": "https://pc.example/cb",
+  };
+  const foreign = await hub.handle(
+    form({ ...base, "hub.topic": "https://evil.example/feed" }),
+  );
   assert.equal(foreign.status, 400);
   const privateCb = await hub.handle(
-    form({ ...base, "hub.callback": "http://10.0.0.1/cb", "hub.topic": `http://127.0.0.1${FEED}` }),
+    form({
+      ...base,
+      "hub.callback": "http://10.0.0.1/cb",
+      "hub.topic": `http://127.0.0.1${FEED}`,
+    }),
   );
   assert.equal(privateCb.status, 400);
   const longSecret = await hub.handle(
-    form({ ...base, "hub.topic": `http://127.0.0.1${FEED}`, "hub.secret": "x".repeat(200) }),
+    form({
+      ...base,
+      "hub.topic": `http://127.0.0.1${FEED}`,
+      "hub.secret": "x".repeat(200),
+    }),
   );
   assert.equal(longSecret.status, 400);
   const badMode = await hub.handle(form({ "hub.mode": "list" }));
@@ -200,7 +226,10 @@ test("publish delivers the feed fetched with the subscriber's credentials, signe
   );
   const result = await settle(
     await hub.handle(
-      form({ "hub.mode": "publish", "hub.url": `http://alice@127.0.0.1:${feeds.port}${FEED}` }),
+      form({
+        "hub.mode": "publish",
+        "hub.url": `http://alice@127.0.0.1:${feeds.port}${FEED}`,
+      }),
       "Bearer tok",
     ),
   );
@@ -212,7 +241,10 @@ test("publish delivers the feed fetched with the subscriber's credentials, signe
     delivery.headers["x-hub-signature"],
     `sha256=${createHmac("sha256", "s3cret").update("<rss>alice</rss>").digest("hex")}`,
   );
-  assert.match(String(delivery.headers.link), /<https:\/\/websub\.example\/>; rel="hub"/);
+  assert.match(
+    String(delivery.headers.link),
+    /<https:\/\/websub\.example\/>; rel="hub"/,
+  );
   await Promise.all([feeds.close(), sub.close()]);
 });
 
@@ -232,12 +264,19 @@ test("the topic is fetched with topicFetch, not fetch", async () => {
   const topic = `http://alice:pw-a@127.0.0.1:${feeds.port}${FEED}`;
   await settle(
     await hub.handle(
-      form({ "hub.mode": "subscribe", "hub.callback": `${sub.base}/cb`, "hub.topic": topic }),
+      form({
+        "hub.mode": "subscribe",
+        "hub.callback": `${sub.base}/cb`,
+        "hub.topic": topic,
+      }),
     ),
   );
   const result = await settle(
     await hub.handle(
-      form({ "hub.mode": "publish", "hub.url": `http://alice@127.0.0.1:${feeds.port}${FEED}` }),
+      form({
+        "hub.mode": "publish",
+        "hub.url": `http://alice@127.0.0.1:${feeds.port}${FEED}`,
+      }),
       "Bearer tok",
     ),
   );
@@ -268,7 +307,10 @@ test("announcing one user's feed never reaches another user's subscriber", async
   }
   await settle(
     await hub.handle(
-      form({ "hub.mode": "publish", "hub.url": `http://alice@127.0.0.1:${feeds.port}${FEED}` }),
+      form({
+        "hub.mode": "publish",
+        "hub.url": `http://alice@127.0.0.1:${feeds.port}${FEED}`,
+      }),
       "Bearer tok",
     ),
   );
@@ -287,13 +329,20 @@ test("a callback answering 410 Gone is unsubscribed; failures retry then give up
   for (const s of [gone, failing]) {
     await settle(
       await hub.handle(
-        form({ "hub.mode": "subscribe", "hub.callback": `${s.base}/cb`, "hub.topic": topic }),
+        form({
+          "hub.mode": "subscribe",
+          "hub.callback": `${s.base}/cb`,
+          "hub.topic": topic,
+        }),
       ),
     );
   }
   await settle(
     await hub.handle(
-      form({ "hub.mode": "publish", "hub.url": `http://alice@127.0.0.1:${feeds.port}${FEED}` }),
+      form({
+        "hub.mode": "publish",
+        "hub.url": `http://alice@127.0.0.1:${feeds.port}${FEED}`,
+      }),
       "Bearer tok",
     ),
   );
@@ -324,7 +373,10 @@ test("expired subscriptions and callbacks that turned private get nothing", asyn
   );
   const publish = () =>
     hub.handle(
-      form({ "hub.mode": "publish", "hub.url": `http://alice@127.0.0.1:${feeds.port}${FEED}` }),
+      form({
+        "hub.mode": "publish",
+        "hub.url": `http://alice@127.0.0.1:${feeds.port}${FEED}`,
+      }),
       "Bearer tok",
     );
   allow = false;
@@ -344,7 +396,11 @@ test("a verified unsubscribe removes the subscription", async () => {
   for (const mode of ["subscribe", "unsubscribe"]) {
     await settle(
       await hub.handle(
-        form({ "hub.mode": mode, "hub.callback": `${sub.base}/cb`, "hub.topic": topic }),
+        form({
+          "hub.mode": mode,
+          "hub.callback": `${sub.base}/cb`,
+          "hub.topic": topic,
+        }),
       ),
     );
   }

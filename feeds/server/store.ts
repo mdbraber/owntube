@@ -215,12 +215,15 @@ export class FeedStore {
           let same = false;
           if (prev) {
             try {
-              same = contentOf(JSON.parse(prev.json) as FeedSnapshot) === contentOf(f);
+              same =
+                contentOf(JSON.parse(prev.json) as FeedSnapshot) ===
+                contentOf(f);
             } catch {
               /* unreadable stored row — treat as changed */
             }
           }
-          if (!same) changed.push({ owner: f.owner, kind: f.kind, slug: f.slug });
+          if (!same)
+            changed.push({ owner: f.owner, kind: f.kind, slug: f.slug });
           upsert.run({
             owner: f.owner,
             kind: f.kind,

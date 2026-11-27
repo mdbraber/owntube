@@ -30,14 +30,20 @@ test("private, loopback, link-local and mapped addresses are not public", () => 
 });
 
 test("public addresses are public", () => {
-  for (const ip of ["8.8.8.8", "142.132.230.73", "2001:4860:4860::8888", "::ffff:8.8.8.8"]) {
+  for (const ip of [
+    "8.8.8.8",
+    "142.132.230.73",
+    "2001:4860:4860::8888",
+    "::ffff:8.8.8.8",
+  ]) {
     assert.equal(isPublicAddress(ip), true, ip);
   }
 });
 
 test("callbackIsPublic resolves names and requires every address to be public", async () => {
   const lookup = async (host: string) =>
-    ({ pub: ["8.8.8.8"], mixed: ["8.8.8.8", "10.0.0.1"], none: [] })[host] ?? [];
+    ({ pub: ["8.8.8.8"], mixed: ["8.8.8.8", "10.0.0.1"], none: [] })[host] ??
+    [];
   assert.equal(await callbackIsPublic("https://pub/cb", lookup), true);
   assert.equal(await callbackIsPublic("https://mixed/cb", lookup), false);
   assert.equal(await callbackIsPublic("https://none/cb", lookup), false);
@@ -88,7 +94,10 @@ test("publicOnlyLookup accepts public addresses, options.all === true", async ()
 test("publicOnlyLookup accepts a public address, single-address form", async () => {
   const resolve = async () => [{ address: "8.8.8.8", family: 4 }];
   const lookup = publicOnlyLookup(resolve);
-  const [address, family] = (await runLookup(lookup, "good.example", {})) as [string, number];
+  const [address, family] = (await runLookup(lookup, "good.example", {})) as [
+    string,
+    number,
+  ];
   assert.equal(address, "8.8.8.8");
   assert.equal(family, 4);
 });
@@ -110,12 +119,15 @@ test("publicOnlyFetch refuses to connect to localhost (loopback address)", async
     // Assert why it failed, not just that it did — otherwise a connection
     // refused (e.g. from a typo'd port) would pass this just as well as the
     // rebinding guard actually firing.
-    await assert.rejects(() => publicOnlyFetch(`http://localhost:${port}/`), (error: unknown) => {
-      assert.ok(error instanceof Error);
-      const cause = (error as Error & { cause?: unknown }).cause;
-      assert.match(String((cause as Error)?.message ?? cause), /non-public/);
-      return true;
-    });
+    await assert.rejects(
+      () => publicOnlyFetch(`http://localhost:${port}/`),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        const cause = (error as Error & { cause?: unknown }).cause;
+        assert.match(String((cause as Error)?.message ?? cause), /non-public/);
+        return true;
+      },
+    );
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
