@@ -9,7 +9,7 @@
   },
   "scripts": {
     "start": "node src/main.ts",
-    "dev": "node --watch src/main.ts",
+    "dev": "node --env-file-if-exists=../web/.env --watch src/main.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

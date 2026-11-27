@@ -26,12 +26,33 @@ function warnQuotedEnvValues() {
   );
 }
 
+/**
+ * A production server must not run on a missing secret or one still copied
+ * from an example env file: anyone could forge sessions (`AUTH_SECRET`) or
+ * playback URLs and gateway calls (`GATEWAY_SIGNING_KEY`). Development keeps
+ * working with the placeholders.
+ */
+async function refuseExampleSecrets() {
+  if (process.env.NODE_ENV !== "production") return;
+  const { isPlaceholderSecret } = await import("@owntube/contracts/secrets");
+  const bad = ["AUTH_SECRET", "GATEWAY_SIGNING_KEY"].filter((name) =>
+    isPlaceholderSecret(process.env[name]),
+  );
+  if (bad.length === 0) return;
+  console.error(
+    `\n\x1b[31m[OwnTube]\x1b[0m ${bad.join(" and ")} missing or still the example placeholder.\n` +
+      "Generate each with: openssl rand -base64 48\n",
+  );
+  process.exit(1);
+}
+
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") {
     return;
   }
 
   warnQuotedEnvValues();
+  await refuseExampleSecrets();
 
   // Imported lazily: it pulls in the database and must stay out of the edge bundle.
   if (process.env.OWNTUBE_PUBLISH_TARGET?.trim()) {
