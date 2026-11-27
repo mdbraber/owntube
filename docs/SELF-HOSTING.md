@@ -1,121 +1,139 @@
-# Self-Hosting a Video Backend
+# Self-Hosting
 
-OwnTube fetches video metadata and streams from either **Piped** or **Invidious**.
-Public instances are frequently unreliable (rate-limits, 403s, downtime).
-Running your own local instance solves all of this.
+OwnTube runs as two services: the **web app** (`apps/web`, port 3000) and its
+**YouTube gateway** (`apps/gateway`, port 8080). The gateway is the only part
+that talks to YouTube: catalogue data (`/api/*`, called by the web app) and
+media (`/media/*`: streams, manifests, images). No Invidious, Piped, companion
+or Postgres is needed.
+
+```
+browser / TV ──► app :3000 ──► gateway :8080 ──► YouTube
+                     └─ /media/* forwarded (or routed by your reverse proxy)
+```
 
 ---
 
-## Option A — Self-hosted Invidious (recommended, single command)
-
-Invidious is a YouTube front-end that exposes a full REST API used by OwnTube
-for search, video detail, and related videos.
-
-### Prerequisites
-- Docker + Docker Compose v2
-- ~500 MB disk space for the PostgreSQL volume
-
-### 1. Run the setup script
+## Docker Compose
 
 ```bash
-# From the OwnTube project root:
-bash scripts/setup-invidious.sh
+cp apps/web/.env.example .env      # or write .env by hand, see below
+docker compose up -d --build
 ```
 
-This clones the official Invidious repository into `../invidious/` (sibling of
-OwnTube) for the Postgres init scripts, then starts **pre-built** images from
-Quay (`docker-compose.owntube-local.yml`). Nothing is compiled on your machine,
-so **Docker BuildKit is not required**.
-
-First boot takes **1–3 minutes** while PostgreSQL initialises and Invidious runs
-migrations. Watch the logs:
-
-```bash
-cd ../invidious && docker compose -f docker-compose.owntube-local.yml logs -f invidious
-```
-
-Wait until you see a line like:
-```
-Invidious 0.x.x (production) listening on 0.0.0.0:3000
-```
-
-Verify it's working:
-```bash
-curl -s http://localhost:3001/api/v1/stats | python3 -m json.tool | head
-```
-
-### 2. Update your `.env`
+`.env` needs at least:
 
 ```dotenv
-# Disable Piped (public instances are unreliable)
-PIPED_BASE_URL=disabled
-
-# Point to your local Invidious
-INVIDIOUS_BASE_URL=http://localhost:3001
+# openssl rand -base64 48  (each its own value)
+AUTH_SECRET=...
+GATEWAY_SIGNING_KEY=...            # at least 32 characters; shared by app and gateway
 ```
 
-### 3. Restart OwnTube
+- SQLite (accounts, history, subscriptions, settings) lives in the named volume
+  `owntube-data`; the gateway's caches in `owntube-gateway`.
+- Migrations run on every app start.
+- The gateway has no published port. Without a reverse proxy the web app
+  forwards `/media/*` to it.
+
+### Reverse proxy
+
+Put OwnTube behind TLS (Caddy, nginx, Traefik, …). Route `/media/*` straight to
+the gateway (port 8080) and everything else to the app (port 3000). Keep port
+8080 off the internet otherwise: media URLs are signed with
+`GATEWAY_SIGNING_KEY`, the rest of the gateway is for the app only.
+
+### Network
+
+YouTube flags whole IPv6 /64s faster than single IPv4 addresses, so the
+compose files set `GATEWAY_EGRESS_FAMILY=ipv4`. The host needs an IPv4 address
+YouTube does not block.
+
+### Gateway settings
+
+| Variable | Default | Role |
+|----------|---------|------|
+| `GATEWAY_SIGNING_KEY` | — (required, ≥ 32 chars) | API key and playback URL signatures; same value in the app |
+| `GATEWAY_EGRESS_FAMILY` | `auto` (compose: `ipv4`) | `ipv4`, `ipv6` or `auto` |
+| `GATEWAY_CACHE_DIR` | `data/cache` (compose: `/data/cache`) | Metadata, image and layout caches |
+| `GATEWAY_IMAGE_CACHE_MAX_BYTES` | 1 GiB | Image cache size kept by the hourly prune |
+| `GATEWAY_TRANSPORT` | `auto` | `sabr` to skip byte ranges when YouTube refuses them |
+| `GATEWAY_PROXY_URL` | — | Outbound proxy for all YouTube traffic |
+| `GATEWAY_PO_BROWSER` | — | Chromium path for PO tokens (image built with `--build-arg WITH_PO_BROWSER=true`) |
+
+A bind mount instead of the named volume keeps the host's ownership: make it
+writable for uid 1000 (`node`), or the gateway exits with `EACCES` on
+`/data/cache`.
+
+---
+
+## Cache warmer
+
+The warmer runs **inside the app** (there is no `cache-warmer` sidecar any
+more): 30 s after start and then every `OWNTUBE_WARM_INTERVAL_SEC` it pre-fills
+trending, Shorts, channel metadata and the first page of subscribed and
+recently watched channels.
+
+| Variable | Default | Role |
+|----------|---------|------|
+| `OWNTUBE_WARM_INTERVAL_SEC` | `900` | Seconds between runs; `0` disables the warmer |
+| `OWNTUBE_WARM_REGION` | `US` | Trending / Shorts region |
+| `OWNTUBE_WARM_LIMIT` | `48` | Trending video count |
+| `OWNTUBE_WARM_CHANNELS` | `true` | Refresh channel metadata |
+| `OWNTUBE_WARM_CHANNEL_PAGES` | `true` | Warm channel video lists |
+| `OWNTUBE_WARM_SHORTS` | `true` | Warm the home Shorts shelf |
+| `OWNTUBE_WARM_HISTORY_CHANNELS` | `32` | Max history channels to include |
+| `OWNTUBE_WARM_SUBSCRIPTION_CHANNELS` | `64` | Max subscribed channels for metadata + page warms (recent first) |
+
+One-shot warm, e.g. after a deploy:
 
 ```bash
-pnpm dev
-```
-
-Search, thumbnails, and video playback should all work immediately.
-
-### Stopping / restarting Invidious
-
-```bash
-cd ../invidious
-docker compose -f docker-compose.owntube-local.yml down
-docker compose -f docker-compose.owntube-local.yml up -d
+docker compose exec app pnpm warm:cache
 ```
 
 ---
 
-## Option B — Self-hosted Piped
+## Backups
 
-Piped is more complex (requires 3 services: backend, proxy, and optionally a
-frontend), but provides HLS/DASH streams with better quality options.
+`owntube.db` is the source of truth for accounts, history, interactions,
+subscriptions and settings. It runs in WAL mode, so copy it with the app
+stopped (or copy `owntube.db`, `owntube.db-wal` and `owntube.db-shm` together):
 
-### Prerequisites
-- Docker + Docker Compose v2
-- A publicly-accessible domain (Piped requires it for its proxy to work)
-
-### Steps
-
-Follow the official guide:
-👉 <https://docs.piped.video/docs/self-hosting/>
-
-Once running, set in your `.env`:
-
-```dotenv
-PIPED_BASE_URL=https://api.your-piped.example
-# Keep Invidious as fallback:
-INVIDIOUS_BASE_URL=http://localhost:3001
+```bash
+docker compose stop app
+docker run --rm -v owntube-data:/data -v "$PWD/backups:/backup" alpine \
+  tar czf "/backup/owntube-data-$(date +%F).tgz" -C /data .
+docker compose start app
 ```
+
+(Compose prefixes volume names with the project name, e.g.
+`owntube_owntube-data`; `docker volume ls` shows the real one.)
+
+The gateway volume only holds caches and needs no backup.
 
 ---
 
-## Choosing a public instance (quickest option)
+## Upgrading from the Invidious setup
 
-If you don't want to self-host, pick a working instance from these lists and
-paste it in `.env`:
+Before the gateway (November 2026), OwnTube ran next to Invidious, its
+companion, Postgres and a `cache-warmer` sidecar. To move over:
 
-| Service   | Instance list |
-|-----------|---------------|
-| Piped     | <https://piped-instances.kavin.rocks/> |
-| Invidious | <https://api.invidious.io/> |
+1. **Back up** the `owntube-data` volume (see above) and keep a copy of your
+   old compose file.
+2. **`.env`:** keep `AUTH_SECRET` unchanged (a new one signs everyone out and
+   unpairs every TV). Add `GATEWAY_SIGNING_KEY` (`openssl rand -base64 48`).
+   Remove `INVIDIOUS_*`, `PIPED_*` and `UPSTREAM_RATE_LIMIT_*`; they are no
+   longer read.
+3. **Compose:** take the current `docker-compose.yml` (app + gateway, same
+   `owntube-data` volume) and start it with
+   `docker compose up -d --remove-orphans`, which also removes the old
+   `cache-warmer` container.
+4. **TV app:** install **0.5.0 or later** at the same time. 0.4.x does not work
+   with the gateway server. A build signed with the same key installs over the
+   old one and keeps its sign-in.
+5. **Invidious:** stop the Invidious stack (and any scheduled restarts for it).
+   Keep its volumes until you are sure you will not roll back.
 
-Test before using:
-```bash
-# Test Piped
-curl -s "https://YOUR-PIPED/streams/dQw4w9WgXcQ" | python3 -m json.tool | head -5
-
-# Test Invidious
-curl -s "https://YOUR-INVIDIOUS/api/v1/videos/dQw4w9WgXcQ" | python3 -m json.tool | head -5
-```
-
-Both should return valid JSON (not HTML, not 403).
+Rolling back: restore the old compose file and the backed-up volume, start
+Invidious again and reinstall a 0.4.x TV build.
 
 ---
 
@@ -123,88 +141,10 @@ Both should return valid JSON (not HTML, not 403).
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| `Upstream rate limit reached for this process` | OwnTube’s **process** limiter (~60 req/min default) and both configured upstreams were throttled in the same request | Raise `UPSTREAM_RATE_LIMIT_MAX_REQUESTS`; with Piped + Invidious set, the second source is tried automatically before this error |
-| Feed looks like regional trending | `PIPED_BASE_URL` points at the web UI, or Piped `/channel/…` returns no `relatedStreams` and Invidious was not configured as fallback | API on **8091** (not 8090); keep a working `INVIDIOUS_BASE_URL` for channel upload lists used by recommendations. OwnTube also tries Piped search + Invidious RSS when native channel video lists are empty or parse-error. |
-| `Invalid JSON (upstream returned HTML)` on Piped | `PIPED_BASE_URL` points at the **frontend** (e.g. port 8090), not the API backend | Use the Piped **backend** URL from [self-hosting docs](https://docs.piped.video/docs/self-hosting/), or `PIPED_BASE_URL=disabled` and Invidious only |
-| "Search temporarily unavailable" | Both Piped & Invidious unreachable | Check URLs, add `https://`, run setup script |
-| Thumbnails 404 | Invidious URL missing protocol | Ensure `INVIDIOUS_BASE_URL` starts with `https://` or `http://` |
-| "Could not load this video — HTTP 403" | Invidious instance blocks API | Switch to a different instance or self-host |
-| "Could not load this video — HTTP 502" | Piped instance is down | Set `PIPED_BASE_URL=disabled` and use Invidious only |
-| Playback or hover preview broken in Docker | Server builds media URLs with `Host: 0.0.0.0:3000` instead of the LAN URL you use in the browser | Set `APP_BASE_URL=http://192.168.1.14:3000` (your real OwnTube URL), rebuild/restart |
-| `the --mount option requires BuildKit` | Old flow built Invidious from source | Run `bash scripts/setup-invidious.sh` again (uses pre-built images; no BuildKit) |
-| Next logs `GET /api/v1/search … 404` while search fails | OwnTube and Invidious share the same host **port** (e.g. both on 3001). Server `fetch` hits Next itself. | Run Invidious on **3001** and OwnTube on **3000** (default `pnpm dev`), or change one of the ports. |
-| Invidious / companion `Restarting`, logs: `invidious_companion_key` needs 16 characters | Companion secret must be **exactly 16 characters** | Re-run `bash scripts/setup-invidious.sh` from OwnTube (fixed generator), then `docker compose -f docker-compose.owntube-local.yml up -d` in the Invidious clone. |
-| OwnTube watch: `Invalid JSON` / `empty body` / `Unexpected end of JSON input` | Invidious answered before **companion** was ready, or non-JSON error page | Re-run `bash scripts/setup-invidious.sh` (compose now waits for companion **healthy** before starting Invidious), then `docker compose ... down && up -d`. Wait ~20 s after `up` before testing. |
-| Invidious first boot slow | DB migration running | Wait ~2 min, watch logs |
-
----
-
-## Cache warmer (Docker)
-
-`docker compose up` starts a **`cache-warmer`** sidecar that runs `pnpm warm:cache`
-every 20 minutes (configurable). It pre-fills SQLite with:
-
-- Regional **trending** (home feed)
-- **Shorts** shelf candidates
-- **Channel meta** (names + avatar URLs) for subscribed and recently watched channels
-- **Channel video pages** (first page) for the same channels
-
-The sidecar shares the `owntube-data` volume with the app and waits until the
-app healthcheck passes before the first run.
-
-```bash
-# Follow warmer logs
-docker compose logs -f cache-warmer
-
-# One-shot warm (e.g. after deploy)
-docker compose exec app pnpm warm:cache
-```
-
-Environment variables (also in `.env.example`):
-
-| Variable | Default | Role |
-|----------|---------|------|
-| `OWNTUBE_WARM_INTERVAL_SEC` | `1200` | Sidecar sleep between runs |
-| `OWNTUBE_WARM_REGION` | `US` | Trending / shorts region |
-| `OWNTUBE_WARM_LIMIT` | `48` | Trending video count |
-| `OWNTUBE_WARM_CHANNELS` | `true` | Refresh `channel_meta` |
-| `OWNTUBE_WARM_CHANNEL_PAGES` | `true` | Warm channel video lists |
-| `OWNTUBE_WARM_SHORTS` | `true` | Warm home Shorts shelf |
-| `OWNTUBE_WARM_HISTORY_CHANNELS` | `32` | Max history channels to include |
-| `OWNTUBE_WARM_SUBSCRIPTION_CHANNELS` | `64` | Max subscribed channels for the channel meta + page warms (recent first). Uploads RSS always covers every subscription |
-
-To disable the sidecar, stop or remove the `cache-warmer` service from your
-compose file, or run only the app: `docker compose up app`.
-
-**Host cron (optional fallback)** — if you run OwnTube outside Docker or without
-the sidecar:
-
-```bash
-# Every 20 minutes
-*/20 * * * * cd /path/to/OwnTube && OWNTUBE_WARM_REGION=US pnpm warm:cache >> /var/log/owntube-warm.log 2>&1
-```
-
-`pnpm warm:feed` is an alias for `pnpm warm:cache`.
-
----
-
-## Backups (recommended)
-
-`owntube.db` is the source of truth for accounts, history, interactions,
-subscriptions, and settings. Create regular snapshots.
-
-Example daily cron (keeps last 14 backups):
-
-```bash
-# 03:30 daily
-30 3 * * * cd /path/to/OwnTube && mkdir -p backups && \
-  cp data/owntube.db "backups/owntube-$(date +\%F).db" && \
-  ls -1t backups/owntube-*.db | tail -n +15 | xargs -r rm -f
-```
-
-Restore example:
-
-```bash
-cp backups/owntube-YYYY-MM-DD.db data/owntube.db
-docker compose restart app
-```
+| Gateway exits with `GATEWAY_SIGNING_KEY must be at least 32 characters` | Key missing or too short | `openssl rand -base64 48`, same value for app and gateway |
+| Gateway exits with `EACCES` on `/data/cache` | Bind mount not writable for uid 1000 | `chown 1000:1000` the host directory, or use a named volume |
+| App never starts, gateway `unhealthy` | The app waits for the gateway's health check | `docker compose logs gateway` |
+| Videos fail with bot checks / "Sign in to confirm" | YouTube flags the egress address | Keep `GATEWAY_EGRESS_FAMILY=ipv4`; try `GATEWAY_PROXY_URL` or another IPv4 address |
+| Images or playback broken behind a proxy | `/media/*` does not reach the gateway | Route `/media/*` to port 8080, or leave it to the app |
+| TV app shows errors after the upgrade | TV 0.4.x against the gateway server | Install TV 0.5.0+ |
+| Everyone signed out after the upgrade | `AUTH_SECRET` changed | Restore the old value |
