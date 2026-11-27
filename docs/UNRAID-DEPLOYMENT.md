@@ -1,13 +1,15 @@
 # Unraid Deployment
 
-This guide deploys OwnTube as a Docker container on Unraid with persistent SQLite storage.
+This guide deploys OwnTube on Unraid as two containers, `owntube` (the web app)
+and `owntube-gateway` (its YouTube gateway), with persistent storage under
+appdata. See [SELF-HOSTING.md](SELF-HOSTING.md) for what each part does.
 
 ## 1) Prepare folders on Unraid
 
-Create the appdata directory:
-
 ```bash
-mkdir -p /mnt/user/appdata/owntube/data
+mkdir -p /mnt/user/appdata/owntube/data /mnt/user/appdata/owntube/gateway
+# The gateway runs as uid 1000 (node) and needs to write its cache here.
+chown 1000:1000 /mnt/user/appdata/owntube/gateway
 ```
 
 ## 2) Prepare environment file
@@ -15,19 +17,17 @@ mkdir -p /mnt/user/appdata/owntube/data
 From the project root on your Unraid host:
 
 ```bash
-cp env.unraid.example .env.unraid
+cp apps/web/env.unraid.example .env.unraid
 ```
 
 Edit `.env.unraid` and set at least:
 
 - `AUTH_SECRET` (required, strong random value)
-- `AUTH_URL` (required, public URL used by browsers, e.g. `http://192.168.1.11:3000`)
+- `GATEWAY_SIGNING_KEY` (required, another strong random value, at least 32 characters)
+- `AUTH_URL` (required, the URL browsers use, e.g. `http://192.168.1.11:3000`)
 - `AUTH_TRUST_HOST=true`
-- `PIPED_BASE_URL` and/or `INVIDIOUS_BASE_URL`
-- `APP_BASE_URL` (URL you open in the browser — LAN IP or reverse-proxy HTTPS)
-- `UPSTREAM_RATE_LIMIT_MAX_REQUESTS=300` (or higher) when self-hosting upstreams on LAN
 
-Generate a strong secret:
+Generate each secret with:
 
 ```bash
 openssl rand -base64 48
@@ -39,13 +39,14 @@ openssl rand -base64 48
 docker compose -f docker-compose.unraid.yml --env-file .env.unraid up -d --build
 ```
 
-The app listens on port `3000` by default.
+The app listens on port `3000`. The gateway has no published port; the app
+forwards `/media/*` to it.
 
 ## 4) Update flow
 
 ```bash
 git pull
-docker compose -f docker-compose.unraid.yml --env-file .env.unraid up -d --build
+docker compose -f docker-compose.unraid.yml --env-file .env.unraid up -d --build --remove-orphans
 ```
 
 ## 5) Useful commands
@@ -53,7 +54,7 @@ docker compose -f docker-compose.unraid.yml --env-file .env.unraid up -d --build
 Logs:
 
 ```bash
-docker compose -f docker-compose.unraid.yml --env-file .env.unraid logs -f app
+docker compose -f docker-compose.unraid.yml --env-file .env.unraid logs -f app gateway
 ```
 
 Stop:
@@ -62,38 +63,31 @@ Stop:
 docker compose -f docker-compose.unraid.yml --env-file .env.unraid down
 ```
 
-## Reverse proxy (recommended)
-
-Expose OwnTube behind your reverse proxy (Nginx Proxy Manager, Traefik, etc.) and enable HTTPS.
-
-Typical upstream target:
-
-- Host: your Unraid server IP
-- Port: `3000`
-
-## Notes
-
-- Database migrations run automatically on container startup.
-- SQLite data is persisted in `/mnt/user/appdata/owntube/data`.
-- If you self-host Invidious on the same Unraid server, prefer using its LAN URL (not `localhost`) unless both services are on the same Docker network.
-- Variables in `.env.unraid` are only applied when listed in `docker-compose.unraid.yml` `environment:` — after editing either file, recreate the container (`up -d --build`).
-- Verify the rate limiter inside the running container:
-
-```bash
-docker exec owntube printenv UPSTREAM_RATE_LIMIT_MAX_REQUESTS
-```
-
-It should print `300` (or your chosen value), not be empty.
-
-- The **`cache-warmer`** sidecar (included in `docker-compose.unraid.yml`) runs
-  `pnpm warm:cache` every 20 minutes after the app is healthy. Logs:
-
-```bash
-docker logs -f owntube-cache-warmer
-```
-
-- One-shot warm after deploy:
+One-shot cache warm after a deploy:
 
 ```bash
 docker exec owntube pnpm warm:cache
 ```
+
+## Reverse proxy (recommended)
+
+Expose OwnTube behind your reverse proxy (Nginx Proxy Manager, Traefik, etc.)
+and enable HTTPS. Typical upstream target: your Unraid server IP, port `3000`.
+To take media load off the app, route `/media/*` to the gateway (port 8080) on
+the same Docker network; otherwise the app forwards it.
+
+## Notes
+
+- Database migrations run automatically on container startup.
+- SQLite data is persisted in `/mnt/user/appdata/owntube/data`; the gateway's
+  caches in `/mnt/user/appdata/owntube/gateway` (no backup needed).
+- The cache warmer runs inside the app every `OWNTUBE_WARM_INTERVAL_SEC`
+  (default 900, `0` disables it); there is no separate `cache-warmer`
+  container any more.
+- Variables in `.env.unraid` are only applied when listed in
+  `docker-compose.unraid.yml` `environment:`. After editing either file,
+  recreate the containers (`up -d --build`).
+- Coming from the Invidious setup? See
+  [Upgrading from the Invidious setup](SELF-HOSTING.md#upgrading-from-the-invidious-setup).
+  Remove `INVIDIOUS_*`, `PIPED_*` and `UPSTREAM_RATE_LIMIT_*` from `.env.unraid`,
+  and add `--remove-orphans` once so the old `owntube-cache-warmer` container goes.
