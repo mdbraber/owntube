@@ -10,6 +10,7 @@ services:
     restart: unless-stopped
     environment:
       PORT: "8080"
+      TZ: Europe/Amsterdam
       DATA_DIR: /data
       HUB_URL: https://websub.nedworks.org/
       HUB_TOPIC_HOSTS: ${HUB_TOPIC_HOSTS:-owntube.nedworks.org}
@@ -26,6 +27,7 @@ services:
       - caddy
     labels:
       caddy: "websub.nedworks.org"
+      caddy.9_import: security-txt
       caddy.reverse_proxy: "* {{upstreams 8080}}"
 
 networks:
