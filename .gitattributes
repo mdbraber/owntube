@@ -1,0 +1,4 @@
+# pnpm hashes patch files into the lockfile (patchedDependencies); a CRLF
+# checkout (core.autocrlf=true on Windows) changes the hash and breaks
+# `pnpm install --frozen-lockfile`.
+*.patch text eol=lf

@@ -40,18 +40,19 @@ import { warmVideo } from "@/server/warm-cache/warm-video";
 const WARM_BATCH = 5;
 const WARM_BATCH_PAUSE_MS = 80;
 
-const region = (process.env.OWNTUBE_WARM_REGION ?? "US").trim().toUpperCase();
+// `||`, not `??`: compose passes unset settings through as empty strings.
+const region = (process.env.OWNTUBE_WARM_REGION?.trim() || "US").toUpperCase();
 const trendingLimit = Number.parseInt(
-  process.env.OWNTUBE_WARM_LIMIT ?? "48",
+  process.env.OWNTUBE_WARM_LIMIT || "48",
   10,
 );
 const historyChannelLimit = Number.parseInt(
-  process.env.OWNTUBE_WARM_HISTORY_CHANNELS ??
+  process.env.OWNTUBE_WARM_HISTORY_CHANNELS ||
     String(DEFAULT_WARM_HISTORY_CHANNELS),
   10,
 );
 const subscriptionChannelLimit = Number.parseInt(
-  process.env.OWNTUBE_WARM_SUBSCRIPTION_CHANNELS ??
+  process.env.OWNTUBE_WARM_SUBSCRIPTION_CHANNELS ||
     String(DEFAULT_WARM_SUBSCRIPTION_CHANNELS),
   10,
 );
@@ -75,8 +76,9 @@ const warmHomeEnabled = envFlag("OWNTUBE_WARM_HOME", true);
 // The newest few uploads only: WebSub sync already warms new uploads as they
 // arrive, and each warmed video costs YouTube round trips (detail, comments).
 // Queued videos are warmed on top of this.
+const DEFAULT_WARM_VIDEO_LIMIT = 5;
 const warmVideoLimit = Number.parseInt(
-  process.env.OWNTUBE_WARM_VIDEO_LIMIT ?? "5",
+  process.env.OWNTUBE_WARM_VIDEO_LIMIT || String(DEFAULT_WARM_VIDEO_LIMIT),
   10,
 );
 
@@ -366,7 +368,7 @@ export async function runWarmCycle(db: AppDb): Promise<boolean> {
       const safeVideoLimit =
         Number.isFinite(warmVideoLimit) && warmVideoLimit > 0
           ? Math.min(warmVideoLimit, 64)
-          : 16;
+          : DEFAULT_WARM_VIDEO_LIMIT;
       const videoIds = await collectWarmVideoIds(
         db,
         channelIds,
@@ -388,7 +390,8 @@ let started = false;
 export function startCacheWarmer(db: AppDb): void {
   if (started) return;
   const intervalSec = Number.parseInt(
-    process.env.OWNTUBE_WARM_INTERVAL_SEC ?? String(DEFAULT_INTERVAL_SEC),
+    process.env.OWNTUBE_WARM_INTERVAL_SEC?.trim() ||
+      String(DEFAULT_INTERVAL_SEC),
     10,
   );
   if (!(intervalSec > 0)) return;

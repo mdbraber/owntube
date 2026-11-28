@@ -1,3 +1,4 @@
+import { isPlaceholderSecret } from "@owntube/contracts/secrets";
 import { z } from "zod";
 
 /**
@@ -45,9 +46,9 @@ export type Config = z.infer<typeof configSchema>;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const parsed = configSchema.safeParse({
-    host: env.GATEWAY_HOST,
-    port: env.GATEWAY_PORT,
-    shutdownGraceMs: env.GATEWAY_SHUTDOWN_GRACE_MS,
+    host: env.GATEWAY_HOST || undefined,
+    port: env.GATEWAY_PORT || undefined,
+    shutdownGraceMs: env.GATEWAY_SHUTDOWN_GRACE_MS || undefined,
     signingKey: env.GATEWAY_SIGNING_KEY,
     transport: env.GATEWAY_TRANSPORT || undefined,
     egressFamily: env.GATEWAY_EGRESS_FAMILY || undefined,
@@ -59,6 +60,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (!parsed.success) {
     throw new Error(
       `Invalid gateway configuration: ${z.prettifyError(parsed.error)}`,
+    );
+  }
+  // The example env files' placeholders pass the length check; a production
+  // gateway must not run on a publicly known key. Development may.
+  if (
+    env.NODE_ENV === "production" &&
+    isPlaceholderSecret(parsed.data.signingKey)
+  ) {
+    throw new Error(
+      "Invalid gateway configuration: GATEWAY_SIGNING_KEY is still the example placeholder; generate one with `openssl rand -base64 48`",
     );
   }
   return parsed.data;

@@ -46,6 +46,7 @@ signed in before this setting existed keep using the URL they were built with.
 ## Build
 
 ```bash
+pnpm install --frozen-lockfile   # in apps/tv: its own pnpm root; corepack picks pnpm 11 from package.json
 EXPO_PUBLIC_OWNTUBE_URL=https://owntube.example.org CI=1 pnpm run prebuild   # EXPO_TV=1 expo prebuild
 cd android
 EXPO_PUBLIC_OWNTUBE_URL=https://owntube.example.org NODE_ENV=production \
@@ -53,6 +54,9 @@ EXPO_PUBLIC_OWNTUBE_URL=https://owntube.example.org NODE_ENV=production \
 # → android/app/build/outputs/apk/release/app-release.apk (debug-signed for now)
 ```
 
+- `apps/tv` is not part of the root workspace, so a root `pnpm install` does not install it. Its
+  lockfile needs pnpm 11+ (`packageManager` pins it; pnpm 9 and 10 stop with "packages field
+  missing" or `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`).
 - `EXPO_TV=1` (set by the `prebuild`/`android` scripts) makes `@react-native-tvos/config-tv`
   generate a TV build.
 - Gradle does not track `EXPO_PUBLIC_*`: after changing only the URL, delete
@@ -97,6 +101,32 @@ The Android toolchain does not need to be installed on the host: the
 `reactnativecommunity/react-native-android` Docker image works, with the repo copied (not
 bind-mounted, if it is not writable by the container user) and the SDK, Gradle cache and pnpm
 store on volumes.
+
+### Building on Windows
+
+The release build works on Windows (Git Bash) with two adjustments, both because CMake and
+ninja hit the 260-character path limit:
+
+- **Use a short checkout path**, e.g. a worktree at `C:\ot`
+  (`git worktree add C:\ot main`). The native builds put the absolute source path into their
+  object directories (`.cxx/.../CMakeFiles/react_codegen_rnsvg.dir/C_/Users/...`), so a repo
+  under `C:\Users\<name>\...` fails in `:app:buildCMakeRelWithDebInfo` or in
+  `expo-modules-core:configureCMakeRelWithDebInfo` (`prefab_command.bat`). `subst` does not
+  help: Node resolves the drive back to its real path and Gradle fails with "different roots".
+- **Install with a flat `node_modules`:**
+  `pnpm install --config.node-linker=hoisted`. The default `node_modules/.pnpm/<pkg>@<version>_<hash>/`
+  layout adds ~60 characters to every native path.
+
+With `core.autocrlf=true`, check out `patches/*.patch` with LF (the repo's `.gitattributes`
+does this); a CRLF patch no longer matches its hash in the lockfile.
+
+```bash
+cd /c/ot/apps/tv
+pnpm install --config.node-linker=hoisted
+EXPO_PUBLIC_OWNTUBE_URL=http://192.168.1.10:3000 CI=1 EXPO_TV=1 npx expo prebuild --platform android --clean
+cd android
+NODE_ENV=production ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a --no-daemon
+```
 
 ## Test on the emulator
 

@@ -68,6 +68,8 @@ apps/web/data/*.db-*
 # runtime data dir: proxy asset cache + dev-restart signal (regenerated locally)
 apps/web/data/asset-cache/
 apps/web/data/.dev-restart
+# the gateway's dev cache (GATEWAY_CACHE_DIR defaults to data/cache)
+apps/gateway/data/
 
 # recommendation debug NDJSON (OWNTUBE_DEBUG_RECOMMENDATIONS)
 /logs/

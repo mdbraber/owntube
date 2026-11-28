@@ -7,7 +7,8 @@
   "exports": {
     "./model": "./src/model.ts",
     "./client": "./src/client.ts",
-    "./signing": "./src/signing.ts"
+    "./signing": "./src/signing.ts",
+    "./secrets": "./src/secrets.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
